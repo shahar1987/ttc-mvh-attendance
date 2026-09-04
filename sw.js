@@ -3,7 +3,7 @@
 // __BUILD_VERSION__ is replaced at build time with the commit sha, so a new deploy
 // always invalidates the old cache instead of serving stale code.
 const CACHE = 'ttc-shell-__BUILD_VERSION__';
-const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const SHELL = ['./', './index.html', './manifest.json', './logo.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
