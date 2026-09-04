@@ -41,17 +41,40 @@ jobs:
           mkdir -p site
           npx esbuild ./bundle.js --bundle --minify --format=esm --outfile=site/app.js
 
-      - name: Generate PWA icons from icon.svg
+      - name: Generate PWA icons from logo.png
         run: |
           cat > mkicons.mjs <<'ICONS'
           import sharp from 'sharp';
-          import { readFileSync } from 'fs';
-          const svg = readFileSync('icon.svg');
+          const SRC = 'logo.png';
+          // Plain icons: trim the transparent/white frame, then pad back 8% on a white square.
           for (const size of [192, 512]) {
-            await sharp(svg, { density: 384 }).resize(size, size).png().toFile(`site/icon-${size}.png`);
+            const inner = Math.round(size * 0.84);
+            const art = await sharp(SRC).trim().resize(inner, inner, {
+              fit: 'contain',
+              background: { r: 255, g: 255, b: 255, alpha: 0 },
+            }).png().toBuffer();
+            await sharp({
+              create: { width: size, height: size, channels: 4, background: '#ffffff' },
+            })
+              .composite([{ input: art, gravity: 'center' }])
+              .png()
+              .toFile(`site/icon-${size}.png`);
           }
+          // Maskable icon: the art must live inside the 66% safe zone, on a filled square.
+          const safe = Math.round(512 * 0.66);
+          const maskArt = await sharp(SRC).trim().resize(safe, safe, {
+            fit: 'contain',
+            background: { r: 255, g: 255, b: 255, alpha: 0 },
+          }).png().toBuffer();
+          await sharp({
+            create: { width: 512, height: 512, channels: 4, background: '#ffffff' },
+          })
+            .composite([{ input: maskArt, gravity: 'center' }])
+            .png()
+            .toFile('site/icon-512-maskable.png');
           ICONS
           node mkicons.mjs
+          cp logo.png site/logo.png
 
       - name: Assemble the site with a cache-busting version
         run: |
@@ -67,7 +90,7 @@ jobs:
           echo "app.js size: $SIZE bytes"
           [ "$SIZE" -ge 200000 ] || (echo "ERROR: bundle too small" && exit 1)
           ! grep -q 'from"react"' site/app.js || (echo "ERROR: bare react import" && exit 1)
-          for f in index.html app.js manifest.json sw.js icon-192.png icon-512.png; do
+          for f in index.html app.js manifest.json sw.js logo.png icon-192.png icon-512.png icon-512-maskable.png; do
             [ -f "site/$f" ] || (echo "ERROR: missing site/$f" && exit 1)
           done
 
