@@ -2,14 +2,20 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <title>נוכחות מועדון טניס שולחן מבואות החרמון</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#172554" />
+  <link rel="icon" href="./icon-192.png" />
+
+  <!-- iOS needs these to install to the home screen as a real app -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="נוכחות מועדון" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+
   <script src="https://cdn.tailwindcss.com"></script>
-  <!--
-    אין כאן import map בכוונה: React, lucide ו-Firebase ארוזים בתוך app.js
-    ע"י GitHub Actions. כך נמנעת הבעיה שבה ה-CDN הגיש שני עותקים
-    של ליבת Firebase ("Component auth has not been registered yet").
-  -->
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
   </style>
@@ -26,6 +32,14 @@
     window.addEventListener('error', function (e) { showError(e.message || String(e.error)); });
     window.addEventListener('unhandledrejection', function (e) { showError(String(e.reason)); });
     import('./app.js').catch(function (err) { showError(err.message); });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function (e) {
+          console.warn('Service worker registration failed:', e);
+        });
+      });
+    }
   </script>
 </body>
 </html>
