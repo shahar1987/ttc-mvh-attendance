@@ -5,16 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>נוכחות מועדון טניס שולחן מבואות החרמון</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!--
+    חשוב: כל תת-חבילות Firebase נעולות לאותה ליבה (@firebase/app@0.10.5)
+    באמצעות ?deps=. בלי זה esm.sh מגיש ל-auth/firestore ליבה בגרסה
+    שונה מזו של app, נטענים שני עותקים של הליבה,
+    ומתקבלת השגיאה "Component auth has not been registered yet".
+  -->
   <script type="importmap">
   {
     "imports": {
-      "react": "https://esm.sh/react@18",
-      "react-dom/client": "https://esm.sh/react-dom@18/client",
-      "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react",
-      "firebase/app": "https://esm.sh/firebase@10.12.2/app",
-      "firebase/auth": "https://esm.sh/firebase@10.12.2/auth",
-      "firebase/firestore": "https://esm.sh/firebase@10.12.2/firestore",
-      "firebase/messaging": "https://esm.sh/firebase@10.12.2/messaging"
+      "react": "https://esm.sh/react@18.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1",
+      "lucide-react": "https://esm.sh/lucide-react@0.383.0?deps=react@18.3.1&external=react",
+      "firebase/app": "https://esm.sh/firebase@10.12.2/app?deps=@firebase/app@0.10.5",
+      "firebase/auth": "https://esm.sh/firebase@10.12.2/auth?deps=@firebase/app@0.10.5",
+      "firebase/firestore": "https://esm.sh/firebase@10.12.2/firestore?deps=@firebase/app@0.10.5",
+      "firebase/messaging": "https://esm.sh/firebase@10.12.2/messaging?deps=@firebase/app@0.10.5"
     }
   }
   </script>
@@ -24,6 +30,19 @@
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="./bundle.js"></script>
+  <div id="boot-error" style="display:none;padding:24px;text-align:center;font-size:14px;color:#b91c1c"></div>
+  <script type="module">
+    // מציג שגיאה על המסך במקום מסך לבן, כדי שנדע מה נשבר אם משהו נכשל.
+    window.addEventListener('error', (e) => {
+      const el = document.getElementById('boot-error');
+      el.style.display = 'block';
+      el.textContent = 'שגיאה בטעינה: ' + (e.message || e.error);
+    });
+    import('./bundle.js').catch((err) => {
+      const el = document.getElementById('boot-error');
+      el.style.display = 'block';
+      el.textContent = 'שגיאה בטעינת האפליקציה: ' + err.message;
+    });
+  </script>
 </body>
 </html>
