@@ -860,6 +860,12 @@ function dt({
                   "\u05E0\u05D9\u05D4\u05D5\u05DC \u05D4\u05E8\u05E9\u05D0\u05D5\u05EA",
                 icon: Ie,
               },
+              {
+                key: "import",
+                label:
+                  "\u05D9\u05D9\u05D1\u05D5\u05D0 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
+                icon: K,
+              },
             ]
           : [
               {
@@ -1492,6 +1498,7 @@ function Q() {
                 "\u05E1\u05E4\u05E8 \u05D8\u05DC\u05E4\u05D5\u05E0\u05D9\u05DD",
               permissions:
                 "\u05E0\u05D9\u05D4\u05D5\u05DC \u05D4\u05E8\u05E9\u05D0\u05D5\u05EA",
+              import: "\u05D9\u05D9\u05D1\u05D5\u05D0 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
               reports: "\u05D3\u05D5\u05D7\u05D5\u05EA",
               attendance:
                 "\u05DE\u05D9\u05DC\u05D5\u05D9 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
@@ -1540,6 +1547,9 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id }),
+      r &&
+        m === "import" &&
+        e.createElement(ImportScreen, { groups: i, players: c }),
       m === "attendance" &&
         e.createElement(mt, {
           profile: s,
