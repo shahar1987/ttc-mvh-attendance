@@ -105,7 +105,9 @@ function ne(t, s) {
   return `https://wa.me/${t}?text=${encodeURIComponent(s)}`;
 }
 function Ve(t, s) {
-  return `\u05D4\u05D9\u05D9 ${t}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9${s} \u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2 \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05D9\u05E9 \u05DE\u05E9\u05D4\u05D5 \u05E9\u05D0\u05E4\u05E9\u05E8 \u05DC\u05E2\u05D6\u05D5\u05E8 \u05D1\u05D5.`;
+  return t && t.trim() && t.trim() !== s
+    ? `\u05D4\u05D9\u05D9 ${t}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9${s} \u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2 \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05D9\u05E9 \u05DE\u05E9\u05D4\u05D5 \u05E9\u05D0\u05E4\u05E9\u05E8 \u05DC\u05E2\u05D6\u05D5\u05E8 \u05D1\u05D5.`
+    : `\u05D4\u05D9\u05D9 ${s}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05E6\u05E8\u05D9\u05DA \u05DE\u05E9\u05D4\u05D5.`;
 }
 function normalizePhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
@@ -1858,7 +1860,7 @@ function at({
     [r, y] = b(!1),
     [N, C] = b(""),
     d = f.trim().length > 0 && isValidPhone(f),
-    A = n.trim() && o && h.trim() && d,
+    A = n.trim() && o && d,
     I = async () => {
       (y(!0), C(""));
       try {
@@ -1951,8 +1953,8 @@ function at({
           ),
         ),
       ),
-      p("שם ההורה", h, u),
-      p("טלפון הורה", f, g, "ltr"),
+      p("שם ההורה (לא חובה — לשחקנים בוגרים)", h, u),
+      p("טלפון ליצירת קשר", f, g, "ltr"),
       f.trim().length > 0 &&
         !d &&
         e.createElement(
@@ -1977,5 +1979,354 @@ function at({
         r ? "שומר…" : "שמירה",
       ),
     ),
+  );
+}
+var DEFAULT_ROSTER = `# \u05E4\u05E8\u05E7\u05D9\u05E0\u05E1\u05D5\u05DF | \u05D0
+\u05D8\u05DC \u05E9\u05D5\u05E9\u05E0\u05D9, 0507741082
+\u05D1\u05D0\u05E8\u05D9 \u05E1\u05D9\u05DC\u05D1\u05E8\u05D1\u05E8\u05D2, 0542483460
+\u05E8\u05DF \u05DB\u05D4\u05DF, 0549000780
+\u05E0\u05D9\u05E1\u05D9\u05DD \u05D6\u05D2\u05D5\u05E8\u05D9, 0542990097
+\u05D9\u05D5\u05E1\u05D9 \u05D5\u05E2\u05D3\u05D9\u05D4
+\u05D9\u05D4\u05D5\u05D3\u05D9\u05EA \u05D0\u05D9\u05EA\u05D9, 0528734881
+\u05D3\u05E0\u05D9 \u05E7\u05E0\u05D9\u05E7\u05E9\u05D8\u05D9\u05D9\u05DF
+\u05DE\u05D9\u05DB\u05DC \u05D0\u05D9\u05EA\u05DF, 0509509253
+\u05D0\u05D1\u05E8\u05D4\u05DD \u05E8\u05D7\u05D9\u05DE\u05D9, 0508296609
+\u05D9\u05E2\u05E7\u05D1 \u05D0\u05D5\u05E8\u05E7\u05D5, 0506543888
+
+# \u05DE\u05D1\u05D5\u05D2\u05E8\u05D9\u05DD \u05E8\u05DE\u05EA \u05DB\u05D5\u05E8\u05D6\u05D9\u05DD | \u05D1,\u05D3
+\u05E9\u05D7\u05E8 \u05E8\u05D9\u05D1\u05E8, 0523717971
+\u05D9\u05D5\u05EA\u05DD \u05D9\u05E8\u05D5\u05E9\u05DC\u05DE\u05D9, 0522743633
+\u05D0\u05E0\u05D3\u05E8\u05D9\u05D9
+\u05D8\u05DC \u05DB\u05D4\u05DF, 0524528855
+\u05E6\u05D5\u05E8 \u05DB\u05D4\u05DF
+\u05D9\u05E9\u05E8\u05D0\u05DC \u05D1\u05DF \u05D0\u05E8\u05D5\u05E9
+\u05D0\u05D5\u05D4\u05D3 \u05D1\u05DF \u05D0\u05E8\u05D5\u05E9
+\u05D0\u05DC\u05E2\u05D6\u05E8 \u05E9\u05E0\u05E7\u05E8, 0545431011
+\u05D0\u05D5\u05E8\u05D9 \u05DE\u05D5\u05E1\u05E0\u05D6\u05D5\u05DF
+\u05D3\u05E0\u05D9\u05D0\u05DC \u05D1\u05DF
+
+# \u05DE\u05D1\u05D5\u05D2\u05E8\u05D9\u05DD \u05D3\u05E4\u05E0\u05D4 | \u05D1,\u05D4
+\u05D0\u05D5\u05D4\u05D3 \u05DC\u05D5\u05D9, +972 50-262-4321
+\u05D0\u05E1\u05E3 \u05E4\u05D9\u05E7\u05DC\u05E9\u05D8\u05D9\u05D9\u05DF
+\u05D6\u05D9\u05D5 \u05E7\u05E8\u05DF, +972 50-887-3510
+\u05D7\u05D9\u05D9\u05DD \u05D0\u05E8\u05D3, +972 54-669-3031
+\u05D2\u05DC \u05E9\u05D9\u05D9\u05D1\u05D9\u05E5, +972 54-265-6139
+\u05D0\u05E1\u05EA\u05E8, 050-7674721
+\u05DE\u05E9\u05D4 \u05E8\u05D5\u05D6\u05E0\u05E4\u05DC\u05D3, 0528467909
+\u05DE\u05D5\u05E8\u05D9\u05E1 \u05DE\u05D9\u05DC\u05E8, 0524241496
+\u05D3\u05E0\u05D9\u05D0\u05DC \u05DC\u05D9\u05DB\u05D8\u05E8, 05459998413
+\u05E8\u05D5\u05D5\u05D4 \u05EA\u05D5\u05DE\u05E8, 0528780094
+\u05D0\u05D9\u05EA\u05DE\u05E8 \u05D9\u05D5\u05D7\u05D0\u05D9, 0527740518
+\u05E8\u05D5\u05DD \u05E1\u05E8\u05E0\u05D4, 055-223-3100
+\u05E9\u05DC\u05D5\u05DD \u05E0\u05D5\u05D9, +972 50-763-1322
+\u05DC\u05D9\u05D0\u05D5\u05E8 \u05E9\u05E4\u05D9\u05E8\u05D0
+\u05D1\u05D0\u05E1\u05DC \u05E7\u05D3\u05DE\u05D0\u05E0\u05D9, +972 50-432-0595
+\u05D6\u05D9\u05D5 \u05E7\u05D5\u05E8\u05DF, +972 50-887-3510
+
+# \u05E7\u05D5\u05D1\u05E6\u05EA \u05E1\u05D2\u05DC \u05DC\u05D9\u05D2\u05D5\u05EA | \u05D0,\u05D4
+\u05E2\u05D3\u05D9 \u05DC\u05D5\u05D9, 0523787420
+\u05D0\u05D9\u05EA\u05DE\u05E8 \u05DC\u05D1, 0522267460
+\u05D9\u05D1\u05D2\u05E0\u05D9 \u05D2\u05D5\u05D8\u05D5\u05D1\u05E1\u05E7\u05D9, 0506273240
+\u05DC\u05D0\u05D5\u05E0\u05D9\u05D3 \u05D2\u05DE\u05E4\u05DC\u05E1\u05D5\u05DF, 0544273385
+\u05D8\u05D0\u05D5 \u05DE\u05D5\u05E8\u05E0\u05D5
+
+# \u05DE\u05EA\u05E7\u05D3\u05DE\u05D9\u05DD \u05E9\u05D0\u05E8 \u05D9\u05E9\u05D5\u05D1 | \u05D0,\u05D1,\u05D4
+\u05D3\u05D5\u05E8 \u05DE\u05D5\u05E8\u05D2, 054-669-3238
+\u05D0\u05D5\u05E8\u05D9 \u05D0\u05E9\u05D3, 054-247-5354
+\u05D0\u05D3\u05DD \u05E9\u05D8\u05E8\u05D9\u05EA, 0509566661
+\u05E8\u05D6\u05D7\u05D5\u05D1\u05D1, 052-320-2170
+\u05E8\u05E0\u05D9 \u05DC\u05D1\u05E0\u05D4, 0523918898
+\u05D4\u05E8\u05D0\u05DC \u05D0\u05D1\u05E0\u05D9, 052-872-4649
+\u05DE\u05E8\u05D5\u05DD \u05E0\u05D5\u05E8\u05D9\u05D0\u05DC, 0506992273
+\u05E8\u05D5\u05E2\u05D9 \u05DC\u05D5\u05D9, 0523787420
+\u05E9\u05DC\u05D5 \u05DE\u05E8\u05D1\u05DA, 0508551030
+
+# \u05DE\u05EA\u05D7\u05D9\u05DC\u05D9\u05DD \u05E9\u05D0\u05E8 \u05D9\u05E9\u05D5\u05D1 | \u05D0,\u05D4
+\u05D1\u05E8 \u05D9\u05D5\u05E6\u05D0\u05D9 \u05E1\u05D5\u05E4\u05E8, 050-535-6220
+\u05D0\u05D1\u05D9\u05D1 \u05D0\u05D1\u05E0\u05D9, 052-872-4649
+
+# \u05DC\u05DC\u05D0 \u05E9\u05D9\u05D5\u05DA
+\u05D0\u05DC\u05DB\u05E1\u05E0\u05D3\u05E8\u05D4 \u05D0\u05D5\u05DC\u05D7\u05E0\u05D5\u05D1, 0546353264
+\u05E9\u05D9 \u05E4\u05D9\u05E0\u05E7\u05DC, +972 54-774-3715
+\u05D1\u05E8\u05D9 \u05D1\u05E8, +972 58-422-0010
+\u05E8\u05D5\u05EA\u05DD \u05D0\u05D1\u05D9\u05D1, +972 52-701-3624`;
+var DAY_LETTERS = { א: 0, ב: 1, ג: 2, ד: 3, ה: 4, ו: 5, ש: 6 };
+function parseRoster(text) {
+  let lines = String(text || "").split("\n"),
+    current = null,
+    rows = [],
+    errors = [];
+  lines.forEach((raw, idx) => {
+    let line = raw.trim();
+    if (!line) return;
+    if (line.startsWith("#") || line.endsWith(":")) {
+      let body = line.replace(/^#/, "").replace(/:$/, "").trim(),
+        parts = body.split("|"),
+        name = (parts[0] || "").trim(),
+        days = (parts[1] || "")
+          .split(/[,\s]+/)
+          .map((d) => DAY_LETTERS[d.replace(/['׳]/g, "").trim()])
+          .filter((n) => n !== void 0);
+      if (!name) {
+        errors.push(`שורה ${idx + 1}: שם קבוצה ריק`);
+        return;
+      }
+      current = { name, days };
+      return;
+    }
+    let cells = line.split(/[,\t]/).map((c) => c.trim()),
+      name = cells[0],
+      phone = cells[1] || "",
+      parentName = cells[2] || "";
+    if (!name) return;
+    if (!current) {
+      errors.push(`שורה ${idx + 1}: "${name}" מופיע לפני שהוגדרה קבוצה`);
+      return;
+    }
+    rows.push({
+      name,
+      phone,
+      parentName,
+      groupName: current.name,
+      groupDays: current.days,
+    });
+  });
+  return { rows, errors };
+}
+function ImportScreen({ groups: t, players: s }) {
+  let [text, setText] = b(DEFAULT_ROSTER),
+    [busy, setBusy] = b(!1),
+    [log, setLog] = b(null),
+    parsed = parseRoster(text),
+    groupNameById = {},
+    existing = new Set();
+  t.forEach((g) => (groupNameById[g.id] = (g.name || "").trim()));
+  s.forEach((p) =>
+    existing.add(
+      (p.name || "").trim() + "@" + (groupNameById[p.groupId] || "").trim(),
+    ),
+  );
+  let rows = parsed.rows.map((r) => ({
+      ...r,
+      status: existing.has(r.name + "@" + r.groupName) ? "exists" : "new",
+    })),
+    newRows = rows.filter((r) => r.status === "new"),
+    knownGroups = new Set(t.map((g) => (g.name || "").trim())),
+    newGroups = [...new Set(rows.map((r) => r.groupName))].filter(
+      (n) => !knownGroups.has(n),
+    ),
+    noPhone = newRows.filter((r) => !r.phone.trim()).length,
+    phoneSeen = {},
+    dupPhones = [];
+  newRows.forEach((r) => {
+    let p = normalizePhone(r.phone);
+    if (!p) return;
+    if (phoneSeen[p] && phoneSeen[p] !== r.name)
+      dupPhones.push(`${phoneSeen[p]} / ${r.name}`);
+    else phoneSeen[p] = r.name;
+  });
+  let run = async () => {
+    (setBusy(!0), setLog(null));
+    let result = { groups: 0, players: 0, errors: [] };
+    try {
+      let map = {};
+      t.forEach((g) => (map[(g.name || "").trim()] = g.id));
+      for (let name of [...new Set(newRows.map((r) => r.groupName))]) {
+        if (map[name]) continue;
+        let sample = newRows.find((r) => r.groupName === name);
+        try {
+          let ref = await V(M(P, "groups"), {
+            name,
+            coachId: null,
+            days: (sample && sample.groupDays) || [],
+            schedule: "",
+            location: "",
+          });
+          ((map[name] = ref.id), result.groups++);
+        } catch (err) {
+          result.errors.push(`קבוצה ${name}: ${err.message}`);
+        }
+      }
+      for (let r of newRows) {
+        if (!map[r.groupName]) continue;
+        try {
+          (await V(M(P, "players"), {
+            name: r.name,
+            groupId: map[r.groupName],
+            parentName: r.parentName || "",
+            parentPhone: r.phone.trim() ? normalizePhone(r.phone) : "",
+            joinDate: E(),
+            endDate: null,
+            isActive: !0,
+          }),
+            result.players++);
+        } catch (err) {
+          result.errors.push(`${r.name}: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      result.errors.push(err.message);
+    }
+    (setBusy(!1), setLog(result));
+  };
+  let chip = (label, value, tone) =>
+    e.createElement(
+      "div",
+      {
+        className: `flex-1 rounded-xl border p-3 text-center ${tone || "bg-white border-slate-200"}`,
+      },
+      e.createElement("div", { className: "text-xl font-bold" }, value),
+      e.createElement(
+        "div",
+        { className: "text-[11px] text-slate-500 leading-tight" },
+        label,
+      ),
+    );
+  return e.createElement(
+    "div",
+    { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    e.createElement(
+      "div",
+      { className: "bg-white rounded-xl border border-slate-200 p-4" },
+      e.createElement(
+        "h2",
+        { className: "font-bold text-blue-950 text-right" },
+        "ייבוא שחקנים",
+      ),
+      e.createElement(
+        "p",
+        {
+          className:
+            "text-xs text-slate-500 text-right leading-relaxed mt-1.5",
+        },
+        'שורה שמתחילה ב-# היא שם קבוצה, ואפשר להוסיף אחריה " | " וימי אימון (א,ב,ג…). כל שורה אחריה היא שחקן: שם, טלפון, ושם הורה — הטלפון ושם ההורה לא חובה.',
+      ),
+      e.createElement(
+        "p",
+        { className: "text-[11px] text-slate-400 text-right mt-1" },
+        "שחקן שכבר קיים באותה קבוצה לא ייובא פעמיים. קבוצה חדשה תיווצר בלי מאמן — אפשר לשייך אותה במסך ניהול הקבוצות.",
+      ),
+    ),
+    e.createElement("textarea", {
+      value: text,
+      onChange: (ev) => setText(ev.target.value),
+      rows: 12,
+      dir: "rtl",
+      className:
+        "border border-slate-200 rounded-xl py-3 px-3 text-right text-sm leading-relaxed outline-none focus:border-emerald-400 font-mono",
+    }),
+    e.createElement(
+      "div",
+      { className: "flex gap-2" },
+      chip("שחקנים חדשים", newRows.length, "bg-emerald-50 border-emerald-200"),
+      chip("כבר קיימים", rows.length - newRows.length),
+      chip("קבוצות חדשות", newGroups.length),
+    ),
+    (parsed.errors.length > 0 || dupPhones.length > 0 || noPhone > 0) &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-1 text-right",
+        },
+        parsed.errors.map((err, i) =>
+          e.createElement(
+            "p",
+            { key: "e" + i, className: "text-xs text-amber-800" },
+            err,
+          ),
+        ),
+        noPhone > 0 &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-amber-800" },
+            `${noPhone} שחקנים ללא טלפון — אפשר להשלים אחר כך בעריכת שחקן.`,
+          ),
+        dupPhones.length > 0 &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-amber-800" },
+            "אותו טלפון מופיע ליותר משם אחד: " + dupPhones.join(", "),
+          ),
+      ),
+    newGroups.length > 0 &&
+      e.createElement(
+        "p",
+        { className: "text-xs text-slate-500 text-right" },
+        "ייווצרו הקבוצות: " + newGroups.join(", "),
+      ),
+    e.createElement(
+      "div",
+      {
+        className:
+          "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-72 overflow-y-auto",
+      },
+      rows.slice(0, 120).map((r, i) =>
+        e.createElement(
+          "div",
+          {
+            key: i,
+            className: "px-3 py-2 flex items-center justify-between gap-2",
+          },
+          e.createElement(
+            "span",
+            {
+              className: `text-[10px] px-2 py-0.5 rounded-full shrink-0 ${r.status === "new" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`,
+            },
+            r.status === "new" ? "חדש" : "קיים",
+          ),
+          e.createElement(
+            "div",
+            { className: "text-right flex-1 min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm text-blue-950 truncate" },
+              r.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-[11px] text-slate-400 truncate" },
+              r.groupName,
+              r.phone ? " · " + normalizePhone(r.phone) : " · ללא טלפון",
+            ),
+          ),
+        ),
+      ),
+      rows.length === 0 &&
+        e.createElement(
+          "p",
+          { className: "text-center text-xs text-slate-400 py-6" },
+          "אין שורות לייבוא",
+        ),
+    ),
+    e.createElement(
+      "button",
+      {
+        onClick: run,
+        disabled: busy || newRows.length === 0,
+        className:
+          "bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-xl py-3.5 min-h-[44px]",
+      },
+      busy ? "מייבא…" : `ייבוא ${newRows.length} שחקנים`,
+    ),
+    log &&
+      e.createElement(
+        "div",
+        {
+          className: `rounded-xl border p-3 text-right flex flex-col gap-1 ${log.errors.length ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`,
+        },
+        e.createElement(
+          "p",
+          { className: "text-sm font-semibold text-blue-950" },
+          `נוספו ${log.players} שחקנים ו-${log.groups} קבוצות`,
+        ),
+        log.errors.map((err, i) =>
+          e.createElement(
+            "p",
+            { key: "r" + i, className: "text-xs text-red-700" },
+            err,
+          ),
+        ),
+      ),
   );
 }
