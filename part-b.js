@@ -1156,7 +1156,11 @@ function re({
       },
       n.map((p) => {
         let w = x[p.id] || null,
-          k = Qe(l, p.id);
+          k = Qe(l, p.id),
+          isOffDay =
+            Array.isArray(p.trainingDays) &&
+            p.trainingDays.length > 0 &&
+            !p.trainingDays.includes(new Date(m + "T00:00:00").getDay());
         return e.createElement(
           "div",
           { key: p.id, className: "px-3 py-3 flex items-center gap-2" },
@@ -1165,7 +1169,19 @@ function re({
             { className: "flex-1 text-right min-w-0" },
             e.createElement(
               "div",
-              { className: "text-sm font-medium text-blue-950 truncate" },
+              {
+                className:
+                  "text-sm font-medium text-blue-950 truncate flex items-center gap-1 justify-end",
+              },
+              isOffDay &&
+                e.createElement(
+                  "span",
+                  {
+                    className:
+                      "text-[9px] font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 shrink-0",
+                  },
+                  "לא יום קבוע",
+                ),
               p.name,
             ),
           ),
