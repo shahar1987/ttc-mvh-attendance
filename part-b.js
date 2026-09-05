@@ -1469,6 +1469,12 @@ function Q() {
       try {
         history.pushState({ screen: "attendance", attGroup: v }, "");
       } catch (e2) {}
+    },
+    goToGroupScreen = (v) => {
+      (o("attendance"), setAttGroupId(v));
+      try {
+        history.pushState({ screen: "attendance", attGroup: v }, "");
+      } catch (e2) {}
     };
   if (
     (j(() => {
@@ -1512,9 +1518,11 @@ function Q() {
         className:
           "min-h-screen bg-blue-950 flex flex-col items-center justify-center gap-3",
       },
-      e.createElement("div", {
+      e.createElement("img", {
+        src: "./logo.png",
+        alt: "",
         className:
-          "w-10 h-10 border-2 border-blue-400 border-t-transparent rounded-full animate-spin",
+          "w-16 h-16 rounded-2xl bg-white/95 p-2 shrink-0 animate-pulse",
       }),
       e.createElement(
         "span",
@@ -1648,6 +1656,7 @@ function Q() {
           currentUserId: s.id,
           onEditPlayer: openEditPlayer,
           onWhatsapp: openWhatsapp,
+          onOpenGroup: goToGroupScreen,
         }),
       r &&
         m === "groups" &&
