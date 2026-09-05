@@ -109,6 +109,88 @@ function Ve(t, s) {
     ? `\u05D4\u05D9\u05D9 ${t}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9${s} \u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2 \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05D9\u05E9 \u05DE\u05E9\u05D4\u05D5 \u05E9\u05D0\u05E4\u05E9\u05E8 \u05DC\u05E2\u05D6\u05D5\u05E8 \u05D1\u05D5.`
     : `\u05D4\u05D9\u05D9 ${s}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05E6\u05E8\u05D9\u05DA \u05DE\u05E9\u05D4\u05D5.`;
 }
+var maleNameExceptions = [
+  "משה",
+  "שלמה",
+  "אריה",
+  "יהודה",
+  "נחמיה",
+  "ישעיה",
+  "ירמיה",
+  "זכריה",
+  "עובדיה",
+  "חזקיה",
+  "שמעיה",
+  "חנניה",
+  "נריה",
+  "הושע",
+  "אלישע",
+  "יונה",
+  "עזריה",
+  "אליה",
+];
+var femaleNameHints = [
+  "אסתר",
+  "רחל",
+  "מרים",
+  "יעל",
+  "רות",
+  "אביגיל",
+  "מיכל",
+  "אורלי",
+  "שלי",
+  "נטלי",
+  "ליהי",
+  "ספיר",
+  "עינב",
+  "קרן",
+  "נופר",
+  "שירי",
+  "סמדר",
+  "יסמין",
+  "לילך",
+  "סיון",
+  "שני",
+  "אלינור",
+  "גפן",
+  "מרגלית",
+  "שולמית",
+  "רויטל",
+  "ליאל",
+  "תמר",
+  "ענבר",
+  "נעמי",
+];
+function guessGender(name) {
+  let first = String(name || "")
+    .trim()
+    .split(/\s+/)[0];
+  if (!first) return "m";
+  if (femaleNameHints.includes(first)) return "f";
+  if (maleNameExceptions.includes(first)) return "m";
+  return /[הת]$/.test(first) ? "f" : "m";
+}
+function playerGender(p) {
+  return p && (p.gender === "f" || p.gender === "m")
+    ? p.gender
+    : guessGender(p ? p.name : "");
+}
+function absenceMsg(p, gender) {
+  let g = gender || playerGender(p),
+    name = (p && p.name) || "",
+    parent = ((p && p.parentName) || "").trim(),
+    signature = `\u05E6\u05D5\u05D5\u05EA ${X}
+${W}`;
+  return parent && parent !== name
+    ? `\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9${g === "f" ? "\u05D1\u05EA\u05DB\u05DD" : "\u05D1\u05E0\u05DB\u05DD"} ${name} \u05DC\u05D0 ${g === "f" ? "\u05D4\u05D2\u05D9\u05E2\u05D4" : "\u05D4\u05D2\u05D9\u05E2"} \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D9\u05D5\u05DD.
+\u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
+\u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
+${signature}`
+    : `\u05E9\u05DC\u05D5\u05DD ${name}, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D9\u05D5\u05DD.
+\u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
+\u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
+${signature}`;
+}
 function normalizePhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("972")) return digits;
@@ -160,6 +242,23 @@ function absenceAlerts(players, groups, attendance, allowedGroupIds) {
 async function markAlertHandled(playerId, latestDate) {
   await O(S(P, "players", playerId), { alertHandledDate: latestDate });
 }
+async function setPlayerGender(playerId, gender) {
+  await O(S(P, "players", playerId), { gender });
+}
+async function markAbsenceMsgSent(date, groupId, playerId, userId) {
+  await De(
+    S(P, "attendance", `${date}_${groupId}_${playerId}`),
+    {
+      date,
+      groupId,
+      playerId,
+      status: "Absent",
+      msgSentAt: new Date().toISOString(),
+      msgSentBy: userId || "",
+    },
+    { merge: !0 },
+  );
+}
 function startOfWeekStr() {
   let d = new Date(),
     day = d.getDay(),
@@ -198,6 +297,25 @@ function quotaAlerts(players, groups, attendance) {
     });
   });
   return out;
+}
+function pendingAbsenceMsgs(players, groups, users, attendance) {
+  let today = E(),
+    out = [];
+  attendance.forEach((a) => {
+    if (a.date !== today || a.status !== "Absent" || a.msgSentAt) return;
+    let p = players.find((v) => v.id === a.playerId);
+    if (!p || p.deleted || !p.isActive) return;
+    let g = groups.find((v) => v.id === a.groupId) || null;
+    out.push({
+      player: p,
+      group: g,
+      coach: g ? users.find((v) => v.id === g.coachId) || null : null,
+      record: a,
+    });
+  });
+  return out.sort((x, y) =>
+    (x.group ? x.group.name : "").localeCompare(y.group ? y.group.name : ""),
+  );
 }
 function QuotaAlertsCard({ alerts: t }) {
   if (t.length === 0) return null;
@@ -1473,6 +1591,7 @@ function st({
     [h, u] = b(!1),
     alerts = absenceAlerts(a, s, l, null),
     quotaAl = quotaAlerts(a, s, l),
+    pendingMsgs = pendingAbsenceMsgs(a, s, t, l),
     f = a.filter((d) => d.isActive && !d.deleted),
     uniqueActiveCount = countUniqueActivePlayers(a),
     { avgPct: g, sessions: r } = Je(l),
@@ -1535,6 +1654,11 @@ function st({
       alerts,
       onWhatsapp: WA,
       onEdit: EP,
+    }),
+    e.createElement(AbsenceMsgCard, {
+      items: pendingMsgs,
+      onWhatsapp: WA,
+      currentUserId: c,
     }),
     e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
     e.createElement(
@@ -1837,11 +1961,21 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
     ),
   );
 }
-function WhatsappModal({ player: t, onClose: s, onSent: a }) {
-  let [l, i] = b(Ve(t.parentName, t.name)),
+function WhatsappModal({ player: t, onClose: s, onSent: a, mode: MD }) {
+  let isAbs = MD === "absence",
+    [gen, setGen] = b(playerGender(t)),
+    [l, i] = b(
+      isAbs ? absenceMsg(t, playerGender(t)) : Ve(t.parentName, t.name),
+    ),
     [c, n] = b(!1),
     m = normalizePhone(t.parentPhone),
     o = isValidPhone(t.parentPhone),
+    pickGender = (v) => {
+      (setGen(v), i(absenceMsg(t, v)));
+      setPlayerGender(t.id, v).catch((err) =>
+        console.warn("Gender not saved:", err),
+      );
+    },
     x = () => {
       if (!o || !l.trim()) return;
       (n(!0), window.open(ne(m, l), "_blank"), a && a(), s());
@@ -1879,17 +2013,37 @@ function WhatsappModal({ player: t, onClose: s, onSent: a }) {
           e.createElement(
             "h3",
             { className: "font-bold text-blue-950" },
-            "הודעה להורה",
+            isAbs ? "הודעה על היעדרות" : "הודעה להורה",
           ),
           e.createElement(
             "div",
             { className: "text-xs text-slate-500" },
-            t.parentName,
-            " \xB7 ",
+            t.parentName ? t.parentName + " \xB7 " : "",
             t.name,
           ),
         ),
       ),
+      isAbs &&
+        e.createElement(
+          "div",
+          { className: "flex items-center gap-2 justify-end" },
+          e.createElement(
+            "span",
+            { className: "text-xs text-slate-500" },
+            "פנייה בלשון",
+          ),
+          ["m", "f"].map((v) =>
+            e.createElement(
+              "button",
+              {
+                key: v,
+                onClick: () => pickGender(v),
+                className: `min-h-[36px] px-3 rounded-lg text-xs font-semibold border transition-colors ${gen === v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+              },
+              v === "m" ? "בן" : "בת",
+            ),
+          ),
+        ),
       e.createElement("textarea", {
         value: l,
         onChange: (h) => i(h.target.value),
@@ -2029,6 +2183,102 @@ function AlertsCard({
               " וב-",
               formatHeDate(o.dates[0]),
             ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
+  let [l, i] = b("");
+  if (t.length === 0) return null;
+  let c = async (n) => {
+    i("");
+    try {
+      await markAbsenceMsgSent(
+        n.record.date,
+        n.record.groupId,
+        n.player.id,
+        a,
+      );
+    } catch (m) {
+      i("העדכון נכשל: " + m.message);
+    }
+  };
+  return e.createElement(
+    "div",
+    { className: "bg-white rounded-xl border-2 border-sky-300 overflow-hidden" },
+    e.createElement(
+      "div",
+      { className: "bg-sky-50 px-4 py-3 flex items-center gap-2" },
+      e.createElement(te, { className: "w-4 h-4 text-sky-600 shrink-0" }),
+      e.createElement(
+        "div",
+        { className: "text-right flex-1" },
+        e.createElement(
+          "div",
+          { className: "text-sm font-bold text-sky-900" },
+          "לא נשלחה הודעה להורים \xB7 ",
+          t.length,
+        ),
+        e.createElement(
+          "div",
+          { className: "text-[11px] text-sky-700 leading-snug" },
+          "שחקנים שנעדרו היום והמאמן עדיין לא שלח להם הודעה",
+        ),
+      ),
+    ),
+    l &&
+      e.createElement(
+        "p",
+        { className: "text-xs text-red-600 text-right px-4 py-2" },
+        l,
+      ),
+    e.createElement(
+      "div",
+      { className: "divide-y divide-slate-100" },
+      t.map((n) =>
+        e.createElement(
+          "div",
+          {
+            key: n.record.groupId + "_" + n.player.id,
+            className: "px-3 py-3 flex items-center gap-1.5",
+          },
+          e.createElement(
+            "div",
+            { className: "flex-1 text-right min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm font-semibold text-blue-950 truncate" },
+              n.player.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-xs text-slate-500 truncate" },
+              n.group ? n.group.name : "ללא קבוצה",
+              n.coach ? " \xB7 מאמן: " + n.coach.name : "",
+            ),
+          ),
+          e.createElement(
+            "button",
+            {
+              onClick: () =>
+                s(n.player, "absence", n.record.groupId, n.record.date),
+              className:
+                "min-w-[44px] min-h-[44px] rounded-full bg-emerald-500 flex items-center justify-center shrink-0 active:scale-95 transition-transform",
+              "aria-label": "שליחת הודעה להורה",
+            },
+            e.createElement(te, { className: "w-4 h-4 text-white" }),
+          ),
+          e.createElement(
+            "button",
+            {
+              onClick: () => c(n),
+              className:
+                "min-w-[44px] min-h-[44px] rounded-full bg-slate-100 flex items-center justify-center shrink-0",
+              "aria-label": "סימון כטופל",
+            },
+            e.createElement(Z, { className: "w-4 h-4 text-slate-500" }),
           ),
         ),
       ),
