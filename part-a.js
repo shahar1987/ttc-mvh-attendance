@@ -318,6 +318,14 @@ function q(t) {
     a = t.startTime && t.endTime ? ` ${t.startTime}-${t.endTime}` : "";
   return `${s}${a}`;
 }
+function playerDaysLabel(p) {
+  return Array.isArray(p.trainingDays) && p.trainingDays.length > 0
+    ? [...p.trainingDays]
+        .sort((a, b) => a - b)
+        .map((d) => ie[d])
+        .join(", ")
+    : "";
+}
 function L(t) {
   let [s, a] = b([]),
     [l, i] = b(!0);
@@ -1835,6 +1843,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                   x.parentName,
                   " \xB7 ",
                   x.parentPhone,
+                  playerDaysLabel(x) ? ` \xB7 ${playerDaysLabel(x)}` : "",
                 ),
               ),
             ),
@@ -2058,6 +2067,14 @@ function at({
     [WT, setWT] = b(a?.weeklyTarget != null ? String(a.weeklyTarget) : ""),
     [MT, setMT] = b(a?.monthlyTarget != null ? String(a.monthlyTarget) : ""),
     [YT, setYT] = b(a?.yearlyTarget != null ? String(a.yearlyTarget) : ""),
+    [TD, setTD] = b(a?.trainingDays || []),
+    toggleTD = (v) => {
+      setTD(($) =>
+        $.includes(v)
+          ? $.filter((_) => _ !== v)
+          : [...$, v].sort((_, oe) => _ - oe),
+      );
+    },
     [r, y] = b(!1),
     [N, C] = b(""),
     d = f.trim().length > 0 && isValidPhone(f),
@@ -2073,6 +2090,7 @@ function at({
           weeklyTarget: WT.trim() ? Number(WT) : null,
           monthlyTarget: MT.trim() ? Number(MT) : null,
           yearlyTarget: YT.trim() ? Number(YT) : null,
+          trainingDays: TD,
         };
         (i
           ? await O(S(P, "players", a.id), v)
@@ -2176,6 +2194,39 @@ function at({
           c.map((v) =>
             e.createElement("option", { key: v.id, value: v.id }, v.name),
           ),
+        ),
+      ),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1.5" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "ימי אימון קבועים (לא חובה)",
+        ),
+        e.createElement(
+          "div",
+          { className: "flex gap-1.5 flex-wrap" },
+          We.map((v, $) =>
+            e.createElement(
+              "button",
+              {
+                key: $,
+                type: "button",
+                onClick: () => toggleTD($),
+                className: `w-10 h-10 rounded-lg text-sm font-semibold border transition-colors ${TD.includes($) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                "aria-label": v,
+              },
+              ie[$],
+            ),
+          ),
+        ),
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-400 leading-relaxed" },
+          "אם לא נבחרו ימים, השחקן ייחשב זמין בכל ימי האימון של הקבוצה.",
         ),
       ),
       p("שם ההורה (לא חובה — לשחקנים בוגרים)", h, u),
