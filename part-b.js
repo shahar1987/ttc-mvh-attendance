@@ -1,4 +1,4 @@
-function nt({ group: t, users: s, onClose: a }) {
+function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
   let l = s.filter((v) => v.role === "Coach"),
     [i, c] = b(t?.name || ""),
     [n, m] = b(t?.location || ""),
@@ -181,6 +181,7 @@ function nt({ group: t, users: s, onClose: a }) {
           }),
         ),
       ),
+      IA &&
       e.createElement(
         "div",
         { className: "flex flex-col gap-1" },
@@ -435,6 +436,7 @@ function it({ groups: t, users: s, players: a }) {
       e.createElement(nt, {
         group: l === "new" ? null : l,
         users: s,
+        isAdmin: !0,
         onClose: () => i(null),
       }),
   );
@@ -1488,6 +1490,7 @@ function mt({
   groups: s,
   players: a,
   attendance: l,
+  users: US,
   isAdmin: i,
   onEditPlayer: EP,
   onWhatsapp: WA,
@@ -1495,7 +1498,8 @@ function mt({
   selectedGroupId: SG,
   onSelectGroup: onSelectGroup,
 }) {
-  let c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
+  let [editGroup, setEditGroup] = b(null),
+    c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
     myAlerts = absenceAlerts(
       a,
       s,
@@ -1551,6 +1555,23 @@ function mt({
             onWhatsapp: WA,
             onAddPlayer: AP,
           }),
+          e.createElement(
+            "button",
+            {
+              onClick: () => setEditGroup(h),
+              className:
+                "self-start flex items-center gap-1.5 text-sm text-blue-900 font-medium min-h-[44px]",
+            },
+            e.createElement($e, { className: "w-4 h-4" }),
+            "עריכת פרטי הקבוצה",
+          ),
+          editGroup &&
+            e.createElement(nt, {
+              group: editGroup,
+              users: US || [],
+              isAdmin: i,
+              onClose: () => setEditGroup(null),
+            }),
         )
       : e.createElement(
           "div",
@@ -1903,6 +1924,7 @@ function Q() {
           groups: i,
           players: c,
           attendance: n,
+          users: l,
           isAdmin: r,
           onEditPlayer: openEditPlayer,
           onWhatsapp: openWhatsapp,
