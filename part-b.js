@@ -1186,8 +1186,9 @@ function re({
               "div",
               {
                 className:
-                  "text-sm font-medium text-blue-950 truncate flex items-center gap-1 justify-end",
+                  "text-sm font-medium text-blue-950 truncate flex items-center gap-1 justify-start",
               },
+              p.name,
               isOffDay &&
                 e.createElement(
                   "span",
@@ -1197,7 +1198,6 @@ function re({
                   },
                   "לא יום קבוע",
                 ),
-              p.name,
             ),
           ),
           e.createElement(
@@ -1337,6 +1337,9 @@ function mt({
       l,
       c.map((r) => r.id),
     ),
+    myPending = pendingAbsenceMsgs(a, s, [], l).filter((r) =>
+      c.some((gr) => gr.id === r.record.groupId),
+    ),
     o = c.length === 1 ? c[0].id : null,
     x = SG || o,
     h = c.find((r) => r.id === x),
@@ -1368,6 +1371,11 @@ function mt({
             onWhatsapp: WA,
             onEdit: EP,
           }),
+          e.createElement(AbsenceMsgCard, {
+            items: myPending.filter((r) => r.record.groupId === h.id),
+            onWhatsapp: WA,
+            currentUserId: t.id,
+          }),
           e.createElement(re, {
             group: h,
             profile: t,
@@ -1386,6 +1394,11 @@ function mt({
             alerts: myAlerts,
             onWhatsapp: WA,
             onEdit: EP,
+          }),
+          e.createElement(AbsenceMsgCard, {
+            items: myPending,
+            onWhatsapp: WA,
+            currentUserId: t.id,
           }),
           e.createElement(
             "p",
