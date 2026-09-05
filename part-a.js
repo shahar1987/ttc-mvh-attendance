@@ -2049,8 +2049,6 @@ function at({
     [h, u] = b(a?.parentName || ""),
     [f, g] = b(a?.parentPhone || ""),
     [WT, setWT] = b(a?.weeklyTarget != null ? String(a.weeklyTarget) : ""),
-    [MT, setMT] = b(a?.monthlyTarget != null ? String(a.monthlyTarget) : ""),
-    [YT, setYT] = b(a?.yearlyTarget != null ? String(a.yearlyTarget) : ""),
     [TD, setTD] = b(a?.trainingDays || []),
     toggleTD = (v) => {
       setTD(($) =>
@@ -2072,8 +2070,8 @@ function at({
           parentName: h.trim(),
           parentPhone: normalizePhone(f),
           weeklyTarget: WT.trim() ? Number(WT) : null,
-          monthlyTarget: MT.trim() ? Number(MT) : null,
-          yearlyTarget: YT.trim() ? Number(YT) : null,
+          monthlyTarget: WT.trim() ? Math.round(Number(WT) * 4.345) : null,
+          yearlyTarget: WT.trim() ? Number(WT) * 52 : null,
           trainingDays: TD,
         };
         (i
@@ -2226,36 +2224,22 @@ function at({
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "מכסת אימונים צפויה (לא חובה — להתראה על חריגה)",
+          "מכסת אימונים שבועית צפויה (לא חובה — להתראה על חריגה)",
         ),
-        e.createElement(
-          "div",
-          { className: "grid grid-cols-3 gap-2" },
-          e.createElement("input", {
-            value: WT,
-            onChange: (v) => setWT(v.target.value.replace(/[^0-9]/g, "")),
-            placeholder: "בשבוע",
-            inputMode: "numeric",
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
-          }),
-          e.createElement("input", {
-            value: MT,
-            onChange: (v) => setMT(v.target.value.replace(/[^0-9]/g, "")),
-            placeholder: "בחודש",
-            inputMode: "numeric",
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
-          }),
-          e.createElement("input", {
-            value: YT,
-            onChange: (v) => setYT(v.target.value.replace(/[^0-9]/g, "")),
-            placeholder: "בשנה",
-            inputMode: "numeric",
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
-          }),
-        ),
+        e.createElement("input", {
+          value: WT,
+          onChange: (v) => setWT(v.target.value.replace(/[^0-9]/g, "")),
+          placeholder: "מספר אימונים בשבוע",
+          inputMode: "numeric",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+        }),
+        WT.trim() &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-slate-400 text-right" },
+            `החישוב האוטומטי: כ-${Math.round(Number(WT) * 4.345)} בחודש, ${Number(WT) * 52} בשנה`,
+          ),
       ),
       N &&
         e.createElement(
