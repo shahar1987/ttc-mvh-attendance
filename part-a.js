@@ -695,7 +695,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
 }
 function ReportPlayer({ players, groups, attendance }) {
   let activePlayers = players
-      .filter((p) => p.isActive)
+      .filter((p) => p.isActive && !p.deleted)
       .sort((a, c) => a.name.localeCompare(c.name, "he")),
     [playerId, setPlayerId] = b(activePlayers[0]?.id || ""),
     [startDate, setStartDate] = b(firstOfMonthStr()),
