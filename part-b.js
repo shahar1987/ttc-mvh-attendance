@@ -1035,14 +1035,24 @@ function re({
       try {
         let p = Te(P);
         (n.forEach((w) => {
-          let k = S(P, "attendance", `${m}_${t.id}_${w.id}`);
-          p.set(k, {
-            date: m,
-            playerId: w.id,
-            groupId: t.id,
-            status: x[w.id] || "Present",
-            markedBy: s.id,
-          });
+          let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
+            prev = l.find(
+              (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
+            ),
+            st2 = x[w.id] || "Present",
+            rec = {
+              date: m,
+              playerId: w.id,
+              groupId: t.id,
+              status: st2,
+              markedBy: s.id,
+            };
+          (st2 === "Absent" &&
+            prev &&
+            prev.msgSentAt &&
+            ((rec.msgSentAt = prev.msgSentAt),
+            (rec.msgSentBy = prev.msgSentBy || "")),
+            p.set(k, rec));
         }),
           await p.commit(),
           f(!1));
@@ -1157,6 +1167,11 @@ function re({
       n.map((p) => {
         let w = x[p.id] || null,
           k = Qe(l, p.id),
+          savedRec = l.find(
+            (v) => v.groupId === t.id && v.date === m && v.playerId === p.id,
+          ),
+          showWa = !!savedRec && savedRec.status === "Absent",
+          waSent = !!(savedRec && savedRec.msgSentAt),
           isOffDay =
             Array.isArray(p.trainingDays) &&
             p.trainingDays.length > 0 &&
@@ -1166,7 +1181,7 @@ function re({
           { key: p.id, className: "px-3 py-3 flex items-center gap-2" },
           e.createElement(
             "div",
-            { className: "text-right min-w-0" },
+            { className: "flex-1 text-right min-w-0" },
             e.createElement(
               "div",
               {
@@ -1207,6 +1222,22 @@ function re({
               "\u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2",
             ),
           ),
+          showWa &&
+            WA &&
+            e.createElement(
+              "button",
+              {
+                onClick: () => WA(p, "absence", t.id, m),
+                className: `min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform ${waSent ? "bg-slate-100" : "bg-emerald-500"}`,
+                "aria-label": waSent
+                  ? "הודעה נשלחה — שליחה חוזרת"
+                  : "שליחת הודעת וואטסאפ על היעדרות",
+                title: waSent ? "הודעה נשלחה" : "שליחת הודעה על היעדרות",
+              },
+              e.createElement(te, {
+                className: `w-4 h-4 ${waSent ? "text-slate-400" : "text-white"}`,
+              }),
+            ),
           k &&
             e.createElement(Re, {
               player: p,
@@ -1457,7 +1488,13 @@ function Q() {
     openAddPlayer = (group) =>
       setPlayerModal({ player: null, groupId: group?.id || null }),
     openEditPlayer = (player) => setPlayerModal({ player }),
-    openWhatsapp = (player) => setWaPlayer(player),
+    openWhatsapp = (player, mode, groupId, date) =>
+      setWaPlayer({
+        player,
+        mode: mode || "",
+        groupId: groupId || "",
+        date: date || "",
+      }),
     goToScreen = (v) => {
       (o(v), setAttGroupId(null));
       try {
@@ -1718,12 +1755,22 @@ function Q() {
         }),
       waPlayer &&
         e.createElement(WhatsappModal, {
-          player: waPlayer,
+          player: waPlayer.player,
+          mode: waPlayer.mode,
           onClose: () => setWaPlayer(null),
           onSent: () => {
-            let dates = lastTwoAbsences(n, waPlayer.id);
+            if (waPlayer.mode === "absence") {
+              markAbsenceMsgSent(
+                waPlayer.date,
+                waPlayer.groupId,
+                waPlayer.player.id,
+                s.id,
+              ).catch((err) => console.warn("Message log not saved:", err));
+              return;
+            }
+            let dates = lastTwoAbsences(n, waPlayer.player.id);
             dates &&
-              markAlertHandled(waPlayer.id, dates[0]).catch((err) =>
+              markAlertHandled(waPlayer.player.id, dates[0]).catch((err) =>
                 console.warn("Alert handling not saved:", err),
               );
           },
