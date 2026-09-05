@@ -1164,7 +1164,8 @@ function re({
     A = async () => {
       (r(!0), N(""));
       try {
-        let p = Te(P);
+        let p = Te(P),
+          saved = {};
         (n.forEach((w) => {
           let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
             prev = l.find(
@@ -1178,14 +1179,16 @@ function re({
               status: st2,
               markedBy: s.id,
             };
-          (st2 === "Absent" &&
-            prev &&
-            prev.msgSentAt &&
-            ((rec.msgSentAt = prev.msgSentAt),
-            (rec.msgSentBy = prev.msgSentBy || "")),
+          ((saved[w.id] = st2),
+            st2 === "Absent" &&
+              prev &&
+              prev.msgSentAt &&
+              ((rec.msgSentAt = prev.msgSentAt),
+              (rec.msgSentBy = prev.msgSentBy || "")),
             p.set(k, rec));
         }),
           await p.commit(),
+          h(saved),
           f(!1));
       } catch (p) {
         N(
@@ -1196,7 +1199,8 @@ function re({
         r(!1);
       }
     },
-    I = n.filter((p) => x[p.id] === "Present").length;
+    I = n.filter((p) => x[p.id] === "Present").length,
+    unmarked = n.filter((p) => !x[p.id]).length;
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
@@ -1418,6 +1422,14 @@ function re({
     ),
     y &&
       e.createElement("p", { className: "text-xs text-red-600 text-right" }, y),
+    u &&
+      unmarked > 0 &&
+      n.length > 0 &&
+      e.createElement(
+        "p",
+        { className: "text-[11px] text-amber-700 text-right leading-relaxed" },
+        `${unmarked} שחקנים עדיין לא סומנו — הם יישמרו כ"הגיע".`,
+      ),
     e.createElement(
       "div",
       {
@@ -1901,6 +1913,7 @@ function Q() {
         e.createElement(WhatsappModal, {
           player: waPlayer.player,
           mode: waPlayer.mode,
+          date: waPlayer.date,
           onClose: () => setWaPlayer(null),
           onSent: () => {
             if (waPlayer.mode === "absence") {
