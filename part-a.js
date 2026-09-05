@@ -84,8 +84,15 @@ async function He(t, s) {
   let a = Be(B, "userCreator-" + Date.now());
   try {
     let l = Xe(a),
+      i = null,
+      recovered = !1;
+    try {
       i = await Me(l, t, s);
-    return (await _e(l), i.user.uid);
+    } catch (v) {
+      if (v.code !== "auth/email-already-in-use") throw v;
+      ((i = await Ue(l, t, s)), (recovered = !0));
+    }
+    return (await _e(l), { uid: i.user.uid, recovered });
   } finally {
     await Ge(a).catch(() => {});
   }
