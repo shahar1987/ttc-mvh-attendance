@@ -13,7 +13,9 @@ function nt({ group: t, users: s, onClose: a }) {
           : [...$, v].sort((_, oe) => _ - oe),
       );
     },
-    [N, C] = b(t?.coachId || ""),
+    [N, C] = b(groupCoachIds(t)),
+    toggleCoach = (v) =>
+      C(($) => ($.includes(v) ? $.filter((_) => _ !== v) : [...$, v])),
     [d, A] = b(!1),
     [I, p] = b(""),
     w = !!i.trim(),
@@ -26,7 +28,8 @@ function nt({ group: t, users: s, onClose: a }) {
           days: o,
           startTime: h.trim(),
           endTime: f.trim(),
-          coachId: N,
+          coachIds: N,
+          coachId: N[0] || "",
         };
         (t ? await O(S(P, "groups", t.id), v) : await V(M(P, "groups"), v),
           a());
@@ -184,23 +187,21 @@ function nt({ group: t, users: s, onClose: a }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05DE\u05D0\u05DE\u05DF \u05D0\u05D7\u05E8\u05D0\u05D9 (\u05DC\u05D0 \u05D7\u05D5\u05D1\u05D4)",
+          "מאמנים אחראים (אפשר לבחור כמה)",
         ),
         e.createElement(
-          "select",
-          {
-            value: N,
-            onChange: (v) => C(v.target.value),
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 bg-white",
-          },
-          e.createElement(
-            "option",
-            { value: "" },
-            "\u2014 \u05DC\u05DC\u05D0 \u05DE\u05D0\u05DE\u05DF \u2014",
-          ),
+          "div",
+          { className: "flex flex-wrap gap-1.5 justify-end" },
           l.map((v) =>
-            e.createElement("option", { key: v.id, value: v.id }, v.name),
+            e.createElement(
+              "button",
+              {
+                key: v.id,
+                onClick: () => toggleCoach(v.id),
+                className: `px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors ${N.includes(v.id) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+              },
+              v.name,
+            ),
           ),
         ),
         l.length === 0 &&
@@ -371,7 +372,7 @@ function it({ groups: t, users: s, players: a }) {
       "div",
       { className: "flex flex-col gap-2.5" },
       t.map((o) => {
-        let x = s.find((u) => u.id === o.coachId),
+        let x = groupCoachLabel(o, s),
           h = a.filter((u) => u.groupId === o.id && u.isActive && !u.deleted).length;
         return e.createElement(
           "div",
@@ -743,6 +744,24 @@ function ot({ users: t, groups: s, currentUserId: a }) {
     [c, n] = b(null),
     [m, o] = b(!1),
     [editUser, setEditUser] = b(null),
+    [assigningGroupId, setAssigningGroupId] = b(null),
+    toggleGroupCoach = async (grp, coachId) => {
+      (setAssigningGroupId(grp.id), i(""));
+      try {
+        let cur = groupCoachIds(grp),
+          next = cur.includes(coachId)
+            ? cur.filter((v) => v !== coachId)
+            : [...cur, coachId];
+        await O(S(P, "groups", grp.id), {
+          coachIds: next,
+          coachId: next[0] || "",
+        });
+      } catch (err) {
+        i("עדכון נכשל: " + err.message);
+      } finally {
+        setAssigningGroupId(null);
+      }
+    },
     [deletingCoachId, setDeletingCoachId] = b(null),
     handleDeleteCoach = async (u) => {
       if (
@@ -754,8 +773,12 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       (setDeletingCoachId(u.id), i(""));
       try {
         let batch = Te(P);
-        s.filter((grp) => grp.coachId === u.id).forEach((grp) => {
-          batch.update(S(P, "groups", grp.id), { coachId: "" });
+        s.filter((grp) => isGroupCoach(grp, u.id)).forEach((grp) => {
+          let rest = groupCoachIds(grp).filter((v) => v !== u.id);
+          batch.update(S(P, "groups", grp.id), {
+            coachIds: rest,
+            coachId: rest[0] || "",
+          });
         });
         (batch.delete(S(P, "users", u.id)), await batch.commit());
       } catch (err) {
@@ -833,7 +856,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
             "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
         },
         t.map((u) => {
-          let f = s.filter((r) => r.coachId === u.id),
+          let f = s.filter((r) => isGroupCoach(r, u.id)),
             g = u.role === "Admin" && h.length === 1;
           return e.createElement(
             "div",
@@ -926,52 +949,48 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           className:
             "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
         },
-        s.map((u) =>
-          e.createElement(
+        s.map((u) => {
+          let staff = t.filter((f) => f.role === "Coach" || f.role === "Admin"),
+            assigned = groupCoachNames(u, t);
+          return e.createElement(
             "div",
-            {
-              key: u.id,
-              className: "px-4 py-3 flex items-center justify-between gap-2",
-            },
+            { key: u.id, className: "px-4 py-3 flex flex-col gap-2" },
             e.createElement(
-              "select",
-              {
-                value: u.coachId || "",
-                onChange: async (f) => {
-                  i("");
-                  try {
-                    await O(S(P, "groups", u.id), { coachId: f.target.value });
-                  } catch (g) {
-                    i(
-                      "\u05E2\u05D3\u05DB\u05D5\u05DF \u05E0\u05DB\u05E9\u05DC: " +
-                        g.message,
-                    );
-                  }
-                },
-                className:
-                  "border border-slate-200 rounded-lg py-1.5 px-2 text-xs bg-white outline-none",
-              },
-              e.createElement(
-                "option",
-                { value: "" },
-                "\u2014 \u05DC\u05DC\u05D0 \u2014",
-              ),
-              t
-                .filter((f) => f.role === "Coach" || f.role === "Admin")
-                .map((f) =>
-                  e.createElement("option", { key: f.id, value: f.id }, f.name),
-                ),
-            ),
-            e.createElement(
-              "span",
-              {
-                className:
-                  "text-sm font-medium text-blue-950 text-right flex-1",
-              },
+              "div",
+              { className: "text-sm font-medium text-blue-950 text-right" },
               u.name,
             ),
-          ),
-        ),
+            staff.length === 0
+              ? e.createElement(
+                  "p",
+                  { className: "text-xs text-slate-400 text-right" },
+                  "אין עדיין משתמשים לשיוך",
+                )
+              : e.createElement(
+                  "div",
+                  { className: "flex flex-wrap gap-1.5 justify-end" },
+                  staff.map((f) =>
+                    e.createElement(
+                      "button",
+                      {
+                        key: f.id,
+                        disabled: assigningGroupId === u.id,
+                        onClick: () => toggleGroupCoach(u, f.id),
+                        className: `px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${isGroupCoach(u, f.id) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                      },
+                      f.name,
+                    ),
+                  ),
+                ),
+            e.createElement(
+              "div",
+              { className: "text-[11px] text-slate-400 text-right" },
+              assigned.length > 0
+                ? "משויכים: " + assigned.join(", ")
+                : "לא שויך מאמן",
+            ),
+          );
+        }),
         s.length === 0 &&
           e.createElement(
             "p",
@@ -1476,7 +1495,7 @@ function mt({
   selectedGroupId: SG,
   onSelectGroup: onSelectGroup,
 }) {
-  let c = i ? s : s.filter((r) => r.coachId === t.id),
+  let c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
     myAlerts = absenceAlerts(
       a,
       s,
@@ -1909,7 +1928,7 @@ function Q() {
           defaultGroupId: playerModal.groupId,
           allowedGroupIds: r
             ? null
-            : i.filter((G2) => G2.coachId === s.id).map((G2) => G2.id),
+            : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),
           onClose: () => setPlayerModal(null),
         }),
       waPlayer &&
