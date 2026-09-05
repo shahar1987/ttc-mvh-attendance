@@ -1171,20 +1171,23 @@ function re({
             prev = l.find(
               (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
             ),
-            st2 = x[w.id] || "Present",
-            rec = {
-              date: m,
-              playerId: w.id,
-              groupId: t.id,
-              status: st2,
-              markedBy: s.id,
-            };
-          ((saved[w.id] = st2),
-            st2 === "Absent" &&
-              prev &&
-              prev.msgSentAt &&
-              ((rec.msgSentAt = prev.msgSentAt),
-              (rec.msgSentBy = prev.msgSentBy || "")),
+            st2 = x[w.id] || null;
+          if (((saved[w.id] = st2), !st2)) {
+            p.delete(k);
+            return;
+          }
+          let rec = {
+            date: m,
+            playerId: w.id,
+            groupId: t.id,
+            status: st2,
+            markedBy: s.id,
+          };
+          (st2 === "Absent" &&
+            prev &&
+            prev.msgSentAt &&
+            ((rec.msgSentAt = prev.msgSentAt),
+            (rec.msgSentBy = prev.msgSentBy || "")),
             p.set(k, rec));
         }),
           await p.commit(),
@@ -1428,7 +1431,7 @@ function re({
       e.createElement(
         "p",
         { className: "text-[11px] text-amber-700 text-right leading-relaxed" },
-        `${unmarked} שחקנים עדיין לא סומנו — הם יישמרו כ"הגיע".`,
+        `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות להיום.`,
       ),
     e.createElement(
       "div",
