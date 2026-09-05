@@ -1467,9 +1467,9 @@ function st({
   currentUserId: c,
   onEditPlayer: EP,
   onWhatsapp: WA,
+  onOpenGroup,
 }) {
-  let [n, m] = b(null),
-    [o, x] = b(null),
+  let [o, x] = b(null),
     [h, u] = b(!1),
     alerts = absenceAlerts(a, s, l, null),
     quotaAl = quotaAlerts(a, s, l),
@@ -1664,7 +1664,6 @@ function st({
       s.map((d) => {
         let A = t.find((k) => k.id === d.coachId),
           I = Ze(l, d.id, a),
-          p = n === d.id,
           w = a.filter((k) => k.groupId === d.id && k.isActive && !k.deleted);
         return e.createElement(
           "div",
@@ -1676,12 +1675,12 @@ function st({
           e.createElement(
             "button",
             {
-              onClick: () => m(p ? null : d.id),
+              onClick: () => onOpenGroup(d.id),
               className: "w-full px-4 py-3.5 flex items-center justify-between",
             },
-            p
-              ? e.createElement(ke, { className: "w-4 h-4 text-slate-400" })
-              : e.createElement(we, { className: "w-4 h-4 text-slate-400" }),
+            e.createElement(we, {
+              className: "w-4 h-4 text-slate-400 -rotate-90",
+            }),
             e.createElement(
               "div",
               { className: "text-right flex-1 mr-3" },
@@ -1713,21 +1712,6 @@ function st({
               ),
             ),
           ),
-          p &&
-            e.createElement(
-              "div",
-              { className: "border-t border-slate-100 p-3 bg-slate-50" },
-              e.createElement(re, {
-                group: d,
-                profile: { id: c },
-                players: a,
-                attendance: l,
-                onArchivePlayer: C,
-                onEditPlayer: EP,
-                onWhatsapp: WA,
-                onAddPlayer: i,
-              }),
-            ),
         );
       }),
     ),
