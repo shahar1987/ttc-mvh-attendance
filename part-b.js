@@ -438,7 +438,7 @@ function it({ groups: t, users: s, players: a }) {
       }),
   );
 }
-function rt({ onClose: t }) {
+function rt({ onClose: t, users: US }) {
   let [s, a] = b(""),
     [l, i] = b(""),
     [c, n] = b(""),
@@ -536,7 +536,7 @@ function rt({ onClose: t }) {
         e.createElement(
           "p",
           { className: "text-[11px] text-slate-400" },
-          "\u05DE\u05E1\u05D5\u05E8 \u05D0\u05D5\u05EA\u05D4 \u05DC\u05DE\u05E9\u05EA\u05DE\u05E9 \u05D5\u05D4\u05DE\u05DC\u05E5 \u05DC\u05D5 \u05DC\u05D4\u05D7\u05DC\u05D9\u05E3 \u05D0\u05D5\u05EA\u05D4.",
+          "מסור אותה למשתמש והמלץ לו להחליף אותה. אם המשתמש נמחק בעבר ואתה מוסיף אותו שוב עם אותו אימייל — הזן את הסיסמה הנוכחית שלו.",
         ),
       ),
       e.createElement(
@@ -596,18 +596,27 @@ function rt({ onClose: t }) {
           onClick: async () => {
             (f(!0), r(""));
             try {
-              let d = await He(l.trim(), c);
+              let { uid: d, recovered: RC } = await He(l.trim(), c);
+              if (RC && (US || []).some((v) => v.id === d)) {
+                r("המשתמש הזה כבר קיים ברשימת המשתמשים למעלה.");
+                return;
+              }
               (await De(S(P, "users", d), {
                 name: s.trim(),
                 role: x,
                 phone: m.trim(),
+                email: l.trim().toLowerCase(),
               }),
                 t());
             } catch (d) {
               r(
-                N[d.code] ||
-                  "\u05D9\u05E6\u05D9\u05E8\u05EA \u05D4\u05DE\u05E9\u05EA\u05DE\u05E9 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
-                    d.message,
+                d.code === "auth/wrong-password" ||
+                  d.code === "auth/invalid-credential" ||
+                  d.code === "auth/invalid-login-credentials"
+                  ? "לכתובת הזו כבר קיים חשבון התחברות (גם אם מחקת את המשתמש מהרשימה). כדי לשחזר אותו הזן את הסיסמה הנוכחית של אותו חשבון, או בחר כתובת אימייל אחרת."
+                  : N[d.code] ||
+                      "\u05D9\u05E6\u05D9\u05E8\u05EA \u05D4\u05DE\u05E9\u05EA\u05DE\u05E9 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+                        d.message,
               );
             } finally {
               f(!1);
@@ -623,10 +632,117 @@ function rt({ onClose: t }) {
     ),
   );
 }
+function EditUserModal({ user: t, onClose: s }) {
+  let [n, setN] = b(t.name || ""),
+    [p, setP] = b(t.phone || ""),
+    [sv, setSv] = b(!1),
+    [er, setEr] = b(""),
+    save = async () => {
+      if (!n.trim()) return;
+      (setSv(!0), setEr(""));
+      try {
+        (await O(S(P, "users", t.id), { name: n.trim(), phone: p.trim() }), s());
+      } catch (v) {
+        setEr("השמירה נכשלה: " + v.message);
+      } finally {
+        setSv(!1);
+      }
+    };
+  return e.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
+      onClick: s,
+    },
+    e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        onClick: (v) => v.stopPropagation(),
+        className:
+          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto",
+      },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between" },
+        e.createElement(
+          "button",
+          {
+            onClick: s,
+            className:
+              "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400",
+            "aria-label": "סגירה",
+          },
+          e.createElement(T, { className: "w-5 h-5" }),
+        ),
+        e.createElement(
+          "h3",
+          { className: "font-bold text-blue-950" },
+          "עריכת משתמש",
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "שם מלא",
+        ),
+        e.createElement("input", {
+          value: n,
+          onChange: (v) => setN(v.target.value),
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+        }),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "טלפון",
+        ),
+        e.createElement("input", {
+          value: p,
+          onChange: (v) => setP(v.target.value),
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+        }),
+      ),
+      e.createElement(
+        "p",
+        { className: "text-[11px] text-slate-400 text-right leading-relaxed" },
+        t.email
+          ? `אימייל להתחברות: ${t.email}. לא ניתן לשנות כתובת אימייל או סיסמה מהאפליקציה.`
+          : "לא ניתן לשנות כתובת אימייל או סיסמה מהאפליקציה. את ההרשאה אפשר לשנות ברשימה עצמה.",
+      ),
+      er &&
+        e.createElement(
+          "p",
+          { className: "text-xs text-red-600 text-right" },
+          er,
+        ),
+      e.createElement(
+        "button",
+        {
+          disabled: !n.trim() || sv,
+          onClick: save,
+          className:
+            "mt-1 bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-xl py-3.5 min-h-[44px]",
+        },
+        sv ? "שומר…" : "שמירה",
+      ),
+    ),
+  );
+}
 function ot({ users: t, groups: s, currentUserId: a }) {
   let [l, i] = b(""),
     [c, n] = b(null),
     [m, o] = b(!1),
+    [editUser, setEditUser] = b(null),
     [deletingCoachId, setDeletingCoachId] = b(null),
     handleDeleteCoach = async (u) => {
       if (
@@ -764,6 +880,16 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                     : "\u05DC\u05D0 \u05E9\u05D5\u05D9\u05DB\u05D4 \u05E7\u05D1\u05D5\u05E6\u05D4",
               ),
             ),
+            e.createElement(
+              "button",
+              {
+                onClick: () => setEditUser(u),
+                className:
+                  "w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0",
+                "aria-label": "עריכת משתמש",
+              },
+              e.createElement($e, { className: "w-4 h-4 text-blue-900" }),
+            ),
             u.role === "Coach" &&
               e.createElement(
                 "button",
@@ -854,7 +980,12 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           ),
       ),
     ),
-    m && e.createElement(rt, { onClose: () => o(!1) }),
+    m && e.createElement(rt, { onClose: () => o(!1), users: t }),
+    editUser &&
+      e.createElement(EditUserModal, {
+        user: editUser,
+        onClose: () => setEditUser(null),
+      }),
   );
 }
 function dt({
