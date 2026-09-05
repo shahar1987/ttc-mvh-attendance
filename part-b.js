@@ -1166,7 +1166,7 @@ function re({
           { key: p.id, className: "px-3 py-3 flex items-center gap-2" },
           e.createElement(
             "div",
-            { className: "flex-1 text-right min-w-0" },
+            { className: "text-right min-w-0" },
             e.createElement(
               "div",
               {
