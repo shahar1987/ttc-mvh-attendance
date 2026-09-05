@@ -935,13 +935,13 @@ function re({
       let k = l.find(
         (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
       );
-      p[w.id] = k ? k.status : "Present";
+      p[w.id] = k ? k.status : null;
     }),
       h(p),
       f(!o));
   }, [t.id, rosterKey, o]);
   let C = (p, w) => {
-      u && h((k) => ({ ...k, [p]: w }));
+      u && h((k) => ({ ...k, [p]: k[p] === w ? null : w }));
     },
     d = (p) => {
       if (!u) return;
@@ -976,7 +976,7 @@ function re({
         r(!1);
       }
     },
-    I = n.filter((p) => (x[p.id] || "Present") === "Present").length;
+    I = n.filter((p) => x[p.id] === "Present").length;
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
@@ -1076,7 +1076,7 @@ function re({
           "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
       },
       n.map((p) => {
-        let w = x[p.id] || "Present",
+        let w = x[p.id] || null,
           k = Qe(l, p.id);
         return e.createElement(
           "div",
@@ -1098,7 +1098,7 @@ function re({
               {
                 onClick: () => C(p.id, "Present"),
                 disabled: !u,
-                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
+                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
               },
               "\u05D4\u05D2\u05D9\u05E2",
             ),
@@ -1107,7 +1107,7 @@ function re({
               {
                 onClick: () => C(p.id, "Absent"),
                 disabled: !u,
-                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
+                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
               },
               "\u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2",
             ),
