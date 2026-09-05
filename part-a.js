@@ -306,6 +306,25 @@ function quotaAlerts(players, groups, attendance) {
   });
   return out;
 }
+function groupCoachIds(g) {
+  let a = g && Array.isArray(g.coachIds) ? g.coachIds.filter(Boolean) : [];
+  return g && g.coachId && !a.includes(g.coachId) ? [g.coachId, ...a] : a;
+}
+function isGroupCoach(g, userId) {
+  return !!userId && groupCoachIds(g).includes(userId);
+}
+function groupCoachNames(g, users) {
+  return groupCoachIds(g)
+    .map((id) => {
+      let u = (users || []).find((v) => v.id === id);
+      return u ? u.name : "";
+    })
+    .filter(Boolean);
+}
+function groupCoachLabel(g, users) {
+  let n = groupCoachNames(g, users).join(", ");
+  return n ? { name: n } : null;
+}
 function pendingAbsenceMsgs(players, groups, users, attendance) {
   let today = E(),
     d = new Date(today + "T00:00:00");
@@ -321,7 +340,7 @@ function pendingAbsenceMsgs(players, groups, users, attendance) {
     out.push({
       player: p,
       group: g,
-      coach: g ? users.find((v) => v.id === g.coachId) || null : null,
+      coach: g ? groupCoachLabel(g, users) : null,
       record: a,
     });
   });
@@ -970,7 +989,7 @@ function ReportCoachFillRate({ groups, users, attendance }) {
     allDates = eachDateInRange(startDate, endDate),
     rows = groups
       .map((g) => {
-        let coach = users.find((u) => u.id === g.coachId),
+        let coach = groupCoachLabel(g, users),
           hasSchedule = Array.isArray(g.days) && g.days.length > 0,
           expectedDates = hasSchedule
             ? allDates.filter((d) => g.days.includes(new Date(d + "T00:00:00").getDay()))
@@ -1218,7 +1237,7 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
     [endDate, setEndDate] = b(E()),
     rows = groups
       .map((g) => {
-        let coach = users.find((u) => u.id === g.coachId),
+        let coach = groupCoachLabel(g, users),
           records = attendance.filter(
             (rec) =>
               rec.groupId === g.id && rec.date >= startDate && rec.date <= endDate,
@@ -1613,7 +1632,12 @@ function st({
       let d = E(),
         A = s
           .filter((I) => !l.some((p) => p.groupId === I.id && p.date === d))
-          .map((I) => ({ group: I, coach: t.find((p) => p.id === I.coachId) }));
+          .flatMap((I) =>
+            groupCoachIds(I)
+              .map((cid) => t.find((p) => p.id === cid))
+              .filter(Boolean)
+              .map((coach) => ({ group: I, coach })),
+          );
       x(A);
     },
     N = async (d, A) => {
@@ -1763,7 +1787,7 @@ function st({
                   e.createElement(
                     "button",
                     {
-                      key: d.id,
+                      key: d.id + "_" + A.id,
                       disabled: h,
                       onClick: () => N(d, A),
                       className:
@@ -1800,7 +1824,7 @@ function st({
         "\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
       ),
       s.map((d) => {
-        let A = t.find((k) => k.id === d.coachId),
+        let A = groupCoachLabel(d, t),
           I = Ze(l, d.id, a),
           w = a.filter((k) => k.groupId === d.id && k.isActive && !k.deleted);
         return e.createElement(
