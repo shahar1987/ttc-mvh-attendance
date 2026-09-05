@@ -227,28 +227,51 @@ function nt({ group: t, users: s, onClose: a }) {
 function it({ groups: t, users: s, players: a }) {
   let [l, i] = b(null),
     [c, n] = b(""),
-    m = async (o) => {
-      let x = a.filter((h) => h.groupId === o.id && h.isActive);
-      if (x.length > 0) {
-        n(
-          `\u05DC\u05D0 \u05E0\u05D9\u05EA\u05DF \u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA "${o.name}" \u2014 \u05D9\u05E9 \u05D1\u05D4 ${x.length} \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E4\u05E2\u05D9\u05DC\u05D9\u05DD. \u05D4\u05E2\u05D1\u05E8 \u05D0\u05D5\u05EA\u05DD \u05DC\u05E7\u05D1\u05D5\u05E6\u05D4 \u05D0\u05D7\u05E8\u05EA \u05D0\u05D5 \u05DC\u05D0\u05E8\u05DB\u05D9\u05D5\u05DF \u05E7\u05D5\u05D3\u05DD.`,
-        );
-        return;
+    [reassign, setReassign] = b({}),
+    [busyReassign, setBusyReassign] = b(null),
+    unassigned = a.filter(
+      (p) =>
+        p.isActive &&
+        !p.deleted &&
+        (!p.groupId || !t.some((g) => g.id === p.groupId)),
+    ),
+    doReassign = async (p) => {
+      let target = reassign[p.id];
+      if (!target) return;
+      setBusyReassign(p.id);
+      try {
+        await O(S(P, "players", p.id), { groupId: target });
+      } catch (h) {
+        n("\u05E9\u05D9\u05D1\u05D5\u05E5 \u05E0\u05DB\u05E9\u05DC: " + h.message);
+      } finally {
+        setBusyReassign(null);
       }
+    },
+    m = async (o) => {
+      let x = a.filter((h) => h.groupId === o.id && h.isActive && !h.deleted);
       if (
-        window.confirm(
-          `\u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 "${o.name}"? \u05D4\u05E4\u05E2\u05D5\u05DC\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D4\u05E4\u05D9\u05DB\u05D4.`,
+        !window.confirm(
+          x.length > 0
+            ? `\u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 "${o.name}"? ${x.length} \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05D4\u05E4\u05E2\u05D9\u05DC\u05D9\u05DD \u05D1\u05D4 \u05D9\u05D5\u05E2\u05D1\u05E8\u05D5 \u05DC\u05DE\u05D0\u05D2\u05E8 "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4" \u05D5\u05EA\u05D5\u05DB\u05DC \u05DC\u05E9\u05D1\u05E5 \u05D0\u05D5\u05EA\u05DD \u05DE\u05D7\u05D3\u05E9. \u05D4\u05E4\u05E2\u05D5\u05DC\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D4\u05E4\u05D9\u05DB\u05D4.`
+            : `\u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 "${o.name}"? \u05D4\u05E4\u05E2\u05D5\u05DC\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D4\u05E4\u05D9\u05DB\u05D4.`,
         )
-      ) {
-        n("");
-        try {
-          await Ee(S(P, "groups", o.id));
-        } catch (h) {
-          n(
-            "\u05DE\u05D7\u05D9\u05E7\u05D4 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
-              h.message,
+      )
+        return;
+      n("");
+      try {
+        if (x.length > 0) {
+          let batch = Te(P);
+          x.forEach((p) =>
+            batch.update(S(P, "players", p.id), { groupId: null }),
           );
+          await batch.commit();
         }
+        await Ee(S(P, "groups", o.id));
+      } catch (h) {
+        n(
+          "\u05DE\u05D7\u05D9\u05E7\u05D4 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+            h.message,
+        );
       }
     };
   return e.createElement(
@@ -288,12 +311,68 @@ function it({ groups: t, users: s, players: a }) {
         { className: "text-center text-sm text-slate-400 py-8" },
         '\u05D0\u05D9\u05DF \u05E2\u05D3\u05D9\u05D9\u05DF \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA. \u05DC\u05D7\u05E5 "\u05D4\u05D5\u05E1\u05E4\u05EA \u05E7\u05D1\u05D5\u05E6\u05D4" \u05DB\u05D3\u05D9 \u05DC\u05D4\u05EA\u05D7\u05D9\u05DC.',
       ),
+    unassigned.length > 0 &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-amber-50 border-2 border-amber-300 rounded-xl p-3 flex flex-col gap-2.5",
+        },
+        e.createElement(
+          "div",
+          { className: "text-sm font-bold text-amber-900 text-right" },
+          "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4 \xB7 " + unassigned.length,
+        ),
+        unassigned.map((p) =>
+          e.createElement(
+            "div",
+            {
+              key: p.id,
+              className:
+                "bg-white rounded-lg border border-amber-200 p-2.5 flex items-center gap-2",
+            },
+            e.createElement(
+              "div",
+              { className: "text-sm font-medium text-blue-950 flex-1 text-right truncate" },
+              p.name,
+            ),
+            e.createElement(
+              "select",
+              {
+                value: reassign[p.id] || "",
+                onChange: (v) =>
+                  setReassign((k) => ({ ...k, [p.id]: v.target.value })),
+                className:
+                  "border border-slate-200 rounded-lg py-2 px-2 text-xs outline-none bg-white min-h-[38px]",
+              },
+              e.createElement(
+                "option",
+                { value: "" },
+                "\u05D1\u05D7\u05E8 \u05E7\u05D1\u05D5\u05E6\u05D4",
+              ),
+              t.map((g) =>
+                e.createElement("option", { key: g.id, value: g.id }, g.name),
+              ),
+            ),
+            e.createElement(
+              "button",
+              {
+                disabled: !reassign[p.id] || busyReassign === p.id,
+                onClick: () => doReassign(p),
+                className:
+                  "bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg px-3 min-h-[38px] shrink-0",
+              },
+              "\u05E9\u05D9\u05D1\u05D5\u05E5",
+            ),
+          ),
+        ),
+      ),
     e.createElement(
       "div",
       { className: "flex flex-col gap-2.5" },
       t.map((o) => {
         let x = s.find((u) => u.id === o.coachId),
-          h = a.filter((u) => u.groupId === o.id && u.isActive).length;
+          h = a.filter((u) => u.groupId === o.id && u.isActive && !u.deleted).length;
         return e.createElement(
           "div",
           {
@@ -918,7 +997,7 @@ function re({
   onWhatsapp: WA,
   onAddPlayer: AP,
 }) {
-  let n = a.filter((p) => p.groupId === t.id && p.isActive),
+  let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     m = E(),
     o = l.some((p) => p.groupId === t.id && p.date === m),
     rosterKey = n
@@ -1201,6 +1280,8 @@ function mt({
   onEditPlayer: EP,
   onWhatsapp: WA,
   onAddPlayer: AP,
+  selectedGroupId: SG,
+  onSelectGroup: onSelectGroup,
 }) {
   let c = i ? s : s.filter((r) => r.coachId === t.id),
     myAlerts = absenceAlerts(
@@ -1209,9 +1290,8 @@ function mt({
       l,
       c.map((r) => r.id),
     ),
-    [n, m] = b(null),
     o = c.length === 1 ? c[0].id : null,
-    x = n || o,
+    x = SG || o,
     h = c.find((r) => r.id === x),
     u = E(),
     f = (r) => l.some((y) => y.groupId === r.id && y.date === u),
@@ -1246,7 +1326,7 @@ function mt({
             profile: t,
             players: a,
             attendance: l,
-            onBack: o ? null : () => m(null),
+            onBack: o ? null : () => onSelectGroup(null),
             onEditPlayer: EP,
             onWhatsapp: WA,
             onAddPlayer: AP,
@@ -1268,12 +1348,12 @@ function mt({
           g.map((r) => {
             let y = f(r),
               N = ee(r),
-              C = a.filter((d) => d.groupId === r.id && d.isActive).length;
+              C = a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length;
             return e.createElement(
               "button",
               {
                 key: r.id,
-                onClick: () => m(r.id),
+                onClick: () => onSelectGroup(r.id),
                 className: `rounded-xl border px-4 py-3.5 flex items-center justify-between gap-2 active:scale-[0.99] transition-transform ${N && !y ? "bg-white border-emerald-400 border-2" : "bg-white border-slate-200"}`,
               },
               e.createElement(
@@ -1353,6 +1433,7 @@ function Q() {
     { data: c } = L("players"),
     { data: n } = L("attendance"),
     [m, o] = b("dashboard"),
+    [attGroupId, setAttGroupId] = b(null),
     [x, h] = b(!1),
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
@@ -1360,7 +1441,19 @@ function Q() {
     openAddPlayer = (group) =>
       setPlayerModal({ player: null, groupId: group?.id || null }),
     openEditPlayer = (player) => setPlayerModal({ player }),
-    openWhatsapp = (player) => setWaPlayer(player);
+    openWhatsapp = (player) => setWaPlayer(player),
+    goToScreen = (v) => {
+      (o(v), setAttGroupId(null));
+      try {
+        history.pushState({ screen: v, attGroup: null }, "");
+      } catch (e2) {}
+    },
+    goToGroup = (v) => {
+      setAttGroupId(v);
+      try {
+        history.pushState({ screen: "attendance", attGroup: v }, "");
+      } catch (e2) {}
+    };
   if (
     (j(() => {
       s?.id && qe(s.id);
@@ -1368,6 +1461,20 @@ function Q() {
     j(() => {
       s && s.role !== "Admin" && o("attendance");
     }, [s?.role]),
+    j(() => {
+      let onPop = (ev) => {
+        let st = ev.state || {};
+        (o(st.screen || "dashboard"), setAttGroupId(st.attGroup || null));
+      };
+      if (!history.state)
+        try {
+          history.replaceState({ screen: "dashboard", attGroup: null }, "");
+        } catch (e2) {}
+      return (
+        window.addEventListener("popstate", onPop),
+        () => window.removeEventListener("popstate", onPop)
+      );
+    }, []),
     j(() => {
       let N;
       return (
@@ -1472,7 +1579,7 @@ function Q() {
         e.createElement("img", {
           src: "./logo.png",
           alt: "",
-          className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0",
+          className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0 order-last",
         }),
         e.createElement(
           "button",
@@ -1560,13 +1667,15 @@ function Q() {
           onEditPlayer: openEditPlayer,
           onWhatsapp: openWhatsapp,
           onAddPlayer: openAddPlayer,
+          selectedGroupId: attGroupId,
+          onSelectGroup: goToGroup,
         }),
       e.createElement(dt, {
         open: x,
         onClose: () => h(!1),
         isAdmin: r,
         view: m,
-        setView: o,
+        setView: goToScreen,
         userName: s.name,
         onLogout: () => {
           (h(!1), R(D));
