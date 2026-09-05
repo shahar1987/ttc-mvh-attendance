@@ -182,18 +182,19 @@ function playerGender(p) {
     ? p.gender
     : guessGender(p ? p.name : "");
 }
-function absenceMsg(p, gender) {
+function absenceMsg(p, gender, date) {
   let g = gender || playerGender(p),
     name = (p && p.name) || "",
     parent = ((p && p.parentName) || "").trim(),
+    whenTxt = date && date !== E() ? `\u05D1${Ke(date)}` : "\u05D4\u05D9\u05D5\u05DD",
     signature = `\u05E6\u05D5\u05D5\u05EA ${X}
 ${W}`;
   return parent && parent !== name
-    ? `\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9${g === "f" ? "\u05D1\u05EA\u05DB\u05DD" : "\u05D1\u05E0\u05DB\u05DD"} ${name} \u05DC\u05D0 ${g === "f" ? "\u05D4\u05D2\u05D9\u05E2\u05D4" : "\u05D4\u05D2\u05D9\u05E2"} \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D9\u05D5\u05DD.
+    ? `\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9${g === "f" ? "\u05D1\u05EA\u05DB\u05DD" : "\u05D1\u05E0\u05DB\u05DD"} ${name} \u05DC\u05D0 ${g === "f" ? "\u05D4\u05D2\u05D9\u05E2\u05D4" : "\u05D4\u05D2\u05D9\u05E2"} \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF ${whenTxt}.
 \u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
 \u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
 ${signature}`
-    : `\u05E9\u05DC\u05D5\u05DD ${name}, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D9\u05D5\u05DD.
+    : `\u05E9\u05DC\u05D5\u05DD ${name}, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF ${whenTxt}.
 \u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
 \u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
 ${signature}`;
@@ -307,9 +308,13 @@ function quotaAlerts(players, groups, attendance) {
 }
 function pendingAbsenceMsgs(players, groups, users, attendance) {
   let today = E(),
+    d = new Date(today + "T00:00:00");
+  d.setDate(d.getDate() - 6);
+  let from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
     out = [];
   attendance.forEach((a) => {
-    if (a.date !== today || a.status !== "Absent" || a.msgSentAt) return;
+    if (a.status !== "Absent" || a.msgSentAt) return;
+    if (!a.date || a.date > today || a.date < from) return;
     let p = players.find((v) => v.id === a.playerId);
     if (!p || p.deleted || !p.isActive) return;
     let g = groups.find((v) => v.id === a.groupId) || null;
@@ -320,8 +325,10 @@ function pendingAbsenceMsgs(players, groups, users, attendance) {
       record: a,
     });
   });
-  return out.sort((x, y) =>
-    (x.group ? x.group.name : "").localeCompare(y.group ? y.group.name : ""),
+  return out.sort(
+    (x, y) =>
+      y.record.date.localeCompare(x.record.date) ||
+      (x.group ? x.group.name : "").localeCompare(y.group ? y.group.name : ""),
   );
 }
 function QuotaAlertsCard({ alerts: t }) {
@@ -1968,17 +1975,17 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
     ),
   );
 }
-function WhatsappModal({ player: t, onClose: s, onSent: a, mode: MD }) {
+function WhatsappModal({ player: t, onClose: s, onSent: a, mode: MD, date: DT }) {
   let isAbs = MD === "absence",
     [gen, setGen] = b(playerGender(t)),
     [l, i] = b(
-      isAbs ? absenceMsg(t, playerGender(t)) : Ve(t.parentName, t.name),
+      isAbs ? absenceMsg(t, playerGender(t), DT) : Ve(t.parentName, t.name),
     ),
     [c, n] = b(!1),
     m = normalizePhone(t.parentPhone),
     o = isValidPhone(t.parentPhone),
     pickGender = (v) => {
-      (setGen(v), i(absenceMsg(t, v)));
+      (setGen(v), i(absenceMsg(t, v, DT)));
       setPlayerGender(t.id, v).catch((err) =>
         console.warn("Gender not saved:", err),
       );
@@ -2231,7 +2238,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
         e.createElement(
           "div",
           { className: "text-[11px] text-sky-700 leading-snug" },
-          "שחקנים שנעדרו היום והמאמן עדיין לא שלח להם הודעה",
+          "שחקנים שנעדרו ולא נשלחה להם הודעה (עד 7 ימים אחורה)",
         ),
       ),
     ),
@@ -2248,7 +2255,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
         e.createElement(
           "div",
           {
-            key: n.record.groupId + "_" + n.player.id,
+            key: n.record.date + "_" + n.record.groupId + "_" + n.player.id,
             className: "px-3 py-3 flex items-center gap-1.5",
           },
           e.createElement(
@@ -2262,6 +2269,10 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
             e.createElement(
               "div",
               { className: "text-xs text-slate-500 truncate" },
+              n.record.date === E()
+                ? "היום"
+                : Ke(n.record.date),
+              " \xB7 ",
               n.group ? n.group.name : "ללא קבוצה",
               n.coach ? " \xB7 מאמן: " + n.coach.name : "",
             ),
