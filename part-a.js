@@ -119,6 +119,20 @@ function normalizePhone(value) {
 function isValidPhone(value) {
   return /^972\d{8,9}$/.test(normalizePhone(value));
 }
+function countUniqueActivePlayers(players) {
+  let seen = new Set(),
+    count = 0;
+  players.forEach((p) => {
+    if (!p.isActive || p.deleted) return;
+    let key =
+      (p.name || "").trim().toLowerCase() +
+      "|" +
+      normalizePhone(p.parentPhone || "");
+    if (seen.has(key)) return;
+    (seen.add(key), count++);
+  });
+  return count;
+}
 function lastTwoAbsences(attendance, playerId) {
   let recs = attendance
     .filter((a) => a.playerId === playerId && a.date !== E())
@@ -130,7 +144,7 @@ function lastTwoAbsences(attendance, playerId) {
 function absenceAlerts(players, groups, attendance, allowedGroupIds) {
   let out = [];
   players.forEach((p) => {
-    if (!p.isActive) return;
+    if (!p.isActive || p.deleted) return;
     if (allowedGroupIds && !allowedGroupIds.includes(p.groupId)) return;
     let dates = lastTwoAbsences(attendance, p.id);
     if (!dates) return;
@@ -145,6 +159,113 @@ function absenceAlerts(players, groups, attendance, allowedGroupIds) {
 }
 async function markAlertHandled(playerId, latestDate) {
   await O(S(P, "players", playerId), { alertHandledDate: latestDate });
+}
+function startOfWeekStr() {
+  let d = new Date(),
+    day = d.getDay(),
+    diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function startOfYearStr() {
+  return `${new Date().getFullYear()}-01-01`;
+}
+function quotaAlerts(players, groups, attendance) {
+  let wk = startOfWeekStr(),
+    mo = firstOfMonthStr(),
+    yr = startOfYearStr(),
+    out = [];
+  players.forEach((p) => {
+    if (!p.isActive || p.deleted) return;
+    [
+      { period: "השבוע", target: p.weeklyTarget, since: wk },
+      { period: "החודש", target: p.monthlyTarget, since: mo },
+      { period: "השנה", target: p.yearlyTarget, since: yr },
+    ].forEach((ck) => {
+      if (!ck.target || ck.target <= 0) return;
+      let actual = attendance.filter(
+        (a) =>
+          a.playerId === p.id && a.status === "Present" && a.date >= ck.since,
+      ).length;
+      if (actual > ck.target)
+        out.push({
+          player: p,
+          group: groups.find((g) => g.id === p.groupId) || null,
+          period: ck.period,
+          actual,
+          target: ck.target,
+        });
+    });
+  });
+  return out;
+}
+function QuotaAlertsCard({ alerts: t }) {
+  if (t.length === 0) return null;
+  return e.createElement(
+    "div",
+    {
+      className:
+        "bg-white rounded-xl border-2 border-blue-300 overflow-hidden",
+    },
+    e.createElement(
+      "div",
+      { className: "bg-blue-50 px-4 py-3 flex items-center gap-2" },
+      e.createElement(he, { className: "w-4 h-4 text-blue-700 shrink-0" }),
+      e.createElement(
+        "div",
+        { className: "text-right flex-1" },
+        e.createElement(
+          "div",
+          { className: "text-sm font-bold text-blue-900" },
+          "\u05D7\u05E8\u05D9\u05D2\u05D4 \u05DE\u05DE\u05DB\u05E1\u05EA \u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \xB7 " +
+            t.length,
+        ),
+        e.createElement(
+          "div",
+          { className: "text-[11px] text-blue-700 leading-snug" },
+          "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E9\u05D4\u05D2\u05D9\u05E2\u05D5 \u05DC\u05D9\u05D5\u05EA\u05E8 \u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05DE\u05DE\u05D4 \u05E9\u05D4\u05D5\u05D2\u05D3\u05E8 \u05E2\u05D1\u05D5\u05E8\u05DD",
+        ),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "divide-y divide-slate-100" },
+      t.map((o, idx) =>
+        e.createElement(
+          "div",
+          {
+            key: o.player.id + o.period + idx,
+            className:
+              "px-4 py-2.5 flex items-center justify-between gap-2",
+          },
+          e.createElement(
+            "div",
+            { className: "text-right min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm font-semibold text-blue-950 truncate" },
+              o.player.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-xs text-slate-500 truncate" },
+              o.group
+                ? o.group.name
+                : "\u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4",
+            ),
+          ),
+          e.createElement(
+            "div",
+            {
+              className:
+                "text-xs font-semibold text-blue-700 shrink-0 text-left",
+            },
+            `${o.actual}/${o.target} ${o.period}`,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 function useLocalAlertNotice(alerts, label) {
   let seen = e.useRef(new Set());
@@ -844,7 +965,7 @@ function ReportDropoutRisk({ players, groups, attendance }) {
     [endDate, setEndDate] = b(E()),
     groupName = (groupId) => groups.find((g) => g.id === groupId)?.name || "—",
     atRisk = players
-      .filter((p) => p.isActive)
+      .filter((p) => p.isActive && !p.deleted)
       .map((p) => {
         let records = attendance
             .filter(
@@ -965,7 +1086,7 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
           sessions = new Set(records.map((r) => r.date)).size,
           presentCount = records.filter((r) => r.status === "Present").length,
           pct = records.length > 0 ? Math.round((presentCount / records.length) * 100) : null,
-          activePlayers = players.filter((p) => p.groupId === g.id && p.isActive).length;
+          activePlayers = players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted).length;
         return { group: g, coach, sessions, pct, activePlayers };
       })
       .sort((a, c) => (c.pct ?? -1) - (a.pct ?? -1)),
@@ -1068,6 +1189,77 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
     ),
   );
 }
+function ReportQuota({ players, groups, attendance }) {
+  let alerts = quotaAlerts(players, groups, attendance),
+    exportCsv = () => {
+      let headers = ["שחקן", "קבוצה", "תקופה", "בפועל", "מכסה"],
+        rowsData = alerts.map((o) => [
+          o.player.name,
+          o.group ? o.group.name : "—",
+          o.period,
+          o.actual,
+          o.target,
+        ]);
+      downloadCsv("דוח-חריגת-מכסת-אימונים.csv", headers, rowsData);
+    };
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-4" },
+    e.createElement(PrintStyleTag, null),
+    e.createElement(
+      "div",
+      { className: "no-print" },
+      e.createElement(ReportActionBar, {
+        onPrint: () => window.print(),
+        onExportCsv: exportCsv,
+      }),
+    ),
+    e.createElement(
+      "div",
+      { id: "ttc-report-print", className: "flex flex-col gap-2.5" },
+      e.createElement(
+        "h3",
+        { className: "font-bold text-blue-950 text-sm" },
+        "שחקנים שחרגו ממכסת האימונים שהוגדרה עבורם",
+      ),
+      alerts.length === 0 &&
+        e.createElement(
+          "p",
+          { className: "text-center text-sm text-slate-400 py-8" },
+          "אין חריגות ממכסה כרגע",
+        ),
+      alerts.map((o, idx) =>
+        e.createElement(
+          "div",
+          {
+            key: o.player.id + o.period + idx,
+            className:
+              "bg-white rounded-xl border border-slate-200 p-3.5 flex items-center justify-between gap-2",
+          },
+          e.createElement(
+            "div",
+            { className: "text-right" },
+            e.createElement(
+              "div",
+              { className: "font-semibold text-blue-950 text-sm" },
+              o.player.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-xs text-slate-500" },
+              o.group ? o.group.name : "ללא קבוצה",
+            ),
+          ),
+          e.createElement(
+            "div",
+            { className: "text-sm font-bold text-blue-700" },
+            `${o.actual}/${o.target} ${o.period}`,
+          ),
+        ),
+      ),
+    ),
+  );
+}
 function ReportsScreen({ groups, users, players, attendance }) {
   let [tab, setTab] = b("matrix"),
     tabs = [
@@ -1076,6 +1268,7 @@ function ReportsScreen({ groups, users, players, attendance }) {
       { key: "fillrate", label: "מילוי מאמנים" },
       { key: "risk", label: "בסיכון נשירה" },
       { key: "compare", label: "השוואת קבוצות" },
+      { key: "quota", label: "מכסת אימונים" },
     ];
   return e.createElement(
     "div",
@@ -1101,6 +1294,8 @@ function ReportsScreen({ groups, users, players, attendance }) {
     tab === "risk" && e.createElement(ReportDropoutRisk, { players, groups, attendance }),
     tab === "compare" &&
       e.createElement(ReportGroupComparison, { groups, users, players, attendance }),
+    tab === "quota" &&
+      e.createElement(ReportQuota, { players, groups, attendance }),
   );
 }
 
@@ -1269,7 +1464,9 @@ function st({
     [o, x] = b(null),
     [h, u] = b(!1),
     alerts = absenceAlerts(a, s, l, null),
-    f = a.filter((d) => d.isActive),
+    quotaAl = quotaAlerts(a, s, l),
+    f = a.filter((d) => d.isActive && !d.deleted),
+    uniqueActiveCount = countUniqueActivePlayers(a),
     { avgPct: g, sessions: r } = Je(l),
     y = () => {
       let d = E(),
@@ -1331,6 +1528,7 @@ function st({
       onWhatsapp: WA,
       onEdit: EP,
     }),
+    e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-3" },
@@ -1338,7 +1536,7 @@ function st({
         icon: H,
         label:
           "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E4\u05E2\u05D9\u05DC\u05D9\u05DD",
-        value: f.length,
+        value: uniqueActiveCount,
         accent: "bg-blue-900",
       }),
       e.createElement(U, {
@@ -1459,7 +1657,7 @@ function st({
         let A = t.find((k) => k.id === d.coachId),
           I = Ze(l, d.id, a),
           p = n === d.id,
-          w = a.filter((k) => k.groupId === d.id && k.isActive);
+          w = a.filter((k) => k.groupId === d.id && k.isActive && !k.deleted);
         return e.createElement(
           "div",
           {
@@ -1530,7 +1728,7 @@ function st({
 function lt({ players: t, groups: s, onEditPlayer: EP }) {
   let [a, l] = b(""),
     c = t
-      .filter((m) => m.isActive)
+      .filter((m) => m.isActive && !m.deleted)
       .filter((m) => m.name.includes(a) || m.parentName.includes(a)),
     n = s
       .map((m) => ({ group: m, players: c.filter((o) => o.groupId === m.id) }))
@@ -1857,6 +2055,9 @@ function at({
     [o, x] = b(a?.groupId || DG || c[0]?.id || ""),
     [h, u] = b(a?.parentName || ""),
     [f, g] = b(a?.parentPhone || ""),
+    [WT, setWT] = b(a?.weeklyTarget != null ? String(a.weeklyTarget) : ""),
+    [MT, setMT] = b(a?.monthlyTarget != null ? String(a.monthlyTarget) : ""),
+    [YT, setYT] = b(a?.yearlyTarget != null ? String(a.yearlyTarget) : ""),
     [r, y] = b(!1),
     [N, C] = b(""),
     d = f.trim().length > 0 && isValidPhone(f),
@@ -1869,6 +2070,9 @@ function at({
           groupId: o,
           parentName: h.trim(),
           parentPhone: normalizePhone(f),
+          weeklyTarget: WT.trim() ? Number(WT) : null,
+          monthlyTarget: MT.trim() ? Number(MT) : null,
+          yearlyTarget: YT.trim() ? Number(YT) : null,
         };
         (i
           ? await O(S(P, "players", a.id), v)
@@ -1881,6 +2085,27 @@ function at({
           s());
       } catch (v) {
         C("השמירה נכשלה: " + v.message);
+      } finally {
+        y(!1);
+      }
+    },
+    delPlayer = async () => {
+      if (
+        !window.confirm(
+          `למחוק את "${n}" מהמערכת? הוא יוסר מכל המסכים הפעילים (רשימות, ספר טלפונים, קבוצה), אך היסטוריית הנוכחות שלו תישמר בדוחות. הפעולה אינה הפיכה.`,
+        )
+      )
+        return;
+      (y(!0), C(""));
+      try {
+        (await O(S(P, "players", a.id), {
+          deleted: !0,
+          isActive: !1,
+          endDate: E(),
+        }),
+          s());
+      } catch (v) {
+        C("המחיקה נכשלה: " + v.message);
       } finally {
         y(!1);
       }
@@ -1962,6 +2187,43 @@ function at({
           { className: "text-xs text-red-600 text-right" },
           "מספר לא תקין. אפשר להזין 050-1234567 או 9725XXXXXXXX.",
         ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "מכסת אימונים צפויה (לא חובה — להתראה על חריגה)",
+        ),
+        e.createElement(
+          "div",
+          { className: "grid grid-cols-3 gap-2" },
+          e.createElement("input", {
+            value: WT,
+            onChange: (v) => setWT(v.target.value.replace(/[^0-9]/g, "")),
+            placeholder: "בשבוע",
+            inputMode: "numeric",
+            className:
+              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+          }),
+          e.createElement("input", {
+            value: MT,
+            onChange: (v) => setMT(v.target.value.replace(/[^0-9]/g, "")),
+            placeholder: "בחודש",
+            inputMode: "numeric",
+            className:
+              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+          }),
+          e.createElement("input", {
+            value: YT,
+            onChange: (v) => setYT(v.target.value.replace(/[^0-9]/g, "")),
+            placeholder: "בשנה",
+            inputMode: "numeric",
+            className:
+              "border border-slate-200 rounded-lg py-2.5 px-2 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+          }),
+        ),
+      ),
       N &&
         e.createElement(
           "p",
@@ -1978,6 +2240,17 @@ function at({
         },
         r ? "שומר…" : "שמירה",
       ),
+      i &&
+        e.createElement(
+          "button",
+          {
+            disabled: r,
+            onClick: delPlayer,
+            className:
+              "text-red-600 text-sm font-medium py-2 min-h-[44px] text-center",
+          },
+          "מחיקת שחקן מהמערכת",
+        ),
     ),
   );
 }
@@ -2101,11 +2374,12 @@ function ImportScreen({ groups: t, players: s }) {
     groupNameById = {},
     existing = new Set();
   t.forEach((g) => (groupNameById[g.id] = (g.name || "").trim()));
-  s.forEach((p) =>
+  s.forEach((p) => {
+    if (p.deleted) return;
     existing.add(
       (p.name || "").trim() + "@" + (groupNameById[p.groupId] || "").trim(),
-    ),
-  );
+    );
+  });
   let rows = parsed.rows.map((r) => ({
       ...r,
       status: existing.has(r.name + "@" + r.groupName) ? "exists" : "new",
