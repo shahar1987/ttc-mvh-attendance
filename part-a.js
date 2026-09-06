@@ -24,6 +24,8 @@ import {
   Pencil as $e,
   ArrowRight as je,
   FileText as ReportsIcon,
+  Ban as BanIcon,
+  RotateCcw as UndoIcon,
 } from "lucide-react";
 import {
   collection as M,
@@ -336,6 +338,197 @@ function groupCoachNames(g, users) {
 function groupCoachLabel(g, users) {
   let n = groupCoachNames(g, users).join(", ");
   return n ? { name: n } : null;
+}
+var CANCEL_REASONS = [
+  "מזג אוויר",
+  "מצב ביטחוני",
+  "האולם לא זמין",
+  "המאמן נעדר",
+  "מיעוט משתתפים",
+  "אחר",
+];
+function cancellationId(date, groupId) {
+  return `${date}_${groupId}`;
+}
+function findCancellation(cancellations, groupId, date) {
+  return (
+    (cancellations || []).find((c) => c.groupId === groupId && c.date === date) ||
+    null
+  );
+}
+function cancellationLabel(c) {
+  if (!c) return "";
+  if (c.reason === "אחר") return c.note || c.reason;
+  return c.note ? `${c.reason} (${c.note})` : c.reason;
+}
+function excludeCancelled(attendance, cancellations) {
+  if (!cancellations || cancellations.length === 0) return attendance;
+  let keys = new Set(cancellations.map((c) => cancellationId(c.date, c.groupId)));
+  return attendance.filter((a) => !keys.has(cancellationId(a.date, a.groupId)));
+}
+async function cancelTraining({ date, groupId, reason, note, userId, attendance }) {
+  let batch = Te(P);
+  (attendance || [])
+    .filter((a) => a.groupId === groupId && a.date === date)
+    .forEach((a) => batch.delete(S(P, "attendance", a.id)));
+  batch.set(S(P, "cancellations", cancellationId(date, groupId)), {
+    date,
+    groupId,
+    reason,
+    note: note || "",
+    cancelledBy: userId,
+    createdAt: Oe(),
+  });
+  await batch.commit();
+}
+async function undoCancellation(c) {
+  await Ee(S(P, "cancellations", c.id));
+}
+function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose }) {
+  let [reason, setReason] = b(CANCEL_REASONS[0]),
+    [note, setNote] = b(""),
+    [saving, setSaving] = b(!1),
+    [err, setErr] = b(""),
+    submit = async () => {
+      if (reason === "אחר" && !note.trim()) {
+        setErr("נא לפרט את סיבת הביטול");
+        return;
+      }
+      if (
+        hasAttendance &&
+        !window.confirm(
+          "כבר נשמרה נוכחות להיום לקבוצה זו. ביטול האימון ימחק את רשומות הנוכחות של היום. להמשיך?",
+        )
+      )
+        return;
+      (setSaving(!0), setErr(""));
+      try {
+        (await onConfirm(reason, note.trim()), onClose());
+      } catch (e2) {
+        setErr("הביטול נכשל: " + e2.message);
+      } finally {
+        setSaving(!1);
+      }
+    };
+  return e.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
+      onClick: onClose,
+    },
+    e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        onClick: (v) => v.stopPropagation(),
+        className:
+          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto",
+      },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between" },
+        e.createElement(
+          "button",
+          {
+            onClick: onClose,
+            className:
+              "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400",
+            "aria-label": "סגירה",
+          },
+          e.createElement(T, { className: "w-5 h-5" }),
+        ),
+        e.createElement(
+          "div",
+          { className: "text-right" },
+          e.createElement(
+            "h3",
+            { className: "font-bold text-blue-950" },
+            "ביטול האימון",
+          ),
+          e.createElement(
+            "div",
+            { className: "text-xs text-slate-500" },
+            group.name,
+            " \xB7 ",
+            Ke(date),
+          ),
+        ),
+      ),
+      e.createElement(
+        "p",
+        { className: "text-xs text-slate-500 text-right" },
+        "מה הסיבה לביטול?",
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-2" },
+        CANCEL_REASONS.map((r) =>
+          e.createElement(
+            "button",
+            {
+              key: r,
+              type: "button",
+              onClick: () => setReason(r),
+              className: `rounded-xl border px-4 py-3 min-h-[44px] text-sm text-right flex items-center justify-between gap-2 ${reason === r ? "border-blue-900 bg-blue-50 text-blue-950 font-semibold" : "border-slate-200 bg-white text-slate-700"}`,
+            },
+            e.createElement(
+              "span",
+              {
+                className: `w-4 h-4 rounded-full border-2 shrink-0 ${reason === r ? "border-blue-900 bg-blue-900" : "border-slate-300"}`,
+              },
+            ),
+            e.createElement("span", { className: "flex-1" }, r),
+          ),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          reason === "אחר" ? "פירוט הסיבה" : "הערה (לא חובה)",
+        ),
+        e.createElement("textarea", {
+          value: note,
+          onChange: (v) => setNote(v.target.value),
+          rows: 2,
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 resize-none",
+        }),
+      ),
+      hasAttendance &&
+        e.createElement(
+          "p",
+          {
+            className:
+              "text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
+          },
+          "שים לב: כבר נשמרה נוכחות להיום. ביטול האימון ימחק אותה, והיום לא ייספר בשום חישוב.",
+        ),
+      err &&
+        e.createElement("p", { className: "text-xs text-red-600 text-right" }, err),
+      e.createElement(
+        "button",
+        {
+          disabled: saving,
+          onClick: submit,
+          className:
+            "mt-1 bg-red-500 disabled:opacity-60 text-white font-semibold rounded-xl py-3.5 min-h-[44px] flex items-center justify-center gap-2",
+        },
+        e.createElement(BanIcon, { className: "w-4 h-4" }),
+        saving ? "מבטל…" : "אישור ביטול האימון",
+      ),
+      e.createElement(
+        "button",
+        {
+          onClick: onClose,
+          className: "text-sm text-slate-500 min-h-[44px]",
+        },
+        "חזרה",
+      ),
+    ),
+  );
 }
 function pendingAbsenceMsgs(players, groups, users, attendance) {
   let today = E(),
@@ -995,7 +1188,7 @@ function ReportPlayer({ players, groups, attendance }) {
     ),
   );
 }
-function ReportCoachFillRate({ groups, users, attendance }) {
+function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
   let [startDate, setStartDate] = b(firstOfMonthStr()),
     [endDate, setEndDate] = b(E()),
     allDates = eachDateInRange(startDate, endDate),
@@ -1003,8 +1196,15 @@ function ReportCoachFillRate({ groups, users, attendance }) {
       .map((g) => {
         let coach = groupCoachLabel(g, users),
           hasSchedule = Array.isArray(g.days) && g.days.length > 0,
+          cancelledDates = allDates.filter((d) =>
+            findCancellation(cancellations, g.id, d),
+          ),
           expectedDates = hasSchedule
-            ? allDates.filter((d) => g.days.includes(new Date(d + "T00:00:00").getDay()))
+            ? allDates.filter(
+                (d) =>
+                  g.days.includes(new Date(d + "T00:00:00").getDay()) &&
+                  !cancelledDates.includes(d),
+              )
             : [],
           filledDates = expectedDates.filter((d) =>
             attendance.some((rec) => rec.groupId === g.id && rec.date === d),
@@ -1020,6 +1220,7 @@ function ReportCoachFillRate({ groups, users, attendance }) {
           hasSchedule,
           expected: expectedDates.length,
           filled: filledDates.length,
+          cancelled: cancelledDates.length,
           missedDates,
           fillPct,
         };
@@ -1032,6 +1233,7 @@ function ReportCoachFillRate({ groups, users, attendance }) {
           "מפגשים צפויים",
           "מפגשים שמולאו",
           "אחוז מילוי",
+          "אימונים שבוטלו",
           "תאריכים שלא מולאו",
         ],
         rowsData = rows.map((r) => [
@@ -1040,6 +1242,7 @@ function ReportCoachFillRate({ groups, users, attendance }) {
           r.expected,
           r.filled,
           r.fillPct === null ? "—" : r.fillPct + "%",
+          r.cancelled,
           r.missedDates.map(formatHeDate).join(" | "),
         ]);
       downloadCsv("דוח-מילוי-מאמנים.csv", headers, rowsData);
@@ -1108,6 +1311,7 @@ function ReportCoachFillRate({ groups, users, attendance }) {
                 "div",
                 { className: "text-xs text-slate-500 text-right" },
                 `${r.filled} מתוך ${r.expected} מפגשים מולאו`,
+                r.cancelled > 0 ? ` \xB7 ${r.cancelled} בוטלו` : "",
               )
             : e.createElement(
                 "div",
@@ -1440,7 +1644,7 @@ function ReportQuota({ players, groups, attendance }) {
     ),
   );
 }
-function ReportsScreen({ groups, users, players, attendance }) {
+function ReportsScreen({ groups, users, players, attendance, cancellations }) {
   let [tab, setTab] = b("matrix"),
     tabs = [
       { key: "matrix", label: "נוכחות חודשית" },
@@ -1470,7 +1674,8 @@ function ReportsScreen({ groups, users, players, attendance }) {
     ),
     tab === "matrix" && e.createElement(ReportAttendanceMatrix, { groups, players, attendance }),
     tab === "player" && e.createElement(ReportPlayer, { players, groups, attendance }),
-    tab === "fillrate" && e.createElement(ReportCoachFillRate, { groups, users, attendance }),
+    tab === "fillrate" &&
+      e.createElement(ReportCoachFillRate, { groups, users, attendance, cancellations }),
     tab === "risk" && e.createElement(ReportDropoutRisk, { players, groups, attendance }),
     tab === "compare" &&
       e.createElement(ReportGroupComparison, { groups, users, players, attendance }),
@@ -1640,6 +1845,7 @@ function st({
   onEditPlayer: EP,
   onWhatsapp: WA,
   onOpenGroup,
+  cancellations: CX,
 }) {
   let [o, x] = b(null),
     [h, u] = b(!1),
@@ -1652,7 +1858,11 @@ function st({
     y = () => {
       let d = E(),
         A = s
-          .filter((I) => !l.some((p) => p.groupId === I.id && p.date === d))
+          .filter(
+            (I) =>
+              !findCancellation(CX, I.id, d) &&
+              !l.some((p) => p.groupId === I.id && p.date === d),
+          )
           .flatMap((I) =>
             groupCoachIds(I)
               .map((cid) => t.find((p) => p.id === cid))
@@ -1847,6 +2057,7 @@ function st({
       s.map((d) => {
         let A = groupCoachLabel(d, t),
           I = Ze(l, d.id, a),
+          cancelledToday = findCancellation(CX, d.id, E()),
           w = a.filter((k) => k.groupId === d.id && k.isActive && !k.deleted);
         return e.createElement(
           "div",
@@ -1871,6 +2082,15 @@ function st({
                 "div",
                 { className: "font-semibold text-blue-950" },
                 d.name,
+                cancelledToday &&
+                  e.createElement(
+                    "span",
+                    {
+                      className:
+                        "mr-1.5 text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5",
+                    },
+                    "בוטל היום",
+                  ),
               ),
               e.createElement(
                 "div",
