@@ -1185,10 +1185,28 @@ function re({
   onEditPlayer: EP,
   onWhatsapp: WA,
   onAddPlayer: AP,
+  cancellations: CX,
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     m = E(),
     o = l.some((p) => p.groupId === t.id && p.date === m),
+    cancelled = findCancellation(CX, t.id, m),
+    [showCancel, setShowCancel] = b(!1),
+    [cancelErr, setCancelErr] = b(""),
+    undoCancel = async () => {
+      if (
+        !window.confirm(
+          "להחזיר את האימון? אחרי ההחזרה יהיה צריך לרשום נוכחות מחדש.",
+        )
+      )
+        return;
+      setCancelErr("");
+      try {
+        await undoCancellation(cancelled);
+      } catch (e2) {
+        setCancelErr("ביטול הביטול נכשל: " + e2.message);
+      }
+    },
     rosterKey = n
       .map((p) => p.id)
       .sort()
@@ -1261,11 +1279,9 @@ function re({
       }
     },
     I = n.filter((p) => x[p.id] === "Present").length,
-    unmarked = n.filter((p) => !x[p.id]).length;
-  return e.createElement(
-    "div",
-    { className: "flex flex-col gap-4" },
-    i &&
+    unmarked = n.filter((p) => !x[p.id]).length,
+    backBtn =
+      i &&
       e.createElement(
         "button",
         {
@@ -1275,7 +1291,82 @@ function re({
         },
         e.createElement(je, { className: "w-4 h-4" }),
         "חזרה לרשימת הקבוצות",
+      );
+  if (cancelled)
+    return e.createElement(
+      "div",
+      { className: "flex flex-col gap-4" },
+      backBtn,
+      e.createElement(
+        "div",
+        { className: "bg-white rounded-xl border border-slate-200 p-4" },
+        e.createElement(
+          "div",
+          { className: "flex items-center justify-between" },
+          e.createElement(
+            "span",
+            {
+              className:
+                "text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-500",
+            },
+            "בוטל",
+          ),
+          e.createElement(
+            "div",
+            { className: "text-right" },
+            e.createElement(
+              "div",
+              { className: "font-bold text-blue-950" },
+              t.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-xs text-slate-500" },
+              Ke(m),
+            ),
+          ),
+        ),
       ),
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-slate-100 border border-slate-200 rounded-xl p-6 flex flex-col items-center gap-3 text-center",
+        },
+        e.createElement(BanIcon, { className: "w-8 h-8 text-slate-400" }),
+        e.createElement(
+          "div",
+          { className: "font-bold text-slate-700" },
+          "האימון בוטל — ",
+          cancellationLabel(cancelled),
+        ),
+        e.createElement(
+          "p",
+          { className: "text-xs text-slate-500 leading-relaxed" },
+          "היום לא ייספר בחישובי הנוכחות של הקבוצה.",
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: undoCancel,
+            className:
+              "mt-1 bg-white border border-slate-300 text-blue-900 rounded-xl px-5 py-3 min-h-[44px] text-sm font-semibold flex items-center gap-2 active:scale-[0.98] transition-transform",
+          },
+          e.createElement(UndoIcon, { className: "w-4 h-4" }),
+          "ביטול הביטול",
+        ),
+      ),
+      cancelErr &&
+        e.createElement(
+          "p",
+          { className: "text-xs text-red-600 text-right" },
+          cancelErr,
+        ),
+    );
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-4" },
+    backBtn,
     e.createElement(
       "div",
       { className: "bg-white rounded-xl border border-slate-200 p-4" },
@@ -1330,6 +1421,38 @@ function re({
         e.createElement(K, { className: "w-4 h-4" }),
         "הוספת שחקן לקבוצה",
       ),
+    e.createElement(
+      "button",
+      {
+        onClick: () => setShowCancel(!0),
+        className:
+          "bg-white border border-slate-200 text-slate-600 rounded-xl py-3 min-h-[44px] text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+      },
+      e.createElement(BanIcon, { className: "w-4 h-4 text-slate-400" }),
+      "האימון בוטל",
+    ),
+    cancelErr &&
+      e.createElement(
+        "p",
+        { className: "text-xs text-red-600 text-right" },
+        cancelErr,
+      ),
+    showCancel &&
+      e.createElement(CancelTrainingModal, {
+        group: t,
+        date: m,
+        hasAttendance: o,
+        onClose: () => setShowCancel(!1),
+        onConfirm: (reason, note) =>
+          cancelTraining({
+            date: m,
+            groupId: t.id,
+            reason,
+            note,
+            userId: s.id,
+            attendance: l,
+          }),
+      }),
     u &&
       n.length > 0 &&
       e.createElement(
@@ -1537,6 +1660,7 @@ function mt({
   onAddPlayer: AP,
   selectedGroupId: SG,
   onSelectGroup: onSelectGroup,
+  cancellations: CX,
 }) {
   let [editGroup, setEditGroup] = b(null),
     c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
@@ -1554,8 +1678,9 @@ function mt({
     h = c.find((r) => r.id === x),
     u = E(),
     f = (r) => l.some((y) => y.groupId === r.id && y.date === u),
+    fc = (r) => !!findCancellation(CX, r.id, u),
     g = [...c].sort((r, y) => {
-      let N = (d) => (ee(d) ? (f(d) ? 1 : 0) : 2),
+      let N = (d) => (ee(d) ? (f(d) || fc(d) ? 1 : 0) : 2),
         C = N(r) - N(y);
       return C !== 0 ? C : r.name.localeCompare(y.name, "he");
     });
@@ -1594,6 +1719,7 @@ function mt({
             onEditPlayer: EP,
             onWhatsapp: WA,
             onAddPlayer: AP,
+            cancellations: CX,
           }),
           e.createElement(
             "button",
@@ -1633,6 +1759,7 @@ function mt({
           ),
           g.map((r) => {
             let y = f(r),
+              cx = fc(r),
               N = ee(r),
               C = a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length;
             return e.createElement(
@@ -1640,16 +1767,18 @@ function mt({
               {
                 key: r.id,
                 onClick: () => onSelectGroup(r.id),
-                className: `rounded-xl border px-4 py-3.5 flex items-center justify-between gap-2 active:scale-[0.99] transition-transform ${N && !y ? "bg-white border-emerald-400 border-2" : "bg-white border-slate-200"}`,
+                className: `rounded-xl border px-4 py-3.5 flex items-center justify-between gap-2 active:scale-[0.99] transition-transform ${N && !y && !cx ? "bg-white border-emerald-400 border-2" : "bg-white border-slate-200"}`,
               },
               e.createElement(
                 "span",
                 {
-                  className: `text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 ${y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
+                  className: `text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 ${cx ? "bg-slate-100 text-slate-500" : y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
                 },
-                y
-                  ? "נשמר"
-                  : "טרם נשמר",
+                cx
+                  ? "בוטל"
+                  : y
+                    ? "נשמר"
+                    : "טרם נשמר",
               ),
               e.createElement(
                 "div",
@@ -1717,7 +1846,9 @@ function Q() {
     { data: l } = L("users"),
     { data: i } = L("groups"),
     { data: c } = L("players"),
-    { data: n } = L("attendance"),
+    { data: rawAttendance } = L("attendance"),
+    { data: cancellations } = L("cancellations"),
+    n = excludeCancelled(rawAttendance, cancellations),
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
     [x, h] = b(!1),
@@ -1933,6 +2064,7 @@ function Q() {
           onEditPlayer: openEditPlayer,
           onWhatsapp: openWhatsapp,
           onOpenGroup: goToGroupScreen,
+          cancellations,
         }),
       r &&
         m === "groups" &&
@@ -1951,6 +2083,7 @@ function Q() {
           users: l,
           players: c,
           attendance: n,
+          cancellations,
         }),
       r &&
         m === "permissions" &&
@@ -1971,6 +2104,7 @@ function Q() {
           onAddPlayer: openAddPlayer,
           selectedGroupId: attGroupId,
           onSelectGroup: goToGroup,
+          cancellations,
         }),
       e.createElement(dt, {
         open: x,
