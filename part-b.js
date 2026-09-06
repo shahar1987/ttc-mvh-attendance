@@ -14,6 +14,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
       );
     },
     [N, C] = b(groupCoachIds(t)),
+    [AG, setAG] = b(isAdultGroup(t)),
     toggleCoach = (v) =>
       C(($) => ($.includes(v) ? $.filter((_) => _ !== v) : [...$, v])),
     [d, A] = b(!1),
@@ -30,12 +31,13 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           endTime: f.trim(),
           coachIds: N,
           coachId: N[0] || "",
+          isAdultGroup: AG,
         };
         (t ? await O(S(P, "groups", t.id), v) : await V(M(P, "groups"), v),
           a());
       } catch (v) {
         p(
-          "\u05E9\u05DE\u05D9\u05E8\u05D4 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+          "שמירה נכשלה: " +
             v.message,
         );
       } finally {
@@ -68,8 +70,8 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           "h3",
           { className: "font-bold text-blue-950" },
           t
-            ? "\u05E2\u05E8\u05D9\u05DB\u05EA \u05E7\u05D1\u05D5\u05E6\u05D4"
-            : "\u05D4\u05D5\u05E1\u05E4\u05EA \u05E7\u05D1\u05D5\u05E6\u05D4",
+            ? "עריכת קבוצה"
+            : "הוספת קבוצה",
         ),
       ),
       e.createElement(
@@ -78,13 +80,13 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05E9\u05DD \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4",
+          "שם הקבוצה",
         ),
         e.createElement("input", {
           value: i,
           onChange: (v) => c(v.target.value),
           placeholder:
-            "\u05DC\u05D3\u05D5\u05D2\u05DE\u05D4: \u05E0\u05D5\u05E2\u05E8 \u05DE\u05EA\u05E7\u05D3\u05DE\u05D9\u05DD",
+            "לדוגמה: נוער מתקדמים",
           className:
             "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400",
         }),
@@ -95,13 +97,13 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05DE\u05D9\u05E7\u05D5\u05DD",
+          "מיקום",
         ),
         e.createElement("input", {
           value: n,
           onChange: (v) => m(v.target.value),
           placeholder:
-            "\u05DC\u05D3\u05D5\u05D2\u05DE\u05D4: \u05E8\u05DE\u05EA \u05DB\u05D5\u05E8\u05D6\u05D9\u05DD",
+            "לדוגמה: רמת כורזים",
           className:
             "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400",
         }),
@@ -112,7 +114,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05D9\u05DE\u05D9 \u05D0\u05D9\u05DE\u05D5\u05DF",
+          "ימי אימון",
         ),
         e.createElement(
           "div",
@@ -138,9 +140,9 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
               className:
                 "text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed",
             },
-            '\u05D4\u05D9\u05D4 \u05E8\u05E9\u05D5\u05DD \u05DB\u05D0\u05DF: "',
+            'היה רשום כאן: "',
             r,
-            '" \u2014 \u05E1\u05DE\u05DF \u05D0\u05EA \u05D4\u05D9\u05DE\u05D9\u05DD \u05D5\u05D4\u05E9\u05E2\u05D5\u05EA \u05D5\u05D6\u05D4 \u05D9\u05D5\u05D7\u05DC\u05E3.',
+            '" — סמן את הימים והשעות וזה יוחלף.',
           ),
       ),
       e.createElement(
@@ -152,7 +154,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           e.createElement(
             "label",
             { className: "text-xs text-slate-500" },
-            "\u05E9\u05E2\u05EA \u05D4\u05EA\u05D7\u05DC\u05D4",
+            "שעת התחלה",
           ),
           e.createElement("input", {
             type: "time",
@@ -169,7 +171,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           e.createElement(
             "label",
             { className: "text-xs text-slate-500" },
-            "\u05E9\u05E2\u05EA \u05E1\u05D9\u05D5\u05DD",
+            "שעת סיום",
           ),
           e.createElement("input", {
             type: "time",
@@ -179,6 +181,41 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
             className:
               "border border-slate-200 rounded-lg py-2.5 px-3 text-sm outline-none focus:border-emerald-400",
           }),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1.5" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "סוג הקבוצה",
+        ),
+        e.createElement(
+          "div",
+          { className: "flex gap-1.5 justify-end" },
+          [
+            { v: !1, label: "ילדים ונוער" },
+            { v: !0, label: "מבוגרים" },
+          ].map((op) =>
+            e.createElement(
+              "button",
+              {
+                key: String(op.v),
+                type: "button",
+                onClick: () => setAG(op.v),
+                className: `min-h-[40px] px-3 rounded-lg text-sm font-semibold border transition-colors ${AG === op.v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+              },
+              op.label,
+            ),
+          ),
+        ),
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-400 leading-relaxed" },
+          AG
+            ? "הודעות על היעדרות יישלחו לשחקן עצמו, בפנייה ישירה."
+            : "הודעות על היעדרות יישלחו להורה.",
         ),
       ),
       IA &&
@@ -209,7 +246,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           e.createElement(
             "p",
             { className: "text-[11px] text-slate-400" },
-            "\u05D0\u05E4\u05E9\u05E8 \u05DC\u05D9\u05E6\u05D5\u05E8 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 \u05E2\u05DB\u05E9\u05D9\u05D5 \u05D5\u05DC\u05E9\u05D9\u05D9\u05DA \u05DE\u05D0\u05DE\u05DF \u05D1\u05D4\u05DE\u05E9\u05DA \u05D1\u05DE\u05E1\u05DA \u05D4\u05D4\u05E8\u05E9\u05D0\u05D5\u05EA.",
+            "אפשר ליצור את הקבוצה עכשיו ולשייך מאמן בהמשך במסך ההרשאות.",
           ),
       ),
       I && e.createElement("p", { className: "text-xs text-red-600" }, I),
@@ -221,7 +258,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           className:
             "mt-1 bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-xl py-3.5",
         },
-        d ? "\u05E9\u05D5\u05DE\u05E8\u2026" : "\u05E9\u05DE\u05D9\u05E8\u05D4",
+        d ? "שומר…" : "שמירה",
       ),
     ),
   );
@@ -244,7 +281,7 @@ function it({ groups: t, users: s, players: a }) {
       try {
         await O(S(P, "players", p.id), { groupId: target });
       } catch (h) {
-        n("\u05E9\u05D9\u05D1\u05D5\u05E5 \u05E0\u05DB\u05E9\u05DC: " + h.message);
+        n("שיבוץ נכשל: " + h.message);
       } finally {
         setBusyReassign(null);
       }
@@ -254,8 +291,8 @@ function it({ groups: t, users: s, players: a }) {
       if (
         !window.confirm(
           x.length > 0
-            ? `\u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 "${o.name}"? ${x.length} \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05D4\u05E4\u05E2\u05D9\u05DC\u05D9\u05DD \u05D1\u05D4 \u05D9\u05D5\u05E2\u05D1\u05E8\u05D5 \u05DC\u05DE\u05D0\u05D2\u05E8 "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4" \u05D5\u05EA\u05D5\u05DB\u05DC \u05DC\u05E9\u05D1\u05E5 \u05D0\u05D5\u05EA\u05DD \u05DE\u05D7\u05D3\u05E9. \u05D4\u05E4\u05E2\u05D5\u05DC\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D4\u05E4\u05D9\u05DB\u05D4.`
-            : `\u05DC\u05DE\u05D7\u05D5\u05E7 \u05D0\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D4 "${o.name}"? \u05D4\u05E4\u05E2\u05D5\u05DC\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05D4\u05E4\u05D9\u05DB\u05D4.`,
+            ? `למחוק את הקבוצה "${o.name}"? ${x.length} השחקנים הפעילים בה יועברו למאגר "שחקנים ללא קבוצה" ותוכל לשבץ אותם מחדש. הפעולה אינה הפיכה.`
+            : `למחוק את הקבוצה "${o.name}"? הפעולה אינה הפיכה.`,
         )
       )
         return;
@@ -271,7 +308,7 @@ function it({ groups: t, users: s, players: a }) {
         await Ee(S(P, "groups", o.id));
       } catch (h) {
         n(
-          "\u05DE\u05D7\u05D9\u05E7\u05D4 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+          "מחיקה נכשלה: " +
             h.message,
         );
       }
@@ -287,7 +324,7 @@ function it({ groups: t, users: s, players: a }) {
           "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
       },
       e.createElement(K, { className: "w-4 h-4" }),
-      " \u05D4\u05D5\u05E1\u05E4\u05EA \u05E7\u05D1\u05D5\u05E6\u05D4",
+      " הוספת קבוצה",
     ),
     c &&
       e.createElement(
@@ -311,7 +348,7 @@ function it({ groups: t, users: s, players: a }) {
       e.createElement(
         "p",
         { className: "text-center text-sm text-slate-400 py-8" },
-        '\u05D0\u05D9\u05DF \u05E2\u05D3\u05D9\u05D9\u05DF \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA. \u05DC\u05D7\u05E5 "\u05D4\u05D5\u05E1\u05E4\u05EA \u05E7\u05D1\u05D5\u05E6\u05D4" \u05DB\u05D3\u05D9 \u05DC\u05D4\u05EA\u05D7\u05D9\u05DC.',
+        'אין עדיין קבוצות. לחץ "הוספת קבוצה" כדי להתחיל.',
       ),
     unassigned.length > 0 &&
       e.createElement(
@@ -323,7 +360,7 @@ function it({ groups: t, users: s, players: a }) {
         e.createElement(
           "div",
           { className: "text-sm font-bold text-amber-900 text-right" },
-          "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4 \xB7 " + unassigned.length,
+          "שחקנים ללא קבוצה \xB7 " + unassigned.length,
         ),
         unassigned.map((p) =>
           e.createElement(
@@ -350,7 +387,7 @@ function it({ groups: t, users: s, players: a }) {
               e.createElement(
                 "option",
                 { value: "" },
-                "\u05D1\u05D7\u05E8 \u05E7\u05D1\u05D5\u05E6\u05D4",
+                "בחר קבוצה",
               ),
               t.map((g) =>
                 e.createElement("option", { key: g.id, value: g.id }, g.name),
@@ -364,7 +401,7 @@ function it({ groups: t, users: s, players: a }) {
                 className:
                   "bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg px-3 min-h-[38px] shrink-0",
               },
-              "\u05E9\u05D9\u05D1\u05D5\u05E5",
+              "שיבוץ",
             ),
           ),
         ),
@@ -391,7 +428,7 @@ function it({ groups: t, users: s, players: a }) {
                 onClick: () => m(o),
                 className:
                   "w-8 h-8 rounded-full bg-red-50 flex items-center justify-center",
-                "aria-label": "\u05DE\u05D7\u05D9\u05E7\u05D4",
+                "aria-label": "מחיקה",
               },
               e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
             ),
@@ -401,7 +438,7 @@ function it({ groups: t, users: s, players: a }) {
                 onClick: () => i(o),
                 className:
                   "w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center",
-                "aria-label": "\u05E2\u05E8\u05D9\u05DB\u05D4",
+                "aria-label": "עריכה",
               },
               e.createElement($e, { className: "w-4 h-4 text-blue-900" }),
             ),
@@ -417,7 +454,7 @@ function it({ groups: t, users: s, players: a }) {
             e.createElement(
               "div",
               { className: "text-xs text-slate-500" },
-              x ? x.name : "\u05DC\u05DC\u05D0 \u05DE\u05D0\u05DE\u05DF",
+              x ? x.name : "ללא מאמן",
               o.location ? ` \xB7 ${o.location}` : "",
             ),
             e.createElement(
@@ -426,7 +463,7 @@ function it({ groups: t, users: s, players: a }) {
               q(o),
               " \xB7 ",
               h,
-              " \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
+              " שחקנים",
             ),
           ),
         );
@@ -452,13 +489,13 @@ function rt({ onClose: t, users: US }) {
     y = s.trim() && l.trim() && c.length >= 6,
     N = {
       "auth/email-already-in-use":
-        "\u05DB\u05EA\u05D5\u05D1\u05EA \u05D4\u05D0\u05D9\u05DE\u05D9\u05D9\u05DC \u05DB\u05D1\u05E8 \u05E8\u05E9\u05D5\u05DE\u05D4 \u05D1\u05DE\u05E2\u05E8\u05DB\u05EA",
+        "כתובת האימייל כבר רשומה במערכת",
       "auth/invalid-email":
-        "\u05DB\u05EA\u05D5\u05D1\u05EA \u05D0\u05D9\u05DE\u05D9\u05D9\u05DC \u05DC\u05D0 \u05EA\u05E7\u05D9\u05E0\u05D4",
+        "כתובת אימייל לא תקינה",
       "auth/weak-password":
-        "\u05D4\u05E1\u05D9\u05E1\u05DE\u05D4 \u05D7\u05DC\u05E9\u05D4 \u05DE\u05D3\u05D9 \u2014 \u05E0\u05D3\u05E8\u05E9\u05D9\u05DD \u05DC\u05E4\u05D7\u05D5\u05EA 6 \u05EA\u05D5\u05D5\u05D9\u05DD",
+        "הסיסמה חלשה מדי — נדרשים לפחות 6 תווים",
       "auth/operation-not-allowed":
-        "\u05D4\u05EA\u05D7\u05D1\u05E8\u05D5\u05EA \u05E2\u05DD \u05D0\u05D9\u05DE\u05D9\u05D9\u05DC \u05D5\u05E1\u05D9\u05E1\u05DE\u05D4 \u05D0\u05D9\u05E0\u05D4 \u05DE\u05D5\u05E4\u05E2\u05DC\u05EA \u05D1\u05E4\u05E8\u05D5\u05D9\u05E7\u05D8",
+        "התחברות עם אימייל וסיסמה אינה מופעלת בפרויקט",
     };
   return e.createElement(
     "div",
@@ -485,7 +522,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "h3",
           { className: "font-bold text-blue-950" },
-          "\u05D4\u05D5\u05E1\u05E4\u05EA \u05DE\u05E9\u05EA\u05DE\u05E9",
+          "הוספת משתמש",
         ),
       ),
       e.createElement(
@@ -494,7 +531,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05E9\u05DD \u05DE\u05DC\u05D0",
+          "שם מלא",
         ),
         e.createElement("input", {
           value: s,
@@ -509,7 +546,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05D0\u05D9\u05DE\u05D9\u05D9\u05DC (\u05E9\u05DD \u05D4\u05DE\u05E9\u05EA\u05DE\u05E9 \u05DC\u05DB\u05E0\u05D9\u05E1\u05D4)",
+          "אימייל (שם המשתמש לכניסה)",
         ),
         e.createElement("input", {
           value: l,
@@ -526,7 +563,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05E1\u05D9\u05E1\u05DE\u05D4 \u05E8\u05D0\u05E9\u05D5\u05E0\u05D9\u05EA (\u05DC\u05E4\u05D7\u05D5\u05EA 6 \u05EA\u05D5\u05D5\u05D9\u05DD)",
+          "סיסמה ראשונית (לפחות 6 תווים)",
         ),
         e.createElement("input", {
           value: c,
@@ -548,7 +585,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05D8\u05DC\u05E4\u05D5\u05DF (\u05D1\u05E4\u05D5\u05E8\u05DE\u05D8 9725XXXXXXXX)",
+          "טלפון (בפורמט 9725XXXXXXXX)",
         ),
         e.createElement("input", {
           value: m,
@@ -564,7 +601,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "\u05D4\u05E8\u05E9\u05D0\u05D4",
+          "הרשאה",
         ),
         e.createElement(
           "select",
@@ -577,12 +614,12 @@ function rt({ onClose: t, users: US }) {
           e.createElement(
             "option",
             { value: "Coach" },
-            "\u05DE\u05D0\u05DE\u05DF \u2014 \u05E8\u05E7 \u05D4\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA \u05E9\u05D9\u05E9\u05D5\u05D9\u05DB\u05D5 \u05D0\u05DC\u05D9\u05D5",
+            "מאמן — רק הקבוצות שישויכו אליו",
           ),
           e.createElement(
             "option",
             { value: "Admin" },
-            "\u05DE\u05E0\u05D4\u05DC \u2014 \u05D2\u05D9\u05E9\u05D4 \u05DE\u05DC\u05D0\u05D4",
+            "מנהל — גישה מלאה",
           ),
         ),
       ),
@@ -618,7 +655,7 @@ function rt({ onClose: t, users: US }) {
                   d.code === "auth/invalid-login-credentials"
                   ? "לכתובת הזו כבר קיים חשבון התחברות (גם אם מחקת את המשתמש מהרשימה). כדי לשחזר אותו הזן את הסיסמה הנוכחית של אותו חשבון, או בחר כתובת אימייל אחרת."
                   : N[d.code] ||
-                      "\u05D9\u05E6\u05D9\u05E8\u05EA \u05D4\u05DE\u05E9\u05EA\u05DE\u05E9 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+                      "יצירת המשתמש נכשלה: " +
                         d.message,
               );
             } finally {
@@ -629,8 +666,8 @@ function rt({ onClose: t, users: US }) {
             "mt-1 bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-xl py-3.5",
         },
         u
-          ? "\u05D9\u05D5\u05E6\u05E8 \u05DE\u05E9\u05EA\u05DE\u05E9\u2026"
-          : "\u05D9\u05E6\u05D9\u05E8\u05EA \u05DE\u05E9\u05EA\u05DE\u05E9",
+          ? "יוצר משתמש…"
+          : "יצירת משתמש",
       ),
     ),
   );
@@ -795,7 +832,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
     x = async (u, f) => {
       if (u.id === a && f !== "Admin") {
         i(
-          "\u05D0\u05D9 \u05D0\u05E4\u05E9\u05E8 \u05DC\u05D4\u05D5\u05E8\u05D9\u05D3 \u05DC\u05E2\u05E6\u05DE\u05DA \u05D0\u05EA \u05D4\u05E8\u05E9\u05D0\u05EA \u05D4\u05DE\u05E0\u05D4\u05DC \u2014 \u05D0\u05D7\u05E8\u05EA \u05EA\u05D9\u05D7\u05E1\u05DD \u05DE\u05D4\u05DE\u05E2\u05E8\u05DB\u05EA.",
+          "אי אפשר להוריד לעצמך את הרשאת המנהל — אחרת תיחסם מהמערכת.",
         );
         return;
       }
@@ -804,7 +841,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         await O(S(P, "users", u.id), { role: f });
       } catch (g) {
         i(
-          "\u05E2\u05D3\u05DB\u05D5\u05DF \u05E0\u05DB\u05E9\u05DC: " +
+          "עדכון נכשל: " +
             g.message,
         );
       } finally {
@@ -823,7 +860,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
       },
       e.createElement(K, { className: "w-4 h-4" }),
-      " \u05D4\u05D5\u05E1\u05E4\u05EA \u05DE\u05E9\u05EA\u05DE\u05E9",
+      " הוספת משתמש",
     ),
     l &&
       e.createElement(
@@ -849,7 +886,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       e.createElement(
         "h3",
         { className: "text-sm font-semibold text-slate-500 px-1" },
-        "\u05DE\u05E9\u05EA\u05DE\u05E9\u05D9\u05DD \u05D5\u05EA\u05E4\u05E7\u05D9\u05D3\u05D9\u05DD",
+        "משתמשים ותפקידים",
       ),
       e.createElement(
         "div",
@@ -878,12 +915,12 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               e.createElement(
                 "option",
                 { value: "Admin" },
-                "\u05DE\u05E0\u05D4\u05DC",
+                "מנהל",
               ),
               e.createElement(
                 "option",
                 { value: "Coach" },
-                "\u05DE\u05D0\u05DE\u05DF",
+                "מאמן",
               ),
             ),
             e.createElement(
@@ -893,16 +930,16 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                 "div",
                 { className: "text-sm font-medium text-blue-950" },
                 u.name,
-                u.id === a ? " (\u05D0\u05EA\u05D4)" : "",
+                u.id === a ? " (אתה)" : "",
               ),
               e.createElement(
                 "div",
                 { className: "text-xs text-slate-400" },
                 u.role === "Admin"
-                  ? "\u05D2\u05D9\u05E9\u05D4 \u05DE\u05DC\u05D0\u05D4 \u05DC\u05DB\u05DC \u05D4\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA"
+                  ? "גישה מלאה לכל הקבוצות"
                   : f.length > 0
                     ? f.map((r) => r.name).join(", ")
-                    : "\u05DC\u05D0 \u05E9\u05D5\u05D9\u05DB\u05D4 \u05E7\u05D1\u05D5\u05E6\u05D4",
+                    : "לא שויכה קבוצה",
               ),
             ),
             e.createElement(
@@ -923,7 +960,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                   disabled: deletingCoachId === u.id,
                   className:
                     "w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0 disabled:opacity-50",
-                  "aria-label": "\u05DE\u05D7\u05D9\u05E7\u05EA \u05DE\u05D0\u05DE\u05DF",
+                  "aria-label": "מחיקת מאמן",
                 },
                 e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
               ),
@@ -933,7 +970,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           e.createElement(
             "p",
             { className: "text-center text-xs text-slate-400 py-4" },
-            "\u05D0\u05D9\u05DF \u05DE\u05E9\u05EA\u05DE\u05E9\u05D9\u05DD",
+            "אין משתמשים",
           ),
       ),
     ),
@@ -943,7 +980,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       e.createElement(
         "h3",
         { className: "text-sm font-semibold text-slate-500 px-1" },
-        "\u05E9\u05D9\u05D5\u05DA \u05DE\u05D0\u05DE\u05E0\u05D9\u05DD \u05DC\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
+        "שיוך מאמנים לקבוצות",
       ),
       e.createElement(
         "div",
@@ -997,7 +1034,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           e.createElement(
             "p",
             { className: "text-center text-xs text-slate-400 py-4" },
-            "\u05D0\u05D9\u05DF \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA \u05E2\u05D3\u05D9\u05D9\u05DF",
+            "אין קבוצות עדיין",
           ),
       ),
     ),
@@ -1049,7 +1086,7 @@ function dt({
           { className: "text-xs text-blue-200 mt-2" },
           n,
           " \xB7 ",
-          a ? "\u05DE\u05E0\u05D4\u05DC" : "\u05DE\u05D0\u05DE\u05DF",
+          a ? "מנהל" : "מאמן",
         ),
       ),
       e.createElement(
@@ -1059,42 +1096,42 @@ function dt({
           ? [
               {
                 key: "dashboard",
-                label: "\u05D3\u05E9\u05D1\u05D5\u05E8\u05D3",
+                label: "דשבורד",
                 icon: le,
               },
               {
                 key: "attendance",
                 label:
-                  "\u05DE\u05D9\u05DC\u05D5\u05D9 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+                  "מילוי נוכחות",
                 icon: Z,
               },
               {
                 key: "groups",
                 label:
-                  "\u05E0\u05D9\u05D4\u05D5\u05DC \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
+                  "ניהול קבוצות",
                 icon: H,
               },
               {
                 key: "phonebook",
                 label:
-                  "\u05E1\u05E4\u05E8 \u05D8\u05DC\u05E4\u05D5\u05E0\u05D9\u05DD",
+                  "ספר טלפונים",
                 icon: se,
               },
               {
                 key: "reports",
-                label: "\u05D3\u05D5\u05D7\u05D5\u05EA",
+                label: "דוחות",
                 icon: ReportsIcon,
               },
               {
                 key: "permissions",
                 label:
-                  "\u05E0\u05D9\u05D4\u05D5\u05DC \u05D4\u05E8\u05E9\u05D0\u05D5\u05EA",
+                  "ניהול הרשאות",
                 icon: Ie,
               },
               {
                 key: "import",
                 label:
-                  "\u05D9\u05D9\u05D1\u05D5\u05D0 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
+                  "ייבוא שחקנים",
                 icon: K,
               },
             ]
@@ -1102,7 +1139,7 @@ function dt({
               {
                 key: "attendance",
                 label:
-                  "\u05DE\u05D9\u05DC\u05D5\u05D9 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+                  "מילוי נוכחות",
                 icon: Z,
               },
             ]
@@ -1132,7 +1169,7 @@ function dt({
         e.createElement(
           "span",
           { className: "font-medium text-sm" },
-          "\u05D9\u05E6\u05D9\u05D0\u05D4",
+          "יציאה",
         ),
       ),
     ),
@@ -1216,7 +1253,7 @@ function re({
           f(!1));
       } catch (p) {
         N(
-          "\u05D4\u05E9\u05DE\u05D9\u05E8\u05D4 \u05E0\u05DB\u05E9\u05DC\u05D4: " +
+          "השמירה נכשלה: " +
             p.message,
         );
       } finally {
@@ -1237,7 +1274,7 @@ function re({
             "flex items-center gap-1.5 text-sm text-slate-500 self-start",
         },
         e.createElement(je, { className: "w-4 h-4" }),
-        "\u05D7\u05D6\u05E8\u05D4 \u05DC\u05E8\u05E9\u05D9\u05DE\u05EA \u05D4\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
+        "חזרה לרשימת הקבוצות",
       ),
     e.createElement(
       "div",
@@ -1251,8 +1288,8 @@ function re({
             className: `text-xs font-semibold px-2.5 py-1 rounded-full ${o && !u ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
           },
           o && !u
-            ? "\u05E0\u05E9\u05DE\u05E8 \u05DC\u05D4\u05D9\u05D5\u05DD \u2713"
-            : "\u05D8\u05E8\u05DD \u05E0\u05E9\u05DE\u05E8",
+            ? "נשמר להיום ✓"
+            : "טרם נשמר",
         ),
         e.createElement(
           "div",
@@ -1276,9 +1313,9 @@ function re({
             className:
               "mt-2 pt-2 border-t border-slate-100 text-xs text-slate-500 text-right",
           },
-          "\u05D4\u05D2\u05D9\u05E2\u05D5 ",
+          "הגיעו ",
           I,
-          " \u05DE\u05EA\u05D5\u05DA ",
+          " מתוך ",
           n.length,
         ),
     ),
@@ -1305,7 +1342,7 @@ function re({
             className:
               "bg-white border border-red-200 text-red-600 rounded-xl py-2.5 text-sm font-medium",
           },
-          "\u05E1\u05DE\u05DF \u05D0\u05EA \u05DB\u05D5\u05DC\u05DD \u05DB\u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2\u05D5",
+          "סמן את כולם כלא הגיעו",
         ),
         e.createElement(
           "button",
@@ -1314,7 +1351,7 @@ function re({
             className:
               "bg-white border border-emerald-200 text-emerald-700 rounded-xl py-2.5 text-sm font-medium",
           },
-          "\u05E1\u05DE\u05DF \u05D0\u05EA \u05DB\u05D5\u05DC\u05DD \u05DB\u05D4\u05D2\u05D9\u05E2\u05D5",
+          "סמן את כולם כהגיעו",
         ),
       ),
     e.createElement(
@@ -1369,7 +1406,7 @@ function re({
                 disabled: !u,
                 className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
               },
-              "\u05D4\u05D2\u05D9\u05E2",
+              "הגיע",
             ),
             e.createElement(
               "button",
@@ -1378,7 +1415,7 @@ function re({
                 disabled: !u,
                 className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
               },
-              "\u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2",
+              "לא הגיע",
             ),
           ),
           showWa &&
@@ -1404,7 +1441,10 @@ function re({
                 WA
                   ? WA(v)
                   : window.open(
-                      ne(normalizePhone(v.parentPhone), Ve(v.parentName, v.name)),
+                      ne(
+                        normalizePhone(v.parentPhone),
+                        Ve(v.parentName, v.name, isAdultGroup(t)),
+                      ),
                       "_blank",
                     ),
             }),
@@ -1425,13 +1465,13 @@ function re({
               {
                 onClick: () => {
                   window.confirm(
-                    `\u05DC\u05D4\u05E2\u05D1\u05D9\u05E8 \u05D0\u05EA ${p.name} \u05DC\u05D0\u05E8\u05DB\u05D9\u05D5\u05DF? \u05D4\u05D4\u05D9\u05E1\u05D8\u05D5\u05E8\u05D9\u05D4 \u05E9\u05DC\u05D5 \u05EA\u05D9\u05E9\u05DE\u05E8.`,
+                    `להעביר את ${p.name} לארכיון? ההיסטוריה שלו תישמר.`,
                   ) && c(p.id);
                 },
                 className:
                   "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-300 shrink-0",
                 "aria-label":
-                  "\u05D4\u05E2\u05D1\u05E8\u05D4 \u05DC\u05D0\u05E8\u05DB\u05D9\u05D5\u05DF",
+                  "העברה לארכיון",
               },
               e.createElement(Ae, { className: "w-4 h-4" }),
             ),
@@ -1441,7 +1481,7 @@ function re({
         e.createElement(
           "p",
           { className: "text-center text-xs text-slate-400 py-6" },
-          "\u05D0\u05D9\u05DF \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E4\u05E2\u05D9\u05DC\u05D9\u05DD \u05D1\u05E7\u05D1\u05D5\u05E6\u05D4 \u05D6\u05D5",
+          "אין שחקנים פעילים בקבוצה זו",
         ),
     ),
     y &&
@@ -1470,8 +1510,8 @@ function re({
                 "w-full bg-emerald-500 disabled:opacity-60 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
             },
             g
-              ? "\u05E9\u05D5\u05DE\u05E8\u2026"
-              : "\u05E9\u05DE\u05D9\u05E8\u05EA \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+              ? "שומר…"
+              : "שמירת נוכחות",
           )
         : e.createElement(
             "button",
@@ -1480,7 +1520,7 @@ function re({
               className:
                 "w-full bg-blue-900 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
             },
-            "\u05E2\u05E8\u05D9\u05DB\u05D4 \u05DE\u05D7\u05D3\u05E9",
+            "עריכה מחדש",
           ),
     ),
   );
@@ -1528,8 +1568,8 @@ function mt({
             "text-center text-sm text-slate-400 py-10 px-6 leading-relaxed",
         },
         i
-          ? '\u05D0\u05D9\u05DF \u05E2\u05D3\u05D9\u05D9\u05DF \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA. \u05D4\u05D5\u05E1\u05E3 \u05E7\u05D1\u05D5\u05E6\u05D4 \u05D1\u05DE\u05E1\u05DA "\u05E0\u05D9\u05D4\u05D5\u05DC \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA".'
-          : "\u05DC\u05D0 \u05E9\u05D5\u05D9\u05DB\u05D4 \u05D0\u05DC\u05D9\u05DA \u05E7\u05D1\u05D5\u05E6\u05D4 \u05E2\u05D3\u05D9\u05D9\u05DF. \u05E4\u05E0\u05D4 \u05DC\u05DE\u05E0\u05D4\u05DC \u05D4\u05DE\u05D5\u05E2\u05D3\u05D5\u05DF.",
+          ? 'אין עדיין קבוצות. הוסף קבוצה במסך "ניהול קבוצות".'
+          : "לא שויכה אליך קבוצה עדיין. פנה למנהל המועדון.",
       )
     : h
       ? e.createElement(
@@ -1589,7 +1629,7 @@ function mt({
           e.createElement(
             "p",
             { className: "text-xs text-slate-500 px-1" },
-            "\u05D1\u05D7\u05E8 \u05E7\u05D1\u05D5\u05E6\u05D4 \u05DB\u05D3\u05D9 \u05DC\u05DE\u05DC\u05D0 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+            "בחר קבוצה כדי למלא נוכחות",
           ),
           g.map((r) => {
             let y = f(r),
@@ -1608,8 +1648,8 @@ function mt({
                   className: `text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 ${y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
                 },
                 y
-                  ? "\u05E0\u05E9\u05DE\u05E8"
-                  : "\u05D8\u05E8\u05DD \u05E0\u05E9\u05DE\u05E8",
+                  ? "נשמר"
+                  : "טרם נשמר",
               ),
               e.createElement(
                 "div",
@@ -1625,7 +1665,7 @@ function mt({
                         className:
                           "mr-1.5 text-[11px] font-bold text-emerald-600",
                       },
-                      "\xB7 \u05D4\u05D9\u05D5\u05DD",
+                      "\xB7 היום",
                     ),
                 ),
                 e.createElement(
@@ -1634,7 +1674,7 @@ function mt({
                   q(r),
                   " \xB7 ",
                   C,
-                  " \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
+                  " שחקנים",
                 ),
               ),
             );
@@ -1668,7 +1708,7 @@ function ct() {
     e.createElement(
       "p",
       { className: "text-[12px] text-amber-900 leading-snug" },
-      "\u05D0\u05D9\u05DF \u05D7\u05D9\u05D1\u05D5\u05E8 \u05DC\u05D0\u05D9\u05E0\u05D8\u05E8\u05E0\u05D8 \u2014 \u05D0\u05E4\u05E9\u05E8 \u05DC\u05D4\u05DE\u05E9\u05D9\u05DA \u05DC\u05E1\u05DE\u05DF \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA, \u05D5\u05D4\u05E0\u05EA\u05D5\u05E0\u05D9\u05DD \u05D9\u05E1\u05D5\u05E0\u05DB\u05E8\u05E0\u05D5 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA \u05DB\u05E9\u05D4\u05D7\u05D9\u05D1\u05D5\u05E8 \u05D9\u05D7\u05D6\u05D5\u05E8.",
+      "אין חיבור לאינטרנט — אפשר להמשיך לסמן נוכחות, והנתונים יסונכרנו אוטומטית כשהחיבור יחזור.",
     ),
   );
 }
@@ -1763,7 +1803,7 @@ function Q() {
       e.createElement(
         "span",
         { className: "text-blue-300 text-sm" },
-        "\u05D8\u05D5\u05E2\u05DF\u2026",
+        "טוען…",
       ),
     );
   if (!t) return e.createElement(tt, null);
@@ -1785,18 +1825,18 @@ function Q() {
             e.createElement(
               "p",
               { className: "text-white text-sm leading-relaxed" },
-              "\u05D4\u05D4\u05EA\u05D7\u05D1\u05E8\u05D5\u05EA \u05D4\u05E6\u05DC\u05D9\u05D7\u05D4, \u05D0\u05D1\u05DC \u05DB\u05DC\u05DC\u05D9 \u05D4\u05D0\u05D1\u05D8\u05D7\u05D4 \u05E9\u05DC Firestore \u05D7\u05D5\u05E1\u05DE\u05D9\u05DD \u05D0\u05EA \u05E7\u05E8\u05D9\u05D0\u05EA \u05D4\u05E4\u05E8\u05D5\u05E4\u05D9\u05DC.",
+              "ההתחברות הצליחה, אבל כללי האבטחה של Firestore חוסמים את קריאת הפרופיל.",
             ),
             e.createElement(
               "p",
               { className: "text-blue-300 text-xs leading-relaxed" },
-              "\u05D9\u05E9 \u05DC\u05E4\u05E8\u05E1\u05DD \u05D0\u05EA \u05DB\u05DC\u05DC\u05D9 \u05D4\u05D0\u05D1\u05D8\u05D7\u05D4 \u05D1\u05E7\u05D5\u05E0\u05E1\u05D5\u05DC\u05D4 (Firestore \u2192 Rules \u2192 Publish).",
+              "יש לפרסם את כללי האבטחה בקונסולה (Firestore → Rules → Publish).",
             ),
           )
         : e.createElement(
             "p",
             { className: "text-white text-sm leading-relaxed" },
-            "\u05D4\u05DE\u05E9\u05EA\u05DE\u05E9 \u05DE\u05D7\u05D5\u05D1\u05E8 \u05D0\u05DA \u05D0\u05D9\u05DF \u05DC\u05D5 \u05DE\u05E1\u05DE\u05DA \u05E4\u05E8\u05D5\u05E4\u05D9\u05DC \u05EA\u05D5\u05D0\u05DD \u05D1-Firestore",
+            "המשתמש מחובר אך אין לו מסמך פרופיל תואם ב-Firestore",
             e.createElement("br", null),
             e.createElement(
               "span",
@@ -1811,12 +1851,12 @@ function Q() {
           onClick: () => window.location.reload(),
           className: "bg-emerald-500 text-white text-sm rounded-xl px-5 py-2.5",
         },
-        "\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1",
+        "נסה שוב",
       ),
       e.createElement(
         "button",
         { onClick: () => R(D), className: "text-blue-300 text-sm underline" },
-        "\u05D4\u05EA\u05E0\u05EA\u05E7\u05D5\u05EA",
+        "התנתקות",
       ),
     );
   }
@@ -1847,7 +1887,7 @@ function Q() {
             onClick: () => h(!0),
             className:
               "text-white shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center",
-            "aria-label": "\u05EA\u05E4\u05E8\u05D9\u05D8",
+            "aria-label": "תפריט",
           },
           e.createElement(Pe, { className: "w-6 h-6" }),
         ),
@@ -1858,17 +1898,17 @@ function Q() {
             "div",
             { className: "text-sm font-bold leading-tight truncate" },
             {
-              dashboard: "\u05D3\u05E9\u05D1\u05D5\u05E8\u05D3",
+              dashboard: "דשבורד",
               groups:
-                "\u05E0\u05D9\u05D4\u05D5\u05DC \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
+                "ניהול קבוצות",
               phonebook:
-                "\u05E1\u05E4\u05E8 \u05D8\u05DC\u05E4\u05D5\u05E0\u05D9\u05DD",
+                "ספר טלפונים",
               permissions:
-                "\u05E0\u05D9\u05D4\u05D5\u05DC \u05D4\u05E8\u05E9\u05D0\u05D5\u05EA",
-              import: "\u05D9\u05D9\u05D1\u05D5\u05D0 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
-              reports: "\u05D3\u05D5\u05D7\u05D5\u05EA",
+                "ניהול הרשאות",
+              import: "ייבוא שחקנים",
+              reports: "דוחות",
               attendance:
-                "\u05DE\u05D9\u05DC\u05D5\u05D9 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+                "מילוי נוכחות",
             }[m] || X,
           ),
           e.createElement(
@@ -1876,7 +1916,7 @@ function Q() {
             { className: "text-[11px] text-blue-300 truncate" },
             s.name,
             " \xB7 ",
-            r ? "\u05DE\u05E0\u05D4\u05DC" : "\u05DE\u05D0\u05DE\u05DF",
+            r ? "מנהל" : "מאמן",
           ),
         ),
       ),
@@ -1958,6 +1998,7 @@ function Q() {
           player: waPlayer.player,
           mode: waPlayer.mode,
           date: waPlayer.date,
+          adult: playerIsAdult(waPlayer.player, i),
           onClose: () => setWaPlayer(null),
           onSent: () => {
             if (waPlayer.mode === "absence") {

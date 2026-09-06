@@ -98,8 +98,8 @@ async function He(t, s) {
   }
 }
 var X =
-    "\u05DE\u05D5\u05E2\u05D3\u05D5\u05DF \u05D8\u05E0\u05D9\u05E1 \u05E9\u05D5\u05DC\u05D7\u05DF \u05DE\u05D1\u05D5\u05D0\u05D5\u05EA \u05D4\u05D7\u05E8\u05DE\u05D5\u05DF",
-  W = '\u05E2"\u05E9 \u05E8\u05D5\u05E0\u05D9 \u05D2\u05DC\u05D1\u05D5\u05E2',
+    "מועדון טניס שולחן מבואות החרמון",
+  W = 'ע"ש רוני גלבוע',
   E = () => new Date().toISOString().split("T")[0];
 function Ke(t) {
   return new Date(t + "T00:00:00").toLocaleDateString("he-IL", {
@@ -111,10 +111,23 @@ function Ke(t) {
 function ne(t, s) {
   return `https://wa.me/${t}?text=${encodeURIComponent(s)}`;
 }
-function Ve(t, s) {
-  return t && t.trim() && t.trim() !== s
-    ? `\u05D4\u05D9\u05D9 ${t}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9${s} \u05DC\u05D0 \u05D4\u05D2\u05D9\u05E2 \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05D9\u05E9 \u05DE\u05E9\u05D4\u05D5 \u05E9\u05D0\u05E4\u05E9\u05E8 \u05DC\u05E2\u05D6\u05D5\u05E8 \u05D1\u05D5.`
-    : `\u05D4\u05D9\u05D9 ${s}, \u05DE\u05D4 \u05E9\u05DC\u05D5\u05DE\u05DA? \u05E9\u05DE\u05EA\u05D9 \u05DC\u05D1 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD. \u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8? \u05D0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05D0\u05DD \u05E6\u05E8\u05D9\u05DA \u05DE\u05E9\u05D4\u05D5.`;
+function isAdultGroup(g) {
+  if (!g) return !1;
+  if (typeof g.isAdultGroup == "boolean") return g.isAdultGroup;
+  return /מבוגרים|בוגרים|פרקינסון|סגל|ותיקים/.test(
+    (g && g.name) || "",
+  );
+}
+function playerIsAdult(p, groups) {
+  return isAdultGroup(
+    (groups || []).find((g) => g.id === (p && p.groupId)) || null,
+  );
+}
+function Ve(t, s, adult) {
+  let parent = (t || "").trim();
+  return adult
+    ? `היי ${s}, מה שלומך? שמתי לב שלא הגעת לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם צריך משהו.`
+    : `היי${parent && parent !== s ? " " + parent : ""}, מה שלומך? שמתי לב ש${s} לא הגיע לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם יש משהו שאפשר לעזור בו.`;
 }
 var maleNameExceptions = [
   "משה",
@@ -182,21 +195,20 @@ function playerGender(p) {
     ? p.gender
     : guessGender(p ? p.name : "");
 }
-function absenceMsg(p, gender, date) {
+function absenceMsg(p, gender, date, adult) {
   let g = gender || playerGender(p),
     name = (p && p.name) || "",
-    parent = ((p && p.parentName) || "").trim(),
-    whenTxt = date && date !== E() ? `\u05D1${Ke(date)}` : "\u05D4\u05D9\u05D5\u05DD",
-    signature = `\u05E6\u05D5\u05D5\u05EA ${X}
+    whenTxt = date && date !== E() ? `ב${Ke(date)}` : "היום",
+    signature = `צוות ${X}
 ${W}`;
-  return parent && parent !== name
-    ? `\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9${g === "f" ? "\u05D1\u05EA\u05DB\u05DD" : "\u05D1\u05E0\u05DB\u05DD"} ${name} \u05DC\u05D0 ${g === "f" ? "\u05D4\u05D2\u05D9\u05E2\u05D4" : "\u05D4\u05D2\u05D9\u05E2"} \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF ${whenTxt}.
-\u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
-\u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
+  return adult
+    ? `שלום ${name}, ראינו שלא הגעת לאימון ${whenTxt}.
+נשמח לדעת שהכל בסדר.
+נתראה באימון הבא!
 ${signature}`
-    : `\u05E9\u05DC\u05D5\u05DD ${name}, \u05E8\u05D0\u05D9\u05E0\u05D5 \u05E9\u05DC\u05D0 \u05D4\u05D2\u05E2\u05EA \u05DC\u05D0\u05D9\u05DE\u05D5\u05DF ${whenTxt}.
-\u05E0\u05E9\u05DE\u05D7 \u05DC\u05D3\u05E2\u05EA \u05E9\u05D4\u05DB\u05DC \u05D1\u05E1\u05D3\u05E8.
-\u05E0\u05EA\u05E8\u05D0\u05D4 \u05D1\u05D0\u05D9\u05DE\u05D5\u05DF \u05D4\u05D1\u05D0!
+    : `שלום, ראינו ש${g === "f" ? "בתכם" : "בנכם"} ${name} לא ${g === "f" ? "הגיעה" : "הגיע"} לאימון ${whenTxt}.
+נשמח לדעת שהכל בסדר.
+נתראה באימון הבא!
 ${signature}`;
 }
 function normalizePhone(value) {
@@ -368,13 +380,13 @@ function QuotaAlertsCard({ alerts: t }) {
         e.createElement(
           "div",
           { className: "text-sm font-bold text-blue-900" },
-          "\u05D7\u05E8\u05D9\u05D2\u05D4 \u05DE\u05DE\u05DB\u05E1\u05EA \u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \xB7 " +
+          "חריגה ממכסת אימונים \xB7 " +
             t.length,
         ),
         e.createElement(
           "div",
           { className: "text-[11px] text-blue-700 leading-snug" },
-          "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E9\u05D4\u05D2\u05D9\u05E2\u05D5 \u05DC\u05D9\u05D5\u05EA\u05E8 \u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05DE\u05DE\u05D4 \u05E9\u05D4\u05D5\u05D2\u05D3\u05E8 \u05E2\u05D1\u05D5\u05E8\u05DD",
+          "שחקנים שהגיעו ליותר אימונים ממה שהוגדר עבורם",
         ),
       ),
     ),
@@ -402,7 +414,7 @@ function QuotaAlertsCard({ alerts: t }) {
               { className: "text-xs text-slate-500 truncate" },
               o.group
                 ? o.group.name
-                : "\u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4",
+                : "ללא קבוצה",
             ),
           ),
           e.createElement(
@@ -431,8 +443,8 @@ function useLocalAlertNotice(alerts, label) {
       new Notification(label, {
         body:
           fresh.length === 1
-            ? `${first.player.name} (${first.group ? first.group.name : "\u05DC\u05DC\u05D0 \u05E7\u05D1\u05D5\u05E6\u05D4"}) \u05E0\u05E2\u05D3\u05E8 \u05DE\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD`
-            : `${fresh.length} \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E0\u05E2\u05D3\u05E8\u05D5 \u05DE\u05E9\u05E0\u05D9 \u05D4\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05D4\u05D0\u05D7\u05E8\u05D5\u05E0\u05D9\u05DD`,
+            ? `${first.player.name} (${first.group ? first.group.name : "ללא קבוצה"}) נעדר משני האימונים האחרונים`
+            : `${fresh.length} שחקנים נעדרו משני האימונים האחרונים`,
         tag: "ttc-absence-alerts",
       });
     } catch (err) {
@@ -441,15 +453,15 @@ function useLocalAlertNotice(alerts, label) {
   }, [alerts.map((a) => a.player.id + a.dates[0]).join("|")]);
 }
 var We = [
-    "\u05E8\u05D0\u05E9\u05D5\u05DF",
-    "\u05E9\u05E0\u05D9",
-    "\u05E9\u05DC\u05D9\u05E9\u05D9",
-    "\u05E8\u05D1\u05D9\u05E2\u05D9",
-    "\u05D7\u05DE\u05D9\u05E9\u05D9",
-    "\u05E9\u05D9\u05E9\u05D9",
-    "\u05E9\u05D1\u05EA",
+    "ראשון",
+    "שני",
+    "שלישי",
+    "רביעי",
+    "חמישי",
+    "שישי",
+    "שבת",
   ],
-  ie = ["\u05D0", "\u05D1", "\u05D2", "\u05D3", "\u05D4", "\u05D5", "\u05E9"];
+  ie = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 function Y(t) {
   return Array.isArray(t.days) && t.days.length > 0;
 }
@@ -460,7 +472,7 @@ function q(t) {
   if (!Y(t))
     return (
       t.schedule ||
-      "\u05DC\u05D0 \u05D4\u05D5\u05D2\u05D3\u05E8\u05D5 \u05E9\u05E2\u05D5\u05EA"
+      "לא הוגדרו שעות"
     );
   let s = [...t.days]
       .sort((l, i) => l - i)
@@ -1198,7 +1210,14 @@ function ReportDropoutRisk({ players, groups, attendance }) {
                   {
                     onClick: () =>
                       window.open(
-                        ne(x.player.parentPhone, Ve(x.player.parentName, x.player.name)),
+                        ne(
+                          x.player.parentPhone,
+                          Ve(
+                            x.player.parentName,
+                            x.player.name,
+                            isAdultGroup(x.group),
+                          ),
+                        ),
                         "_blank",
                       ),
                     className:
@@ -1218,7 +1237,9 @@ function ReportDropoutRisk({ players, groups, attendance }) {
                   e.createElement(
                     "div",
                     { className: "text-xs text-slate-400" },
-                    `${groupName(x.player.groupId)} \xB7 ${x.player.parentName}`,
+                    x.player.parentName
+                      ? `${groupName(x.player.groupId)} \xB7 ${x.player.parentName}`
+                      : groupName(x.player.groupId),
                   ),
                 ),
                 e.createElement(
@@ -1493,7 +1514,7 @@ function Re({ player: t, onOpenWhatsapp: s }) {
           "flex items-center gap-1 bg-amber-50 text-amber-700 text-[11px] font-semibold px-2 py-1 rounded-full border border-amber-200",
       },
       e.createElement(ye, { className: "w-3 h-3" }),
-      "2 \u05D4\u05D9\u05E2\u05D3\u05E8\u05D5\u05D9\u05D5\u05EA",
+      "2 היעדרויות",
     ),
     e.createElement(
       "button",
@@ -1502,7 +1523,7 @@ function Re({ player: t, onOpenWhatsapp: s }) {
         className:
           "w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center active:scale-95 transition-transform",
         "aria-label":
-          "\u05E9\u05DC\u05D9\u05D7\u05EA \u05D4\u05D5\u05D3\u05E2\u05EA \u05D5\u05D5\u05D0\u05D8\u05E1\u05D0\u05E4 \u05DC\u05D4\u05D5\u05E8\u05D4",
+          "שליחת הודעת וואטסאפ להורה",
       },
       e.createElement(te, { className: "w-4 h-4 text-white" }),
     ),
@@ -1510,15 +1531,15 @@ function Re({ player: t, onOpenWhatsapp: s }) {
 }
 var et = {
   "auth/invalid-email":
-    "\u05DB\u05EA\u05D5\u05D1\u05EA \u05D0\u05D9\u05DE\u05D9\u05D9\u05DC \u05DC\u05D0 \u05EA\u05E7\u05D9\u05E0\u05D4",
+    "כתובת אימייל לא תקינה",
   "auth/user-not-found":
-    "\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0 \u05DE\u05E9\u05EA\u05DE\u05E9 \u05E2\u05DD \u05E4\u05E8\u05D8\u05D9\u05DD \u05D0\u05DC\u05D5",
+    "לא נמצא משתמש עם פרטים אלו",
   "auth/wrong-password":
-    "\u05E1\u05D9\u05E1\u05DE\u05D4 \u05E9\u05D2\u05D5\u05D9\u05D4",
+    "סיסמה שגויה",
   "auth/invalid-credential":
-    "\u05D0\u05D9\u05DE\u05D9\u05D9\u05DC \u05D0\u05D5 \u05E1\u05D9\u05E1\u05DE\u05D4 \u05E9\u05D2\u05D5\u05D9\u05D9\u05DD",
+    "אימייל או סיסמה שגויים",
   "auth/too-many-requests":
-    "\u05D9\u05D5\u05EA\u05E8 \u05DE\u05D3\u05D9 \u05E0\u05D9\u05E1\u05D9\u05D5\u05E0\u05D5\u05EA. \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05D1\u05E2\u05D5\u05D3 \u05DB\u05DE\u05D4 \u05D3\u05E7\u05D5\u05EA",
+    "יותר מדי ניסיונות. נסה שוב בעוד כמה דקות",
 };
 function tt() {
   let [t, s] = b(""),
@@ -1532,7 +1553,7 @@ function tt() {
       } catch (x) {
         c(
           et[x.code] ||
-            "\u05E9\u05D2\u05D9\u05D0\u05D4 \u05D1\u05D4\u05EA\u05D7\u05D1\u05E8\u05D5\u05EA, \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1",
+            "שגיאה בהתחברות, נסה שוב",
         );
       } finally {
         m(!1);
@@ -1568,7 +1589,7 @@ function tt() {
         value: t,
         onChange: (x) => s(x.target.value),
         type: "email",
-        placeholder: "\u05D0\u05D9\u05DE\u05D9\u05D9\u05DC",
+        placeholder: "אימייל",
         dir: "ltr",
         className:
           "w-full bg-white rounded-xl py-3.5 px-4 text-sm outline-none text-right",
@@ -1577,7 +1598,7 @@ function tt() {
         value: a,
         onChange: (x) => l(x.target.value),
         type: "password",
-        placeholder: "\u05E1\u05D9\u05E1\u05DE\u05D4",
+        placeholder: "סיסמה",
         dir: "ltr",
         className:
           "w-full bg-white rounded-xl py-3.5 px-4 text-sm outline-none text-right",
@@ -1598,13 +1619,13 @@ function tt() {
             "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5 mt-1",
         },
         n
-          ? "\u05DE\u05EA\u05D7\u05D1\u05E8\u2026"
-          : "\u05D4\u05EA\u05D7\u05D1\u05E8\u05D5\u05EA",
+          ? "מתחבר…"
+          : "התחברות",
       ),
       e.createElement(
         "p",
         { className: "text-blue-400 text-xs text-center mt-2" },
-        '\u05D7\u05E9\u05D1\u05D5\u05E0\u05D5\u05EA \u05E0\u05D5\u05E6\u05E8\u05D9\u05DD \u05E2"\u05D9 \u05DE\u05E0\u05D4\u05DC \u05D4\u05DE\u05D5\u05E2\u05D3\u05D5\u05DF \u05D1\u05E7\u05D5\u05E0\u05E1\u05D5\u05DC\u05EA Firebase',
+        'חשבונות נוצרים ע"י מנהל המועדון בקונסולת Firebase',
       ),
     ),
   );
@@ -1648,7 +1669,7 @@ function st({
           coachName: A.name,
           groupId: d.id,
           groupName: d.name,
-          message: `\u05EA\u05D6\u05DB\u05D5\u05E8\u05EA \u05D9\u05D3\u05D9\u05D3\u05D5\u05EA\u05D9\u05EA \u05DC\u05DE\u05DC\u05D0 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA \u05E2\u05D1\u05D5\u05E8 \u05E7\u05D1\u05D5\u05E6\u05EA ${d.name} \u05DC\u05D4\u05D9\u05D5\u05DD. \u05EA\u05D5\u05D3\u05D4!`,
+          message: `תזכורת ידידותית למלא נוכחות עבור קבוצת ${d.name} להיום. תודה!`,
           createdAt: Oe(),
           processed: !1,
         });
@@ -1705,27 +1726,27 @@ function st({
       e.createElement(U, {
         icon: H,
         label:
-          "\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E4\u05E2\u05D9\u05DC\u05D9\u05DD",
+          "שחקנים פעילים",
         value: uniqueActiveCount,
         accent: "bg-blue-900",
       }),
       e.createElement(U, {
         icon: le,
-        label: '\u05E1\u05D4"\u05DB \u05E7\u05D1\u05D5\u05E6\u05D5\u05EA',
+        label: 'סה"כ קבוצות',
         value: s.length,
         accent: "bg-blue-900",
       }),
       e.createElement(U, {
         icon: he,
         label:
-          "\u05E0\u05D5\u05DB\u05D7\u05D5\u05EA \u05DE\u05DE\u05D5\u05E6\u05E2\u05EA \u05D4\u05D7\u05D5\u05D3\u05E9",
-        value: g === null ? "\u2014" : `${g}%`,
+          "נוכחות ממוצעת החודש",
+        value: g === null ? "—" : `${g}%`,
         accent: "bg-emerald-500",
       }),
       e.createElement(U, {
         icon: ge,
         label:
-          "\u05D0\u05D9\u05DE\u05D5\u05E0\u05D9\u05DD \u05E9\u05E0\u05E8\u05E9\u05DE\u05D5 \u05D4\u05D7\u05D5\u05D3\u05E9",
+          "אימונים שנרשמו החודש",
         value: r,
         accent: "bg-emerald-500",
       }),
@@ -1741,7 +1762,7 @@ function st({
             "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
         },
         e.createElement(K, { className: "w-4 h-4" }),
-        " \u05D4\u05D5\u05E1\u05E4\u05EA \u05E9\u05D7\u05E7\u05DF",
+        " הוספת שחקן",
       ),
       e.createElement(
         "button",
@@ -1751,7 +1772,7 @@ function st({
             "bg-blue-900 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
         },
         e.createElement(J, { className: "w-4 h-4" }),
-        " \u05EA\u05D6\u05DB\u05D5\u05E8\u05EA \u05DC\u05DE\u05D0\u05DE\u05E0\u05D9\u05DD",
+        " תזכורת למאמנים",
       ),
     ),
     o &&
@@ -1769,14 +1790,14 @@ function st({
           e.createElement(
             "h3",
             { className: "font-semibold text-blue-950 text-sm" },
-            "\u05DE\u05D0\u05DE\u05E0\u05D9\u05DD \u05E9\u05D8\u05E8\u05DD \u05E8\u05E9\u05DE\u05D5 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA \u05D4\u05D9\u05D5\u05DD",
+            "מאמנים שטרם רשמו נוכחות היום",
           ),
         ),
         o.length === 0
           ? e.createElement(
               "p",
               { className: "text-sm text-slate-500 text-center py-2" },
-              "\u05DB\u05DC \u05D4\u05DE\u05D0\u05DE\u05E0\u05D9\u05DD \u05DB\u05D1\u05E8 \u05E8\u05E9\u05DE\u05D5 \u05E0\u05D5\u05DB\u05D7\u05D5\u05EA \u05D4\u05D9\u05D5\u05DD \u2705",
+              "כל המאמנים כבר רשמו נוכחות היום ✅",
             )
           : e.createElement(
               "div",
@@ -1808,7 +1829,7 @@ function st({
                         "div",
                         { className: "text-xs text-slate-500" },
                         d.name,
-                        " \xB7 \u05E9\u05D5\u05DC\u05D7 \u05D4\u05EA\u05E8\u05D0\u05EA Push",
+                        " \xB7 שולח התראת Push",
                       ),
                     ),
                   ),
@@ -1821,7 +1842,7 @@ function st({
       e.createElement(
         "h2",
         { className: "text-sm font-semibold text-slate-500 px-1" },
-        "\u05E7\u05D1\u05D5\u05E6\u05D5\u05EA",
+        "קבוצות",
       ),
       s.map((d) => {
         let A = groupCoachLabel(d, t),
@@ -1854,7 +1875,7 @@ function st({
               e.createElement(
                 "div",
                 { className: "text-xs text-slate-500" },
-                A?.name || "\u2014",
+                A?.name || "—",
                 " \xB7 ",
                 q(d),
               ),
@@ -1865,12 +1886,12 @@ function st({
               e.createElement(
                 "div",
                 { className: "text-sm font-bold text-emerald-600" },
-                I === null ? "\u2014" : `${I}%`,
+                I === null ? "—" : `${I}%`,
               ),
               e.createElement(
                 "div",
                 { className: "text-[10px] text-slate-400" },
-                "\u05E0\u05D5\u05DB\u05D7\u05D5\u05EA",
+                "נוכחות",
               ),
             ),
           ),
@@ -1901,7 +1922,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
         value: a,
         onChange: (m) => l(m.target.value),
         placeholder:
-          "\u05D7\u05D9\u05E4\u05D5\u05E9 \u05DC\u05E4\u05D9 \u05E9\u05DD \u05E9\u05D7\u05E7\u05DF \u05D0\u05D5 \u05D4\u05D5\u05E8\u05D4",
+          "חיפוש לפי שם שחקן או הורה",
         className:
           "w-full bg-white border border-slate-200 rounded-xl py-3 pr-9 pl-3 text-sm text-right outline-none focus:border-emerald-400",
       }),
@@ -1910,7 +1931,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
       e.createElement(
         "p",
         { className: "text-center text-sm text-slate-400 py-8" },
-        "\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5 \u05EA\u05D5\u05E6\u05D0\u05D5\u05EA",
+        "לא נמצאו תוצאות",
       ),
     n.map(({ group: m, players: o }) =>
       e.createElement(
@@ -1945,7 +1966,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                     rel: "noreferrer",
                     className:
                       "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center",
-                    "aria-label": "\u05D5\u05D5\u05D0\u05D8\u05E1\u05D0\u05E4",
+                    "aria-label": "וואטסאפ",
                   },
                   e.createElement(te, {
                     className: "w-4 h-4 text-emerald-600",
@@ -1957,7 +1978,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                     href: `tel:+${x.parentPhone}`,
                     className:
                       "min-w-[44px] min-h-[44px] rounded-full bg-blue-50 flex items-center justify-center",
-                    "aria-label": "\u05D7\u05D9\u05D9\u05D2",
+                    "aria-label": "חייג",
                   },
                   e.createElement(se, { className: "w-4 h-4 text-blue-900" }),
                 ),
@@ -1968,7 +1989,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                       onClick: () => EP(x),
                       className:
                         "min-w-[44px] min-h-[44px] rounded-full bg-slate-100 flex items-center justify-center",
-                      "aria-label": "\u05E2\u05E8\u05D9\u05DB\u05EA \u05E4\u05E8\u05D8\u05D9 \u05E9\u05D7\u05E7\u05DF",
+                      "aria-label": "עריכת פרטי שחקן",
                     },
                     e.createElement($e, {
                       className: "w-4 h-4 text-slate-500",
@@ -1986,8 +2007,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                 e.createElement(
                   "div",
                   { className: "text-xs text-slate-400" },
-                  x.parentName,
-                  " \xB7 ",
+                  x.parentName ? x.parentName + " \xB7 " : "",
                   x.parentPhone,
                   playerDaysLabel(x) ? ` \xB7 ${playerDaysLabel(x)}` : "",
                 ),
@@ -1999,17 +2019,26 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
     ),
   );
 }
-function WhatsappModal({ player: t, onClose: s, onSent: a, mode: MD, date: DT }) {
+function WhatsappModal({
+  player: t,
+  onClose: s,
+  onSent: a,
+  mode: MD,
+  date: DT,
+  adult: AD,
+}) {
   let isAbs = MD === "absence",
     [gen, setGen] = b(playerGender(t)),
     [l, i] = b(
-      isAbs ? absenceMsg(t, playerGender(t), DT) : Ve(t.parentName, t.name),
+      isAbs
+        ? absenceMsg(t, playerGender(t), DT, AD)
+        : Ve(t.parentName, t.name, AD),
     ),
     [c, n] = b(!1),
     m = normalizePhone(t.parentPhone),
     o = isValidPhone(t.parentPhone),
     pickGender = (v) => {
-      (setGen(v), i(absenceMsg(t, v, DT)));
+      (setGen(v), i(absenceMsg(t, v, DT, AD)));
       setPlayerGender(t.id, v).catch((err) =>
         console.warn("Gender not saved:", err),
       );
@@ -2051,17 +2080,24 @@ function WhatsappModal({ player: t, onClose: s, onSent: a, mode: MD, date: DT })
           e.createElement(
             "h3",
             { className: "font-bold text-blue-950" },
-            isAbs ? "הודעה על היעדרות" : "הודעה להורה",
+            isAbs
+              ? AD
+                ? "הודעה על היעדרות — לשחקן"
+                : "הודעה על היעדרות — להורה"
+              : AD
+                ? "הודעה לשחקן"
+                : "הודעה להורה",
           ),
           e.createElement(
             "div",
             { className: "text-xs text-slate-500" },
-            t.parentName ? t.parentName + " \xB7 " : "",
+            !AD && t.parentName ? t.parentName + " \xB7 " : "",
             t.name,
           ),
         ),
       ),
       isAbs &&
+        !AD &&
         e.createElement(
           "div",
           { className: "flex items-center gap-2 justify-end" },
@@ -2352,6 +2388,7 @@ function at({
     [r, y] = b(!1),
     [N, C] = b(""),
     d = f.trim().length > 0 && isValidPhone(f),
+    selAdult = isAdultGroup(t.find((v) => v.id === o) || null),
     A = n.trim() && o && d,
     I = async () => {
       (y(!0), C(""));
@@ -2501,8 +2538,20 @@ function at({
           "אם לא נבחרו ימים, השחקן ייחשב זמין בכל ימי האימון של הקבוצה.",
         ),
       ),
-      p("שם ההורה (לא חובה — לשחקנים בוגרים)", h, u),
-      p("טלפון ליצירת קשר", f, g, "ltr"),
+      !selAdult && p("שם ההורה (לא חובה)", h, u),
+      p(
+        selAdult ? "טלפון השחקן" : "טלפון ההורה",
+        f,
+        g,
+        "ltr",
+      ),
+      e.createElement(
+        "p",
+        { className: "text-[11px] text-slate-400 text-right leading-relaxed" },
+        selAdult
+          ? "זו קבוצת מבוגרים — הודעות על היעדרות יישלחו לשחקן עצמו."
+          : "זו קבוצת ילדים ונוער — הודעות על היעדרות יישלחו להורה."
+      ),
       f.trim().length > 0 &&
         !d &&
         e.createElement(
@@ -2563,75 +2612,75 @@ function at({
     ),
   );
 }
-var DEFAULT_ROSTER = `# \u05E4\u05E8\u05E7\u05D9\u05E0\u05E1\u05D5\u05DF | \u05D0
-\u05D8\u05DC \u05E9\u05D5\u05E9\u05E0\u05D9, 0507741082
-\u05D1\u05D0\u05E8\u05D9 \u05E1\u05D9\u05DC\u05D1\u05E8\u05D1\u05E8\u05D2, 0542483460
-\u05E8\u05DF \u05DB\u05D4\u05DF, 0549000780
-\u05E0\u05D9\u05E1\u05D9\u05DD \u05D6\u05D2\u05D5\u05E8\u05D9, 0542990097
-\u05D9\u05D5\u05E1\u05D9 \u05D5\u05E2\u05D3\u05D9\u05D4
-\u05D9\u05D4\u05D5\u05D3\u05D9\u05EA \u05D0\u05D9\u05EA\u05D9, 0528734881
-\u05D3\u05E0\u05D9 \u05E7\u05E0\u05D9\u05E7\u05E9\u05D8\u05D9\u05D9\u05DF
-\u05DE\u05D9\u05DB\u05DC \u05D0\u05D9\u05EA\u05DF, 0509509253
-\u05D0\u05D1\u05E8\u05D4\u05DD \u05E8\u05D7\u05D9\u05DE\u05D9, 0508296609
-\u05D9\u05E2\u05E7\u05D1 \u05D0\u05D5\u05E8\u05E7\u05D5, 0506543888
+var DEFAULT_ROSTER = `# פרקינסון | א
+טל שושני, 0507741082
+בארי סילברברג, 0542483460
+רן כהן, 0549000780
+ניסים זגורי, 0542990097
+יוסי ועדיה
+יהודית איתי, 0528734881
+דני קניקשטיין
+מיכל איתן, 0509509253
+אברהם רחימי, 0508296609
+יעקב אורקו, 0506543888
 
-# \u05DE\u05D1\u05D5\u05D2\u05E8\u05D9\u05DD \u05E8\u05DE\u05EA \u05DB\u05D5\u05E8\u05D6\u05D9\u05DD | \u05D1,\u05D3
-\u05E9\u05D7\u05E8 \u05E8\u05D9\u05D1\u05E8, 0523717971
-\u05D9\u05D5\u05EA\u05DD \u05D9\u05E8\u05D5\u05E9\u05DC\u05DE\u05D9, 0522743633
-\u05D0\u05E0\u05D3\u05E8\u05D9\u05D9
-\u05D8\u05DC \u05DB\u05D4\u05DF, 0524528855
-\u05E6\u05D5\u05E8 \u05DB\u05D4\u05DF
-\u05D9\u05E9\u05E8\u05D0\u05DC \u05D1\u05DF \u05D0\u05E8\u05D5\u05E9
-\u05D0\u05D5\u05D4\u05D3 \u05D1\u05DF \u05D0\u05E8\u05D5\u05E9
-\u05D0\u05DC\u05E2\u05D6\u05E8 \u05E9\u05E0\u05E7\u05E8, 0545431011
-\u05D0\u05D5\u05E8\u05D9 \u05DE\u05D5\u05E1\u05E0\u05D6\u05D5\u05DF
-\u05D3\u05E0\u05D9\u05D0\u05DC \u05D1\u05DF
+# מבוגרים רמת כורזים | ב,ד
+שחר ריבר, 0523717971
+יותם ירושלמי, 0522743633
+אנדריי
+טל כהן, 0524528855
+צור כהן
+ישראל בן ארוש
+אוהד בן ארוש
+אלעזר שנקר, 0545431011
+אורי מוסנזון
+דניאל בן
 
-# \u05DE\u05D1\u05D5\u05D2\u05E8\u05D9\u05DD \u05D3\u05E4\u05E0\u05D4 | \u05D1,\u05D4
-\u05D0\u05D5\u05D4\u05D3 \u05DC\u05D5\u05D9, +972 50-262-4321
-\u05D0\u05E1\u05E3 \u05E4\u05D9\u05E7\u05DC\u05E9\u05D8\u05D9\u05D9\u05DF
-\u05D6\u05D9\u05D5 \u05E7\u05E8\u05DF, +972 50-887-3510
-\u05D7\u05D9\u05D9\u05DD \u05D0\u05E8\u05D3, +972 54-669-3031
-\u05D2\u05DC \u05E9\u05D9\u05D9\u05D1\u05D9\u05E5, +972 54-265-6139
-\u05D0\u05E1\u05EA\u05E8, 050-7674721
-\u05DE\u05E9\u05D4 \u05E8\u05D5\u05D6\u05E0\u05E4\u05DC\u05D3, 0528467909
-\u05DE\u05D5\u05E8\u05D9\u05E1 \u05DE\u05D9\u05DC\u05E8, 0524241496
-\u05D3\u05E0\u05D9\u05D0\u05DC \u05DC\u05D9\u05DB\u05D8\u05E8, 05459998413
-\u05E8\u05D5\u05D5\u05D4 \u05EA\u05D5\u05DE\u05E8, 0528780094
-\u05D0\u05D9\u05EA\u05DE\u05E8 \u05D9\u05D5\u05D7\u05D0\u05D9, 0527740518
-\u05E8\u05D5\u05DD \u05E1\u05E8\u05E0\u05D4, 055-223-3100
-\u05E9\u05DC\u05D5\u05DD \u05E0\u05D5\u05D9, +972 50-763-1322
-\u05DC\u05D9\u05D0\u05D5\u05E8 \u05E9\u05E4\u05D9\u05E8\u05D0
-\u05D1\u05D0\u05E1\u05DC \u05E7\u05D3\u05DE\u05D0\u05E0\u05D9, +972 50-432-0595
-\u05D6\u05D9\u05D5 \u05E7\u05D5\u05E8\u05DF, +972 50-887-3510
+# מבוגרים דפנה | ב,ה
+אוהד לוי, +972 50-262-4321
+אסף פיקלשטיין
+זיו קרן, +972 50-887-3510
+חיים ארד, +972 54-669-3031
+גל שייביץ, +972 54-265-6139
+אסתר, 050-7674721
+משה רוזנפלד, 0528467909
+מוריס מילר, 0524241496
+דניאל ליכטר, 05459998413
+רווה תומר, 0528780094
+איתמר יוחאי, 0527740518
+רום סרנה, 055-223-3100
+שלום נוי, +972 50-763-1322
+ליאור שפירא
+באסל קדמאני, +972 50-432-0595
+זיו קורן, +972 50-887-3510
 
-# \u05E7\u05D5\u05D1\u05E6\u05EA \u05E1\u05D2\u05DC \u05DC\u05D9\u05D2\u05D5\u05EA | \u05D0,\u05D4
-\u05E2\u05D3\u05D9 \u05DC\u05D5\u05D9, 0523787420
-\u05D0\u05D9\u05EA\u05DE\u05E8 \u05DC\u05D1, 0522267460
-\u05D9\u05D1\u05D2\u05E0\u05D9 \u05D2\u05D5\u05D8\u05D5\u05D1\u05E1\u05E7\u05D9, 0506273240
-\u05DC\u05D0\u05D5\u05E0\u05D9\u05D3 \u05D2\u05DE\u05E4\u05DC\u05E1\u05D5\u05DF, 0544273385
-\u05D8\u05D0\u05D5 \u05DE\u05D5\u05E8\u05E0\u05D5
+# קובצת סגל ליגות | א,ה
+עדי לוי, 0523787420
+איתמר לב, 0522267460
+יבגני גוטובסקי, 0506273240
+לאוניד גמפלסון, 0544273385
+טאו מורנו
 
-# \u05DE\u05EA\u05E7\u05D3\u05DE\u05D9\u05DD \u05E9\u05D0\u05E8 \u05D9\u05E9\u05D5\u05D1 | \u05D0,\u05D1,\u05D4
-\u05D3\u05D5\u05E8 \u05DE\u05D5\u05E8\u05D2, 054-669-3238
-\u05D0\u05D5\u05E8\u05D9 \u05D0\u05E9\u05D3, 054-247-5354
-\u05D0\u05D3\u05DD \u05E9\u05D8\u05E8\u05D9\u05EA, 0509566661
-\u05E8\u05D6\u05D7\u05D5\u05D1\u05D1, 052-320-2170
-\u05E8\u05E0\u05D9 \u05DC\u05D1\u05E0\u05D4, 0523918898
-\u05D4\u05E8\u05D0\u05DC \u05D0\u05D1\u05E0\u05D9, 052-872-4649
-\u05DE\u05E8\u05D5\u05DD \u05E0\u05D5\u05E8\u05D9\u05D0\u05DC, 0506992273
-\u05E8\u05D5\u05E2\u05D9 \u05DC\u05D5\u05D9, 0523787420
-\u05E9\u05DC\u05D5 \u05DE\u05E8\u05D1\u05DA, 0508551030
+# מתקדמים שאר ישוב | א,ב,ה
+דור מורג, 054-669-3238
+אורי אשד, 054-247-5354
+אדם שטרית, 0509566661
+רזחובב, 052-320-2170
+רני לבנה, 0523918898
+הראל אבני, 052-872-4649
+מרום נוריאל, 0506992273
+רועי לוי, 0523787420
+שלו מרבך, 0508551030
 
-# \u05DE\u05EA\u05D7\u05D9\u05DC\u05D9\u05DD \u05E9\u05D0\u05E8 \u05D9\u05E9\u05D5\u05D1 | \u05D0,\u05D4
-\u05D1\u05E8 \u05D9\u05D5\u05E6\u05D0\u05D9 \u05E1\u05D5\u05E4\u05E8, 050-535-6220
-\u05D0\u05D1\u05D9\u05D1 \u05D0\u05D1\u05E0\u05D9, 052-872-4649
+# מתחילים שאר ישוב | א,ה
+בר יוצאי סופר, 050-535-6220
+אביב אבני, 052-872-4649
 
-# \u05DC\u05DC\u05D0 \u05E9\u05D9\u05D5\u05DA
-\u05D0\u05DC\u05DB\u05E1\u05E0\u05D3\u05E8\u05D4 \u05D0\u05D5\u05DC\u05D7\u05E0\u05D5\u05D1, 0546353264
-\u05E9\u05D9 \u05E4\u05D9\u05E0\u05E7\u05DC, +972 54-774-3715
-\u05D1\u05E8\u05D9 \u05D1\u05E8, +972 58-422-0010
-\u05E8\u05D5\u05EA\u05DD \u05D0\u05D1\u05D9\u05D1, +972 52-701-3624`;
+# ללא שיוך
+אלכסנדרה אולחנוב, 0546353264
+שי פינקל, +972 54-774-3715
+ברי בר, +972 58-422-0010
+רותם אביב, +972 52-701-3624`;
 var DAY_LETTERS = { א: 0, ב: 1, ג: 2, ד: 3, ה: 4, ו: 5, ש: 6 };
 function parseRoster(text) {
   let lines = String(text || "").split("\n"),
