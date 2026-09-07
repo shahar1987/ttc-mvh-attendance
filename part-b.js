@@ -1515,7 +1515,7 @@ function re({
                     className:
                       "text-[9px] font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 shrink-0",
                   },
-                  "לא יום קבוע",
+                  `לא יום קבוע (${playerDaysLabel(p)})`,
                 ),
             ),
           ),
@@ -1845,9 +1845,13 @@ function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
     { data: l } = L("users"),
     { data: i } = L("groups"),
-    { data: c } = L("players"),
-    { data: rawAttendance } = L("attendance"),
-    { data: cancellations } = L("cancellations"),
+    coachGroupIds =
+      s && s.role !== "Admin"
+        ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
+        : null,
+    { data: c } = L("players", coachGroupIds),
+    { data: rawAttendance } = L("attendance", coachGroupIds),
+    { data: cancellations } = L("cancellations", coachGroupIds),
     n = excludeCancelled(rawAttendance, cancellations),
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
