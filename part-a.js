@@ -37,6 +37,8 @@ import {
   doc as S,
   writeBatch as Te,
   serverTimestamp as Oe,
+  query as fsQuery,
+  where as fsWhere,
 } from "firebase/firestore";
 import {
   onAuthStateChanged as Le,
@@ -102,7 +104,7 @@ async function He(t, s) {
 var X =
     "מועדון טניס שולחן מבואות החרמון",
   W = 'ע"ש רוני גלבוע',
-  E = () => new Date().toISOString().split("T")[0];
+  E = () => new Date().toLocaleDateString("en-CA");
 function Ke(t) {
   return new Date(t + "T00:00:00").toLocaleDateString("he-IL", {
     weekday: "long",
@@ -682,22 +684,32 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
-function L(t) {
+function L(t, groupIds) {
   let [s, a] = b([]),
-    [l, i] = b(!0);
+    [l, i] = b(!0),
+    scoped = Array.isArray(groupIds),
+    scopeKey = scoped ? groupIds.slice().sort().join(",") : "";
   return (
     j(
-      () =>
-        ae(
-          M(P, t),
+      () => {
+        if (scoped && groupIds.length === 0) {
+          (a([]), i(!1));
+          return;
+        }
+        let ref = scoped
+          ? fsQuery(M(P, t), fsWhere("groupId", "in", groupIds))
+          : M(P, t);
+        return ae(
+          ref,
           (n) => {
             (a(n.docs.map((m) => ({ id: m.id, ...m.data() }))), i(!1));
           },
           (n) => {
             (console.error(`Firestore listen error on ${t}:`, n), i(!1));
           },
-        ),
-      [t],
+        );
+      },
+      [t, scoped, scopeKey],
     ),
     { data: s, loading: l }
   );
@@ -783,7 +795,7 @@ function eachDateInRange(startStr, endStr) {
     cur = new Date(startStr + "T00:00:00"),
     end = new Date(endStr + "T00:00:00");
   while (cur <= end) {
-    (out.push(cur.toISOString().split("T")[0]), cur.setDate(cur.getDate() + 1));
+    (out.push(cur.toLocaleDateString("en-CA")), cur.setDate(cur.getDate() + 1));
   }
   return out;
 }
