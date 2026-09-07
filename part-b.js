@@ -1134,6 +1134,12 @@ function dt({
                   "ייבוא שחקנים",
                 icon: K,
               },
+              {
+                key: "tournaments",
+                label: "תחרויות",
+                icon: TrophyIcon,
+                external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+              },
             ]
           : [
               {
@@ -1143,13 +1149,17 @@ function dt({
                 icon: Z,
               },
             ]
-        ).map(({ key: h, label: u, icon: f }) =>
+        ).map(({ key: h, label: u, icon: f, external: ext }) =>
           e.createElement(
             "button",
             {
               key: h,
               onClick: () => {
-                (i(h), s());
+                if (ext) {
+                  (window.open(ext, "_blank", "noopener"), s());
+                } else {
+                  (i(h), s());
+                }
               },
               className: `w-full px-5 py-3.5 flex items-center gap-3 justify-start text-right ${l === h ? "bg-emerald-50 text-emerald-700" : "text-slate-600"}`,
             },
