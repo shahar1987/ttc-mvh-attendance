@@ -26,6 +26,7 @@ import {
   FileText as ReportsIcon,
   Ban as BanIcon,
   RotateCcw as UndoIcon,
+  Trophy as TrophyIcon,
 } from "lucide-react";
 import {
   collection as M,
