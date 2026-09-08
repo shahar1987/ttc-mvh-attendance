@@ -1199,11 +1199,12 @@ function re({
   onWhatsapp: WA,
   onAddPlayer: AP,
   cancellations: CX,
+  initialDate: ID,
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     today = E(),
-    [selDate, setSelDate] = b(today),
-    [showDatePicker, setShowDatePicker] = b(!1),
+    [selDate, setSelDate] = b(ID || today),
+    [showDatePicker, setShowDatePicker] = b(!!ID),
     m = selDate,
     isPast = m !== today,
     o = l.some((p) => p.groupId === t.id && p.date === m),
@@ -1232,10 +1233,15 @@ function re({
     [u, f] = b(!o),
     [g, r] = b(!1),
     [y, N] = b("");
+  let prevDateKey = e.useRef(t.id + "|" + (ID || ""));
   j(() => {
-    setSelDate(today);
-    setShowDatePicker(!1);
-  }, [t.id]);
+    let dateKey = t.id + "|" + (ID || "");
+    if (prevDateKey.current !== dateKey) {
+      setSelDate(ID || today);
+      setShowDatePicker(!!ID);
+    }
+    prevDateKey.current = dateKey;
+  }, [t.id, ID]);
   j(() => {
     let p = {};
     (n.forEach((w) => {
@@ -1739,6 +1745,8 @@ function mt({
   selectedGroupId: SG,
   onSelectGroup: onSelectGroup,
   cancellations: CX,
+  onFillDate: onFillDate,
+  pendingDate: ID,
 }) {
   let [editGroup, setEditGroup] = b(null),
     c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
@@ -1751,6 +1759,7 @@ function mt({
     myPending = pendingAbsenceMsgs(a, s, [], l).filter((r) =>
       c.some((gr) => gr.id === r.record.groupId),
     ),
+    myMissing = missingAttendanceDays(c, l, CX),
     o = c.length === 1 ? c[0].id : null,
     x = SG || o,
     h = c.find((r) => r.id === x),
@@ -1778,6 +1787,11 @@ function mt({
       ? e.createElement(
           "div",
           { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+          e.createElement(MissingDaysCard, {
+            items: myMissing.filter((r) => r.group.id === h.id),
+            actionLabel: "מילוי עכשיו",
+            onAction: (r) => onFillDate && onFillDate(r.group.id, r.date),
+          }),
           e.createElement(AlertsCard, {
             alerts: myAlerts.filter((r) => r.player.groupId === h.id),
             onWhatsapp: WA,
@@ -1798,6 +1812,7 @@ function mt({
             onWhatsapp: WA,
             onAddPlayer: AP,
             cancellations: CX,
+            initialDate: ID,
           }),
           e.createElement(
             "button",
@@ -1820,6 +1835,11 @@ function mt({
       : e.createElement(
           "div",
           { className: "px-4 pt-4 pb-6 flex flex-col gap-3" },
+          e.createElement(MissingDaysCard, {
+            items: myMissing,
+            actionLabel: "מילוי עכשיו",
+            onAction: (r) => onFillDate && onFillDate(r.group.id, r.date),
+          }),
           e.createElement(AlertsCard, {
             alerts: myAlerts,
             onWhatsapp: WA,
@@ -1933,6 +1953,7 @@ function Q() {
     n = excludeCancelled(rawAttendance, cancellations),
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
+    [pendingDate, setPendingDate] = b(null),
     [x, h] = b(!1),
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
@@ -1954,13 +1975,19 @@ function Q() {
       } catch (e2) {}
     },
     goToGroup = (v) => {
-      setAttGroupId(v);
+      (setAttGroupId(v), setPendingDate(null));
       try {
         history.pushState({ screen: "attendance", attGroup: v }, "");
       } catch (e2) {}
     },
     goToGroupScreen = (v) => {
-      (o("attendance"), setAttGroupId(v));
+      (o("attendance"), setAttGroupId(v), setPendingDate(null));
+      try {
+        history.pushState({ screen: "attendance", attGroup: v }, "");
+      } catch (e2) {}
+    },
+    goToGroupDate = (v, dateStr) => {
+      (o("attendance"), setAttGroupId(v), setPendingDate(dateStr));
       try {
         history.pushState({ screen: "attendance", attGroup: v }, "");
       } catch (e2) {}
@@ -2146,6 +2173,7 @@ function Q() {
           onEditPlayer: openEditPlayer,
           onWhatsapp: openWhatsapp,
           onOpenGroup: goToGroupScreen,
+          onOpenGroupDate: goToGroupDate,
           cancellations,
         }),
       r &&
@@ -2186,6 +2214,8 @@ function Q() {
           onAddPlayer: openAddPlayer,
           selectedGroupId: attGroupId,
           onSelectGroup: goToGroup,
+          onFillDate: goToGroupDate,
+          pendingDate,
           cancellations,
         }),
       e.createElement(dt, {
