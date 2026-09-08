@@ -2612,6 +2612,7 @@ function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) 
   let days = lookbackDays || 7,
     today = E(),
     base = new Date(today + "T00:00:00"),
+    floorDate = "2026-09-07",
     out = [];
   groups.forEach((g) => {
     if (!Y(g)) return;
@@ -2620,6 +2621,7 @@ function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) 
       d.setDate(d.getDate() - i);
       if (!g.days.includes(d.getDay())) continue;
       let ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (ds < floorDate) continue;
       if (findCancellation(cancellations, g.id, ds)) continue;
       if (attendance.some((a) => a.groupId === g.id && a.date === ds)) continue;
       out.push({ group: g, date: ds });
