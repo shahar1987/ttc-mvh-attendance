@@ -1203,10 +1203,7 @@ function re({
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     today = E(),
-    minDate = (() => {
-      let d = new Date();
-      return (d.setDate(d.getDate() - 1), d.toLocaleDateString("en-CA"));
-    })(),
+    minDate = "2026-09-07",
     [selDate, setSelDate] = b(ID || today),
     [showDatePicker, setShowDatePicker] = b(!!ID),
     m = selDate,
