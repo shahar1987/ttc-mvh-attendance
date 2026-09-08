@@ -1858,6 +1858,7 @@ function st({
   onEditPlayer: EP,
   onWhatsapp: WA,
   onOpenGroup,
+  onOpenGroupDate,
   cancellations: CX,
 }) {
   let [o, x] = b(null),
@@ -1865,6 +1866,7 @@ function st({
     alerts = absenceAlerts(a, s, l, null),
     quotaAl = quotaAlerts(a, s, l),
     pendingMsgs = pendingAbsenceMsgs(a, s, t, l),
+    pastMissing = missingAttendanceDays(s, l, CX),
     f = a.filter((d) => d.isActive && !d.deleted),
     uniqueActiveCount = countUniqueActivePlayers(a),
     { avgPct: g, sessions: r } = Je(l),
@@ -1932,6 +1934,16 @@ function st({
           dashErr,
         ),
       ),
+    e.createElement(MissingDaysCard, {
+      items: pastMissing,
+      users: t,
+      showCoach: !0,
+      actionLabel: "פתיחה",
+      onAction: (o2) =>
+        onOpenGroupDate
+          ? onOpenGroupDate(o2.group.id, o2.date)
+          : onOpenGroup(o2.group.id),
+    }),
     e.createElement(AlertsCard, {
       alerts,
       onWhatsapp: WA,
@@ -2593,6 +2605,94 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
           ),
         ),
       ),
+    ),
+  );
+}
+function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) {
+  let days = lookbackDays || 7,
+    today = E(),
+    base = new Date(today + "T00:00:00"),
+    out = [];
+  groups.forEach((g) => {
+    if (!Y(g)) return;
+    for (let i = 1; i <= days; i++) {
+      let d = new Date(base);
+      d.setDate(d.getDate() - i);
+      if (!g.days.includes(d.getDay())) continue;
+      let ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (findCancellation(cancellations, g.id, ds)) continue;
+      if (attendance.some((a) => a.groupId === g.id && a.date === ds)) continue;
+      out.push({ group: g, date: ds });
+    }
+  });
+  return out.sort(
+    (a, l) =>
+      l.date.localeCompare(a.date) || a.group.name.localeCompare(l.group.name, "he"),
+  );
+}
+function MissingDaysCard({ items: t, users: US, showCoach: SC, onAction: OA, actionLabel: AL }) {
+  if (t.length === 0) return null;
+  return e.createElement(
+    "div",
+    { className: "bg-white rounded-xl border-2 border-orange-300 overflow-hidden" },
+    e.createElement(
+      "div",
+      { className: "bg-orange-50 px-4 py-3 flex items-center gap-2" },
+      e.createElement(ge, { className: "w-4 h-4 text-orange-600 shrink-0" }),
+      e.createElement(
+        "div",
+        { className: "text-right flex-1" },
+        e.createElement(
+          "div",
+          { className: "text-sm font-bold text-orange-900" },
+          "נוכחות שלא דווחה \xB7 ",
+          t.length,
+        ),
+        e.createElement(
+          "div",
+          { className: "text-[11px] text-orange-700 leading-snug" },
+          "ימי אימון בשבוע האחרון שלא נשמרה בהם נוכחות",
+        ),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "divide-y divide-slate-100" },
+      t.map((o) => {
+        let coachLabel = SC ? groupCoachLabel(o.group, US) : null;
+        return e.createElement(
+          "div",
+          {
+            key: o.group.id + "_" + o.date,
+            className: "px-3 py-3 flex items-center gap-2",
+          },
+          e.createElement(
+            "div",
+            { className: "flex-1 text-right min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm font-semibold text-blue-950 truncate" },
+              o.group.name,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-xs text-slate-500 truncate" },
+              Ke(o.date),
+              coachLabel ? " \xB7 " + coachLabel.name : "",
+            ),
+          ),
+          OA &&
+            e.createElement(
+              "button",
+              {
+                onClick: () => OA(o),
+                className:
+                  "shrink-0 bg-orange-500 text-white text-xs font-semibold rounded-lg px-3 py-2 min-h-[38px] active:scale-95 transition-transform",
+              },
+              AL || "פתיחה",
+            ),
+        );
+      }),
     ),
   );
 }
