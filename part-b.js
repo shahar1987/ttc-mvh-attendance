@@ -1,5 +1,8 @@
+function isStaffMember(u) {
+  return u.role === "Coach" || u.role === "Admin";
+}
 function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
-  let l = s.filter((v) => v.role === "Coach"),
+  let l = s.filter(isStaffMember),
     [i, c] = b(t?.name || ""),
     [n, m] = b(t?.location || ""),
     [o, x] = b(t?.days || []),
@@ -989,7 +992,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
             "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
         },
         s.map((u) => {
-          let staff = t.filter((f) => f.role === "Coach" || f.role === "Admin"),
+          let staff = t.filter(isStaffMember),
             assigned = groupCoachNames(u, t);
           return e.createElement(
             "div",
