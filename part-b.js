@@ -1203,6 +1203,10 @@ function re({
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     today = E(),
+    minDate = (() => {
+      let d = new Date();
+      return (d.setDate(d.getDate() - 1), d.toLocaleDateString("en-CA"));
+    })(),
     [selDate, setSelDate] = b(ID || today),
     [showDatePicker, setShowDatePicker] = b(!!ID),
     m = selDate,
@@ -1454,6 +1458,7 @@ function re({
                 type: "date",
                 value: m,
                 max: today,
+                min: minDate,
                 dir: "ltr",
                 onChange: (v) => v.target.value && setSelDate(v.target.value),
                 className:
