@@ -1201,7 +1201,11 @@ function re({
   cancellations: CX,
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
-    m = E(),
+    today = E(),
+    [selDate, setSelDate] = b(today),
+    [showDatePicker, setShowDatePicker] = b(!1),
+    m = selDate,
+    isPast = m !== today,
     o = l.some((p) => p.groupId === t.id && p.date === m),
     cancelled = findCancellation(CX, t.id, m),
     [showCancel, setShowCancel] = b(!1),
@@ -1229,6 +1233,10 @@ function re({
     [g, r] = b(!1),
     [y, N] = b("");
   j(() => {
+    setSelDate(today);
+    setShowDatePicker(!1);
+  }, [t.id]);
+  j(() => {
     let p = {};
     (n.forEach((w) => {
       let k = l.find(
@@ -1238,7 +1246,7 @@ function re({
     }),
       h(p),
       f(!o));
-  }, [t.id, rosterKey, o]);
+  }, [t.id, rosterKey, m]);
   let C = (p, w) => {
       u && h((k) => ({ ...k, [p]: k[p] === w ? null : w }));
     },
@@ -1339,6 +1347,18 @@ function re({
             ),
           ),
         ),
+        isPast &&
+          e.createElement(
+            "button",
+            {
+              onClick: () => {
+                (setSelDate(today), setShowDatePicker(!1));
+              },
+              className:
+                "mt-2 pt-2 border-t border-slate-100 w-full text-xs font-semibold text-blue-900 text-right",
+            },
+            "חזרה להיום",
+          ),
       ),
       e.createElement(
         "div",
@@ -1392,7 +1412,9 @@ function re({
             className: `text-xs font-semibold px-2.5 py-1 rounded-full ${o && !u ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
           },
           o && !u
-            ? "נשמר להיום ✓"
+            ? isPast
+              ? "נשמר ✓"
+              : "נשמר להיום ✓"
             : "טרם נשמר",
         ),
         e.createElement(
@@ -1405,10 +1427,53 @@ function re({
           ),
           e.createElement(
             "div",
-            { className: "text-xs text-slate-500" },
-            Ke(m),
+            {
+              className: `text-xs ${isPast ? "text-blue-700 font-semibold" : "text-slate-500"}`,
+            },
+            isPast ? `עריכה ל־${Ke(m)}` : Ke(m),
           ),
         ),
+      ),
+      e.createElement(
+        "div",
+        {
+          className:
+            "mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap",
+        },
+        showDatePicker || isPast
+          ? e.createElement(
+              e.Fragment,
+              null,
+              e.createElement("input", {
+                type: "date",
+                value: m,
+                max: today,
+                dir: "ltr",
+                onChange: (v) => v.target.value && setSelDate(v.target.value),
+                className:
+                  "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
+              }),
+              e.createElement(
+                "button",
+                {
+                  onClick: () => {
+                    (setSelDate(today), setShowDatePicker(!1));
+                  },
+                  className: "text-xs font-semibold text-blue-900",
+                },
+                "חזרה להיום",
+              ),
+            )
+          : e.createElement(
+              "button",
+              {
+                onClick: () => setShowDatePicker(!0),
+                className:
+                  "flex items-center gap-1.5 text-xs font-semibold text-blue-900",
+              },
+              e.createElement(ge, { className: "w-3.5 h-3.5" }),
+              "עדכון נוכחות ליום שלא מולא",
+            ),
       ),
       n.length > 0 &&
         e.createElement(
@@ -1628,7 +1693,7 @@ function re({
       e.createElement(
         "p",
         { className: "text-[11px] text-amber-700 text-right leading-relaxed" },
-        `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות להיום.`,
+        `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
     e.createElement(
       "div",
