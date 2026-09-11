@@ -2061,15 +2061,16 @@ function ct() {
 function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
     { data: l } = L("users", null, t?.uid),
-    { data: i } = L("groups", null, t?.uid),
+    { data: i, loading: iLoading } = L("groups", null, t?.uid),
     coachGroupIds =
       s && !isAdminRole(s) && !isViewerRole(s)
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
-    { data: c } = L("players", coachGroupIds, t?.uid),
-    { data: rawAttendance } = L("attendance", coachGroupIds, t?.uid),
-    { data: cancellations } = L("cancellations", coachGroupIds, t?.uid),
+    { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid),
+    { data: rawAttendance, loading: aLoading } = L("attendance", coachGroupIds, t?.uid),
+    { data: cancellations, loading: xLoading } = L("cancellations", coachGroupIds, t?.uid),
     n = excludeCancelled(rawAttendance, cancellations),
+    coreLoading = iLoading || cLoading || aLoading || xLoading,
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
     [pendingDate, setPendingDate] = b(null),
@@ -2154,7 +2155,7 @@ function Q() {
         () => N && N()
       );
     }, []),
-    t === void 0 || (t && s === void 0))
+    t === void 0 || (t && s === void 0) || (t && s && coreLoading))
   )
     return e.createElement(
       "div",
