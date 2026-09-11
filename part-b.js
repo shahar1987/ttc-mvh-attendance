@@ -8,6 +8,9 @@ function isAdminRole(u) {
 function isCoachRole(u) {
   return roleKey(u) === "coach";
 }
+function isViewerRole(u) {
+  return roleKey(u) === "viewer";
+}
 function isStaffMember(u) {
   return isAdminRole(u) || isCoachRole(u);
 }
@@ -278,7 +281,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
     ),
   );
 }
-function it({ groups: t, users: s, players: a }) {
+function it({ groups: t, users: s, players: a, readOnly: RO }) {
   let [l, i] = b(null),
     [c, n] = b(""),
     [reassign, setReassign] = b({}),
@@ -331,16 +334,17 @@ function it({ groups: t, users: s, players: a }) {
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
-    e.createElement(
-      "button",
-      {
-        onClick: () => i("new"),
-        className:
-          "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
-      },
-      e.createElement(K, { className: "w-4 h-4" }),
-      " הוספת קבוצה",
-    ),
+    !RO &&
+      e.createElement(
+        "button",
+        {
+          onClick: () => i("new"),
+          className:
+            "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
+        },
+        e.createElement(K, { className: "w-4 h-4" }),
+        " הוספת קבוצה",
+      ),
     c &&
       e.createElement(
         "div",
@@ -390,6 +394,7 @@ function it({ groups: t, users: s, players: a }) {
               { className: "text-sm font-medium text-blue-950 flex-1 text-right truncate" },
               p.name,
             ),
+            !RO &&
             e.createElement(
               "select",
               {
@@ -408,6 +413,7 @@ function it({ groups: t, users: s, players: a }) {
                 e.createElement("option", { key: g.id, value: g.id }, g.name),
               ),
             ),
+            !RO &&
             e.createElement(
               "button",
               {
@@ -434,6 +440,7 @@ function it({ groups: t, users: s, players: a }) {
             className:
               "bg-white rounded-xl border border-slate-200 px-4 py-3.5 flex items-center gap-2",
           },
+          !RO &&
           e.createElement(
             "div",
             { className: "flex items-center gap-1 shrink-0" },
@@ -636,6 +643,11 @@ function rt({ onClose: t, users: US }) {
             { value: "Admin" },
             "מנהל — גישה מלאה",
           ),
+          e.createElement(
+            "option",
+            { value: "Viewer" },
+            "צופה — צפייה בלבד בכל הנתונים",
+          ),
         ),
       ),
       g &&
@@ -820,7 +832,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
     handleDeleteCoach = async (u) => {
       if (
         !window.confirm(
-          `למחוק את המאמן "${u.name}"? הוא ינותק מכל הקבוצות שלו וחשבונו יוסר מהמערכת. הפעולה אינה הפיכה.`,
+          `למחוק את המשתמש "${u.name}"? הוא ינותק מכל הקבוצות שלו וחשבונו יוסר מהמערכת. הפעולה אינה הפיכה.`,
         )
       )
         return;
@@ -937,6 +949,11 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                 { value: "Coach" },
                 "מאמן",
               ),
+              e.createElement(
+                "option",
+                { value: "Viewer" },
+                "צופה",
+              ),
             ),
             e.createElement(
               "div",
@@ -952,9 +969,11 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                 { className: "text-xs text-slate-400" },
                 isAdminRole(u)
                   ? "גישה מלאה לכל הקבוצות"
-                  : f.length > 0
-                    ? f.map((r) => r.name).join(", ")
-                    : "לא שויכה קבוצה",
+                  : isViewerRole(u)
+                    ? "צפייה בלבד בכל הנתונים"
+                    : f.length > 0
+                      ? f.map((r) => r.name).join(", ")
+                      : "לא שויכה קבוצה",
               ),
             ),
             e.createElement(
@@ -967,7 +986,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               },
               e.createElement($e, { className: "w-4 h-4 text-blue-900" }),
             ),
-            isCoachRole(u) &&
+            (isCoachRole(u) || isViewerRole(u)) &&
               e.createElement(
                 "button",
                 {
@@ -1065,6 +1084,7 @@ function dt({
   open: t,
   onClose: s,
   isAdmin: a,
+  isViewer: VW,
   view: l,
   setView: i,
   onLogout: c,
@@ -1101,7 +1121,7 @@ function dt({
           { className: "text-xs text-blue-200 mt-2" },
           n,
           " \xB7 ",
-          a ? "מנהל" : "מאמן",
+          a ? "מנהל" : VW ? "צופה" : "מאמן",
         ),
       ),
       e.createElement(
@@ -1156,20 +1176,55 @@ function dt({
                 external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
               },
             ]
-          : [
-              {
-                key: "attendance",
-                label:
-                  "מילוי נוכחות",
-                icon: Z,
-              },
-              {
-                key: "tournaments",
-                label: "תחרויות",
-                icon: TrophyIcon,
-                external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
-              },
-            ]
+          : VW
+            ? [
+                {
+                  key: "dashboard",
+                  label: "דשבורד",
+                  icon: le,
+                },
+                {
+                  key: "attendance",
+                  label: "נוכחות",
+                  icon: Z,
+                },
+                {
+                  key: "groups",
+                  label: "קבוצות",
+                  icon: H,
+                },
+                {
+                  key: "phonebook",
+                  label:
+                    "ספר טלפונים",
+                  icon: se,
+                },
+                {
+                  key: "reports",
+                  label: "דוחות",
+                  icon: ReportsIcon,
+                },
+                {
+                  key: "tournaments",
+                  label: "תחרויות",
+                  icon: TrophyIcon,
+                  external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+                },
+              ]
+            : [
+                {
+                  key: "attendance",
+                  label:
+                    "מילוי נוכחות",
+                  icon: Z,
+                },
+                {
+                  key: "tournaments",
+                  label: "תחרויות",
+                  icon: TrophyIcon,
+                  external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+                },
+              ]
         ).map(({ key: h, label: u, icon: f, external: ext }) =>
           e.createElement(
             "button",
@@ -1219,6 +1274,7 @@ function re({
   cancellations: CX,
   initialDate: ID,
   initialNonce: IN,
+  readOnly: RO,
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     today = E(),
@@ -1250,7 +1306,7 @@ function re({
       .sort()
       .join(","),
     [x, h] = b({}),
-    [u, f] = b(!o),
+    [u, f] = b(RO ? !1 : !o),
     [g, r] = b(!1),
     [y, N] = b("");
   let daySig = l
@@ -1285,7 +1341,7 @@ function re({
       p[w.id] = k ? k.status : null;
     }),
       h(p),
-      f(!o));
+      f(RO ? !1 : !o));
   }, [t.id, rosterKey, m, daySig]);
   let C = (p, w) => {
       u &&
@@ -1424,6 +1480,7 @@ function re({
           { className: "text-xs text-slate-500 leading-relaxed" },
           "היום לא ייספר בחישובי הנוכחות של הקבוצה.",
         ),
+        !RO &&
         e.createElement(
           "button",
           {
@@ -1542,7 +1599,8 @@ function re({
           n.length,
         ),
     ),
-    AP &&
+    !RO &&
+      AP &&
       e.createElement(
         "button",
         {
@@ -1553,6 +1611,7 @@ function re({
         e.createElement(K, { className: "w-4 h-4" }),
         "הוספת שחקן לקבוצה",
       ),
+    !RO &&
     e.createElement(
       "button",
       {
@@ -1675,6 +1734,7 @@ function re({
           ),
           showWa &&
             WA &&
+            !RO &&
             e.createElement(
               "button",
               {
@@ -1690,6 +1750,7 @@ function re({
               }),
             ),
           k &&
+            !RO &&
             e.createElement(Re, {
               player: p,
               onOpenWhatsapp: (v) =>
@@ -1749,6 +1810,7 @@ function re({
         { className: "text-[11px] text-amber-700 text-right leading-relaxed" },
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
+    !RO &&
     e.createElement(
       "div",
       {
@@ -1796,9 +1858,10 @@ function mt({
   onFillDate: onFillDate,
   pendingDate: ID,
   pendingNonce: IN,
+  readOnly: RO,
 }) {
   let [editGroup, setEditGroup] = b(null),
-    c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
+    c = i || RO ? s : s.filter((r) => isGroupCoach(r, t.id)),
     myAlerts = absenceAlerts(
       a,
       s,
@@ -1839,13 +1902,15 @@ function mt({
           e.createElement(MissingDaysCard, {
             items: myMissing.filter((r) => r.group.id === h.id),
             actionLabel: "מילוי עכשיו",
-            onAction: (r) => onFillDate && onFillDate(r.group.id, r.date),
+            onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
           }),
+          !RO &&
           e.createElement(AlertsCard, {
             alerts: myAlerts.filter((r) => r.player.groupId === h.id),
             onWhatsapp: WA,
             onEdit: EP,
           }),
+          !RO &&
           e.createElement(AbsenceMsgCard, {
             items: myPending.filter((r) => r.record.groupId === h.id),
             onWhatsapp: WA,
@@ -1863,6 +1928,7 @@ function mt({
             cancellations: CX,
             initialDate: ID,
             initialNonce: IN,
+            readOnly: RO,
           }),
           i &&
             e.createElement(
@@ -1889,13 +1955,15 @@ function mt({
           e.createElement(MissingDaysCard, {
             items: myMissing,
             actionLabel: "מילוי עכשיו",
-            onAction: (r) => onFillDate && onFillDate(r.group.id, r.date),
+            onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
           }),
+          !RO &&
           e.createElement(AlertsCard, {
             alerts: myAlerts,
             onWhatsapp: WA,
             onEdit: EP,
           }),
+          !RO &&
           e.createElement(AbsenceMsgCard, {
             items: myPending,
             onWhatsapp: WA,
@@ -1995,7 +2063,7 @@ function Q() {
     { data: l } = L("users", null, t?.uid),
     { data: i } = L("groups", null, t?.uid),
     coachGroupIds =
-      s && !isAdminRole(s)
+      s && !isAdminRole(s) && !isViewerRole(s)
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c } = L("players", coachGroupIds, t?.uid),
@@ -2054,14 +2122,14 @@ function Q() {
       s?.id && qe(s.id);
     }, [s?.id]),
     j(() => {
-      s && !isAdminRole(s) && o("attendance");
+      s && !isAdminRole(s) && !isViewerRole(s) && o("attendance");
     }, [s?.role]),
     j(() => {
       let onPop = (ev) => {
         let st = ev.state || {},
           scr = st.screen || "dashboard",
           pr = profileRef.current;
-        (pr && !isAdminRole(pr) && (scr = "attendance"),
+        (pr && !isAdminRole(pr) && !isViewerRole(pr) && (scr = "attendance"),
           o(scr),
           setAttGroupId(st.attGroup || null));
       };
@@ -2161,7 +2229,8 @@ function Q() {
       ),
     );
   }
-  let r = isAdminRole(s);
+  let r = isAdminRole(s),
+    vw = isViewerRole(s);
   return e.createElement(
     "div",
     { dir: "rtl", className: "min-h-screen bg-slate-50" },
@@ -2217,12 +2286,12 @@ function Q() {
             { className: "text-[11px] text-blue-300 truncate" },
             s.name,
             " \xB7 ",
-            r ? "מנהל" : "מאמן",
+            r ? "מנהל" : vw ? "צופה" : "מאמן",
           ),
         ),
       ),
       !g && e.createElement(ct, null),
-      r &&
+      (r || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
           users: l,
@@ -2236,18 +2305,19 @@ function Q() {
           onOpenGroup: goToGroupScreen,
           onOpenGroupDate: goToGroupDate,
           cancellations,
+          readOnly: vw,
         }),
-      r &&
+      (r || vw) &&
         m === "groups" &&
-        e.createElement(it, { groups: i, users: l, players: c }),
-      r &&
+        e.createElement(it, { groups: i, users: l, players: c, readOnly: vw }),
+      (r || vw) &&
         m === "phonebook" &&
         e.createElement(lt, {
           players: c,
           groups: i,
-          onEditPlayer: openEditPlayer,
+          onEditPlayer: vw ? null : openEditPlayer,
         }),
-      r &&
+      (r || vw) &&
         m === "reports" &&
         e.createElement(ReportsScreen, {
           groups: i,
@@ -2255,6 +2325,7 @@ function Q() {
           players: c,
           attendance: n,
           cancellations,
+          readOnly: vw,
         }),
       r &&
         m === "permissions" &&
@@ -2279,11 +2350,13 @@ function Q() {
           pendingDate,
           pendingNonce,
           cancellations,
+          readOnly: vw,
         }),
       e.createElement(dt, {
         open: x,
         onClose: () => h(!1),
         isAdmin: r,
+        isViewer: vw,
         view: m,
         setView: goToScreen,
         userName: s.name,
