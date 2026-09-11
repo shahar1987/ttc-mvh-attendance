@@ -1357,7 +1357,7 @@ function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
     ),
   );
 }
-function ReportDropoutRisk({ players, groups, attendance }) {
+function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
   let [startDate, setStartDate] = b(firstOfMonthStr()),
     [endDate, setEndDate] = b(E()),
     groupName = (groupId) => groups.find((g) => g.id === groupId)?.name || "—",
@@ -1436,6 +1436,7 @@ function ReportDropoutRisk({ players, groups, attendance }) {
                   key: x.player.id,
                   className: "px-4 py-3 flex items-center justify-between gap-2",
                 },
+                !RO &&
                 e.createElement(
                   "button",
                   {
@@ -1671,7 +1672,7 @@ function ReportQuota({ players, groups, attendance }) {
     ),
   );
 }
-function ReportsScreen({ groups, users, players, attendance, cancellations }) {
+function ReportsScreen({ groups, users, players, attendance, cancellations, readOnly: RO }) {
   let [tab, setTab] = b("matrix"),
     tabs = [
       { key: "matrix", label: "נוכחות חודשית" },
@@ -1703,7 +1704,7 @@ function ReportsScreen({ groups, users, players, attendance, cancellations }) {
     tab === "player" && e.createElement(ReportPlayer, { players, groups, attendance }),
     tab === "fillrate" &&
       e.createElement(ReportCoachFillRate, { groups, users, attendance, cancellations }),
-    tab === "risk" && e.createElement(ReportDropoutRisk, { players, groups, attendance }),
+    tab === "risk" && e.createElement(ReportDropoutRisk, { players, groups, attendance, readOnly: RO }),
     tab === "compare" &&
       e.createElement(ReportGroupComparison, { groups, users, players, attendance }),
     tab === "quota" &&
@@ -1907,6 +1908,7 @@ function st({
   onOpenGroup,
   onOpenGroupDate,
   cancellations: CX,
+  readOnly: RO,
 }) {
   let [o, x] = b(null),
     [h, u] = b(!1),
@@ -1934,23 +1936,24 @@ function st({
           );
       x(A);
     },
-    N = async (d, A) => {
-      u(!0);
-      try {
-        await V(M(P, "reminders"), {
-          coachId: A.id,
-          coachName: A.name,
-          groupId: d.id,
-          groupName: d.name,
-          message: `תזכורת ידידותית למלא נוכחות עבור קבוצת ${d.name} להיום. תודה!`,
-          createdAt: Oe(),
-          processed: !1,
-        });
-      } catch (I) {
-        setDashErr("שליחת התזכורת נכשלה: " + I.message);
-      } finally {
-        u(!1);
+    N = (d, A) => {
+      let msg = `היי ${A.name}, תזכורת ידידותית למלא נוכחות עבור קבוצת ${d.name} להיום. תודה!`;
+      if (!isValidPhone(A.phone || "")) {
+        setDashErr(
+          `למאמן ${A.name} אין מספר טלפון שמור — אפשר להוסיף אותו במסך ניהול הרשאות (עריכת משתמש).`,
+        );
+        return;
       }
+      window.open(ne(normalizePhone(A.phone), msg), "_blank");
+      V(M(P, "reminders"), {
+        coachId: A.id,
+        coachName: A.name,
+        groupId: d.id,
+        groupName: d.name,
+        message: msg,
+        createdAt: Oe(),
+        processed: !0,
+      }).catch((I) => console.warn("Reminder log not saved:", I));
     },
     C = async (d) => {
       try {
@@ -1987,21 +1990,25 @@ function st({
       users: t,
       showCoach: !0,
       actionLabel: "פתיחה",
-      onAction: (o2) =>
-        onOpenGroupDate
-          ? onOpenGroupDate(o2.group.id, o2.date)
-          : onOpenGroup(o2.group.id),
+      onAction: RO
+        ? null
+        : (o2) =>
+            onOpenGroupDate
+              ? onOpenGroupDate(o2.group.id, o2.date)
+              : onOpenGroup(o2.group.id),
     }),
-    e.createElement(AlertsCard, {
-      alerts,
-      onWhatsapp: WA,
-      onEdit: EP,
-    }),
-    e.createElement(AbsenceMsgCard, {
-      items: pendingMsgs,
-      onWhatsapp: WA,
-      currentUserId: c,
-    }),
+    !RO &&
+      e.createElement(AlertsCard, {
+        alerts,
+        onWhatsapp: WA,
+        onEdit: EP,
+      }),
+    !RO &&
+      e.createElement(AbsenceMsgCard, {
+        items: pendingMsgs,
+        onWhatsapp: WA,
+        currentUserId: c,
+      }),
     e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
     e.createElement(
       "div",
@@ -2034,6 +2041,7 @@ function st({
         accent: "bg-emerald-500",
       }),
     ),
+    !RO &&
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-3" },
@@ -2112,7 +2120,7 @@ function st({
                         "div",
                         { className: "text-xs text-slate-500" },
                         d.name,
-                        " \xB7 שולח התראת Push",
+                        " \xB7 פתיחת תזכורת בוואטסאפ",
                       ),
                     ),
                   ),
