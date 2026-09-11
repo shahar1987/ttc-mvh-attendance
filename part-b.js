@@ -1,5 +1,15 @@
+function roleKey(v) {
+  let r = v && typeof v === "object" ? v.role : v;
+  return (typeof r === "string" ? r : "").trim().toLowerCase();
+}
+function isAdminRole(u) {
+  return roleKey(u) === "admin";
+}
+function isCoachRole(u) {
+  return roleKey(u) === "coach";
+}
 function isStaffMember(u) {
-  return u.role === "Coach" || u.role === "Admin";
+  return isAdminRole(u) || isCoachRole(u);
 }
 function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
   let l = s.filter(isStaffMember),
@@ -833,7 +843,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       }
     },
     x = async (u, f) => {
-      if (u.id === a && f !== "Admin") {
+      if (u.id === a && !isAdminRole(f)) {
         i(
           "אי אפשר להוריד לעצמך את הרשאת המנהל — אחרת תיחסם מהמערכת.",
         );
@@ -851,7 +861,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         n(null);
       }
     },
-    h = t.filter((u) => u.role === "Admin");
+    h = t.filter(isAdminRole);
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
@@ -899,7 +909,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         },
         t.map((u) => {
           let f = s.filter((r) => isGroupCoach(r, u.id)),
-            g = u.role === "Admin" && h.length === 1;
+            g = isAdminRole(u) && h.length === 1;
           return e.createElement(
             "div",
             {
@@ -938,7 +948,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               e.createElement(
                 "div",
                 { className: "text-xs text-slate-400" },
-                u.role === "Admin"
+                isAdminRole(u)
                   ? "גישה מלאה לכל הקבוצות"
                   : f.length > 0
                     ? f.map((r) => r.name).join(", ")
@@ -955,7 +965,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               },
               e.createElement($e, { className: "w-4 h-4 text-blue-900" }),
             ),
-            u.role === "Coach" &&
+            isCoachRole(u) &&
               e.createElement(
                 "button",
                 {
@@ -1150,6 +1160,12 @@ function dt({
                 label:
                   "מילוי נוכחות",
                 icon: Z,
+              },
+              {
+                key: "tournaments",
+                label: "תחרויות",
+                icon: TrophyIcon,
+                external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
               },
             ]
         ).map(({ key: h, label: u, icon: f, external: ext }) =>
@@ -1946,7 +1962,7 @@ function Q() {
     { data: l } = L("users"),
     { data: i } = L("groups"),
     coachGroupIds =
-      s && s.role !== "Admin"
+      s && !isAdminRole(s)
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c } = L("players", coachGroupIds),
@@ -1999,7 +2015,7 @@ function Q() {
       s?.id && qe(s.id);
     }, [s?.id]),
     j(() => {
-      s && s.role !== "Admin" && o("attendance");
+      s && !isAdminRole(s) && o("attendance");
     }, [s?.role]),
     j(() => {
       let onPop = (ev) => {
@@ -2102,7 +2118,7 @@ function Q() {
       ),
     );
   }
-  let r = s.role === "Admin";
+  let r = isAdminRole(s);
   return e.createElement(
     "div",
     { dir: "rtl", className: "min-h-screen bg-slate-50" },
