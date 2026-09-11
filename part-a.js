@@ -40,6 +40,8 @@ import {
   serverTimestamp as Oe,
   query as fsQuery,
   where as fsWhere,
+  terminate as fsTerminate,
+  clearIndexedDbPersistence as fsClearCache,
 } from "firebase/firestore";
 import {
   onAuthStateChanged as Le,
@@ -86,6 +88,20 @@ var F =
         .then((t) => (t ? fe(z) : null))
         .catch(() => null)
     : Promise.resolve(null);
+async function logoutAndClearCache() {
+  try {
+    await R(D);
+  } catch (t) {
+    console.warn("Sign-out failed:", t);
+  }
+  try {
+    await fsTerminate(P);
+    await fsClearCache(P);
+  } catch (t) {
+    console.warn("Clearing local cache failed:", t);
+  }
+  if (typeof window < "u") window.location.reload();
+}
 async function He(t, s) {
   let a = Be(B, "userCreator-" + Date.now());
   try {
