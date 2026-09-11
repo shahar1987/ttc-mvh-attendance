@@ -54,6 +54,18 @@ jobs:
           mkdir -p site
           npx esbuild ./bundle.js --bundle --minify --format=esm --outfile=site/app.js
 
+      - name: Build Tailwind CSS locally (self-hosted, works offline)
+        run: |
+          npm install tailwindcss@3.4.10 --no-audit --no-fund
+          cat > tailwind.config.js <<'TW'
+          module.exports = { content: ["./bundle.js", "./index.html"], theme: { extend: {} } };
+          TW
+          printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > tw-input.css
+          npx tailwindcss -c tailwind.config.js -i tw-input.css -o site/tailwind.css --minify
+          SIZE=$(stat -c%s site/tailwind.css)
+          echo "tailwind.css size: $SIZE bytes"
+          [ "$SIZE" -ge 10000 ] || (echo "ERROR: tailwind.css too small - class scan failed" && exit 1)
+
       - name: Generate PWA icons from logo.png
         run: |
           cat > mkicons.mjs <<'ICONS'
@@ -92,10 +104,11 @@ jobs:
       - name: Assemble the site with a cache-busting version
         run: |
           VERSION="${GITHUB_SHA::8}"
-          sed "s|./app.js|./app.js?v=$VERSION|g" index.html > site/index.html
+          sed "s|./app.js|./app.js?v=$VERSION|g; s|./tailwind.css|./tailwind.css?v=$VERSION|g" index.html > site/index.html
           sed "s|__BUILD_VERSION__|$VERSION|g" sw.js > site/sw.js
           cp manifest.json site/manifest.json
           grep -q "app.js?v=$VERSION" site/index.html || (echo "ERROR: cache-busting failed" && exit 1)
+          grep -q "tailwind.css?v=$VERSION" site/index.html || (echo "ERROR: tailwind cache-busting failed" && exit 1)
 
       - name: Verify the build
         run: |
@@ -103,7 +116,7 @@ jobs:
           echo "app.js size: $SIZE bytes"
           [ "$SIZE" -ge 200000 ] || (echo "ERROR: bundle too small" && exit 1)
           ! grep -q 'from"react"' site/app.js || (echo "ERROR: bare react import" && exit 1)
-          for f in index.html app.js manifest.json sw.js logo.png icon-192.png icon-512.png icon-512-maskable.png; do
+          for f in index.html app.js tailwind.css manifest.json sw.js logo.png icon-192.png icon-512.png icon-512-maskable.png; do
             [ -f "site/$f" ] || (echo "ERROR: missing site/$f" && exit 1)
           done
 
