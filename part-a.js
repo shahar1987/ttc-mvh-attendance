@@ -44,6 +44,7 @@ import {
 import {
   onAuthStateChanged as Le,
   signInWithEmailAndPassword as Ue,
+  sendPasswordResetEmail as PRE,
   signOut as R,
   createUserWithEmailAndPassword as Me,
   getAuth as Xe,
@@ -287,7 +288,7 @@ async function markAbsenceMsgSent(date, groupId, playerId, userId) {
 function startOfWeekStr() {
   let d = new Date(),
     day = d.getDay(),
-    diff = day === 0 ? 6 : day - 1;
+    diff = day;
   d.setDate(d.getDate() - diff);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -685,7 +686,7 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
-function L(t, groupIds) {
+function L(t, groupIds, uid) {
   let [s, a] = b([]),
     [l, i] = b(!0),
     scoped = Array.isArray(groupIds),
@@ -693,10 +694,15 @@ function L(t, groupIds) {
   return (
     j(
       () => {
+        if (!uid) {
+          (a([]), i(!1));
+          return;
+        }
         if (scoped && groupIds.length === 0) {
           (a([]), i(!1));
           return;
         }
+        i(!0);
         let ref = scoped
           ? fsQuery(M(P, t), fsWhere("groupId", "in", groupIds))
           : M(P, t);
@@ -706,11 +712,13 @@ function L(t, groupIds) {
             (a(n.docs.map((m) => ({ id: m.id, ...m.data() }))), i(!1));
           },
           (n) => {
-            (console.error(`Firestore listen error on ${t}:`, n), i(!1));
+            (console.error(`Firestore listen error on ${t}:`, n),
+              a([]),
+              i(!1));
           },
         );
       },
-      [t, scoped, scopeKey],
+      [t, scoped, scopeKey, uid || ""],
     ),
     { data: s, loading: l }
   );
@@ -802,6 +810,7 @@ function eachDateInRange(startStr, endStr) {
 }
 function csvEscape(value) {
   let s = value === null || value === void 0 ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 function downloadCsv(filename, headers, rows) {
@@ -1363,7 +1372,12 @@ function ReportDropoutRisk({ players, groups, attendance }) {
             .sort((a, c) => c.date.localeCompare(a.date)),
           lastTwo = records.slice(0, 2),
           flagged = lastTwo.length === 2 && lastTwo.every((r) => r.status === "Absent");
-        return { player: p, lastDate: records[0]?.date || null, flagged };
+        return {
+          player: p,
+          group: groups.find((g) => g.id === p.groupId) || null,
+          lastDate: records[0]?.date || null,
+          flagged,
+        };
       })
       .filter((x) => x.flagged),
     exportCsv = () => {
@@ -1428,7 +1442,7 @@ function ReportDropoutRisk({ players, groups, attendance }) {
                     onClick: () =>
                       window.open(
                         ne(
-                          x.player.parentPhone,
+                          normalizePhone(x.player.parentPhone),
                           Ve(
                             x.player.parentName,
                             x.player.name,
@@ -1763,9 +1777,10 @@ function tt() {
   let [t, s] = b(""),
     [a, l] = b(""),
     [i, c] = b(""),
+    [ok, setOk] = b(""),
     [n, m] = b(!1),
     o = async () => {
-      (c(""), m(!0));
+      (c(""), setOk(""), m(!0));
       try {
         await Ue(D, t.trim(), a);
       } catch (x) {
@@ -1773,6 +1788,22 @@ function tt() {
           et[x.code] ||
             "שגיאה בהתחברות, נסה שוב",
         );
+      } finally {
+        m(!1);
+      }
+    },
+    resetPw = async () => {
+      if (!t.trim()) {
+        (setOk(""),
+          c("להזין אימייל למעלה ואז ללחוץ שוב על \u201Cשכחתי סיסמה\u201D"));
+        return;
+      }
+      (c(""), setOk(""), m(!0));
+      try {
+        (await PRE(D, t.trim()),
+          setOk("נשלח מייל לאיפוס הסיסמה אל " + t.trim()));
+      } catch (x) {
+        c(et[x.code] || "שליחת מייל האיפוס נכשלה, נסה שוב");
       } finally {
         m(!1);
       }
@@ -1809,6 +1840,7 @@ function tt() {
         type: "email",
         placeholder: "אימייל",
         dir: "ltr",
+        onKeyDown: (x) => x.key === "Enter" && o(),
         className:
           "w-full bg-white rounded-xl py-3.5 px-4 text-sm outline-none text-right",
       }),
@@ -1828,6 +1860,12 @@ function tt() {
           { className: "text-red-300 text-sm text-center" },
           i,
         ),
+      ok &&
+        e.createElement(
+          "p",
+          { className: "text-emerald-300 text-sm text-center" },
+          ok,
+        ),
       e.createElement(
         "button",
         {
@@ -1841,9 +1879,18 @@ function tt() {
           : "התחברות",
       ),
       e.createElement(
+        "button",
+        {
+          onClick: resetPw,
+          disabled: n,
+          className: "text-blue-300 text-xs underline text-center mt-1",
+        },
+        "שכחתי סיסמה",
+      ),
+      e.createElement(
         "p",
         { className: "text-blue-400 text-xs text-center mt-2" },
-        'חשבונות נוצרים ע"י מנהל המועדון בקונסולת Firebase',
+        "לקבלת חשבון למערכת — פנה למנהל המועדון",
       ),
     ),
   );
@@ -1875,6 +1922,7 @@ function st({
         A = s
           .filter(
             (I) =>
+              ee(I) &&
               !findCancellation(CX, I.id, d) &&
               !l.some((p) => p.groupId === I.id && p.date === d),
           )
@@ -2149,7 +2197,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
   let [a, l] = b(""),
     c = t
       .filter((m) => m.isActive && !m.deleted)
-      .filter((m) => m.name.includes(a) || m.parentName.includes(a)),
+      .filter((m) => (m.name || "").includes(a) || (m.parentName || "").includes(a)),
     n = s
       .map((m) => ({ group: m, players: c.filter((o) => o.groupId === m.id) }))
       .filter((m) => m.players.length > 0);
@@ -2203,6 +2251,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
               e.createElement(
                 "div",
                 { className: "flex items-center gap-1.5 shrink-0" },
+                isValidPhone(x.parentPhone) &&
                 e.createElement(
                   "a",
                   {
@@ -2217,10 +2266,11 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
                     className: "w-4 h-4 text-emerald-600",
                   }),
                 ),
+                isValidPhone(x.parentPhone) &&
                 e.createElement(
                   "a",
                   {
-                    href: `tel:+${x.parentPhone}`,
+                    href: `tel:+${normalizePhone(x.parentPhone)}`,
                     className:
                       "min-w-[44px] min-h-[44px] rounded-full bg-blue-50 flex items-center justify-center",
                     "aria-label": "חייג",
@@ -2622,6 +2672,7 @@ function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) 
       if (!g.days.includes(d.getDay())) continue;
       let ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (ds < floorDate) continue;
+      if (g.createdDate && ds < g.createdDate) continue;
       if (findCancellation(cancellations, g.id, ds)) continue;
       if (attendance.some((a) => a.groupId === g.id && a.date === ds)) continue;
       out.push({ group: g, date: ds });
@@ -2704,6 +2755,7 @@ function at({
   player: a,
   allowedGroupIds: l,
   defaultGroupId: DG,
+  canDelete: CD,
 }) {
   let i = !!a,
     c = l ? t.filter((v) => l.includes(v.id)) : t,
@@ -2722,7 +2774,7 @@ function at({
     },
     [r, y] = b(!1),
     [N, C] = b(""),
-    d = f.trim().length > 0 && isValidPhone(f),
+    d = f.trim().length === 0 || isValidPhone(f),
     selAdult = isAdultGroup(t.find((v) => v.id === o) || null),
     A = n.trim() && o && d,
     I = async () => {
@@ -2934,6 +2986,7 @@ function at({
         r ? "שומר…" : "שמירה",
       ),
       i &&
+        CD &&
         e.createElement(
           "button",
           {
@@ -2947,75 +3000,7 @@ function at({
     ),
   );
 }
-var DEFAULT_ROSTER = `# פרקינסון | א
-טל שושני, 0507741082
-בארי סילברברג, 0542483460
-רן כהן, 0549000780
-ניסים זגורי, 0542990097
-יוסי ועדיה
-יהודית איתי, 0528734881
-דני קניקשטיין
-מיכל איתן, 0509509253
-אברהם רחימי, 0508296609
-יעקב אורקו, 0506543888
-
-# מבוגרים רמת כורזים | ב,ד
-שחר ריבר, 0523717971
-יותם ירושלמי, 0522743633
-אנדריי
-טל כהן, 0524528855
-צור כהן
-ישראל בן ארוש
-אוהד בן ארוש
-אלעזר שנקר, 0545431011
-אורי מוסנזון
-דניאל בן
-
-# מבוגרים דפנה | ב,ה
-אוהד לוי, +972 50-262-4321
-אסף פיקלשטיין
-זיו קרן, +972 50-887-3510
-חיים ארד, +972 54-669-3031
-גל שייביץ, +972 54-265-6139
-אסתר, 050-7674721
-משה רוזנפלד, 0528467909
-מוריס מילר, 0524241496
-דניאל ליכטר, 05459998413
-רווה תומר, 0528780094
-איתמר יוחאי, 0527740518
-רום סרנה, 055-223-3100
-שלום נוי, +972 50-763-1322
-ליאור שפירא
-באסל קדמאני, +972 50-432-0595
-זיו קורן, +972 50-887-3510
-
-# קובצת סגל ליגות | א,ה
-עדי לוי, 0523787420
-איתמר לב, 0522267460
-יבגני גוטובסקי, 0506273240
-לאוניד גמפלסון, 0544273385
-טאו מורנו
-
-# מתקדמים שאר ישוב | א,ב,ה
-דור מורג, 054-669-3238
-אורי אשד, 054-247-5354
-אדם שטרית, 0509566661
-רזחובב, 052-320-2170
-רני לבנה, 0523918898
-הראל אבני, 052-872-4649
-מרום נוריאל, 0506992273
-רועי לוי, 0523787420
-שלו מרבך, 0508551030
-
-# מתחילים שאר ישוב | א,ה
-בר יוצאי סופר, 050-535-6220
-אביב אבני, 052-872-4649
-
-# ללא שיוך
-אלכסנדרה אולחנוב, 0546353264
-שי פינקל, +972 54-774-3715
-ברי בר, +972 58-422-0010
-רותם אביב, +972 52-701-3624`;
+var DEFAULT_ROSTER = "";
 var DAY_LETTERS = { א: 0, ב: 1, ג: 2, ד: 3, ה: 4, ו: 5, ש: 6 };
 function parseRoster(text) {
   let lines = String(text || "").split("\n"),
@@ -3108,6 +3093,7 @@ function ImportScreen({ groups: t, players: s }) {
             days: (sample && sample.groupDays) || [],
             schedule: "",
             location: "",
+            createdDate: E(),
           });
           ((map[name] = ref.id), result.groups++);
         } catch (err) {
@@ -3179,6 +3165,8 @@ function ImportScreen({ groups: t, players: s }) {
       onChange: (ev) => setText(ev.target.value),
       rows: 12,
       dir: "rtl",
+      placeholder:
+        "# \u05e9\u05dd \u05e7\u05d1\u05d5\u05e6\u05d4 | \u05d0,\u05d3\n\u05e9\u05dd \u05d4\u05e9\u05d7\u05e7\u05df, 050-1234567, \u05e9\u05dd \u05d4\u05d4\u05d5\u05e8\u05d4",
       className:
         "border border-slate-200 rounded-xl py-3 px-3 text-right text-sm leading-relaxed outline-none focus:border-emerald-400 font-mono",
     }),
