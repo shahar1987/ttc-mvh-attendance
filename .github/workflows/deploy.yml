@@ -20,6 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Privacy guard - no real phone numbers in the source
+        run: |
+          MATCHES=$(grep -rnoE '(\+?972[- ]?5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' \
+            part-a.js part-b.js index.html sw.js manifest.json README.md 2>/dev/null \
+            | grep -vE '050-?1234567' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "ERROR: phone-number-like values found in source files:"
+            echo "$MATCHES"
+            echo "Personal data must live only in Firestore, never in the source code."
+            exit 1
+          fi
+          echo "Privacy guard passed - no phone numbers in source."
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
