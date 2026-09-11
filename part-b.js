@@ -2225,7 +2225,7 @@ function Q() {
       ),
       e.createElement(
         "button",
-        { onClick: () => R(D), className: "text-blue-300 text-sm underline" },
+        { onClick: () => logoutAndClearCache(), className: "text-blue-300 text-sm underline" },
         "התנתקות",
       ),
     );
@@ -2362,7 +2362,7 @@ function Q() {
         setView: goToScreen,
         userName: s.name,
         onLogout: () => {
-          (h(!1), R(D));
+          (h(!1), logoutAndClearCache());
         },
       }),
       playerModal &&
