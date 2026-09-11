@@ -46,7 +46,9 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           coachId: N[0] || "",
           isAdultGroup: AG,
         };
-        (t ? await O(S(P, "groups", t.id), v) : await V(M(P, "groups"), v),
+        (t
+          ? await O(S(P, "groups", t.id), v)
+          : await V(M(P, "groups"), { ...v, createdDate: E() }),
           a());
       } catch (v) {
         p(
@@ -657,7 +659,7 @@ function rt({ onClose: t, users: US }) {
               (await De(S(P, "users", d), {
                 name: s.trim(),
                 role: x,
-                phone: m.trim(),
+                phone: normalizePhone(m.trim()),
                 email: l.trim().toLowerCase(),
               }),
                 t());
@@ -1216,6 +1218,7 @@ function re({
   onAddPlayer: AP,
   cancellations: CX,
   initialDate: ID,
+  initialNonce: IN,
 }) {
   let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
     today = E(),
@@ -1250,16 +1253,30 @@ function re({
     [u, f] = b(!o),
     [g, r] = b(!1),
     [y, N] = b("");
-  let prevDateKey = e.useRef(t.id + "|" + (ID || ""));
+  let daySig = l
+      .filter((v) => v.groupId === t.id && v.date === m)
+      .map((v) => v.playerId + ":" + v.status)
+      .sort()
+      .join("|"),
+    dayKey = t.id + "|" + m,
+    dirtyRef = e.useRef(null),
+    isDirty = () => dirtyRef.current === dayKey,
+    confirmLeave = () =>
+      !isDirty() ||
+      window.confirm(
+        "יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?",
+      );
+  let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
-    let dateKey = t.id + "|" + (ID || "");
+    let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
     if (prevDateKey.current !== dateKey) {
       setSelDate(ID || today);
       setShowDatePicker(!!ID);
     }
     prevDateKey.current = dateKey;
-  }, [t.id, ID]);
+  }, [t.id, ID, IN]);
   j(() => {
+    if (isDirty()) return;
     let p = {};
     (n.forEach((w) => {
       let k = l.find(
@@ -1269,9 +1286,11 @@ function re({
     }),
       h(p),
       f(!o));
-  }, [t.id, rosterKey, m]);
+  }, [t.id, rosterKey, m, daySig]);
   let C = (p, w) => {
-      u && h((k) => ({ ...k, [p]: k[p] === w ? null : w }));
+      u &&
+        ((dirtyRef.current = dayKey),
+        h((k) => ({ ...k, [p]: k[p] === w ? null : w })));
     },
     d = (p) => {
       if (!u) return;
@@ -1279,6 +1298,7 @@ function re({
       (n.forEach((k) => {
         w[k.id] = p;
       }),
+        (dirtyRef.current = dayKey),
         h(w));
     },
     A = async () => {
@@ -1311,6 +1331,7 @@ function re({
             p.set(k, rec));
         }),
           await p.commit(),
+          (dirtyRef.current = null),
           h(saved),
           f(!1));
       } catch (p) {
@@ -1329,7 +1350,9 @@ function re({
       e.createElement(
         "button",
         {
-          onClick: i,
+          onClick: () => {
+            confirmLeave() && ((dirtyRef.current = null), i());
+          },
           className:
             "flex items-center gap-1.5 text-sm text-slate-500 self-start",
         },
@@ -1473,7 +1496,11 @@ function re({
                 max: today,
                 min: minDate,
                 dir: "ltr",
-                onChange: (v) => v.target.value && setSelDate(v.target.value),
+                onChange: (v) => {
+                  v.target.value &&
+                    confirmLeave() &&
+                    ((dirtyRef.current = null), setSelDate(v.target.value));
+                },
                 className:
                   "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
               }),
@@ -1481,7 +1508,10 @@ function re({
                 "button",
                 {
                   onClick: () => {
-                    (setSelDate(today), setShowDatePicker(!1));
+                    confirmLeave() &&
+                      ((dirtyRef.current = null),
+                      setSelDate(today),
+                      setShowDatePicker(!1));
                   },
                   className: "text-xs font-semibold text-blue-900",
                 },
@@ -1765,6 +1795,7 @@ function mt({
   cancellations: CX,
   onFillDate: onFillDate,
   pendingDate: ID,
+  pendingNonce: IN,
 }) {
   let [editGroup, setEditGroup] = b(null),
     c = i ? s : s.filter((r) => isGroupCoach(r, t.id)),
@@ -1831,17 +1862,19 @@ function mt({
             onAddPlayer: AP,
             cancellations: CX,
             initialDate: ID,
+            initialNonce: IN,
           }),
-          e.createElement(
-            "button",
-            {
-              onClick: () => setEditGroup(h),
-              className:
-                "self-start flex items-center gap-1.5 text-sm text-blue-900 font-medium min-h-[44px]",
-            },
-            e.createElement($e, { className: "w-4 h-4" }),
-            "עריכת פרטי הקבוצה",
-          ),
+          i &&
+            e.createElement(
+              "button",
+              {
+                onClick: () => setEditGroup(h),
+                className:
+                  "self-start flex items-center gap-1.5 text-sm text-blue-900 font-medium min-h-[44px]",
+              },
+              e.createElement($e, { className: "w-4 h-4" }),
+              "עריכת פרטי הקבוצה",
+            ),
           editGroup &&
             e.createElement(nt, {
               group: editGroup,
@@ -1959,19 +1992,21 @@ function ct() {
 }
 function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
-    { data: l } = L("users"),
-    { data: i } = L("groups"),
+    { data: l } = L("users", null, t?.uid),
+    { data: i } = L("groups", null, t?.uid),
     coachGroupIds =
       s && !isAdminRole(s)
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
-    { data: c } = L("players", coachGroupIds),
-    { data: rawAttendance } = L("attendance", coachGroupIds),
-    { data: cancellations } = L("cancellations", coachGroupIds),
+    { data: c } = L("players", coachGroupIds, t?.uid),
+    { data: rawAttendance } = L("attendance", coachGroupIds, t?.uid),
+    { data: cancellations } = L("cancellations", coachGroupIds, t?.uid),
     n = excludeCancelled(rawAttendance, cancellations),
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
     [pendingDate, setPendingDate] = b(null),
+    [pendingNonce, setPendingNonce] = b(0),
+    profileRef = e.useRef(null),
     [x, h] = b(!1),
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
@@ -2005,11 +2040,15 @@ function Q() {
       } catch (e2) {}
     },
     goToGroupDate = (v, dateStr) => {
-      (o("attendance"), setAttGroupId(v), setPendingDate(dateStr));
+      (o("attendance"),
+        setAttGroupId(v),
+        setPendingDate(dateStr),
+        setPendingNonce((z) => z + 1));
       try {
         history.pushState({ screen: "attendance", attGroup: v }, "");
       } catch (e2) {}
     };
+  profileRef.current = s || null;
   if (
     (j(() => {
       s?.id && qe(s.id);
@@ -2019,8 +2058,12 @@ function Q() {
     }, [s?.role]),
     j(() => {
       let onPop = (ev) => {
-        let st = ev.state || {};
-        (o(st.screen || "dashboard"), setAttGroupId(st.attGroup || null));
+        let st = ev.state || {},
+          scr = st.screen || "dashboard",
+          pr = profileRef.current;
+        (pr && !isAdminRole(pr) && (scr = "attendance"),
+          o(scr),
+          setAttGroupId(st.attGroup || null));
       };
       if (!history.state)
         try {
@@ -2094,12 +2137,12 @@ function Q() {
         : e.createElement(
             "p",
             { className: "text-white text-sm leading-relaxed" },
-            "המשתמש מחובר אך אין לו מסמך פרופיל תואם ב-Firestore",
+            "החשבון מחובר, אבל עדיין אין לו הרשאה במערכת. פנה למנהל המועדון לקבלת הרשאה.",
             e.createElement("br", null),
             e.createElement(
               "span",
-              { className: "text-blue-300 text-xs" },
-              "users/",
+              { className: "text-blue-300 text-[10px]" },
+              "מזהה למנהל: users/",
               t.uid,
             ),
           ),
@@ -2234,6 +2277,7 @@ function Q() {
           onSelectGroup: goToGroup,
           onFillDate: goToGroupDate,
           pendingDate,
+          pendingNonce,
           cancellations,
         }),
       e.createElement(dt, {
@@ -2255,6 +2299,7 @@ function Q() {
           allowedGroupIds: r
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),
+          canDelete: r,
           onClose: () => setPlayerModal(null),
         }),
       waPlayer &&
