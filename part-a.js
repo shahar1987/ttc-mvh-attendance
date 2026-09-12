@@ -27,6 +27,7 @@ import {
   Ban as BanIcon,
   RotateCcw as UndoIcon,
   Trophy as TrophyIcon,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   collection as M,
@@ -354,6 +355,10 @@ function quotaAlerts(players, groups, attendance) {
 function isCoachLikeUser(u) {
   let r = u && typeof u.role === "string" ? u.role.trim().toLowerCase() : "";
   return r === "admin" || r === "coach";
+}
+function roleLabelHe(u) {
+  let r = u && typeof u.role === "string" ? u.role.trim().toLowerCase() : "";
+  return r === "admin" ? "מנהל" : r === "coach" ? "מאמן" : r === "viewer" ? "צופה" : "הורה/שחקן";
 }
 function groupCoachIds(g) {
   let a = g && Array.isArray(g.coachIds) ? g.coachIds.filter(Boolean) : [];
@@ -4492,29 +4497,47 @@ function MatchCard({ m: m, compact: compact }) {
   );
 }
 // ----- פרסום הודעה (מנהל / מאמן) -----
-function AnnouncementForm({ onClose: onClose, author: author }) {
-  let [title, setTitle] = b(""),
-    [body, setBody] = b(""),
-    [urgent, setUrgent] = b(!1),
+function AnnouncementForm({ onClose: onClose, author: author, announcement: ann }) {
+  let editing = !!(ann && ann.id),
+    [title, setTitle] = b((ann && ann.title) || ""),
+    [body, setBody] = b((ann && ann.body) || ""),
+    [urgent, setUrgent] = b(!!(ann && ann.urgent)),
+    [expires, setExpires] = b(ann && ann.expiresAt ? String(ann.expiresAt).slice(0, 10) : ""),
     [busy, setBusy] = b(!1),
     [err, setErr] = b(""),
     submit = async () => {
       (setBusy(!0), setErr(""));
       try {
-        let now = new Date().toISOString();
-        (await V(M(P, "announcements"), {
-          title: title.trim(),
-          body: body.trim(),
-          urgent: urgent,
-          audience: "all",
-          publishAt: now,
-          createdAt: now,
-          authorUid: author?.id || "",
-          authorName: author?.name || "",
-        }),
-          onClose());
+        let now = new Date().toISOString(),
+          expiresAt = expires ? expires + "T23:59:59.000Z" : "";
+        editing
+          ? await O(S(P, "announcements", ann.id), {
+              title: title.trim(),
+              body: body.trim(),
+              urgent: urgent,
+              expiresAt: expiresAt,
+              updatedAt: now,
+            })
+          : await V(M(P, "announcements"), {
+              title: title.trim(),
+              body: body.trim(),
+              urgent: urgent,
+              audience: "all",
+              expiresAt: expiresAt,
+              publishAt: now,
+              createdAt: now,
+              authorUid: author?.id || "",
+              authorName: author?.name || "",
+            });
+        onClose();
       } catch (e2) {
-        (setErr("הפרסום נכשל: " + (e2.message || e2)), setBusy(!1));
+        (setErr(
+          (editing ? "העדכון נכשל: " : "הפרסום נכשל: ") +
+            (String(e2.code || "").includes("permission")
+              ? "אין הרשאה. צריך לפרסם את כללי האבטחה המעודכנים בקונסולת Firebase."
+              : e2.message || e2),
+        ),
+          setBusy(!1));
       }
     };
   return e.createElement(
@@ -4539,7 +4562,7 @@ function AnnouncementForm({ onClose: onClose, author: author }) {
           { onClick: onClose, className: "text-slate-400" },
           e.createElement(T, { className: "w-5 h-5" }),
         ),
-        e.createElement("h3", { className: "font-bold text-blue-950" }, "הודעה להורים"),
+        e.createElement("h3", { className: "font-bold text-blue-950" }, editing ? "עריכת הודעה" : "הודעה להורים"),
       ),
       e.createElement("input", {
         value: title,
@@ -4567,6 +4590,19 @@ function AnnouncementForm({ onClose: onClose, author: author }) {
         }),
         "דחוף — יוצג בפס אדום בראש מסך הבית",
       ),
+      e.createElement(
+        "label",
+        { className: "flex items-center justify-between gap-2 text-sm text-slate-700" },
+        e.createElement("input", {
+          type: "date",
+          value: expires,
+          dir: "ltr",
+          onChange: (x) => setExpires(x.target.value),
+          className:
+            "border border-slate-200 rounded-lg py-2 px-2 text-sm outline-none focus:border-emerald-400",
+        }),
+        "להסתיר אחרי תאריך (לא חובה)",
+      ),
       err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
       e.createElement(
         "button",
@@ -4576,7 +4612,7 @@ function AnnouncementForm({ onClose: onClose, author: author }) {
           className:
             "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
         },
-        busy ? "מפרסם…" : "פרסום",
+        busy ? (editing ? "שומר…" : "מפרסם…") : editing ? "שמירה" : "פרסום",
       ),
     ),
   );
@@ -4589,6 +4625,9 @@ function MemberPortal({
   staffGroupIds: staffGroupIds,
   users: users,
   isStaff: isStaff,
+  isAdmin: isAdmin,
+  allPlayers: allPlayers,
+  allAttendance: allAttendance,
 }) {
   let uid = authUser?.uid,
     { loading, players, attendance: rawAttendance, links, error } = useMemberData(uid),
@@ -4597,9 +4636,12 @@ function MemberPortal({
     { data: cancellations } = L("cancellations", null, uid),
     // כמו אצל הצוות: אימון שבוטל לא נספר להורה כהיעדרות
     attendance = excludeCancelled(rawAttendance, cancellations),
-    { data: announcementsRaw } = L("announcements", null, uid),
+    { data: announcementsRaw, error: annError } = L("announcements", null, uid),
     [tab, setTab] = b("home"),
     [annForm, setAnnForm] = b(!1),
+    [annEdit, setAnnEdit] = b(null),
+    [mgrQuery, setMgrQuery] = b(""),
+    [mgrErr, setMgrErr] = b(""),
     announcements = announcementsRaw
       .filter(announcementVisible)
       .sort((a, c) => String(c.publishAt || c.createdAt).localeCompare(String(a.publishAt || a.createdAt))),
@@ -5146,13 +5188,305 @@ function MemberPortal({
           ),
       );
     },
-    screens = { home: homeScreen, personal: personalScreen, trainings: trainingsScreen, league: leagueScreen, more: moreScreen },
+    // -------- ניהול (מוצג רק לצוות) --------
+    manageScreen = () => {
+      let activePlayers = (allPlayers || []).filter((p) => p.isActive !== !1 && !p.deleted),
+        qs = mgrQuery.trim(),
+        shown = qs
+          ? activePlayers.filter(
+              (p) =>
+                String(p.name || "").includes(qs) ||
+                String(p.parentName || "").includes(qs) ||
+                String(p.parentPhone || "").includes(qs),
+            )
+          : activePlayers,
+        month = E().slice(0, 7),
+        monthRows = (allAttendance || []).filter((a) => String(a.date || "").startsWith(month)),
+        monthPct = monthRows.length
+          ? Math.round((monthRows.filter((a) => a.status === "Present").length / monthRows.length) * 100)
+          : null,
+        allAnns = announcementsRaw
+          .slice()
+          .sort((a, c) =>
+            String(c.publishAt || c.createdAt || "").localeCompare(String(a.publishAt || a.createdAt || "")),
+          ),
+        canEditAnn = (a) => !!isAdmin || a.authorUid === profile.id,
+        removeAnn = async (a) => {
+          if (!window.confirm('למחוק את ההודעה "' + (a.title || "") + '"?')) return;
+          try {
+            (await Ee(S(P, "announcements", a.id)), setMgrErr(""));
+          } catch (err) {
+            setMgrErr(
+              "המחיקה נכשלה: " +
+                (String(err.code || "").includes("permission")
+                  ? "אין הרשאה למחוק הודעה של מישהו אחר."
+                  : err.message || err),
+            );
+          }
+        },
+        statBox = (value, label) =>
+          e.createElement(
+            "div",
+            { key: label, className: "flex-1 min-w-[70px] text-center" },
+            e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, value),
+            e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, label),
+          ),
+        groupName = (id) => (groups.find((g) => g.id === id) || {}).name || "ללא קבוצה";
+      return e.createElement(
+        e.Fragment,
+        null,
+        mgrErr && e.createElement("div", { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" }, mgrErr),
+        annError &&
+          e.createElement(
+            "div",
+            { className: "bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs leading-relaxed" },
+            "לא ניתן לטעון את ההודעות — צריך לפרסם את כללי האבטחה המעודכנים (announcements) בקונסולת Firebase.",
+          ),
+        e.createElement(
+          PCard,
+          { title: "המועדון במספרים", icon: he },
+          e.createElement(
+            "div",
+            { className: "flex items-start justify-between gap-2" },
+            statBox(activePlayers.length, "שחקנים פעילים"),
+            statBox(groups.length, "קבוצות"),
+            statBox(monthPct === null ? "—" : monthPct + "%", "נוכחות החודש"),
+            statBox(announcements.length, "הודעות פעילות"),
+          ),
+        ),
+        e.createElement(
+          PCard,
+          { title: "הודעות המועדון", icon: J },
+          e.createElement(
+            "button",
+            {
+              onClick: () => (setAnnEdit(null), setAnnForm(!0)),
+              className: "self-start text-xs font-semibold text-white bg-emerald-500 rounded-lg px-3 py-2",
+            },
+            "+ הודעה חדשה",
+          ),
+          allAnns.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...allAnns.map((a) => {
+                  let now = new Date().toISOString(),
+                    scheduled = a.publishAt && a.publishAt > now,
+                    expired = a.expiresAt && a.expiresAt < now;
+                  return e.createElement(
+                    "div",
+                    { key: a.id, className: "py-2.5 flex items-start justify-between gap-2" },
+                    canEditAnn(a) &&
+                      e.createElement(
+                        "div",
+                        { className: "flex items-center gap-1 shrink-0" },
+                        e.createElement(
+                          "button",
+                          {
+                            onClick: () => (setAnnEdit(a), setAnnForm(!0)),
+                            "aria-label": "עריכת הודעה",
+                            className: "w-8 h-8 flex items-center justify-center text-slate-400",
+                          },
+                          e.createElement($e, { className: "w-4 h-4" }),
+                        ),
+                        e.createElement(
+                          "button",
+                          {
+                            onClick: () => removeAnn(a),
+                            "aria-label": "מחיקת הודעה",
+                            className: "w-8 h-8 flex items-center justify-center text-red-400",
+                          },
+                          e.createElement(Se, { className: "w-4 h-4" }),
+                        ),
+                      ),
+                    e.createElement(
+                      "div",
+                      { className: "flex-1 min-w-0 text-right" },
+                      e.createElement(
+                        "p",
+                        { className: "font-bold text-sm text-blue-950" },
+                        a.urgent ? e.createElement("span", { className: "text-red-600" }, "דחוף · ") : null,
+                        a.title,
+                      ),
+                      a.body &&
+                        e.createElement(
+                          "p",
+                          { className: "text-xs text-slate-600 whitespace-pre-line mt-0.5" },
+                          a.body.length > 160 ? a.body.slice(0, 160) + "…" : a.body,
+                        ),
+                      e.createElement(
+                        "p",
+                        { className: "text-[11px] text-slate-400 mt-1" },
+                        fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
+                        a.authorName ? " · " + a.authorName : "",
+                        scheduled ? " · מתוזמן" : "",
+                        expired ? " · פג תוקף" : "",
+                      ),
+                    ),
+                  );
+                }),
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "אין הודעות עדיין"),
+        ),
+        e.createElement(
+          PCard,
+          { title: "כל השחקנים", icon: H },
+          e.createElement("input", {
+            value: mgrQuery,
+            onChange: (x) => setMgrQuery(x.target.value),
+            placeholder: "חיפוש לפי שם שחקן או הורה",
+            className:
+              "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
+          }),
+          shown.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...shown.slice(0, 40).map((p) => {
+                  let st = memberMonthStats(allAttendance || [], p.id),
+                    entry = tttmForPlayer(p, tttm.players);
+                  return e.createElement(
+                    "div",
+                    { key: p.id, className: "py-2 flex items-center justify-between gap-2" },
+                    e.createElement(
+                      "div",
+                      { className: "text-left shrink-0 flex items-center gap-3" },
+                      entry && entry.rank
+                        ? e.createElement(
+                            "span",
+                            { className: "text-[11px] text-slate-500" },
+                            "דירוג ",
+                            entry.rank,
+                          )
+                        : null,
+                      e.createElement(
+                        "span",
+                        {
+                          className:
+                            "text-sm font-bold " +
+                            (st.pct === null ? "text-slate-300" : st.pct >= 70 ? "text-emerald-600" : "text-amber-600"),
+                        },
+                        st.pct === null ? "—" : st.pct + "%",
+                      ),
+                    ),
+                    e.createElement(
+                      "div",
+                      { className: "flex-1 min-w-0 text-right" },
+                      e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, p.name),
+                      e.createElement(
+                        "p",
+                        { className: "text-[11px] text-slate-500 truncate" },
+                        groupName(p.groupId),
+                        p.parentName ? " · " + p.parentName : "",
+                      ),
+                    ),
+                  );
+                }),
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "לא נמצאו שחקנים"),
+          shown.length > 40 &&
+            e.createElement(
+              "p",
+              { className: "text-[11px] text-slate-400" },
+              "מוצגים 40 מתוך " + shown.length + " — אפשר לחפש שם",
+            ),
+        ),
+        e.createElement(
+          PCard,
+          { title: "הקבוצות", icon: le },
+          e.createElement(
+            "div",
+            { className: "flex flex-col divide-y divide-slate-100" },
+            ...groups.map((g) =>
+              e.createElement(
+                "div",
+                { key: g.id, className: "py-2 flex items-center justify-between gap-2" },
+                e.createElement(
+                  "span",
+                  { className: "text-xs text-slate-500 shrink-0" },
+                  activePlayers.filter((p) => p.groupId === g.id).length,
+                  " שחקנים",
+                ),
+                e.createElement(
+                  "div",
+                  { className: "flex-1 min-w-0 text-right" },
+                  e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, g.name),
+                  e.createElement(
+                    "p",
+                    { className: "text-[11px] text-slate-500 truncate" },
+                    [
+                      groupDaysForPlayers(g, []).length
+                        ? "ימים " + groupDaysForPlayers(g, []).map((d) => HEB_DAYS_FULL[d]).join(", ")
+                        : "",
+                      timeRange(g),
+                      groupCoachLabelFor(g, users),
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Array.isArray(users) && users.length
+          ? e.createElement(
+              PCard,
+              { title: "צוות המועדון", icon: Ie },
+              e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...users
+                  .filter((u) => roleLabelHe(u) !== "הורה/שחקן")
+                  .map((u) =>
+                    e.createElement(
+                      "div",
+                      { key: u.id, className: "py-2 flex items-center justify-between gap-2" },
+                      e.createElement("span", { className: "text-[11px] text-slate-500 shrink-0" }, roleLabelHe(u)),
+                      e.createElement(
+                        "div",
+                        { className: "flex-1 min-w-0 text-right" },
+                        e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, u.name),
+                        e.createElement(
+                          "p",
+                          { className: "text-[11px] text-slate-500 truncate" },
+                          roleLabelHe(u) === "מנהל"
+                            ? "גישה מלאה לכל הקבוצות"
+                            : roleLabelHe(u) === "צופה"
+                              ? "צפייה בלבד בכל הנתונים"
+                              : groups
+                                  .filter((g) => isGroupCoach(g, u.id))
+                                  .map((g) => g.name)
+                                  .join(", ") || "ללא קבוצות",
+                        ),
+                      ),
+                    ),
+                  ),
+              ),
+              e.createElement(
+                "p",
+                { className: "text-[11px] text-slate-400" },
+                "שינוי תפקידים, שיוך מאמנים וקישור הורים — בתפריט של האפליקציה: ניהול הרשאות וגישת הורים.",
+              ),
+            )
+          : null,
+      );
+    },
+    screens = {
+      home: homeScreen,
+      personal: personalScreen,
+      trainings: trainingsScreen,
+      league: leagueScreen,
+      more: moreScreen,
+      manage: manageScreen,
+    },
     tabs = [
       ["home", "בית", le],
       ["personal", "אישי", H],
       ["trainings", "אימונים", ge],
       ["league", "ליגה", TrophyIcon],
       ["more", "עוד", Pe],
+      ...(isStaff ? [["manage", "ניהול", SettingsIcon]] : []),
     ],
     tabBar = e.createElement(
       "nav",
@@ -5179,14 +5513,19 @@ function MemberPortal({
       "div",
       { className: "p-4 pb-24 flex flex-col gap-3 min-h-[60vh]" },
       error && e.createElement("div", { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" }, "שגיאה בטעינת הנתונים: ", error),
-      (screens[tab] || homeScreen)(),
+      (screens[tab === "manage" && !isStaff ? "home" : tab] || homeScreen)(),
     ),
     content = e.createElement(
       e.Fragment,
       null,
       body,
       tabBar,
-      annForm && e.createElement(AnnouncementForm, { author: profile, onClose: () => setAnnForm(!1) }),
+      annForm &&
+        e.createElement(AnnouncementForm, {
+          author: profile,
+          announcement: annEdit,
+          onClose: () => (setAnnForm(!1), setAnnEdit(null)),
+        }),
     );
   if (embedded) return content;
   return e.createElement(

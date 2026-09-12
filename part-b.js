@@ -2509,6 +2509,9 @@ function Q() {
           staffGroupIds: coachGroupIds,
           users: l,
           isStaff: r || isCoachRole(s),
+          isAdmin: r,
+          allPlayers: c,
+          allAttendance: n,
         }),
       m === "attendance" &&
         e.createElement(mt, {
