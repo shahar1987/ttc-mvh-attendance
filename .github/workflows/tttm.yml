@@ -39,12 +39,31 @@ jobs:
              .map((s) => s.trim())
              .filter(Boolean);
 
+          const HEADERS = {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control': 'no-cache',
+            Referer: 'https://tttm.co.il/',
+          };
+
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
           async function get(url) {
-            const r = await fetch(url, {
-              headers: { 'User-Agent': 'ttcmh-club-portal/1.0 (+https://shahar1987.github.io/ttc-mvh-attendance/)' },
-            });
-            if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
-            return await r.text();
+            let last = '';
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const r = await fetch(url, { headers: HEADERS, redirect: 'follow' });
+                if (r.ok) return await r.text();
+                last = `HTTP ${r.status}`;
+              } catch (err) {
+                last = err.message;
+              }
+              console.log(`attempt ${attempt} for ${url}: ${last}`);
+              if (attempt < 3) await sleep(attempt * 4000);
+            }
+            throw new Error(`${url} -> ${last}`);
           }
 
           function rows(html) {
