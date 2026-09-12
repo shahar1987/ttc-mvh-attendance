@@ -67,6 +67,18 @@ def main():
     if not players:
         raise SystemExit("no players parsed - the association page layout probably changed")
 
+    # אם שום דבר מהותי לא השתנה, שומרים על חותמת הזמן הישנה כדי שהקובץ
+    # יישאר זהה בייט-בייט ולא ייווצר קומיט מיותר בכל ריצה.
+    try:
+        with open(dst, encoding="utf-8") as f:
+            prev = json.load(f)
+        a = dict(prev); a.pop("updatedAt", None)
+        b = dict(out); b.pop("updatedAt", None)
+        if json.dumps(a, ensure_ascii=False, sort_keys=True) == json.dumps(b, ensure_ascii=False, sort_keys=True):
+            out["updatedAt"] = prev.get("updatedAt", out["updatedAt"])
+    except (OSError, ValueError):
+        pass
+
     with open(dst, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
