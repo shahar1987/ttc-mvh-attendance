@@ -704,11 +704,12 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
-function L(t, groupIds, uid, enabled) {
+function L(t, groupIds, uid, enabled, filter) {
   let [s, a] = b([]),
     [l, i] = b(!0),
     scoped = Array.isArray(groupIds),
     on = enabled !== !1,
+    filterKey = filter ? filter.join("|") : "",
     scopeKey = scoped ? groupIds.slice().sort().join(",") : "";
   return (
     j(
@@ -725,6 +726,7 @@ function L(t, groupIds, uid, enabled) {
         let ref = scoped
           ? fsQuery(M(P, t), fsWhere("groupId", "in", groupIds))
           : M(P, t);
+        filter && (ref = fsQuery(ref, fsWhere(filter[0], filter[1], filter[2])));
         return ae(
           ref,
           (n) => {
@@ -737,7 +739,7 @@ function L(t, groupIds, uid, enabled) {
           },
         );
       },
-      [t, scoped, scopeKey, uid || "", on],
+      [t, scoped, scopeKey, uid || "", on, filterKey],
     ),
     { data: s, loading: l }
   );
@@ -3533,7 +3535,9 @@ function useMemberData(uid) {
               players = [];
             for (let l of links) {
               let ps = await fsGetDoc(S(P, "players", l.playerId));
-              ps.exists() && players.push({ id: ps.id, ...ps.data() });
+              ps.exists() &&
+                !ps.data().deleted &&
+                players.push({ id: ps.id, ...ps.data() });
             }
             let ids = players.map((p) => p.id).slice(0, 10),
               attendance = [];
@@ -3808,7 +3812,7 @@ function InviteScreen({ token: token }) {
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "אימייל (לא חובה — מאפשר איפוס סיסמה עצמאי)",
+          "אימייל (לא חובה — לקשר מול המועדון)",
         ),
         e.createElement("input", {
           value: mail,
@@ -4060,7 +4064,7 @@ function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded
             ),
         ),
         g &&
-          (g.days || []).length &&
+          (g.days || []).length > 0 &&
           e.createElement(
             "div",
             { className: "bg-slate-50 rounded-xl px-3 py-2" },
