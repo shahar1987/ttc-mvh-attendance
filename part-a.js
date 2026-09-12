@@ -4262,7 +4262,8 @@ function announcementIsUrgent(a) {
   );
 }
 // ----- אבני בניין של הפורטל -----
-function PCard(props, ...kids) {
+function PCard(props) {
+  let kids = props.children == null ? [] : [].concat(props.children);
   return e.createElement(
     "div",
     {
