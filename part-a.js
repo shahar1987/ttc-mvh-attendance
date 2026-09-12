@@ -5344,6 +5344,18 @@ function MemberPortal({
             }),
         ),
         noGroup = activePlayers.filter((p) => !p.groupId),
+        // מספר הורה לא תקין = כל כפתורי הוואטסאפ לשחקן הזה לא עובדים
+        badPhone = activePlayers.filter((p) => !isValidPhone(p.parentPhone)),
+        dupNames = (() => {
+          let seen = {},
+            dups = [];
+          activePlayers.forEach((p) => {
+            let k = String(p.name || "").replace(/\s+/g, " ").trim();
+            if (!k) return;
+            seen[k] ? (seen[k] === 1 && dups.push(k), (seen[k] = 2)) : (seen[k] = 1);
+          });
+          return dups;
+        })(),
         danglingGroup = activePlayers.filter((p) => p.groupId && !groups.some((g) => g.id === p.groupId)),
         archivedLinks = auditLinks.filter((l) => {
           let pl = knownPlayer(l.playerId);
@@ -5421,6 +5433,8 @@ function MemberPortal({
                       auditRow("קישורים לכרטיס שחקן בארכיון", archivedLinks.length),
                       auditRow("שחקנים המשויכים לקבוצה שנמחקה", danglingGroup.length, "warn"),
                       auditRow("שחקנים פעילים ללא קבוצה", noGroup.length),
+                      auditRow("שחקנים ללא טלפון הורה תקין", badPhone.length),
+                      auditRow("שמות שחקנים שמופיעים פעמיים", dupNames.length),
                       auditRow("קבוצות ללא מאמן", noCoach.length),
                     ),
                     fixable.length + staleInvites.length + danglingGroup.length > 0
