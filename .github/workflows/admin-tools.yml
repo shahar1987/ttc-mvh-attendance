@@ -1,29 +1,16 @@
 name: Account tools
 
-# כלי ניהול חשבונות התחברות, להרצה ידנית בלבד.
+# מבצע בקשות ניהול חשבונות שנוצרות מתוך האפליקציה (מסך ניהול הרשאות):
+# בדיקה אם קיים חשבון התחברות, ואיפוס גישה שמוחק חשבון, פרופיל וקישורים.
 #
-#   בדיקה      — מציג אם קיים חשבון למספר/אימייל, מתי נוצר, ולמי הוא מקושר
-#   איפוס גישה — מוחק את חשבון ההתחברות, הפרופיל והקישורים, כדי שאפשר יהיה
-#                לשלוח הזמנה חדשה והאדם יבחר סיסמה מחדש (למי ששכח סיסמה,
-#                או למאמן שעזב וצריך להיעלם לגמרי)
+# אין כאן שום פרמטר: הריפו ציבורי והיומנים גלויים, ולכן פרטים אישיים
+# לא עוברים דרך GitHub. הבקשה נוצרת באפליקציה והתשובה חוזרת אליה.
 #
-# דורש סוד בשם FIREBASE_SERVICE_ACCOUNT בהגדרות הריפו (Settings → Secrets and
-# variables → Actions), שמכיל את קובץ המפתח של חשבון השירות מקונסולת Firebase.
+# דורש סוד בשם FIREBASE_SERVICE_ACCOUNT (Settings → Secrets and variables → Actions).
 on:
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
-    inputs:
-      action:
-        description: "מה לעשות"
-        required: true
-        default: check
-        type: choice
-        options:
-          - check
-          - reset-access
-      who:
-        description: "מספר טלפון (05X…) או כתובת אימייל של איש צוות"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -46,9 +33,7 @@ jobs:
       - name: Install the Firebase admin library
         run: npm install firebase-admin@12.7.0 --no-audit --no-fund
 
-      - name: Run the account tool
+      - name: Process pending account tasks
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          ACTION: ${{ inputs.action }}
-          WHO: ${{ inputs.who }}
         run: node scripts/admin_tool.mjs
