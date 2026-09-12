@@ -4964,7 +4964,8 @@ function MemberPortal({
               e.createElement("p", { className: "text-xs text-slate-500" }, "מאמן: " + groupCoachLabelFor(g, users)),
           ),
         ),
-        e.createElement(
+        isAdmin &&
+          e.createElement(
           PCard,
           { title: "לוח האימונים של המועדון", icon: ge },
           week.length
