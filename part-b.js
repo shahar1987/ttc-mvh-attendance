@@ -2389,6 +2389,7 @@ function Q() {
         m === "access" &&
         e.createElement(AccessScreen, {
           players: c,
+          users: l,
           currentUserId: s.id,
           uid: t?.uid,
           isAdmin: r,
@@ -2682,6 +2683,7 @@ function NewInviteModal({
 }
 function AccessScreen({
   players: players,
+  users: users,
   currentUserId: currentUserId,
   uid: uid,
   isAdmin: isAdmin,
@@ -2733,6 +2735,7 @@ function AccessScreen({
       { className: "flex gap-2" },
       tabBtn("requests", "בקשות גישה", pending.length),
       tabBtn("invites", "הזמנות", 0),
+      isAdmin && tabBtn("links", "קישורים", 0),
     ),
     tab === "requests"
       ? e.createElement(
@@ -2817,7 +2820,8 @@ function AccessScreen({
             ),
           ),
         )
-      : e.createElement(
+      : tab === "invites"
+      ? e.createElement(
           e.Fragment,
           null,
           e.createElement(
@@ -2931,7 +2935,13 @@ function AccessScreen({
               "סה״כ קישורי הורה-שחקן פעילים: ",
               links.length,
             ),
-        ),
+        )
+      : e.createElement(LinksTab, {
+          users: users,
+          players: players,
+          links: links,
+          currentUserId: currentUserId,
+        }),
     modal &&
       e.createElement(NewInviteModal, {
         players: players,
@@ -2947,6 +2957,265 @@ function AccessScreen({
               currentUserId,
             ).catch(() => {});
         },
+      }),
+  );
+}
+
+// ===== ניהול קישורים בין אנשים לכרטיסי שחקן (מנהל בלבד) =====
+function NewLinkModal({
+  users: users,
+  players: players,
+  links: links,
+  onClose: onClose,
+  currentUserId: currentUserId,
+}) {
+  let [uq, setUq] = b(""),
+    [pq, setPq] = b(""),
+    [uid, setUid] = b(""),
+    [pid, setPid] = b(""),
+    [rel, setRel] = b("parent"),
+    [busy, setBusy] = b(!1),
+    [err, setErr] = b(""),
+    shownUsers = users
+      .filter((u) => !uq.trim() || String(u.name || "").includes(uq.trim()))
+      .slice(0, 12),
+    activePlayers = players.filter((p) => !p.deleted),
+    shownPlayers = activePlayers
+      .filter((p) => !pq.trim() || String(p.name || "").includes(pq.trim()))
+      .slice(0, 12),
+    exists = links.some((l) => l.uid === uid && l.playerId === pid),
+    ok = uid && pid && !exists,
+    submit = async () => {
+      (setBusy(!0), setErr(""));
+      try {
+        (await De(S(P, "links", linkDocId(uid, pid)), {
+          uid: uid,
+          playerId: pid,
+          relation: rel,
+          inviteToken: "",
+          createdBy: currentUserId || "",
+          createdAt: new Date().toISOString(),
+        }),
+          onClose());
+      } catch (e2) {
+        (setErr("הקישור נכשל: " + (e2.message || e2)), setBusy(!1));
+      }
+    },
+    picker = (label, q, setQ, items, sel, setSel, labelOf) =>
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement("label", { className: "text-xs text-slate-500" }, label),
+        e.createElement("input", {
+          value: q,
+          onChange: (x) => setQ(x.target.value),
+          placeholder: "חיפוש",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
+        }),
+        e.createElement(
+          "div",
+          {
+            className:
+              "max-h-40 overflow-y-auto border border-slate-100 rounded-lg",
+          },
+          ...items.map((it) =>
+            e.createElement(
+              "button",
+              {
+                key: it.id,
+                onClick: () => setSel(it.id),
+                className:
+                  "w-full text-right px-3 py-2 text-sm border-b border-slate-50 " +
+                  (sel === it.id ? "bg-emerald-50 text-emerald-700 font-semibold" : "text-slate-700"),
+              },
+              labelOf(it),
+            ),
+          ),
+          items.length === 0 &&
+            e.createElement(
+              "p",
+              { className: "text-xs text-slate-400 px-3 py-2" },
+              "לא נמצאו תוצאות",
+            ),
+        ),
+      );
+  return e.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
+      onClick: onClose,
+    },
+    e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        onClick: (x) => x.stopPropagation(),
+        className:
+          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3 max-h-[90vh] overflow-y-auto",
+      },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between" },
+        e.createElement(
+          "button",
+          { onClick: onClose, className: "text-slate-400" },
+          e.createElement(T, { className: "w-5 h-5" }),
+        ),
+        e.createElement(
+          "h3",
+          { className: "font-bold text-blue-950" },
+          "קישור ידני",
+        ),
+      ),
+      e.createElement(
+        "p",
+        { className: "text-[11px] text-slate-500 leading-relaxed" },
+        "קישור נותן למשתמש לראות בפורטל את כרטיס השחקן ואת הנוכחות שלו. כך גם אתה יכול לקשר את עצמך לשחקן ולראות בדיוק מה ההורים רואים.",
+      ),
+      picker(
+        "מי מקבל גישה",
+        uq,
+        setUq,
+        shownUsers,
+        uid,
+        setUid,
+        (u) => (u.name || u.id) + (u.role ? " · " + u.role : ""),
+      ),
+      picker("לאיזה שחקן", pq, setPq, shownPlayers, pid, setPid, (p) => p.name),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "הקשר",
+        ),
+        e.createElement(
+          "select",
+          {
+            value: rel,
+            onChange: (x) => setRel(x.target.value),
+            className:
+              "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none",
+          },
+          e.createElement("option", { value: "parent" }, "הורה"),
+          e.createElement("option", { value: "self" }, "השחקן עצמו"),
+          e.createElement("option", { value: "family" }, "בן משפחה"),
+        ),
+      ),
+      exists &&
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-amber-600" },
+          "הקישור הזה כבר קיים",
+        ),
+      err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
+      e.createElement(
+        "button",
+        {
+          onClick: submit,
+          disabled: busy || !ok,
+          className:
+            "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
+        },
+        busy ? "מקשר…" : "יצירת הקישור",
+      ),
+    ),
+  );
+}
+function LinksTab({
+  users: users,
+  players: players,
+  links: links,
+  currentUserId: currentUserId,
+}) {
+  let [modal, setModal] = b(!1),
+    nameOfUser = (id) => {
+      let u = users.find((x) => x.id === id);
+      return u ? u.name || u.id : "משתמש שנמחק";
+    },
+    nameOfPlayer = (id) => {
+      let p = players.find((x) => x.id === id);
+      return p ? p.name : "שחקן שנמחק";
+    },
+    cut = async (l) => {
+      if (
+        !window.confirm(
+          `לנתק את ${nameOfUser(l.uid)} מ${nameOfPlayer(l.playerId)}? הוא יפסיק לראות את הכרטיס והנוכחות בפורטל.`,
+        )
+      )
+        return;
+      try {
+        await deleteLink(l.uid, l.playerId);
+      } catch (e2) {
+        window.alert("הניתוק נכשל: " + e2.message);
+      }
+    };
+  return e.createElement(
+    e.Fragment,
+    null,
+    e.createElement(
+      "button",
+      {
+        onClick: () => setModal(!0),
+        className:
+          "bg-emerald-500 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2",
+      },
+      e.createElement(K, { className: "w-4 h-4" }),
+      "קישור ידני",
+    ),
+    links.length === 0 &&
+      e.createElement(
+        "p",
+        { className: "text-sm text-slate-400 text-center py-8" },
+        "אין עדיין קישורים. הורה שמימש הזמנה יופיע כאן אוטומטית.",
+      ),
+    ...links
+      .slice()
+      .sort((a, c) => nameOfUser(a.uid).localeCompare(nameOfUser(c.uid), "he"))
+      .map((l) =>
+        e.createElement(
+          "div",
+          {
+            key: l.id,
+            className:
+              "bg-white rounded-2xl p-4 flex items-center justify-between gap-3",
+          },
+          e.createElement(
+            "div",
+            { className: "min-w-0" },
+            e.createElement(
+              "p",
+              { className: "font-bold text-blue-950 text-sm truncate" },
+              nameOfUser(l.uid),
+            ),
+            e.createElement(
+              "p",
+              { className: "text-xs text-slate-500 truncate" },
+              (RELATION_LABELS[l.relation] || "הורה") +
+                " של " +
+                nameOfPlayer(l.playerId),
+            ),
+          ),
+          e.createElement(
+            "button",
+            {
+              onClick: () => cut(l),
+              className:
+                "shrink-0 px-3 py-2 bg-slate-100 text-slate-600 text-xs rounded-xl",
+            },
+            "ניתוק",
+          ),
+        ),
+      ),
+    modal &&
+      e.createElement(NewLinkModal, {
+        users: users,
+        players: players,
+        links: links,
+        currentUserId: currentUserId,
+        onClose: () => setModal(!1),
       }),
   );
 }

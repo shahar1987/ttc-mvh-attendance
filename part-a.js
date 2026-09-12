@@ -4009,11 +4009,13 @@ function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded
   let { loading, players, attendance, links, error } = useMemberData(
       authUser?.uid,
     ),
+    tttm = useTttm(),
     { data: groups } = L("groups", null, authUser?.uid),
     groupOf = (p) => groups.find((g) => g.id === p.groupId) || null,
     card = (p) => {
       let g = groupOf(p),
         st = memberMonthStats(attendance, p.id),
+        tttmEntry = tttmForPlayer(p, tttm.players),
         recent = memberRecent(attendance, p.id, 5);
       return e.createElement(
         "div",
@@ -4086,6 +4088,11 @@ function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded
               g.location ? " · " + g.location : "",
             ),
           ),
+        tttmEntry &&
+          e.createElement(TttmBadge, {
+            entry: tttmEntry,
+            updatedAt: tttm.updatedAt,
+          }),
         recent.length
           ? e.createElement(
               "div",
@@ -4244,5 +4251,129 @@ function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded
       head,
       body,
     ),
+  );
+}
+
+// ===== דירוג מאתר איגוד טניס השולחן =====
+// הנתונים נמשכים מ-tttm.co.il על ידי GitHub Actions ונשמרים ב-tttm.json לצד האפליקציה.
+function normalizeHeName(v) {
+  return String(v || "")
+    .replace(/["'׳״‘’“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function tttmCategoryLabel(code) {
+  let c = String(code || "").toUpperCase().trim(),
+    m = c.match(/^([A-Z])(\d*)$/);
+  if (!m) return c;
+  let age = m[2];
+  if (m[1] === "S") return age ? "בוגרים " + age + "+" : "בוגרים";
+  if (age) return "עד גיל " + age;
+  return c;
+}
+function useTttm() {
+  let [state, setState] = b({
+    loading: !0,
+    players: [],
+    updatedAt: "",
+    error: "",
+  });
+  return (
+    j(() => {
+      let cancelled = !1;
+      return (
+        fetch("./tttm.json", { cache: "no-cache" })
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
+          .then((d) => {
+            cancelled ||
+              setState({
+                loading: !1,
+                players: Array.isArray(d.players) ? d.players : [],
+                updatedAt: d.updatedAt || "",
+                error: "",
+              });
+          })
+          .catch((e2) => {
+            cancelled ||
+              setState({
+                loading: !1,
+                players: [],
+                updatedAt: "",
+                error: e2.message || String(e2),
+              });
+          }),
+        () => {
+          cancelled = !0;
+        }
+      );
+    }, []),
+    state
+  );
+}
+function tttmForPlayer(player, list) {
+  if (!player || !list || !list.length) return null;
+  if (player.tttmId) {
+    let byId = list.find((x) => String(x.tttmId) === String(player.tttmId));
+    if (byId) return byId;
+  }
+  let n = normalizeHeName(player.name);
+  if (!n) return null;
+  let exact = list.filter((x) => normalizeHeName(x.name) === n);
+  return exact.length === 1 ? exact[0] : null;
+}
+function tttmUpdatedLabel(iso) {
+  if (!iso) return "";
+  let d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleDateString("he-IL", { day: "numeric", month: "long" });
+}
+function TttmBadge({ entry: entry, updatedAt: updatedAt }) {
+  if (!entry) return null;
+  return e.createElement(
+    "div",
+    { className: "bg-blue-950 rounded-xl px-3 py-2.5 flex flex-col gap-1" },
+    e.createElement(
+      "div",
+      { className: "flex items-baseline justify-between gap-2" },
+      e.createElement(
+        "span",
+        { className: "text-[11px] text-blue-300" },
+        "דירוג ארצי",
+      ),
+      entry.rank
+        ? e.createElement(
+            "span",
+            { className: "text-white text-lg font-bold" },
+            entry.rank,
+          )
+        : e.createElement(
+            "span",
+            { className: "text-blue-200 text-xs" },
+            "רשום, ללא דירוג",
+          ),
+    ),
+    e.createElement(
+      "div",
+      { className: "flex items-baseline justify-between gap-2" },
+      e.createElement(
+        "span",
+        { className: "text-[11px] text-blue-300" },
+        tttmCategoryLabel(entry.category),
+      ),
+      entry.points
+        ? e.createElement(
+            "span",
+            { className: "text-blue-100 text-xs" },
+            entry.points,
+            " נק'",
+          )
+        : null,
+    ),
+    updatedAt &&
+      e.createElement(
+        "div",
+        { className: "text-[10px] text-blue-400" },
+        "מאתר האיגוד · עודכן ",
+        tttmUpdatedLabel(updatedAt),
+      ),
   );
 }
