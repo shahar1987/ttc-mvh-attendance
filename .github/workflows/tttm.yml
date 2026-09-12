@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: tttm-refresh
@@ -41,7 +42,11 @@ jobs:
           python scraper/to_portal.py snapshot.json tttm.json
           rm -f snapshot.json
 
-      - name: Commit and push when the data changed
+      # דחיפה מתוך Action לא מפעילה בנייה מחדש (הגנה של GitHub מפני לולאות),
+      # ולכן מפעילים את "Build and deploy" במפורש כדי שהנתונים יגיעו לאתר.
+      - name: Commit, push and redeploy when the data changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -51,4 +56,6 @@ jobs:
           else
             git commit -m "עדכון נתונים מאתר האיגוד"
             git push
+            gh workflow run deploy.yml --ref main
+            echo "site rebuild requested"
           fi
