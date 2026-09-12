@@ -17,6 +17,11 @@ function isMemberRole(u) {
 function isStaffMember(u) {
   return isAdminRole(u) || isCoachRole(u);
 }
+function coachNamesFor(ids, users) {
+  return (ids || [])
+    .map((id) => ((users || []).find((u) => u.id === id) || {}).name)
+    .filter(Boolean);
+}
 function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
   let l = s.filter(isStaffMember),
     [i, c] = b(t?.name || ""),
@@ -50,6 +55,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           endTime: f.trim(),
           coachIds: N,
           coachId: N[0] || "",
+          coachNames: coachNamesFor(N, s),
           isAdultGroup: AG,
         };
         (t
@@ -824,6 +830,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         await O(S(P, "groups", grp.id), {
           coachIds: next,
           coachId: next[0] || "",
+          coachNames: coachNamesFor(next, t),
         });
       } catch (err) {
         i("עדכון נכשל: " + err.message);
@@ -847,6 +854,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           batch.update(S(P, "groups", grp.id), {
             coachIds: rest,
             coachId: rest[0] || "",
+            coachNames: coachNamesFor(rest, t),
           });
         });
         (batch.delete(S(P, "users", u.id)), await batch.commit());
@@ -2399,6 +2407,9 @@ function Q() {
           profile: s,
           authUser: t,
           embedded: !0,
+          staffGroupIds: coachGroupIds,
+          users: l,
+          isStaff: r || isCoachRole(s),
         }),
       m === "attendance" &&
         e.createElement(mt, {
