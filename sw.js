@@ -14,7 +14,11 @@ const SHELL = ['./', './index.html', './manifest.json', './logo.png', './icon-19
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+    // addAll נכשל כולו אם קובץ אחד נופל ברשת חלשה, ואז הגרסה החדשה לא מותקנת בכלל
+    caches
+      .open(CACHE)
+      .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -63,7 +67,12 @@ async function networkFirst(req) {
     return res;
   } catch (e) {
     const hit = await caches.match(req);
-    return hit || caches.match('./index.html');
+    if (hit) return hit;
+    // לא מחזירים index.html לבקשת נתונים — זה גורם לשגיאת פענוח במקום "אין נתונים"
+    if (/\.json($|\?)/i.test(req.url)) {
+      return new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+    return caches.match('./index.html');
   }
 }
 

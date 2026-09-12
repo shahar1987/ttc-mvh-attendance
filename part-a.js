@@ -299,6 +299,10 @@ async function setPlayerGender(playerId, gender) {
   await O(S(P, "players", playerId), { gender });
 }
 async function markAbsenceMsgSent(date, groupId, playerId, userId) {
+  // גם מסמן את התראת "נעדר משני אימונים" כטופלה, כדי שההורה לא יקבל שתי הודעות על אותה היעדרות
+  O(S(P, "players", playerId), { alertHandledDate: date }).catch((err) =>
+    console.warn("Alert handling not saved:", err),
+  );
   await De(
     S(P, "attendance", `${date}_${groupId}_${playerId}`),
     {
@@ -575,6 +579,8 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
     ),
   );
 }
+// הודעות היעדרות שממתינות לשליחה. שחקן שכבר מופיע בכרטיס ההתראות (שתי היעדרויות)
+// לא מופיע גם כאן — אחרת אותו הורה מקבל שתי הודעות שונות על אותו דבר.
 function pendingAbsenceMsgs(players, groups, users, attendance) {
   let today = E(),
     d = new Date(today + "T00:00:00");
@@ -586,6 +592,9 @@ function pendingAbsenceMsgs(players, groups, users, attendance) {
     if (!a.date || a.date > today || a.date < from) return;
     let p = players.find((v) => v.id === a.playerId);
     if (!p || p.deleted || !p.isActive) return;
+    if (p.alertHandledDate && p.alertHandledDate >= a.date) return;
+    let two = lastTwoAbsences(attendance, p.id);
+    if (two && two.includes(a.date)) return;
     let g = groups.find((v) => v.id === a.groupId) || null;
     out.push({
       player: p,
@@ -2760,7 +2769,7 @@ function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) 
   let days = lookbackDays || 7,
     today = E(),
     base = new Date(today + "T00:00:00"),
-    floorDate = "2026-09-07",
+    // אין תאריך רצפה קשיח: הגבול הוא טווח הימים שביקשו, ותאריך פתיחת הקבוצה
     out = [];
   groups.forEach((g) => {
     if (!Y(g)) return;
@@ -2769,7 +2778,6 @@ function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) 
       d.setDate(d.getDate() - i);
       if (!g.days.includes(d.getDay())) continue;
       let ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      if (ds < floorDate) continue;
       if (g.createdDate && ds < g.createdDate) continue;
       if (findCancellation(cancellations, g.id, ds)) continue;
       if (attendance.some((a) => a.groupId === g.id && a.date === ds)) continue;
@@ -4509,7 +4517,7 @@ function AnnouncementForm({ onClose: onClose, author: author, announcement: ann 
       (setBusy(!0), setErr(""));
       try {
         let now = new Date().toISOString(),
-          expiresAt = expires ? expires + "T23:59:59.000Z" : "";
+          expiresAt = expires ? new Date(expires + "T23:59:59").toISOString() : "";
         editing
           ? await O(S(P, "announcements", ann.id), {
               title: title.trim(),
@@ -5431,6 +5439,19 @@ function MemberPortal({
                           { className: "text-[11px] text-emerald-700" },
                           "הכול מסונכרן — שמות המאמנים, ההרשאות והקישורים תואמים למצב במערכת.",
                         ),
+                    badPhone.length || dupNames.length
+                      ? e.createElement(
+                          "p",
+                          { className: "text-[11px] text-slate-500 leading-relaxed" },
+                          badPhone.length
+                            ? "ללא טלפון תקין: " +
+                              badPhone.slice(0, 6).map((p) => p.name).join(", ") +
+                              (badPhone.length > 6 ? " ועוד…" : "") +
+                              ". "
+                            : "",
+                          dupNames.length ? "שמות כפולים: " + dupNames.slice(0, 6).join(", ") : "",
+                        )
+                      : null,
                   ),
           ),
         e.createElement(
