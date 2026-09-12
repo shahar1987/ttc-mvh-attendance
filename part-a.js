@@ -147,11 +147,12 @@ function playerIsAdult(p, groups) {
     (groups || []).find((g) => g.id === (p && p.groupId)) || null,
   );
 }
-function Ve(t, s, adult) {
-  let parent = (t || "").trim();
+function Ve(t, s, adult, gender) {
+  let parent = (t || "").trim(),
+    f = gender === "f";
   return adult
     ? `היי ${s}, מה שלומך? שמתי לב שלא הגעת לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם צריך משהו.`
-    : `היי${parent && parent !== s ? " " + parent : ""}, מה שלומך? שמתי לב ש${s} לא הגיע לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם יש משהו שאפשר לעזור בו.`;
+    : `היי${parent && parent !== s ? " " + parent : ""}, מה שלומך? שמתי לב ש${s} לא ${f ? "הגיעה" : "הגיע"} לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם יש משהו שאפשר לעזור בו.`;
 }
 var maleNameExceptions = [
   "משה",
@@ -237,8 +238,10 @@ ${signature}`;
 }
 function normalizePhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
-  if (digits.startsWith("972")) return digits;
-  if (digits.startsWith("0")) return "972" + digits.slice(1);
+  // 00972… / +972 050-… / 972-050-… — מורידים את קידומת החו"ל ואת ה-0 המוביל שאחריה
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("972")) return "972" + digits.slice(3).replace(/^0+/, "");
+  if (digits.startsWith("0")) return "972" + digits.replace(/^0+/, "");
   if (digits.length === 9 && digits.startsWith("5")) return "972" + digits;
   return digits;
 }
@@ -260,9 +263,14 @@ function countUniqueActivePlayers(players) {
   return count;
 }
 function lastTwoAbsences(attendance, playerId) {
-  let recs = attendance
-    .filter((a) => a.playerId === playerId && a.date !== E())
-    .sort((x, y) => y.date.localeCompare(x.date));
+  // רשומה אחת לכל יום (שחקן שעבר קבוצה באותו יום לא נספר פעמיים); נוכחות גוברת על היעדרות
+  let byDate = new Map();
+  attendance.forEach((a) => {
+    if (a.playerId !== playerId || a.date === E()) return;
+    let prev = byDate.get(a.date);
+    (!prev || prev.status !== "Present") && byDate.set(a.date, a);
+  });
+  let recs = [...byDate.values()].sort((x, y) => y.date.localeCompare(x.date));
   if (recs.length < 2) return null;
   if (recs[0].status !== "Absent" || recs[1].status !== "Absent") return null;
   return [recs[0].date, recs[1].date];
@@ -388,11 +396,10 @@ function excludeCancelled(attendance, cancellations) {
   let keys = new Set(cancellations.map((c) => cancellationId(c.date, c.groupId)));
   return attendance.filter((a) => !keys.has(cancellationId(a.date, a.groupId)));
 }
-async function cancelTraining({ date, groupId, reason, note, userId, attendance }) {
+async function cancelTraining({ date, groupId, reason, note, userId }) {
+  // רשומות הנוכחות של היום לא נמחקות: excludeCancelled מסתיר אותן בכל החישובים,
+  // וביטול-הביטול מחזיר אותן כמו שהיו.
   let batch = Te(P);
-  (attendance || [])
-    .filter((a) => a.groupId === groupId && a.date === date)
-    .forEach((a) => batch.delete(S(P, "attendance", a.id)));
   batch.set(S(P, "cancellations", cancellationId(date, groupId)), {
     date,
     groupId,
@@ -419,7 +426,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
       if (
         hasAttendance &&
         !window.confirm(
-          "כבר נשמרה נוכחות להיום לקבוצה זו. ביטול האימון ימחק את רשומות הנוכחות של היום. להמשיך?",
+          "כבר נשמרה נוכחות להיום לקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
         )
       )
         return;
@@ -526,7 +533,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
             className:
               "text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
           },
-          "שים לב: כבר נשמרה נוכחות להיום. ביטול האימון ימחק אותה, והיום לא ייספר בשום חישוב.",
+          "שים לב: כבר נשמרה נוכחות להיום. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
         ),
       err &&
         e.createElement("p", { className: "text-xs text-red-600 text-right" }, err),
@@ -646,12 +653,20 @@ function QuotaAlertsCard({ alerts: t }) {
   );
 }
 function useLocalAlertNotice(alerts, label) {
-  let seen = e.useRef(new Set());
+  let seen = e.useRef(new Set()),
+    primed = e.useRef(!1);
   j(() => {
     if (typeof window > "u" || typeof Notification > "u") return;
     if (Notification.permission !== "granted") return;
-    let fresh = alerts.filter((a) => !seen.current.has(a.player.id));
-    fresh.forEach((a) => seen.current.add(a.player.id));
+    // מפתח לפי שחקן+תאריך: היעדרות חדשה של שחקן שכבר דווח עליו בעבר כן מקפיצה התראה
+    let key = (a) => a.player.id + "|" + a.dates[0],
+      fresh = alerts.filter((a) => !seen.current.has(key(a)));
+    fresh.forEach((a) => seen.current.add(key(a)));
+    // בטעינה הראשונה רק זוכרים את המצב הקיים — לא מקפיצים את כל ההיסטוריה בכל פתיחה
+    if (!primed.current) {
+      primed.current = !0;
+      return;
+    }
     if (fresh.length === 0) return;
     try {
       let first = fresh[0];
@@ -707,6 +722,7 @@ function playerDaysLabel(p) {
 function L(t, groupIds, uid, enabled, filter) {
   let [s, a] = b([]),
     [l, i] = b(!0),
+    [err, setErr] = b(null),
     scoped = Array.isArray(groupIds),
     on = enabled !== !1,
     filterKey = filter ? filter.join("|") : "",
@@ -714,6 +730,7 @@ function L(t, groupIds, uid, enabled, filter) {
   return (
     j(
       () => {
+        setErr(null);
         if (!uid || !on) {
           (a([]), i(!1));
           return;
@@ -723,25 +740,34 @@ function L(t, groupIds, uid, enabled, filter) {
           return;
         }
         i(!0);
-        let ref = scoped
-          ? fsQuery(M(P, t), fsWhere("groupId", "in", groupIds))
-          : M(P, t);
-        filter && (ref = fsQuery(ref, fsWhere(filter[0], filter[1], filter[2])));
-        return ae(
-          ref,
-          (n) => {
-            (a(n.docs.map((m) => ({ id: m.id, ...m.data() }))), i(!1));
-          },
-          (n) => {
-            (console.error(`Firestore listen error on ${t}:`, n),
-              a([]),
-              i(!1));
-          },
-        );
+        // שאילתת "in" מוגבלת במספר הערכים — מאזין נפרד לכל קבוצה של עד 10 מזהים ואיחוד התוצאות
+        let chunks = scoped ? [] : [null],
+          parts = {},
+          pending = new Set();
+        if (scoped) for (let k = 0; k < groupIds.length; k += 10) chunks.push(groupIds.slice(k, k + 10));
+        chunks.forEach((c, idx) => pending.add(idx));
+        let unsubs = chunks.map((chunk, idx) => {
+          let ref = chunk ? fsQuery(M(P, t), fsWhere("groupId", "in", chunk)) : M(P, t);
+          filter && (ref = fsQuery(ref, fsWhere(filter[0], filter[1], filter[2])));
+          return ae(
+            ref,
+            (n) => {
+              parts[idx] = n.docs.map((m) => ({ id: m.id, ...m.data() }));
+              pending.delete(idx);
+              a(chunks.flatMap((c, k) => parts[k] || []));
+              pending.size === 0 && i(!1);
+            },
+            (n) => {
+              // שגיאת האזנה (הרשאה/רשת) לא הופכת ל"אין נתונים": שומרים את מה שיש ומדווחים
+              (console.error(`Firestore listen error on ${t}:`, n), setErr(n), i(!1));
+            },
+          );
+        });
+        return () => unsubs.forEach((u) => u());
       },
       [t, scoped, scopeKey, uid || "", on, filterKey],
     ),
-    { data: s, loading: l }
+    { data: s, loading: l, error: err }
   );
 }
 function Ye() {
@@ -794,9 +820,11 @@ function Qe(t, s) {
     ? !1
     : a[0].status === "Absent" && a[1].status === "Absent";
 }
+// אחוז הנוכחות של הקבוצה בחודש הנוכחי (כמו "נוכחות ממוצעת החודש" בכרטיס שמעל)
 function Ze(t, s, a) {
-  let l = new Set(a.filter((n) => n.groupId === s).map((n) => n.id)),
-    i = t.filter((n) => n.groupId === s && l.has(n.playerId));
+  let month = E().slice(0, 7),
+    l = new Set(a.filter((n) => n.groupId === s && !n.deleted).map((n) => n.id)),
+    i = t.filter((n) => n.groupId === s && String(n.date || "").startsWith(month) && l.has(n.playerId));
   if (i.length === 0) return null;
   let c = i.filter((n) => n.status === "Present").length;
   return Math.round((c / i.length) * 100);
@@ -832,7 +860,7 @@ function eachDateInRange(startStr, endStr) {
 function csvEscape(value) {
   let s = value === null || value === void 0 ? "" : String(value);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 function downloadCsv(filename, headers, rows) {
   let lines = [headers.map(csvEscape).join(",")].concat(
@@ -1234,7 +1262,9 @@ function ReportPlayer({ players, groups, attendance }) {
 function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
   let [startDate, setStartDate] = b(firstOfMonthStr()),
     [endDate, setEndDate] = b(E()),
-    allDates = eachDateInRange(startDate, endDate),
+    today = E(),
+    // היום ותאריכים עתידיים עדיין לא "לא מולאו" — סופרים רק ימים שכבר עברו
+    allDates = eachDateInRange(startDate, endDate < today ? endDate : today).filter((d) => d < today),
     rows = groups
       .map((g) => {
         let coach = groupCoachLabel(g, users),
@@ -1245,6 +1275,7 @@ function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
           expectedDates = hasSchedule
             ? allDates.filter(
                 (d) =>
+                  (!g.createdDate || d >= g.createdDate) &&
                   g.days.includes(new Date(d + "T00:00:00").getDay()) &&
                   !cancelledDates.includes(d),
               )
@@ -1385,12 +1416,13 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
     atRisk = players
       .filter((p) => p.isActive && !p.deleted)
       .map((p) => {
-        let records = attendance
-            .filter(
-              (rec) =>
-                rec.playerId === p.id && rec.date >= startDate && rec.date <= endDate,
-            )
-            .sort((a, c) => c.date.localeCompare(a.date)),
+        let byDate = new Map();
+        attendance.forEach((rec) => {
+          if (rec.playerId !== p.id || rec.date < startDate || rec.date > endDate) return;
+          let prev = byDate.get(rec.date);
+          (!prev || prev.status !== "Present") && byDate.set(rec.date, rec);
+        });
+        let records = [...byDate.values()].sort((a, c) => c.date.localeCompare(a.date)),
           lastTwo = records.slice(0, 2),
           flagged = lastTwo.length === 2 && lastTwo.every((r) => r.status === "Absent");
         return {
@@ -1458,6 +1490,7 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
                   className: "px-4 py-3 flex items-center justify-between gap-2",
                 },
                 !RO &&
+                isValidPhone(x.player.parentPhone) &&
                 e.createElement(
                   "button",
                   {
@@ -1469,6 +1502,7 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
                             x.player.parentName,
                             x.player.name,
                             isAdultGroup(x.group),
+                            playerGender(x.player),
                           ),
                         ),
                         "_blank",
@@ -1794,6 +1828,10 @@ var et = {
     "אימייל או סיסמה שגויים",
   "auth/too-many-requests":
     "יותר מדי ניסיונות. נסה שוב בעוד כמה דקות",
+  "auth/network-request-failed":
+    "אין חיבור לאינטרנט. ההתחברות מחייבת חיבור — נסה שוב כשהחיבור יחזור",
+  "auth/user-disabled":
+    "החשבון הושבת. פנה למנהל המועדון",
 };
 function tt() {
   let [t, s] = b(""),
@@ -2229,7 +2267,7 @@ function st({
               e.createElement(
                 "div",
                 { className: "text-[10px] text-slate-400" },
-                "נוכחות",
+                "נוכחות החודש",
               ),
             ),
           ),
@@ -2372,13 +2410,13 @@ function WhatsappModal({
     [l, i] = b(
       isAbs
         ? absenceMsg(t, playerGender(t), DT, AD)
-        : Ve(t.parentName, t.name, AD),
+        : Ve(t.parentName, t.name, AD, playerGender(t)),
     ),
     [c, n] = b(!1),
     m = normalizePhone(t.parentPhone),
     o = isValidPhone(t.parentPhone),
     pickGender = (v) => {
-      (setGen(v), i(absenceMsg(t, v, DT, AD)));
+      (setGen(v), i(isAbs ? absenceMsg(t, v, DT, AD) : Ve(t.parentName, t.name, AD, v)));
       setPlayerGender(t.id, v).catch((err) =>
         console.warn("Gender not saved:", err),
       );
@@ -2436,8 +2474,7 @@ function WhatsappModal({
           ),
         ),
       ),
-      isAbs &&
-        !AD &&
+      !AD &&
         e.createElement(
           "div",
           { className: "flex items-center gap-2 justify-end" },
@@ -3047,8 +3084,26 @@ function at({
 }
 var DEFAULT_ROSTER = "";
 var DAY_LETTERS = { א: 0, ב: 1, ג: 2, ד: 3, ה: 4, ו: 5, ש: 6 };
+// פיצול שורת CSV עם תמיכה בשדות במירכאות ("כהן, יוסי") — כמו הקובץ שהייצוא שלנו מפיק
+function splitCsvLine(line) {
+  let out = [],
+    cur = "",
+    q = !1;
+  for (let i = 0; i < line.length; i++) {
+    let ch = line[i];
+    if (q) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') (cur += '"'), i++;
+        else q = !1;
+      } else cur += ch;
+    } else if (ch === '"') q = !0;
+    else if (ch === "," || ch === "\t") (out.push(cur.trim()), (cur = ""));
+    else cur += ch;
+  }
+  return (out.push(cur.trim()), out);
+}
 function parseRoster(text) {
-  let lines = String(text || "").split("\n"),
+  let lines = String(text || "").replace(/^\uFEFF/, "").split("\n"),
     current = null,
     rows = [],
     errors = [];
@@ -3070,7 +3125,7 @@ function parseRoster(text) {
       current = { name, days };
       return;
     }
-    let cells = line.split(/[,\t]/).map((c) => c.trim()),
+    let cells = splitCsvLine(line),
       name = cells[0],
       phone = cells[1] || "",
       parentName = cells[2] || "";
@@ -3453,8 +3508,10 @@ async function signUpFromInvite({
     if (err.code !== "auth/email-already-in-use") throw err;
     ((uid = (await Ue(D, mail, password)).user.uid), (existed = !0));
   }
-  let now = new Date().toISOString();
-  existed ||
+  let now = new Date().toISOString(),
+    // אם ניסיון קודם נכשל אחרי יצירת חשבון ההתחברות — הפרופיל עדיין חסר, ויוצרים אותו עכשיו
+    hasProfile = existed && (await fsGetDoc(S(P, "users", uid))).exists();
+  hasProfile ||
     (await De(S(P, "users", uid), {
       name: invite.displayName || "",
       role: "Member",
@@ -3517,8 +3574,11 @@ function useMemberData(uid) {
       return;
     }
     let unsubPlayers = {},
-      unsubAtt = null,
+      unsubAtt = [],
       onErr = (err) => setError(err.message || String(err)),
+      stopAtt = () => {
+        (unsubAtt.forEach((u) => u()), (unsubAtt = []));
+      },
       unsubLinks = ae(
         fsQuery(M(P, "links"), fsWhere("uid", "==", uid)),
         (snap) => {
@@ -3535,7 +3595,10 @@ function useMemberData(uid) {
                     [pid]: ps.exists() ? { id: ps.id, ...ps.data() } : null,
                   }));
                 },
-                onErr,
+                (err) => {
+                  // קריאה שנכשלה (הרשאה/כרטיס שנמחק) לא משאירה את המסך על "טוען…"
+                  (onErr(err), setPlayersMap((m) => ({ ...m, [pid]: null })));
+                },
               ));
           for (let pid of Object.keys(unsubPlayers))
             ids.includes(pid) ||
@@ -3545,23 +3608,31 @@ function useMemberData(uid) {
                 let c = { ...m };
                 return (delete c[pid], c);
               }));
-          unsubAtt && (unsubAtt(), (unsubAtt = null));
-          ids.length
-            ? (unsubAtt = ae(
-                fsQuery(M(P, "attendance"), fsWhere("playerId", "in", ids.slice(0, 10))),
-                (as) => setAttendance(as.docs.map((d) => ({ id: d.id, ...d.data() }))),
+          stopAtt();
+          setAttendance([]);
+          // Firestore מגביל שאילתת "in" ל-10 ערכים — מאזין נפרד לכל קבוצה של עד 10 שחקנים
+          for (let i = 0; i < ids.length; i += 10) {
+            let chunk = ids.slice(i, i + 10);
+            unsubAtt.push(
+              ae(
+                fsQuery(M(P, "attendance"), fsWhere("playerId", "in", chunk)),
+                (as) =>
+                  setAttendance((prev) =>
+                    prev
+                      .filter((r) => !chunk.includes(r.playerId))
+                      .concat(as.docs.map((d) => ({ id: d.id, ...d.data() }))),
+                  ),
                 onErr,
-              ))
-            : setAttendance([]);
+              ),
+            );
+          }
         },
         (err) => {
           (onErr(err), setLinks([]));
         },
       );
     return () => {
-      (unsubLinks(),
-        Object.values(unsubPlayers).forEach((u) => u()),
-        unsubAtt && unsubAtt());
+      (unsubLinks(), Object.values(unsubPlayers).forEach((u) => u()), stopAtt());
     };
   }, [uid]);
   let players = (links || [])
@@ -4170,6 +4241,12 @@ function relDay(iso) {
   if (diff > 1 && diff < 7) return "יום " + HEB_DAYS_FULL[d.getDay()];
   return d.toLocaleDateString("he-IL", { day: "numeric", month: "long" });
 }
+// "היום, ראשון" / "מחר, שני" / "יום רביעי" / "20 באוקטובר, שלישי" — בלי כפילות של שם היום
+function relDayWithName(iso) {
+  let rel = relDay(iso),
+    d = new Date(iso + "T00:00:00");
+  return rel.startsWith("יום ") ? rel : rel + ", " + HEB_DAYS_FULL[d.getDay()];
+}
 function fmtDateShort(iso) {
   if (!iso) return "";
   let d = new Date(iso + "T00:00:00");
@@ -4197,25 +4274,41 @@ function isCancelledOn(cancellations, date, groupId) {
   );
 }
 // האימון הקרוב מבין הקבוצות הרלוונטיות, מדלג על אימונים שבוטלו
-function nextTrainingFor(groups, cancellations) {
+// ימי האימון של הקבוצה עבור השחקנים המקושרים בה: אם לכולם הוגדרו ימים אישיים — רק הימים האלה
+function groupDaysForPlayers(g, players) {
+  let days = (g.days || [])
+      .map((d) => (typeof d === "number" ? d : MEM_DAYS.indexOf(d)))
+      .filter((d) => d >= 0),
+    ps = (players || []).filter((p) => p.groupId === g.id);
+  if (
+    ps.length &&
+    ps.every((p) => Array.isArray(p.trainingDays) && p.trainingDays.length)
+  ) {
+    let allowed = new Set(ps.flatMap((p) => p.trainingDays.map(Number)));
+    days = days.filter((d) => allowed.has(d));
+  }
+  return days.slice().sort((a, b) => a - b);
+}
+function nextTrainingFor(groups, cancellations, players) {
   let now = new Date(),
     best = null;
   for (let g of groups) {
-    for (let d of g.days || []) {
-      let dow = typeof d === "number" ? d : MEM_DAYS.indexOf(d);
-      if (dow < 0) continue;
+    for (let dow of groupDaysForPlayers(g, players)) {
       for (let k = 0; k < 14; k++) {
         let dt = new Date(now);
         dt.setDate(now.getDate() + k);
         dt.setHours(0, 0, 0, 0);
         if (dt.getDay() !== dow) continue;
-        let [hh, mm] = (g.endTime || g.startTime || "23:59").split(":").map(Number);
-        let end = new Date(dt);
-        end.setHours(hh || 23, mm || 59);
+        let [eh, em] = (g.endTime || g.startTime || "23:59").split(":").map(Number),
+          [sh, sm] = (g.startTime || "00:00").split(":").map(Number),
+          end = new Date(dt),
+          start = new Date(dt);
+        end.setHours(Number.isFinite(eh) ? eh : 23, Number.isFinite(em) ? em : 59, 0, 0);
+        start.setHours(Number.isFinite(sh) ? sh : 0, Number.isFinite(sm) ? sm : 0, 0, 0);
         if (end < now) continue;
         let iso = localISO(dt);
         if (isCancelledOn(cancellations, iso, g.id)) continue;
-        if (!best || dt < best.dt) best = { dt: dt, iso: iso, g: g };
+        if (!best || start < best.start) best = { dt: dt, start: start, iso: iso, g: g };
         break;
       }
     }
@@ -4317,7 +4410,14 @@ function MatchCard({ m: m, compact: compact }) {
     our = m.isHome ? m.homeScore : m.awayScore,
     opp = m.isHome ? m.awayScore : m.homeScore,
     cls = played ? (our > opp ? "text-emerald-600" : our < opp ? "text-red-500" : "text-slate-700") : "text-blue-950",
-    score = played ? m.homeScore + ":" + m.awayScore : m.time || "—";
+    // התוצאה מוצגת כשלושה פריטי flex (ולא מחרוזת "3:1") כדי שתוצאת המארחת תישאר בצד של שם המארחת גם ב-RTL
+    score = played
+      ? [
+          e.createElement("span", { key: "h" }, m.homeScore),
+          e.createElement("span", { key: "s", className: "opacity-50" }, ":"),
+          e.createElement("span", { key: "a" }, m.awayScore),
+        ]
+      : m.time || "—";
   return e.createElement(
     "div",
     { className: "flex flex-col gap-2" },
@@ -4337,7 +4437,8 @@ function MatchCard({ m: m, compact: compact }) {
         "div",
         {
           className:
-            "shrink-0 bg-slate-100 rounded-xl px-3 py-1.5 text-lg font-bold tabular-nums " + cls,
+            "shrink-0 bg-slate-100 rounded-xl px-3 py-1.5 text-lg font-bold tabular-nums flex items-center gap-0.5 " + cls,
+          dir: "rtl",
         },
         score,
       ),
@@ -4481,10 +4582,12 @@ function MemberPortal({
   isStaff: isStaff,
 }) {
   let uid = authUser?.uid,
-    { loading, players, attendance, links, error } = useMemberData(uid),
+    { loading, players, attendance: rawAttendance, links, error } = useMemberData(uid),
     tttm = useTttm(),
     { data: groups } = L("groups", null, uid),
     { data: cancellations } = L("cancellations", null, uid),
+    // כמו אצל הצוות: אימון שבוטל לא נספר להורה כהיעדרות
+    attendance = excludeCancelled(rawAttendance, cancellations),
     { data: announcementsRaw } = L("announcements", null, uid),
     [tab, setTab] = b("home"),
     [annForm, setAnnForm] = b(!1),
@@ -4501,11 +4604,13 @@ function MemberPortal({
       return isStaff ? groups : [];
     })(),
     hasPersonal = players.length > 0,
-    next = nextTrainingFor(myGroups, cancellations),
+    next = nextTrainingFor(myGroups, cancellations, players),
     teams = tttmTeams(tttm),
+    todayIso = localISO(new Date()),
+    // רק משחק שעוד לא התקיים — הנתונים מהאיגוד מתעדכנים פעמיים בשבוע
     nextMatch = teams
       .map((t) => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey, league: t.nextMatch.league || t.league })
-      .filter(Boolean)
+      .filter((m) => m && !m.played && String(m.date || "") >= todayIso)
       .sort((a, c) => String(a.date).localeCompare(String(c.date)))[0],
     firstName = (n) => String(n || "").split(" ")[0],
     monthCount = (pid) => memberMonthStats(attendance, pid).present,
@@ -4540,9 +4645,7 @@ function MemberPortal({
                 e.createElement(
                   "p",
                   { className: "text-xl font-bold text-blue-950 leading-tight" },
-                  relDay(next.iso),
-                  ", ",
-                  HEB_DAYS_FULL[next.dt.getDay()],
+                  relDayWithName(next.iso),
                   " ",
                   timeRange(next.g),
                 ),
@@ -4594,9 +4697,13 @@ function MemberPortal({
                   e.createElement(
                     "p",
                     { className: "text-2xl font-bold text-blue-950 leading-none" },
-                    entry && entry.points ? Math.round(entry.points) : "—",
+                    entry && entry.rank ? entry.rank : "—",
                   ),
-                  e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, "דירוג TTTM"),
+                  e.createElement(
+                    "p",
+                    { className: "text-[11px] text-slate-500 mt-1" },
+                    entry && entry.points ? "דירוג ארצי · " + Math.round(entry.points) + " נק'" : "דירוג ארצי",
+                  ),
                 ),
               );
             }),
@@ -4617,7 +4724,7 @@ function MemberPortal({
                     e.createElement(
                       "p",
                       { className: "text-[11px] text-slate-500" },
-                      fmtDateShort(String(a.publishAt || a.createdAt || "").slice(0, 10)),
+                      fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
                       a.authorName ? " · " + a.authorName : "",
                     ),
                   ),
@@ -4771,8 +4878,8 @@ function MemberPortal({
             e.createElement(
               "p",
               { className: "text-sm text-slate-700" },
-              (g.days || []).length
-                ? "ימים " + (g.days || []).slice().sort((a, c) => a - c).map((d) => HEB_DAYS_FULL[d]).join(", ")
+              groupDaysForPlayers(g, players).length
+                ? "ימים " + groupDaysForPlayers(g, players).map((d) => HEB_DAYS_FULL[d]).join(", ")
                 : "ימי אימון טרם נקבעו",
               timeRange(g) ? " · " + timeRange(g) : "",
             ),
@@ -4835,7 +4942,7 @@ function MemberPortal({
                 " · נקודות ",
                 t.points ?? 0,
               ),
-              t.nextMatch &&
+              t.nextMatch && !t.nextMatch.played && String(t.nextMatch.date || "") >= today &&
                 e.createElement(
                   "div",
                   { className: "border-t border-slate-100 pt-2" },
@@ -4970,7 +5077,7 @@ function MemberPortal({
                     e.createElement(
                       "p",
                       { className: "text-[11px] text-slate-400 mt-1" },
-                      fmtDateShort(String(a.publishAt || a.createdAt || "").slice(0, 10)),
+                      fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
                       a.authorName ? " · " + a.authorName : "",
                     ),
                   ),
@@ -5042,7 +5149,7 @@ function MemberPortal({
       "nav",
       {
         className:
-          "sticky bottom-0 z-30 bg-white border-t border-slate-200 flex justify-around px-1 pt-1.5 pb-[max(6px,env(safe-area-inset-bottom))]",
+          "fixed bottom-0 inset-x-0 mx-auto max-w-md z-30 bg-white border-t border-slate-200 flex justify-around px-1 pt-1.5 pb-[max(6px,env(safe-area-inset-bottom))]",
       },
       ...tabs.map(([key, label, Icon]) =>
         e.createElement(
@@ -5061,7 +5168,7 @@ function MemberPortal({
     ),
     body = e.createElement(
       "div",
-      { className: "p-4 flex flex-col gap-3 min-h-[60vh]" },
+      { className: "p-4 pb-24 flex flex-col gap-3 min-h-[60vh]" },
       error && e.createElement("div", { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" }, "שגיאה בטעינת הנתונים: ", error),
       (screens[tab] || homeScreen)(),
     ),
