@@ -30,12 +30,12 @@ jobs:
           const ALL    = `https://tttm.co.il/c/${CLUB_ID}-ap/`;
 
           const strip = (h) =>
-            h.replace(/<[^>]*>/g, '')
+            h.replace(/<[^>]*>/g, '|~|')
              .replace(/&nbsp;/g, ' ')
              .replace(/&amp;/g, '&')
              .replace(/&quot;/g, '"')
              .replace(/&#39;/g, "'")
-             .split('')
+             .split('|~|')
              .map((s) => s.trim())
              .filter(Boolean);
 
