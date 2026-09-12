@@ -1,0 +1,125 @@
+name: Refresh TTTM ranking
+
+# מושך מאתר האיגוד את הדירוג של שחקני "הפועל מבואות חרמון" וכותב tttm.json.
+# רץ פעמיים בשבוע, ואפשר גם להריץ ידנית מלשונית Actions.
+on:
+  schedule:
+    - cron: "17 3 * * 0,3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tttm-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and parse the association pages
+        run: |
+          cat > scrape.mjs <<'JS'
+          import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+
+          const CLUB_ID = '160';
+          const RANKED = `https://tttm.co.il/c/${CLUB_ID}-p/`;
+          const ALL    = `https://tttm.co.il/c/${CLUB_ID}-ap/`;
+
+          const strip = (h) =>
+            h.replace(/<[^>]*>/g, '')
+             .replace(/&nbsp;/g, ' ')
+             .replace(/&amp;/g, '&')
+             .replace(/&quot;/g, '"')
+             .replace(/&#39;/g, "'")
+             .split('')
+             .map((s) => s.trim())
+             .filter(Boolean);
+
+          async function get(url) {
+            const r = await fetch(url, {
+              headers: { 'User-Agent': 'ttcmh-club-portal/1.0 (+https://shahar1987.github.io/ttc-mvh-attendance/)' },
+            });
+            if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+            return await r.text();
+          }
+
+          function rows(html) {
+            return [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((m) =>
+              [...m[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) => strip(c[1]).join(' ').trim()),
+            );
+          }
+
+          const num = (v) => {
+            const n = parseFloat(String(v).replace(/[^\d.]/g, ''));
+            return Number.isFinite(n) ? n : null;
+          };
+
+          // מדורגים: [שינוי, מקום, ID, קטגוריה, ריק, שם, מועדון, נקודות]
+          const rankedRows = rows(await get(RANKED)).filter(
+            (r) => r.length >= 7 && /^\d+$/.test(r[2] || '') && /חרמון/.test(r[6] || ''),
+          );
+
+          // כל השחקנים: [מספר סידורי, ID, קטגוריה, שם]
+          const allRows = rows(await get(ALL)).filter(
+            (r) => r.length >= 4 && /^\d+$/.test(r[1] || '') && (r[3] || '').length > 1,
+          );
+
+          const byId = new Map();
+
+          for (const r of allRows) {
+            byId.set(r[1], { tttmId: r[1], name: r[3], category: r[2] || '', rank: null, points: null, change: '' });
+          }
+
+          for (const r of rankedRows) {
+            const id = r[2];
+            const prev = byId.get(id) || { tttmId: id, name: r[5], category: r[3] || '' };
+            byId.set(id, {
+              ...prev,
+              name: r[5] || prev.name,
+              category: r[3] || prev.category,
+              rank: num(r[1]),
+              points: num((r[7] || '').split('(')[0]),
+              change: (r[0] || '').trim(),
+            });
+          }
+
+          const players = [...byId.values()].sort(
+            (a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || a.name.localeCompare(b.name, 'he'),
+          );
+
+          if (players.length === 0) throw new Error('no players parsed - the association page layout probably changed');
+
+          const out = {
+            club: 'הפועל מבואות חרמון',
+            clubId: CLUB_ID,
+            source: RANKED,
+            updatedAt: new Date().toISOString(),
+            ranked: players.filter((p) => p.rank !== null).length,
+            players,
+          };
+
+          const json = JSON.stringify(out, null, 1) + '\n';
+          const same =
+            existsSync('tttm.json') &&
+            JSON.stringify({ ...JSON.parse(readFileSync('tttm.json', 'utf8')), updatedAt: 0 }) ===
+              JSON.stringify({ ...out, updatedAt: 0 });
+
+          writeFileSync('tttm.json', json);
+          console.log(`${players.length} players, ${out.ranked} ranked, changed: ${!same}`);
+          writeFileSync(process.env.GITHUB_ENV, `TTTM_CHANGED=${same ? 'no' : 'yes'}\n`, { flag: 'a' });
+          JS
+          node scrape.mjs
+          rm scrape.mjs
+
+      - name: Commit when the ranking actually changed
+        if: env.TTTM_CHANGED == 'yes'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tttm.json
+          git commit -m "עדכון דירוג מאתר האיגוד" || exit 0
+          git push
