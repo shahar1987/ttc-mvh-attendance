@@ -4903,9 +4903,26 @@ function MemberPortal({
     // -------- אימונים --------
     trainingsScreen = () => {
       let today = localISO(new Date()),
+        todayDow = new Date().getDay(),
         upcomingCancels = cancellations
           .filter((c) => c.date >= today && myGroups.some((g) => g.id === c.groupId))
-          .sort((a, c) => a.date.localeCompare(c.date));
+          .sort((a, c) => a.date.localeCompare(c.date)),
+        // לוח האימונים המלא של המועדון — כל הקבוצות, גם כאלה שאינן שלי
+        groupDaysOf = (g) =>
+          (g.days || [])
+            .map((d) => (typeof d === "number" ? d : MEM_DAYS.indexOf(d)))
+            .filter((d) => d >= 0),
+        startMinutes = (g) => {
+          let [h, m] = String(g.startTime || "23:59").split(":").map(Number);
+          return (Number.isFinite(h) ? h : 23) * 60 + (Number.isFinite(m) ? m : 59);
+        },
+        week = [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+          dow: d,
+          items: groups
+            .filter((g) => groupDaysOf(g).includes(d))
+            .sort((a, c) => startMinutes(a) - startMinutes(c)),
+        })).filter((row) => row.items.length),
+        noSchedule = groups.filter((g) => !groupDaysOf(g).length);
       return e.createElement(
         e.Fragment,
         null,
@@ -4946,6 +4963,66 @@ function MemberPortal({
             groupCoachLabelFor(g, users) &&
               e.createElement("p", { className: "text-xs text-slate-500" }, "מאמן: " + groupCoachLabelFor(g, users)),
           ),
+        ),
+        e.createElement(
+          PCard,
+          { title: "לוח האימונים של המועדון", icon: ge },
+          week.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col gap-3" },
+                ...week.map((row) =>
+                  e.createElement(
+                    "div",
+                    { key: row.dow, className: "flex flex-col gap-1" },
+                    e.createElement(
+                      "p",
+                      {
+                        className:
+                          "text-xs font-bold " + (row.dow === todayDow ? "text-emerald-700" : "text-slate-500"),
+                      },
+                      "יום " + HEB_DAYS_FULL[row.dow],
+                      row.dow === todayDow ? " · היום" : "",
+                    ),
+                    ...row.items.map((g) =>
+                      e.createElement(
+                        "div",
+                        {
+                          key: row.dow + "_" + g.id,
+                          className:
+                            "flex items-start justify-between gap-2 border-r-2 pr-2 " +
+                            (myGroups.some((x) => x.id === g.id) ? "border-blue-900" : "border-slate-200"),
+                        },
+                        e.createElement(
+                          "span",
+                          { className: "text-xs text-slate-500 shrink-0 tabular-nums" },
+                          timeRange(g) || "שעה טרם נקבעה",
+                        ),
+                        e.createElement(
+                          "div",
+                          { className: "flex-1 min-w-0 text-right" },
+                          e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, g.name),
+                          e.createElement(
+                            "p",
+                            { className: "text-[11px] text-slate-500 truncate" },
+                            [g.location, groupCoachLabelFor(g, users) && "מאמן " + groupCoachLabelFor(g, users)]
+                              .filter(Boolean)
+                              .join(" · "),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                noSchedule.length
+                  ? e.createElement(
+                      "p",
+                      { className: "text-[11px] text-slate-400" },
+                      "ללא ימים קבועים: " + noSchedule.map((g) => g.name).join(", "),
+                    )
+                  : null,
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "טרם נקבעו ימי אימון לקבוצות"),
         ),
       );
     },
