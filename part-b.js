@@ -19,7 +19,9 @@ function isStaffMember(u) {
 }
 function coachNamesFor(ids, users) {
   return (ids || [])
-    .map((id) => ((users || []).find((u) => u.id === id) || {}).name)
+    .map((id) => (users || []).find((u) => u.id === id))
+    .filter((u) => u && isStaffMember(u))
+    .map((u) => u.name)
     .filter(Boolean);
 }
 function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
@@ -37,7 +39,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           : [...$, v].sort((_, oe) => _ - oe),
       );
     },
-    [N, C] = b(groupCoachIds(t)),
+    [N, C] = b(groupCoachIds(t).filter((id) => l.some((u) => u.id === id))),
     [AG, setAG] = b(isAdultGroup(t)),
     toggleCoach = (v) =>
       C(($) => ($.includes(v) ? $.filter((_) => _ !== v) : [...$, v])),
@@ -819,6 +821,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
     [c, n] = b(null),
     [m, o] = b(!1),
     [editUser, setEditUser] = b(null),
+    [cleaning, setCleaning] = b(!1),
     [assigningGroupId, setAssigningGroupId] = b(null),
     toggleGroupCoach = async (grp, coachId) => {
       (setAssigningGroupId(grp.id), i(""));
@@ -879,7 +882,21 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       }
       (n(u.id), i(""));
       try {
-        await O(S(P, "users", u.id), { role: f });
+        // ירידה מתפקיד מאמן מסירה אותו אוטומטית מכל הקבוצות, אחרת הוא ימשיך להופיע כמאמן
+        let stillCoach = roleKey(f) === "admin" || roleKey(f) === "coach",
+          affected = stillCoach ? [] : s.filter((grp) => isGroupCoach(grp, u.id));
+        if (affected.length) {
+          let batch = Te(P);
+          affected.forEach((grp) => {
+            let rest = groupCoachIds(grp).filter((v) => v !== u.id);
+            batch.update(S(P, "groups", grp.id), {
+              coachIds: rest,
+              coachId: rest[0] || "",
+              coachNames: coachNamesFor(rest, t),
+            });
+          });
+          (batch.update(S(P, "users", u.id), { role: f }), await batch.commit());
+        } else await O(S(P, "users", u.id), { role: f });
       } catch (g) {
         i(
           "עדכון נכשל: " +
@@ -890,6 +907,36 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       }
     },
     staffUsers = t.filter((u) => !isMemberRole(u)),
+    // שיוכים ישנים: מי שמשויך לקבוצה אבל כבר אינו מאמן (למשל מאמן שהפך לצופה)
+    staleRows = s
+      .map((grp) => ({
+        group: grp,
+        users: staleCoachIds(grp, t)
+          .map((id) => t.find((u) => u.id === id))
+          .filter(Boolean),
+      }))
+      .filter((row) => row.users.length > 0),
+    staleNames = [...new Set(staleRows.flatMap((row) => row.users.map((u) => u.name)))],
+    cleanStale = async () => {
+      (setCleaning(!0), i(""));
+      try {
+        let batch = Te(P);
+        staleRows.forEach((row) => {
+          let ids = row.users.map((u) => u.id),
+            rest = groupCoachIds(row.group).filter((v) => !ids.includes(v));
+          batch.update(S(P, "groups", row.group.id), {
+            coachIds: rest,
+            coachId: rest[0] || "",
+            coachNames: coachNamesFor(rest, t),
+          });
+        });
+        await batch.commit();
+      } catch (err) {
+        i("ניקוי השיוכים נכשל: " + err.message);
+      } finally {
+        setCleaning(!1);
+      }
+    },
     h = t.filter(isAdminRole);
   return e.createElement(
     "div",
@@ -904,6 +951,33 @@ function ot({ users: t, groups: s, currentUserId: a }) {
       e.createElement(K, { className: "w-4 h-4" }),
       " הוספת משתמש",
     ),
+    staleRows.length > 0 &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-2 text-right",
+        },
+        e.createElement(
+          "p",
+          { className: "text-xs text-amber-800 leading-relaxed" },
+          staleNames.join(", "),
+          staleNames.length === 1 ? " משויך" : " משויכים",
+          " ל־",
+          staleRows.length,
+          " קבוצות אך אינם מאמנים (התפקיד שונה לצופה או להורה). הם אינם מוצגים כמאמנים, אבל כדאי לנקות את השיוך.",
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: cleanStale,
+            disabled: cleaning,
+            className:
+              "self-end bg-white border border-amber-300 text-amber-800 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50",
+          },
+          cleaning ? "מנקה…" : "הסרת השיוכים",
+        ),
+      ),
     l &&
       e.createElement(
         "div",
@@ -1039,6 +1113,9 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         },
         s.map((u) => {
           let staff = t.filter(isStaffMember),
+            staleHere = staleCoachIds(u, t)
+              .map((id) => t.find((v) => v.id === id))
+              .filter(Boolean),
             assigned = groupCoachNames(u, t);
           return e.createElement(
             "div",
@@ -1057,18 +1134,36 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               : e.createElement(
                   "div",
                   { className: "flex flex-wrap gap-1.5 justify-end" },
-                  staff.map((f) =>
-                    e.createElement(
-                      "button",
-                      {
-                        key: f.id,
-                        disabled: assigningGroupId === u.id,
-                        onClick: () => toggleGroupCoach(u, f.id),
-                        className: `px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${isGroupCoach(u, f.id) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
-                      },
-                      f.name,
+                  staff
+                    .map((f) =>
+                      e.createElement(
+                        "button",
+                        {
+                          key: f.id,
+                          disabled: assigningGroupId === u.id,
+                          onClick: () => toggleGroupCoach(u, f.id),
+                          className: `px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${isGroupCoach(u, f.id) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                        },
+                        f.name,
+                      ),
+                    )
+                    .concat(
+                      staleHere.map((f) =>
+                        e.createElement(
+                          "button",
+                          {
+                            key: f.id,
+                            disabled: assigningGroupId === u.id,
+                            onClick: () => toggleGroupCoach(u, f.id),
+                            title: "אינו מאמן — לחיצה מסירה את השיוך",
+                            className:
+                              "px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 bg-amber-50 text-amber-800 border-amber-300",
+                          },
+                          f.name,
+                          " ✕",
+                        ),
+                      ),
                     ),
-                  ),
                 ),
             e.createElement(
               "div",
