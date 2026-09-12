@@ -4004,256 +4004,6 @@ function AccessRequestForm({ onClose: onClose }) {
   );
 }
 
-// ----- הפורטל: המסך של הורה / שחקן / חבר מועדון -----
-function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded }) {
-  let { loading, players, attendance, links, error } = useMemberData(
-      authUser?.uid,
-    ),
-    tttm = useTttm(),
-    { data: groups } = L("groups", null, authUser?.uid),
-    groupOf = (p) => groups.find((g) => g.id === p.groupId) || null,
-    card = (p) => {
-      let g = groupOf(p),
-        st = memberMonthStats(attendance, p.id),
-        tttmEntry = tttmForPlayer(p, tttm.players),
-        recent = memberRecent(attendance, p.id, 5);
-      return e.createElement(
-        "div",
-        {
-          key: p.id,
-          className: "bg-white rounded-2xl p-4 flex flex-col gap-3 shadow-sm",
-        },
-        e.createElement(
-          "div",
-          { className: "flex items-center justify-between gap-2" },
-          e.createElement(
-            "div",
-            { className: "min-w-0" },
-            e.createElement(
-              "p",
-              { className: "font-bold text-blue-950 text-base truncate" },
-              p.name,
-            ),
-            e.createElement(
-              "p",
-              { className: "text-xs text-slate-500 truncate" },
-              g ? g.name : "ללא קבוצה",
-            ),
-          ),
-          st.pct !== null &&
-            e.createElement(
-              "div",
-              { className: "text-center shrink-0" },
-              e.createElement(
-                "p",
-                {
-                  className:
-                    "text-xl font-bold " +
-                    (st.pct >= 75
-                      ? "text-emerald-600"
-                      : st.pct >= 50
-                        ? "text-amber-500"
-                        : "text-red-500"),
-                },
-                st.pct,
-                "%",
-              ),
-              e.createElement(
-                "p",
-                { className: "text-[10px] text-slate-400" },
-                "נוכחות החודש",
-              ),
-            ),
-        ),
-        g &&
-          (g.days || []).length > 0 &&
-          e.createElement(
-            "div",
-            { className: "bg-slate-50 rounded-xl px-3 py-2" },
-            e.createElement(
-              "p",
-              { className: "text-[11px] text-slate-500" },
-              "ימי אימון",
-            ),
-            e.createElement(
-              "p",
-              { className: "text-sm text-blue-950" },
-              (g.days || [])
-                .slice()
-                .sort((a, c) => a - c)
-                .map((d) => MEM_DAYS[d])
-                .join(", "),
-              g.startTime ? " · " + g.startTime : "",
-              g.endTime ? "-" + g.endTime : "",
-              g.location ? " · " + g.location : "",
-            ),
-          ),
-        tttmEntry &&
-          e.createElement(TttmBadge, {
-            entry: tttmEntry,
-            updatedAt: tttm.updatedAt,
-          }),
-        recent.length
-          ? e.createElement(
-              "div",
-              { className: "flex flex-col gap-1" },
-              e.createElement(
-                "p",
-                { className: "text-[11px] text-slate-500" },
-                "אימונים אחרונים",
-              ),
-              ...recent.map((r) =>
-                e.createElement(
-                  "div",
-                  {
-                    key: r.id,
-                    className:
-                      "flex items-center justify-between text-xs border-b border-slate-100 py-1",
-                  },
-                  e.createElement(
-                    "span",
-                    { className: "text-slate-600" },
-                    Ke(r.date),
-                  ),
-                  e.createElement(
-                    "span",
-                    {
-                      className:
-                        r.status === "Present"
-                          ? "text-emerald-600 font-semibold"
-                          : "text-red-500 font-semibold",
-                    },
-                    r.status === "Present" ? "נוכח" : "נעדר",
-                  ),
-                ),
-              ),
-            )
-          : e.createElement(
-              "p",
-              { className: "text-xs text-slate-400" },
-              "עדיין אין רישומי נוכחות",
-            ),
-      );
-    };
-  let head = e.createElement(
-        "header",
-        {
-          className:
-            "sticky top-0 z-30 bg-blue-950 text-white px-4 py-3.5 flex items-center gap-3",
-        },
-        e.createElement("img", {
-          src: "./logo.png",
-          alt: "",
-          className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0 order-last",
-        }),
-        e.createElement(
-          "div",
-          { className: "text-right flex-1 min-w-0" },
-          e.createElement(
-            "div",
-            { className: "text-sm font-bold leading-tight truncate" },
-            "פורטל המועדון",
-          ),
-          e.createElement(
-            "div",
-            { className: "text-[11px] text-blue-300 truncate" },
-            profile.name,
-          ),
-        ),
-        e.createElement(
-          "button",
-          {
-            onClick: () => logoutAndClearCache(),
-            "aria-label": "התנתקות",
-            className:
-              "text-blue-200 shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center",
-          },
-          e.createElement(Ce, { className: "w-5 h-5" }),
-        ),
-      ),
-    body = e.createElement(
-        "div",
-        { className: "p-4 flex flex-col gap-3" },
-        loading &&
-          e.createElement(
-            "p",
-            { className: "text-sm text-slate-500 text-center py-8" },
-            "טוען…",
-          ),
-        error &&
-          e.createElement(
-            "div",
-            { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" },
-            "שגיאה בטעינת הנתונים: ",
-            error,
-          ),
-        !loading &&
-          !players.length &&
-          e.createElement(
-            "div",
-            { className: "bg-white rounded-2xl p-5 text-center" },
-            e.createElement(
-              "p",
-              { className: "text-sm text-slate-700 leading-relaxed" },
-              embedded
-                ? "כך נראה הפורטל להורה. החשבון שלך לא מקושר לשום שחקן, ולכן אין כאן כרטיסים — מאמן שהוא גם הורה יראה כאן את הילד שלו."
-                : "החשבון שלך מחובר לפורטל, אבל עדיין לא שויך אליו שחקן. אם זו טעות — פנה למנהל המועדון.",
-            ),
-          ),
-        ...players.map(card),
-        e.createElement(
-          "div",
-          { className: "bg-white rounded-2xl p-4 flex flex-col gap-2 mt-1" },
-          e.createElement(
-            "p",
-            { className: "font-bold text-blue-950 text-sm" },
-            "המועדון",
-          ),
-          e.createElement(
-            "a",
-            {
-              href: "https://shahar1987.github.io/ttc-mvh-tournaments/",
-              target: "_blank",
-              rel: "noopener",
-              className: "text-sm text-emerald-700 underline",
-            },
-            "תחרויות",
-          ),
-          e.createElement(
-            "a",
-            {
-              href: "https://www.facebook.com/TTCMH",
-              target: "_blank",
-              rel: "noopener",
-              className: "text-sm text-emerald-700 underline",
-            },
-            "פייסבוק",
-          ),
-          e.createElement(
-            "a",
-            {
-              href: "https://www.instagram.com/ttcmhr",
-              target: "_blank",
-              rel: "noopener",
-              className: "text-sm text-emerald-700 underline",
-            },
-            "אינסטגרם",
-          ),
-        ),
-      );
-  if (embedded) return body;
-  return e.createElement(
-    "div",
-    { dir: "rtl", className: "min-h-screen bg-slate-50" },
-    e.createElement(
-      "div",
-      { className: "max-w-md mx-auto min-h-screen bg-slate-50 shadow-sm" },
-      head,
-      body,
-    ),
-  );
-}
-
 // ===== דירוג מאתר איגוד טניס השולחן =====
 // הנתונים נמשכים מ-tttm.co.il על ידי GitHub Actions ונשמרים ב-tttm.json לצד האפליקציה.
 function normalizeHeName(v) {
@@ -4275,6 +4025,9 @@ function useTttm() {
   let [state, setState] = b({
     loading: !0,
     players: [],
+    teams: [],
+    matches: [],
+    tournaments: [],
     updatedAt: "",
     error: "",
   });
@@ -4289,6 +4042,9 @@ function useTttm() {
               setState({
                 loading: !1,
                 players: Array.isArray(d.players) ? d.players : [],
+                teams: Array.isArray(d.teams) ? d.teams : [],
+                matches: Array.isArray(d.matches) ? d.matches : [],
+                tournaments: Array.isArray(d.tournaments) ? d.tournaments : [],
                 updatedAt: d.updatedAt || "",
                 error: "",
               });
@@ -4298,6 +4054,9 @@ function useTttm() {
               setState({
                 loading: !1,
                 players: [],
+                teams: [],
+                matches: [],
+                tournaments: [],
                 updatedAt: "",
                 error: e2.message || String(e2),
               });
@@ -4376,4 +4135,961 @@ function TttmBadge({ entry: entry, updatedAt: updatedAt }) {
         tttmUpdatedLabel(updatedAt),
       ),
   );
+}
+
+// ===== הפורטל: בית · אישי · אימונים · ליגה · עוד =====
+var HEB_DAYS_FULL = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+var CLUB_LINKS = {
+  tournaments: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+  facebook: "https://www.facebook.com/TTCMH",
+  instagram: "https://www.instagram.com/ttcmhr",
+  tttm: "https://tttm.co.il/c/160/",
+};
+function localISO(d) {
+  return (
+    d.getFullYear() +
+    "-" +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getDate()).padStart(2, "0")
+  );
+}
+function relDay(iso) {
+  let t = new Date(),
+    today = localISO(t),
+    tm = new Date(t);
+  tm.setDate(t.getDate() + 1);
+  if (iso === today) return "היום";
+  if (iso === localISO(tm)) return "מחר";
+  let d = new Date(iso + "T00:00:00"),
+    diff = Math.round((d - new Date(today + "T00:00:00")) / 864e5);
+  if (diff > 1 && diff < 7) return "יום " + HEB_DAYS_FULL[d.getDay()];
+  return d.toLocaleDateString("he-IL", { day: "numeric", month: "long" });
+}
+function fmtDateShort(iso) {
+  if (!iso) return "";
+  let d = new Date(iso + "T00:00:00");
+  return isNaN(d)
+    ? iso
+    : d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" });
+}
+function timeRange(g) {
+  return g.startTime
+    ? g.startTime + (g.endTime ? "–" + g.endTime : "")
+    : "";
+}
+function groupCoachLabelFor(g, users) {
+  if (Array.isArray(users) && users.length) {
+    let names = groupCoachIds(g)
+      .map((id) => (users.find((u) => u.id === id) || {}).name)
+      .filter(Boolean);
+    if (names.length) return names.join(", ");
+  }
+  return Array.isArray(g.coachNames) ? g.coachNames.filter(Boolean).join(", ") : "";
+}
+function isCancelledOn(cancellations, date, groupId) {
+  return (cancellations || []).some(
+    (c) => c.date === date && c.groupId === groupId,
+  );
+}
+// האימון הקרוב מבין הקבוצות הרלוונטיות, מדלג על אימונים שבוטלו
+function nextTrainingFor(groups, cancellations) {
+  let now = new Date(),
+    best = null;
+  for (let g of groups) {
+    for (let d of g.days || []) {
+      let dow = typeof d === "number" ? d : MEM_DAYS.indexOf(d);
+      if (dow < 0) continue;
+      for (let k = 0; k < 14; k++) {
+        let dt = new Date(now);
+        dt.setDate(now.getDate() + k);
+        dt.setHours(0, 0, 0, 0);
+        if (dt.getDay() !== dow) continue;
+        let [hh, mm] = (g.endTime || g.startTime || "23:59").split(":").map(Number);
+        let end = new Date(dt);
+        end.setHours(hh || 23, mm || 59);
+        if (end < now) continue;
+        let iso = localISO(dt);
+        if (isCancelledOn(cancellations, iso, g.id)) continue;
+        if (!best || dt < best.dt) best = { dt: dt, iso: iso, g: g };
+        break;
+      }
+    }
+  }
+  return best;
+}
+function matchTimes(m) {
+  let [y, mo, d] = String(m.date || "").split("-").map(Number),
+    [hh, mi] = String(m.time || "19:00").split(":").map(Number),
+    start = new Date(y, (mo || 1) - 1, d || 1, hh || 19, mi || 0);
+  return [start, new Date(start.getTime() + 3 * 36e5)];
+}
+function gcalStamp(dt) {
+  return (
+    dt.getFullYear() +
+    String(dt.getMonth() + 1).padStart(2, "0") +
+    String(dt.getDate()).padStart(2, "0") +
+    "T" +
+    String(dt.getHours()).padStart(2, "0") +
+    String(dt.getMinutes()).padStart(2, "0") +
+    "00"
+  );
+}
+function gcalUrl(m) {
+  if (!m || !m.date) return "";
+  let [a, c] = matchTimes(m),
+    q = new URLSearchParams({
+      action: "TEMPLATE",
+      text: "🏓 " + m.homeName + " נגד " + m.awayName,
+      dates: gcalStamp(a) + "/" + gcalStamp(c),
+      details: [m.league, m.drawName, X].filter(Boolean).join(" · "),
+      location: m.isHome ? "משחק בית" : "משחק חוץ אצל " + m.homeName,
+      ctz: "Asia/Jerusalem",
+    });
+  return "https://calendar.google.com/calendar/render?" + q.toString();
+}
+function announcementVisible(a) {
+  let now = new Date().toISOString();
+  if (a.publishAt && a.publishAt > now) return !1;
+  if (a.expiresAt && a.expiresAt < now) return !1;
+  return !a.deleted;
+}
+function announcementIsUrgent(a) {
+  return (
+    !!a.urgent &&
+    announcementVisible(a) &&
+    (a.publishAt || a.createdAt || "") > new Date(Date.now() - 3 * 864e5).toISOString()
+  );
+}
+// ----- אבני בניין של הפורטל -----
+function PCard(props, ...kids) {
+  return e.createElement(
+    "div",
+    {
+      onClick: props.onClick,
+      className:
+        "bg-white rounded-2xl p-4 flex flex-col gap-2.5 shadow-sm " +
+        (props.onClick ? "active:bg-slate-50 cursor-pointer " : "") +
+        (props.className || ""),
+    },
+    props.title &&
+      e.createElement(
+        "div",
+        { className: "flex items-center gap-2" },
+        props.icon &&
+          e.createElement(
+            "span",
+            {
+              className:
+                "w-8 h-8 rounded-lg bg-blue-50 text-blue-900 flex items-center justify-center shrink-0",
+            },
+            e.createElement(props.icon, { className: "w-4 h-4" }),
+          ),
+        e.createElement(
+          "span",
+          { className: "text-xs font-semibold text-slate-500" },
+          props.title,
+        ),
+      ),
+    ...kids,
+  );
+}
+function PMore(label, onClick) {
+  return e.createElement(
+    "button",
+    {
+      onClick: (x) => {
+        (x.stopPropagation(), onClick && onClick());
+      },
+      className: "text-sm text-blue-800 font-semibold text-right mt-1",
+    },
+    label + " ←",
+  );
+}
+function MatchCard({ m: m, compact: compact }) {
+  if (!m) return null;
+  let played = !!m.played,
+    our = m.isHome ? m.homeScore : m.awayScore,
+    opp = m.isHome ? m.awayScore : m.homeScore,
+    cls = played ? (our > opp ? "text-emerald-600" : our < opp ? "text-red-500" : "text-slate-700") : "text-blue-950",
+    score = played ? m.homeScore + ":" + m.awayScore : m.time || "—";
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-2" },
+    e.createElement(
+      "div",
+      { className: "flex items-center justify-between gap-2" },
+      e.createElement(
+        "div",
+        {
+          className:
+            "flex-1 text-sm font-bold leading-snug " +
+            (m.isHome ? "text-blue-900" : "text-slate-700"),
+        },
+        m.homeName,
+      ),
+      e.createElement(
+        "div",
+        {
+          className:
+            "shrink-0 bg-slate-100 rounded-xl px-3 py-1.5 text-lg font-bold tabular-nums " + cls,
+        },
+        score,
+      ),
+      e.createElement(
+        "div",
+        {
+          className:
+            "flex-1 text-sm font-bold leading-snug text-left " +
+            (!m.isHome ? "text-blue-900" : "text-slate-700"),
+        },
+        m.awayName,
+      ),
+    ),
+    e.createElement(
+      "p",
+      { className: "text-xs text-slate-500" },
+      m.date
+        ? (played ? fmtDateShort(m.date) : relDay(m.date) + " · " + fmtDateShort(m.date))
+        : "תאריך טרם נקבע",
+      " · ",
+      m.isHome
+        ? e.createElement("b", { className: "text-blue-900" }, "בית")
+        : "חוץ",
+      m.league ? " · " + m.league : "",
+    ),
+    !played &&
+      !compact &&
+      m.date &&
+      e.createElement(
+        "a",
+        {
+          href: gcalUrl(m),
+          target: "_blank",
+          rel: "noopener",
+          onClick: (x) => x.stopPropagation(),
+          className:
+            "self-start inline-flex items-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-3 py-2",
+        },
+        e.createElement(ge, { className: "w-3.5 h-3.5" }),
+        "הוסף ליומן",
+      ),
+  );
+}
+// ----- פרסום הודעה (מנהל / מאמן) -----
+function AnnouncementForm({ onClose: onClose, author: author }) {
+  let [title, setTitle] = b(""),
+    [body, setBody] = b(""),
+    [urgent, setUrgent] = b(!1),
+    [busy, setBusy] = b(!1),
+    [err, setErr] = b(""),
+    submit = async () => {
+      (setBusy(!0), setErr(""));
+      try {
+        let now = new Date().toISOString();
+        (await V(M(P, "announcements"), {
+          title: title.trim(),
+          body: body.trim(),
+          urgent: urgent,
+          audience: "all",
+          publishAt: now,
+          createdAt: now,
+          authorUid: author?.id || "",
+          authorName: author?.name || "",
+        }),
+          onClose());
+      } catch (e2) {
+        (setErr("הפרסום נכשל: " + (e2.message || e2)), setBusy(!1));
+      }
+    };
+  return e.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
+      onClick: onClose,
+    },
+    e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        onClick: (x) => x.stopPropagation(),
+        className:
+          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3",
+      },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between" },
+        e.createElement(
+          "button",
+          { onClick: onClose, className: "text-slate-400" },
+          e.createElement(T, { className: "w-5 h-5" }),
+        ),
+        e.createElement("h3", { className: "font-bold text-blue-950" }, "הודעה להורים"),
+      ),
+      e.createElement("input", {
+        value: title,
+        onChange: (x) => setTitle(x.target.value),
+        placeholder: "כותרת",
+        className:
+          "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
+      }),
+      e.createElement("textarea", {
+        value: body,
+        onChange: (x) => setBody(x.target.value),
+        placeholder: "תוכן ההודעה",
+        rows: 4,
+        className:
+          "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
+      }),
+      e.createElement(
+        "label",
+        { className: "flex items-center gap-2 text-sm text-slate-700" },
+        e.createElement("input", {
+          type: "checkbox",
+          checked: urgent,
+          onChange: (x) => setUrgent(x.target.checked),
+          className: "w-4 h-4",
+        }),
+        "דחוף — יוצג בפס אדום בראש מסך הבית",
+      ),
+      err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
+      e.createElement(
+        "button",
+        {
+          onClick: submit,
+          disabled: busy || title.trim().length < 2,
+          className:
+            "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
+        },
+        busy ? "מפרסם…" : "פרסום",
+      ),
+    ),
+  );
+}
+// ----- המסך המלא -----
+function MemberPortal({
+  profile: profile,
+  authUser: authUser,
+  embedded: embedded,
+  staffGroupIds: staffGroupIds,
+  users: users,
+  isStaff: isStaff,
+}) {
+  let uid = authUser?.uid,
+    { loading, players, attendance, links, error } = useMemberData(uid),
+    tttm = useTttm(),
+    { data: groups } = L("groups", null, uid),
+    { data: cancellations } = L("cancellations", null, uid),
+    { data: announcementsRaw } = L("announcements", null, uid),
+    [tab, setTab] = b("home"),
+    [annForm, setAnnForm] = b(!1),
+    announcements = announcementsRaw
+      .filter(announcementVisible)
+      .sort((a, c) => String(c.publishAt || c.createdAt).localeCompare(String(a.publishAt || a.createdAt))),
+    urgent = announcements.find(announcementIsUrgent),
+    groupOf = (p) => groups.find((g) => g.id === p.groupId) || null,
+    // הקבוצות שהמסך מדבר עליהן: של הילדים המקושרים, או של המאמן, או כל המועדון למנהל
+    myGroups = (() => {
+      let fromPlayers = players.map((p) => p.groupId).filter(Boolean);
+      if (fromPlayers.length) return groups.filter((g) => fromPlayers.includes(g.id));
+      if (Array.isArray(staffGroupIds)) return groups.filter((g) => staffGroupIds.includes(g.id));
+      return isStaff ? groups : [];
+    })(),
+    hasPersonal = players.length > 0,
+    next = nextTrainingFor(myGroups, cancellations),
+    teams = tttmTeams(tttm),
+    nextMatch = teams
+      .map((t) => t.nextMatch && { ...t.nextMatch, teamKey: t.teamKey, league: t.nextMatch.league || t.league })
+      .filter(Boolean)
+      .sort((a, c) => String(a.date).localeCompare(String(c.date)))[0],
+    firstName = (n) => String(n || "").split(" ")[0],
+    monthCount = (pid) => memberMonthStats(attendance, pid).present,
+    // -------- בית --------
+    homeScreen = () =>
+      e.createElement(
+        e.Fragment,
+        null,
+        urgent &&
+          e.createElement(
+            "div",
+            {
+              onClick: () => setTab("more"),
+              className:
+                "bg-red-600 text-white rounded-2xl px-4 py-3 flex flex-col gap-0.5 cursor-pointer",
+            },
+            e.createElement("span", { className: "text-[11px] font-semibold opacity-90" }, "הודעה דחופה"),
+            e.createElement("span", { className: "font-bold" }, urgent.title),
+            urgent.body && e.createElement("span", { className: "text-sm opacity-90" }, urgent.body.slice(0, 140)),
+          ),
+        e.createElement(
+          PCard,
+          {
+            title: hasPersonal ? "האימון הבא שלי" : "האימון הקרוב במועדון",
+            icon: ge,
+            onClick: () => setTab("trainings"),
+          },
+          next
+            ? e.createElement(
+                e.Fragment,
+                null,
+                e.createElement(
+                  "p",
+                  { className: "text-xl font-bold text-blue-950 leading-tight" },
+                  relDay(next.iso),
+                  ", ",
+                  HEB_DAYS_FULL[next.dt.getDay()],
+                  " ",
+                  timeRange(next.g),
+                ),
+                e.createElement(
+                  "p",
+                  { className: "text-sm text-slate-600" },
+                  [next.g.location, groupCoachLabelFor(next.g, users) && "מאמן " + groupCoachLabelFor(next.g, users)]
+                    .filter(Boolean)
+                    .join(" · "),
+                ),
+                e.createElement("p", { className: "text-xs text-slate-400" }, next.g.name),
+              )
+            : e.createElement(
+                "p",
+                { className: "text-sm text-slate-500" },
+                myGroups.length ? "אין אימון מתוכנן בשבועיים הקרובים" : "אין קבוצה משויכת",
+              ),
+        ),
+        hasPersonal &&
+          e.createElement(
+            PCard,
+            {
+              title: players.length === 1 ? "האזור האישי של " + firstName(players[0].name) : "האזור האישי",
+              icon: H,
+              onClick: () => setTab("personal"),
+            },
+            ...players.map((p) => {
+              let entry = tttmForPlayer(p, tttm.players);
+              return e.createElement(
+                "div",
+                { key: p.id, className: "flex items-center justify-between gap-3 py-1" },
+                players.length > 1 &&
+                  e.createElement("span", { className: "text-sm font-semibold text-blue-950 flex-1 truncate" }, p.name),
+                e.createElement(
+                  "div",
+                  { className: "text-center" },
+                  e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, monthCount(p.id)),
+                  e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, "אימונים החודש"),
+                ),
+                e.createElement(
+                  "div",
+                  { className: "text-center" },
+                  e.createElement(
+                    "p",
+                    { className: "text-2xl font-bold text-blue-950 leading-none" },
+                    entry && entry.points ? Math.round(entry.points) : "—",
+                  ),
+                  e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, "דירוג TTTM"),
+                ),
+              );
+            }),
+            PMore("לכל הפרטים", () => setTab("personal")),
+          ),
+        e.createElement(
+          PCard,
+          { title: "הודעות מהמועדון", icon: J, onClick: () => setTab("more") },
+          announcements.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...announcements.slice(0, 3).map((a) =>
+                  e.createElement(
+                    "div",
+                    { key: a.id, className: "py-2" },
+                    e.createElement("p", { className: "font-bold text-sm text-blue-950" }, a.title),
+                    e.createElement(
+                      "p",
+                      { className: "text-[11px] text-slate-500" },
+                      fmtDateShort(String(a.publishAt || a.createdAt || "").slice(0, 10)),
+                      a.authorName ? " · " + a.authorName : "",
+                    ),
+                  ),
+                ),
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "אין הודעות חדשות"),
+          isStaff &&
+            e.createElement(
+              "button",
+              {
+                onClick: (x) => {
+                  (x.stopPropagation(), setAnnForm(!0));
+                },
+                className:
+                  "self-start text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2",
+              },
+              "+ הודעה חדשה",
+            ),
+        ),
+        nextMatch &&
+          e.createElement(
+            PCard,
+            { title: "המשחק הבא — " + nextMatch.teamKey, icon: TrophyIcon, onClick: () => setTab("league") },
+            e.createElement(MatchCard, { m: nextMatch }),
+            PMore("טבלאות ליגה", () => setTab("league")),
+          ),
+      ),
+    // -------- אישי --------
+    personalCard = (p) => {
+      let g = groupOf(p),
+        st = memberMonthStats(attendance, p.id),
+        entry = tttmForPlayer(p, tttm.players),
+        recent = memberRecent(attendance, p.id, 5);
+      return e.createElement(
+        PCard,
+        { key: p.id },
+        e.createElement(
+          "div",
+          { className: "flex items-center justify-between gap-2" },
+          e.createElement(
+            "div",
+            { className: "min-w-0" },
+            e.createElement("p", { className: "font-bold text-blue-950 text-base truncate" }, p.name),
+            e.createElement("p", { className: "text-xs text-slate-500 truncate" }, g ? g.name : "ללא קבוצה"),
+          ),
+          st.pct !== null &&
+            e.createElement(
+              "div",
+              { className: "text-center shrink-0" },
+              e.createElement(
+                "p",
+                {
+                  className:
+                    "text-xl font-bold " +
+                    (st.pct >= 75 ? "text-emerald-600" : st.pct >= 50 ? "text-amber-500" : "text-red-500"),
+                },
+                st.pct,
+                "%",
+              ),
+              e.createElement("p", { className: "text-[10px] text-slate-400" }, "נוכחות החודש"),
+            ),
+        ),
+        entry && e.createElement(TttmBadge, { entry: entry, updatedAt: tttm.updatedAt }),
+        entry &&
+          entry.seasonGames > 0 &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-slate-600" },
+            "העונה בליגה: ",
+            entry.seasonWins,
+            " ניצחונות מתוך ",
+            entry.seasonGames,
+            " משחקים",
+            entry.teamKey ? " · קבוצה " + entry.teamKey : "",
+          ),
+        recent.length
+          ? e.createElement(
+              "div",
+              { className: "flex flex-col gap-1" },
+              e.createElement("p", { className: "text-[11px] text-slate-500" }, "אימונים אחרונים"),
+              ...recent.map((r) =>
+                e.createElement(
+                  "div",
+                  { key: r.id, className: "flex items-center justify-between text-xs border-b border-slate-100 py-1" },
+                  e.createElement("span", { className: "text-slate-600" }, Ke(r.date)),
+                  e.createElement(
+                    "span",
+                    { className: r.status === "Present" ? "text-emerald-600 font-semibold" : "text-red-500 font-semibold" },
+                    r.status === "Present" ? "נוכח" : "נעדר",
+                  ),
+                ),
+              ),
+            )
+          : e.createElement("p", { className: "text-xs text-slate-400" }, "עדיין אין רישומי נוכחות"),
+      );
+    },
+    personalScreen = () =>
+      e.createElement(
+        e.Fragment,
+        null,
+        !loading && !players.length
+          ? e.createElement(
+              PCard,
+              {},
+              e.createElement(
+                "p",
+                { className: "text-sm text-slate-700 leading-relaxed" },
+                embedded
+                  ? "כך נראה האזור האישי להורה. החשבון שלך לא מקושר לשום שחקן — אפשר לקשר דרך גישת הורים ← קישורים."
+                  : "החשבון שלך מחובר לפורטל, אבל עדיין לא שויך אליו שחקן. אם זו טעות — פנה למנהל המועדון.",
+              ),
+            )
+          : null,
+        ...players.map(personalCard),
+      ),
+    // -------- אימונים --------
+    trainingsScreen = () => {
+      let today = localISO(new Date()),
+        upcomingCancels = cancellations
+          .filter((c) => c.date >= today && myGroups.some((g) => g.id === c.groupId))
+          .sort((a, c) => a.date.localeCompare(c.date));
+      return e.createElement(
+        e.Fragment,
+        null,
+        upcomingCancels.length
+          ? e.createElement(
+              "div",
+              { className: "bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-1" },
+              e.createElement("p", { className: "text-xs font-semibold text-amber-700" }, "אימונים שבוטלו"),
+              ...upcomingCancels.map((c) => {
+                let g = groups.find((x) => x.id === c.groupId);
+                return e.createElement(
+                  "p",
+                  { key: c.id, className: "text-sm text-amber-900" },
+                  Ke(c.date),
+                  g ? " · " + g.name : "",
+                  c.reason ? " · " + c.reason : "",
+                );
+              }),
+            )
+          : null,
+        myGroups.length === 0
+          ? e.createElement(PCard, {}, e.createElement("p", { className: "text-sm text-slate-500" }, "אין קבוצה משויכת"))
+          : null,
+        ...myGroups.map((g) =>
+          e.createElement(
+            PCard,
+            { key: g.id },
+            e.createElement("p", { className: "font-bold text-blue-950" }, g.name),
+            e.createElement(
+              "p",
+              { className: "text-sm text-slate-700" },
+              (g.days || []).length
+                ? "ימים " + (g.days || []).slice().sort((a, c) => a - c).map((d) => HEB_DAYS_FULL[d]).join(", ")
+                : "ימי אימון טרם נקבעו",
+              timeRange(g) ? " · " + timeRange(g) : "",
+            ),
+            g.location && e.createElement("p", { className: "text-xs text-slate-500" }, g.location),
+            groupCoachLabelFor(g, users) &&
+              e.createElement("p", { className: "text-xs text-slate-500" }, "מאמן: " + groupCoachLabelFor(g, users)),
+          ),
+        ),
+      );
+    },
+    // -------- ליגה --------
+    leagueScreen = () => {
+      let allMatches = tttmMatches(tttm),
+        today = localISO(new Date());
+      if (!teams.length)
+        return e.createElement(
+          PCard,
+          {},
+          e.createElement("p", { className: "text-sm text-slate-500" }, "אין נתוני ליגה כרגע — מתעדכן מאתר האיגוד פעמיים בשבוע."),
+        );
+      return e.createElement(
+        e.Fragment,
+        null,
+        ...teams.map((t) => {
+          let mine = allMatches.filter((m) => m.ourTeamKey === t.teamKey || (!m.ourTeamKey && (m.homeName === t.name || m.awayName === t.name))),
+            upcoming = mine.filter((m) => !m.played && m.date >= today).slice(0, 5),
+            results = mine.filter((m) => m.played).slice(-5).reverse();
+          return e.createElement(
+            e.Fragment,
+            { key: t.teamId || t.teamKey },
+            e.createElement(
+              PCard,
+              { title: t.league || "ליגה", icon: TrophyIcon },
+              e.createElement(
+                "div",
+                { className: "flex items-end justify-between gap-2" },
+                e.createElement(
+                  "div",
+                  null,
+                  e.createElement("p", { className: "font-bold text-blue-950 text-base" }, t.name || "הפועל מבואות חרמון " + t.teamKey),
+                  t.drawName && e.createElement("p", { className: "text-xs text-slate-500" }, t.drawName),
+                ),
+                t.position &&
+                  e.createElement(
+                    "div",
+                    { className: "text-center" },
+                    e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, t.position),
+                    e.createElement("p", { className: "text-[10px] text-slate-500 mt-1" }, "מקום"),
+                  ),
+              ),
+              e.createElement(
+                "p",
+                { className: "text-xs text-slate-600" },
+                "משחקים ",
+                t.played ?? 0,
+                " · ניצחונות ",
+                t.won ?? 0,
+                " · הפסדים ",
+                t.lost ?? 0,
+                " · נקודות ",
+                t.points ?? 0,
+              ),
+              t.nextMatch &&
+                e.createElement(
+                  "div",
+                  { className: "border-t border-slate-100 pt-2" },
+                  e.createElement("p", { className: "text-[11px] text-slate-500 mb-1" }, "המשחק הבא"),
+                  e.createElement(MatchCard, { m: { ...t.nextMatch, league: t.nextMatch.league || t.league } }),
+                ),
+            ),
+            Array.isArray(t.table) && t.table.length
+              ? e.createElement(
+                  PCard,
+                  { title: "טבלת הליגה" },
+                  e.createElement(
+                    "div",
+                    { className: "overflow-x-auto" },
+                    e.createElement(
+                      "table",
+                      { className: "w-full text-xs" },
+                      e.createElement(
+                        "thead",
+                        null,
+                        e.createElement(
+                          "tr",
+                          { className: "text-slate-400" },
+                          e.createElement("th", { className: "text-right py-1 font-normal" }, "#"),
+                          e.createElement("th", { className: "text-right py-1 font-normal" }, "קבוצה"),
+                          e.createElement("th", { className: "text-center py-1 font-normal" }, "מש'"),
+                          e.createElement("th", { className: "text-center py-1 font-normal" }, "נק'"),
+                        ),
+                      ),
+                      e.createElement(
+                        "tbody",
+                        null,
+                        ...t.table.map((row, i) =>
+                          e.createElement(
+                            "tr",
+                            {
+                              key: row.teamId || i,
+                              className:
+                                (row.ours || String(row.teamId) === String(t.teamId)
+                                  ? "bg-blue-50 font-bold text-blue-950 "
+                                  : "text-slate-700 ") + "border-t border-slate-100",
+                            },
+                            e.createElement("td", { className: "py-1.5 pl-2 tabular-nums" }, row.position ?? i + 1),
+                            e.createElement("td", { className: "py-1.5" }, row.name),
+                            e.createElement("td", { className: "py-1.5 text-center tabular-nums" }, row.played ?? ""),
+                            e.createElement("td", { className: "py-1.5 text-center tabular-nums" }, row.points ?? ""),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+            upcoming.length
+              ? e.createElement(
+                  PCard,
+                  { title: "המשחקים הקרובים" },
+                  ...upcoming.map((m) =>
+                    e.createElement(
+                      "div",
+                      { key: m.matchId, className: "border-b border-slate-100 last:border-0 py-2" },
+                      e.createElement(MatchCard, { m: m, compact: !0 }),
+                    ),
+                  ),
+                )
+              : null,
+            results.length
+              ? e.createElement(
+                  PCard,
+                  { title: "תוצאות אחרונות" },
+                  ...results.map((m) =>
+                    e.createElement(
+                      "div",
+                      { key: m.matchId, className: "border-b border-slate-100 last:border-0 py-2" },
+                      e.createElement(MatchCard, { m: m, compact: !0 }),
+                    ),
+                  ),
+                )
+              : null,
+          );
+        }),
+        tttm.updatedAt &&
+          e.createElement(
+            "p",
+            { className: "text-[11px] text-slate-400 text-center" },
+            "מאתר האיגוד · עודכן ",
+            tttmUpdatedLabel(tttm.updatedAt),
+          ),
+      );
+    },
+    // -------- עוד --------
+    moreScreen = () => {
+      let today = localISO(new Date()),
+        tournaments = tttmTournaments(tttm)
+          .filter((t) => !t.date || t.date >= today)
+          .sort((a, c) => String(a.date || "").localeCompare(String(c.date || "")))
+          .slice(0, 8),
+        linkRow = (label, href) =>
+          e.createElement(
+            "a",
+            {
+              key: href,
+              href: href,
+              target: "_blank",
+              rel: "noopener",
+              className: "flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 text-sm text-blue-900 font-semibold",
+            },
+            label,
+            e.createElement("span", { className: "text-slate-300" }, "↗"),
+          );
+      return e.createElement(
+        e.Fragment,
+        null,
+        e.createElement(
+          PCard,
+          { title: "הודעות מהמועדון", icon: J },
+          announcements.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...announcements.slice(0, 20).map((a) =>
+                  e.createElement(
+                    "div",
+                    { key: a.id, className: "py-2.5" },
+                    e.createElement(
+                      "p",
+                      { className: "font-bold text-sm text-blue-950" },
+                      a.urgent ? e.createElement("span", { className: "text-red-600" }, "דחוף · ") : null,
+                      a.title,
+                    ),
+                    a.body && e.createElement("p", { className: "text-sm text-slate-700 whitespace-pre-line mt-0.5" }, a.body),
+                    e.createElement(
+                      "p",
+                      { className: "text-[11px] text-slate-400 mt-1" },
+                      fmtDateShort(String(a.publishAt || a.createdAt || "").slice(0, 10)),
+                      a.authorName ? " · " + a.authorName : "",
+                    ),
+                  ),
+                ),
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "אין הודעות עדיין"),
+          isStaff &&
+            e.createElement(
+              "button",
+              { onClick: () => setAnnForm(!0), className: "self-start text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2" },
+              "+ הודעה חדשה",
+            ),
+        ),
+        e.createElement(
+          PCard,
+          { title: "תחרויות קרובות", icon: TrophyIcon },
+          tournaments.length
+            ? e.createElement(
+                "div",
+                { className: "flex flex-col divide-y divide-slate-100" },
+                ...tournaments.map((t) =>
+                  e.createElement(
+                    "div",
+                    { key: t.eventId || t.name, className: "py-2" },
+                    t.url
+                      ? e.createElement(
+                          "a",
+                          { href: t.url, target: "_blank", rel: "noopener", className: "font-bold text-sm text-blue-900 underline" },
+                          t.name,
+                        )
+                      : e.createElement("p", { className: "font-bold text-sm text-blue-950" }, t.name),
+                    e.createElement(
+                      "p",
+                      { className: "text-xs text-slate-500 mt-0.5" },
+                      [t.date && fmtDateShort(t.date), t.venue, t.registrationUntil && "הרשמה עד " + t.registrationUntil]
+                        .filter(Boolean)
+                        .join(" · "),
+                    ),
+                  ),
+                ),
+              )
+            : e.createElement("p", { className: "text-sm text-slate-500" }, "אין תחרויות קרובות באתר האיגוד"),
+          linkRow("כל התחרויות של המועדון", CLUB_LINKS.tournaments),
+        ),
+        e.createElement(
+          PCard,
+          { title: "המועדון" },
+          linkRow("עמוד המועדון באתר האיגוד", CLUB_LINKS.tttm),
+          linkRow("פייסבוק", CLUB_LINKS.facebook),
+          linkRow("אינסטגרם", CLUB_LINKS.instagram),
+        ),
+        !embedded &&
+          e.createElement(
+            "button",
+            { onClick: () => logoutAndClearCache(), className: "text-sm text-slate-500 underline text-center py-2" },
+            "התנתקות",
+          ),
+      );
+    },
+    screens = { home: homeScreen, personal: personalScreen, trainings: trainingsScreen, league: leagueScreen, more: moreScreen },
+    tabs = [
+      ["home", "בית", le],
+      ["personal", "אישי", H],
+      ["trainings", "אימונים", ge],
+      ["league", "ליגה", TrophyIcon],
+      ["more", "עוד", Pe],
+    ],
+    tabBar = e.createElement(
+      "nav",
+      {
+        className:
+          "sticky bottom-0 z-30 bg-white border-t border-slate-200 flex justify-around px-1 pt-1.5 pb-[max(6px,env(safe-area-inset-bottom))]",
+      },
+      ...tabs.map(([key, label, Icon]) =>
+        e.createElement(
+          "button",
+          {
+            key: key,
+            onClick: () => setTab(key),
+            className:
+              "flex flex-col items-center gap-0.5 min-w-[56px] py-1 text-[11px] " +
+              (tab === key ? "text-blue-900 font-bold" : "text-slate-400"),
+          },
+          e.createElement(Icon, { className: "w-5 h-5" }),
+          label,
+        ),
+      ),
+    ),
+    body = e.createElement(
+      "div",
+      { className: "p-4 flex flex-col gap-3 min-h-[60vh]" },
+      error && e.createElement("div", { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" }, "שגיאה בטעינת הנתונים: ", error),
+      loading && tab !== "league" && tab !== "more"
+        ? e.createElement("p", { className: "text-sm text-slate-500 text-center py-6" }, "טוען…")
+        : (screens[tab] || homeScreen)(),
+    ),
+    content = e.createElement(
+      e.Fragment,
+      null,
+      body,
+      tabBar,
+      annForm && e.createElement(AnnouncementForm, { author: profile, onClose: () => setAnnForm(!1) }),
+    );
+  if (embedded) return content;
+  return e.createElement(
+    "div",
+    { dir: "rtl", className: "min-h-screen bg-slate-50" },
+    e.createElement(
+      "div",
+      { className: "max-w-md mx-auto min-h-screen bg-slate-50 shadow-sm flex flex-col" },
+      e.createElement(
+        "header",
+        { className: "sticky top-0 z-30 bg-blue-950 text-white px-4 py-3.5 flex items-center gap-3" },
+        e.createElement("img", { src: "./logo.png", alt: "", className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0 order-last" }),
+        e.createElement(
+          "div",
+          { className: "text-right flex-1 min-w-0" },
+          e.createElement("div", { className: "text-sm font-bold leading-tight truncate" }, "פורטל המועדון"),
+          e.createElement("div", { className: "text-[11px] text-blue-300 truncate" }, profile.name),
+        ),
+      ),
+      e.createElement("div", { className: "flex-1 flex flex-col" }, content),
+    ),
+  );
+}
+function tttmTeams(t) {
+  return Array.isArray(t.teams) ? t.teams : [];
+}
+function tttmMatches(t) {
+  return Array.isArray(t.matches) ? t.matches : [];
+}
+function tttmTournaments(t) {
+  return Array.isArray(t.tournaments) ? t.tournaments : [];
 }
