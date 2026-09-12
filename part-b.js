@@ -878,6 +878,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
         n(null);
       }
     },
+    staffUsers = t.filter((u) => !isMemberRole(u)),
     h = t.filter(isAdminRole);
   return e.createElement(
     "div",
@@ -924,7 +925,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           className:
             "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
         },
-        t.map((u) => {
+        staffUsers.map((u) => {
           let f = s.filter((r) => isGroupCoach(r, u.id)),
             g = isAdminRole(u) && h.length === 1;
           return e.createElement(
@@ -2507,7 +2508,8 @@ function NewInviteModal({
     submit = async () => {
       (setBusy(!0), setErr(""));
       try {
-        let chosen = players.filter((p) => sel.includes(p.id)),
+        let win = window.open("", "_blank", "noopener"),
+          chosen = players.filter((p) => sel.includes(p.id)),
           token = await createInvite({
             phone: phone,
             displayName: name,
@@ -2521,11 +2523,13 @@ function NewInviteModal({
             displayName: name,
             playerNames: chosen.map((p) => p.name),
           };
-        (window.open(inviteWhatsappUrl(inv, token), "_blank", "noopener"),
+        let url = inviteWhatsappUrl(inv, token);
+        (win ? (win.location = url) : window.open(url, "_blank", "noopener"),
           onCreated && onCreated(token),
           onClose());
       } catch (e2) {
-        (setErr("יצירת ההזמנה נכשלה: " + (e2.message || e2)),
+        (win && win.close(),
+          setErr("יצירת ההזמנה נכשלה: " + (e2.message || e2)),
           setBusy(!1));
       }
     };
@@ -2682,7 +2686,13 @@ function AccessScreen({
   uid: uid,
   isAdmin: isAdmin,
 }) {
-  let { data: invites } = L("invites", null, uid),
+  let { data: invites } = L(
+      "invites",
+      null,
+      uid,
+      !0,
+      isAdmin ? null : ["createdBy", "==", currentUserId],
+    ),
     { data: requests } = L("accessRequests", null, uid),
     { data: links } = L("links", null, uid, isAdmin),
     [tab, setTab] = b("requests"),
