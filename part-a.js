@@ -3442,18 +3442,26 @@ async function signUpFromInvite({
   password: password,
   email: email,
 }) {
-  let cred = await Me(D, memberEmailFromPhone(invite.phone), password),
-    uid = cred.user.uid,
-    now = new Date().toISOString();
-  await De(S(P, "users", uid), {
-    name: invite.displayName || "",
-    role: "Member",
-    phone: normalizePhone(invite.phone),
-    email: String(email || "").trim(),
-    inviteToken: token,
-    consentAt: now,
-    createdAt: now,
-  });
+  let mail = memberEmailFromPhone(invite.phone),
+    uid = null,
+    existed = !1;
+  try {
+    uid = (await Me(D, mail, password)).user.uid;
+  } catch (err) {
+    if (err.code !== "auth/email-already-in-use") throw err;
+    ((uid = (await Ue(D, mail, password)).user.uid), (existed = !0));
+  }
+  let now = new Date().toISOString();
+  existed ||
+    (await De(S(P, "users", uid), {
+      name: invite.displayName || "",
+      role: "Member",
+      phone: normalizePhone(invite.phone),
+      email: String(email || "").trim(),
+      inviteToken: token,
+      consentAt: now,
+      createdAt: now,
+    }));
   for (let pid of invite.playerIds || [])
     await De(S(P, "links", linkDocId(uid, pid)), {
       uid: uid,
@@ -3625,8 +3633,9 @@ function InviteScreen({ token: token }) {
           window.location.reload());
       } catch (e2) {
         (setErr(
-          e2.code === "auth/email-already-in-use"
-            ? "כבר קיים חשבון למספר הזה. אפשר להתחבר עם הטלפון והסיסמה הקיימת, או לבקש מהמנהל הזמנה חדשה."
+          e2.code === "auth/wrong-password" ||
+            e2.code === "auth/invalid-credential"
+            ? "למספר הזה כבר יש חשבון בפורטל. כדי לצרף את השחקן לחשבון הקיים — הזן למעלה את הסיסמה שבחרת בפעם הקודמת."
             : e2.code === "auth/weak-password"
               ? "הסיסמה קצרה מדי — צריך לפחות 6 תווים"
               : "ההרשמה נכשלה: " + (e2.message || e2),
@@ -3754,6 +3763,11 @@ function InviteScreen({ token: token }) {
           "label",
           { className: "text-xs text-slate-500" },
           "בחירת סיסמה (לפחות 6 תווים)",
+        ),
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-400" },
+          "אם כבר יש לך חשבון בפורטל — הזן את הסיסמה הקיימת שלך, והשחקן יצורף אליו",
         ),
         e.createElement("input", {
           value: pw,
@@ -3987,7 +4001,7 @@ function AccessRequestForm({ onClose: onClose }) {
 }
 
 // ----- הפורטל: המסך של הורה / שחקן / חבר מועדון -----
-function MemberPortal({ profile: profile, authUser: authUser }) {
+function MemberPortal({ profile: profile, authUser: authUser, embedded: embedded }) {
   let { loading, players, attendance, links, error } = useMemberData(
       authUser?.uid,
     ),
@@ -4110,13 +4124,7 @@ function MemberPortal({ profile: profile, authUser: authUser }) {
             ),
       );
     };
-  return e.createElement(
-    "div",
-    { dir: "rtl", className: "min-h-screen bg-slate-50" },
-    e.createElement(
-      "div",
-      { className: "max-w-md mx-auto min-h-screen bg-slate-50 shadow-sm" },
-      e.createElement(
+  let head = e.createElement(
         "header",
         {
           className:
@@ -4152,7 +4160,7 @@ function MemberPortal({ profile: profile, authUser: authUser }) {
           e.createElement(Ce, { className: "w-5 h-5" }),
         ),
       ),
-      e.createElement(
+    body = e.createElement(
         "div",
         { className: "p-4 flex flex-col gap-3" },
         loading &&
@@ -4176,7 +4184,9 @@ function MemberPortal({ profile: profile, authUser: authUser }) {
             e.createElement(
               "p",
               { className: "text-sm text-slate-700 leading-relaxed" },
-              "החשבון שלך מחובר לפורטל, אבל עדיין לא שויך אליו שחקן. אם זו טעות — פנה למנהל המועדון.",
+              embedded
+                ? "כך נראה הפורטל להורה. החשבון שלך לא מקושר לשום שחקן, ולכן אין כאן כרטיסים — מאמן שהוא גם הורה יראה כאן את הילד שלו."
+                : "החשבון שלך מחובר לפורטל, אבל עדיין לא שויך אליו שחקן. אם זו טעות — פנה למנהל המועדון.",
             ),
           ),
         ...players.map(card),
@@ -4219,7 +4229,16 @@ function MemberPortal({ profile: profile, authUser: authUser }) {
             "אינסטגרם",
           ),
         ),
-      ),
+      );
+  if (embedded) return body;
+  return e.createElement(
+    "div",
+    { dir: "rtl", className: "min-h-screen bg-slate-50" },
+    e.createElement(
+      "div",
+      { className: "max-w-md mx-auto min-h-screen bg-slate-50 shadow-sm" },
+      head,
+      body,
     ),
   );
 }
