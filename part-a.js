@@ -3505,74 +3505,78 @@ async function deleteLink(uid, playerId) {
 
 // ----- נתוני המשתמש-הורה: קישורים, שחקנים ונוכחות -----
 function useMemberData(uid) {
-  let [state, setState] = b({
-    loading: !0,
-    links: [],
-    players: [],
-    attendance: [],
-    error: "",
-  });
-  return (
-    j(() => {
-      if (!uid) {
-        setState({
-          loading: !1,
-          links: [],
-          players: [],
-          attendance: [],
-          error: "",
-        });
-        return;
-      }
-      let cancelled = !1;
-      return (
-        (async () => {
-          try {
-            let ls = await fsGetDocs(
-                fsQuery(M(P, "links"), fsWhere("uid", "==", uid)),
-              ),
-              links = ls.docs.map((d) => ({ id: d.id, ...d.data() })),
-              players = [];
-            for (let l of links) {
-              let ps = await fsGetDoc(S(P, "players", l.playerId));
-              ps.exists() &&
-                !ps.data().deleted &&
-                players.push({ id: ps.id, ...ps.data() });
-            }
-            let ids = players.map((p) => p.id).slice(0, 10),
-              attendance = [];
-            if (ids.length) {
-              let as = await fsGetDocs(
-                fsQuery(M(P, "attendance"), fsWhere("playerId", "in", ids)),
-              );
-              attendance = as.docs.map((d) => ({ id: d.id, ...d.data() }));
-            }
-            cancelled ||
-              setState({
-                loading: !1,
-                links: links,
-                players: players,
-                attendance: attendance,
-                error: "",
-              });
-          } catch (e2) {
-            cancelled ||
-              setState({
-                loading: !1,
-                links: [],
-                players: [],
-                attendance: [],
-                error: e2.message || String(e2),
-              });
-          }
-        })(),
-        () => {
-          cancelled = !0;
-        }
+  // מאזינים חיים (onSnapshot) ולא קריאה חד-פעמית: בטלפון עם רשת איטית זה
+  // מציג מיד את מה שכבר שמור במכשיר, ומתעדכן ברקע — ולא נתקע על "טוען…".
+  let [links, setLinks] = b(null),
+    [playersMap, setPlayersMap] = b({}),
+    [attendance, setAttendance] = b([]),
+    [error, setError] = b("");
+  j(() => {
+    if (!uid) {
+      (setLinks([]), setPlayersMap({}), setAttendance([]), setError(""));
+      return;
+    }
+    let unsubPlayers = {},
+      unsubAtt = null,
+      onErr = (err) => setError(err.message || String(err)),
+      unsubLinks = ae(
+        fsQuery(M(P, "links"), fsWhere("uid", "==", uid)),
+        (snap) => {
+          let ls = snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+            ids = ls.map((l) => l.playerId).filter(Boolean);
+          setLinks(ls);
+          for (let pid of ids)
+            unsubPlayers[pid] ||
+              (unsubPlayers[pid] = ae(
+                S(P, "players", pid),
+                (ps) => {
+                  setPlayersMap((m) => ({
+                    ...m,
+                    [pid]: ps.exists() ? { id: ps.id, ...ps.data() } : null,
+                  }));
+                },
+                onErr,
+              ));
+          for (let pid of Object.keys(unsubPlayers))
+            ids.includes(pid) ||
+              (unsubPlayers[pid](),
+              delete unsubPlayers[pid],
+              setPlayersMap((m) => {
+                let c = { ...m };
+                return (delete c[pid], c);
+              }));
+          unsubAtt && (unsubAtt(), (unsubAtt = null));
+          ids.length
+            ? (unsubAtt = ae(
+                fsQuery(M(P, "attendance"), fsWhere("playerId", "in", ids.slice(0, 10))),
+                (as) => setAttendance(as.docs.map((d) => ({ id: d.id, ...d.data() }))),
+                onErr,
+              ))
+            : setAttendance([]);
+        },
+        (err) => {
+          (onErr(err), setLinks([]));
+        },
       );
-    }, [uid]),
-    state
-  );
+    return () => {
+      (unsubLinks(),
+        Object.values(unsubPlayers).forEach((u) => u()),
+        unsubAtt && unsubAtt());
+    };
+  }, [uid]);
+  let players = (links || [])
+      .map((l) => playersMap[l.playerId])
+      .filter((p) => p && !p.deleted),
+    loading =
+      links === null ||
+      (links || []).some((l) => l.playerId && !(l.playerId in playersMap));
+  return {
+    loading: loading,
+    links: links || [],
+    players: players,
+    attendance: attendance,
+    error: error,
+  };
 }
 function memberMonthStats(attendance, playerId) {
   let month = E().slice(0, 7),
@@ -4557,6 +4561,12 @@ function MemberPortal({
                 myGroups.length ? "אין אימון מתוכנן בשבועיים הקרובים" : "אין קבוצה משויכת",
               ),
         ),
+        loading &&
+          e.createElement(
+            PCard,
+            { title: "האזור האישי", icon: H },
+            e.createElement("p", { className: "text-sm text-slate-400" }, "טוען…"),
+          ),
         hasPersonal &&
           e.createElement(
             PCard,
@@ -4708,6 +4718,7 @@ function MemberPortal({
       e.createElement(
         e.Fragment,
         null,
+        loading && e.createElement("p", { className: "text-sm text-slate-400 text-center py-4" }, "טוען…"),
         !loading && !players.length
           ? e.createElement(
               PCard,
@@ -5052,9 +5063,7 @@ function MemberPortal({
       "div",
       { className: "p-4 flex flex-col gap-3 min-h-[60vh]" },
       error && e.createElement("div", { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" }, "שגיאה בטעינת הנתונים: ", error),
-      loading && tab !== "league" && tab !== "more"
-        ? e.createElement("p", { className: "text-sm text-slate-500 text-center py-6" }, "טוען…")
-        : (screens[tab] || homeScreen)(),
+      (screens[tab] || homeScreen)(),
     ),
     content = e.createElement(
       e.Fragment,
