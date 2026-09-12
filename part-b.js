@@ -1173,6 +1173,12 @@ function dt({
                 icon: J,
               },
               {
+                key: "portal",
+                label:
+                  "פורטל המועדון",
+                icon: le,
+              },
+              {
                 key: "import",
                 label:
                   "ייבוא שחקנים",
@@ -1214,6 +1220,12 @@ function dt({
                   icon: ReportsIcon,
                 },
                 {
+                  key: "portal",
+                  label:
+                    "פורטל המועדון",
+                  icon: le,
+                },
+                {
                   key: "tournaments",
                   label: "תחרויות",
                   icon: TrophyIcon,
@@ -1226,6 +1238,18 @@ function dt({
                   label:
                     "מילוי נוכחות",
                   icon: Z,
+                },
+                {
+                  key: "access",
+                  label:
+                    "גישת הורים",
+                  icon: J,
+                },
+                {
+                  key: "portal",
+                  label:
+                    "פורטל המועדון",
+                  icon: le,
                 },
                 {
                   key: "tournaments",
@@ -2300,6 +2324,8 @@ function Q() {
                 "ניהול הרשאות",
               access:
                 "גישת הורים",
+              portal:
+                "פורטל המועדון",
               import: "ייבוא שחקנים",
               reports: "דוחות",
               attendance:
@@ -2358,12 +2384,19 @@ function Q() {
       r &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
-      r &&
+      (r || isCoachRole(s)) &&
         m === "access" &&
         e.createElement(AccessScreen, {
           players: c,
           currentUserId: s.id,
           uid: t?.uid,
+          isAdmin: r,
+        }),
+      m === "portal" &&
+        e.createElement(MemberPortal, {
+          profile: s,
+          authUser: t,
+          embedded: !0,
         }),
       m === "attendance" &&
         e.createElement(mt, {
@@ -2443,6 +2476,7 @@ function NewInviteModal({
   currentUserId: currentUserId,
   prefill: prefill,
   onCreated: onCreated,
+  isAdmin: isAdmin,
 }) {
   let [q, setQ] = b((prefill && prefill.childName) || ""),
     [sel, setSel] = b([]),
@@ -2459,7 +2493,9 @@ function NewInviteModal({
       setSel((s) => {
         let next = s.includes(p.id)
           ? s.filter((x) => x !== p.id)
-          : [...s, p.id];
+          : isAdmin
+            ? [...s, p.id]
+            : [p.id];
         if (!s.includes(p.id)) {
           (name.trim() || setName(p.parentName || ""),
             phone.trim() || setPhone(p.parentPhone || ""));
@@ -2527,7 +2563,9 @@ function NewInviteModal({
         e.createElement(
           "label",
           { className: "text-xs text-slate-500" },
-          "לאיזה שחקן/ים (אפשר לסמן כמה)",
+          isAdmin
+            ? "לאיזה שחקן/ים (אפשר לסמן כמה)"
+            : "לאיזה שחקן (מאמן מזמין לשחקן אחד מהקבוצות שלו)",
         ),
         e.createElement("input", {
           value: q,
@@ -2642,10 +2680,11 @@ function AccessScreen({
   players: players,
   currentUserId: currentUserId,
   uid: uid,
+  isAdmin: isAdmin,
 }) {
   let { data: invites } = L("invites", null, uid),
     { data: requests } = L("accessRequests", null, uid),
-    { data: links } = L("links", null, uid),
+    { data: links } = L("links", null, uid, isAdmin),
     [tab, setTab] = b("requests"),
     [modal, setModal] = b(null),
     pending = requests.filter((r) => r.status === "pending"),
@@ -2875,18 +2914,20 @@ function AccessScreen({
                 ),
             );
           }),
-          e.createElement(
-            "p",
-            { className: "text-[11px] text-slate-400 text-center mt-2" },
-            "סה״כ קישורי הורה-שחקן פעילים: ",
-            links.length,
-          ),
+          isAdmin &&
+            e.createElement(
+              "p",
+              { className: "text-[11px] text-slate-400 text-center mt-2" },
+              "סה״כ קישורי הורה-שחקן פעילים: ",
+              links.length,
+            ),
         ),
     modal &&
       e.createElement(NewInviteModal, {
         players: players,
         prefill: modal.prefill,
         currentUserId: currentUserId,
+        isAdmin: isAdmin,
         onClose: () => setModal(null),
         onCreated: () => {
           modal.requestId &&
