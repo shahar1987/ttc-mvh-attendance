@@ -1,0 +1,149 @@
+{
+ "club": "הפועל מבואות חרמון",
+ "clubId": "160",
+ "source": "https://tttm.co.il/c/160-p/",
+ "updatedAt": "2026-09-12T14:50:00.000Z",
+ "ranked": 13,
+ "players": [
+  {
+   "tttmId": "1439",
+   "name": "שחר גילעד",
+   "category": "S40",
+   "rank": 112,
+   "points": 1048.5
+  },
+  {
+   "tttmId": "5581",
+   "name": "איתמר יוסף לב",
+   "category": "J19",
+   "rank": 321,
+   "points": 724.5
+  },
+  {
+   "tttmId": "4831",
+   "name": "אלעד מרנבך",
+   "category": "S",
+   "rank": 339,
+   "points": 700.6
+  },
+  {
+   "tttmId": "9242",
+   "name": "אביב לזר",
+   "category": "M13",
+   "rank": 449,
+   "points": 594.4
+  },
+  {
+   "tttmId": "4805",
+   "name": "ויאצ'סלב סנדקוב",
+   "category": "S70",
+   "rank": 484,
+   "points": 554.8
+  },
+  {
+   "tttmId": "7458",
+   "name": "עדי לוי",
+   "category": "S50",
+   "rank": 506,
+   "points": 534.6
+  },
+  {
+   "tttmId": "8046",
+   "name": "יבגני ג'וטובסקי",
+   "category": "S50",
+   "rank": 538,
+   "points": 501.1
+  },
+  {
+   "tttmId": "5725",
+   "name": "ליאוניד ג'מפלסון",
+   "category": "S60",
+   "rank": 607,
+   "points": 447.6
+  },
+  {
+   "tttmId": "8572",
+   "name": "אלעזר שנקר",
+   "category": "S60",
+   "rank": 746,
+   "points": 343.7
+  },
+  {
+   "tttmId": "8691",
+   "name": "אורי מוסנזון",
+   "category": "S70",
+   "rank": 1053,
+   "points": 175.6
+  },
+  {
+   "tttmId": "8621",
+   "name": "טל כהן",
+   "category": "S50",
+   "rank": 1112,
+   "points": 145.4
+  },
+  {
+   "tttmId": "8827",
+   "name": "דור נברו",
+   "category": "S",
+   "rank": 1125,
+   "points": 139.6
+  },
+  {
+   "tttmId": "10162",
+   "name": "יותם ירושלמי",
+   "category": "J18",
+   "rank": 1235,
+   "points": 74.4
+  },
+  {
+   "tttmId": "11152",
+   "name": "אוהד בן ארוש",
+   "category": "M13",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "120",
+   "name": "דניאל בן אהרון",
+   "category": "S",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "6840",
+   "name": "טאו מורנו",
+   "category": "Y17",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "11151",
+   "name": "ישראל בן ארוש",
+   "category": "S50",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "8103",
+   "name": "נועם יעקובוביץ׳",
+   "category": "C15",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "11153",
+   "name": "צור כהן",
+   "category": "S40",
+   "rank": null,
+   "points": null
+  },
+  {
+   "tttmId": "7537",
+   "name": "רוני גלבוע",
+   "category": "S70",
+   "rank": null,
+   "points": null
+  }
+ ]
+}
