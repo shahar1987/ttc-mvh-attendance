@@ -2190,6 +2190,45 @@ function ct() {
     ),
   );
 }
+// שומר שהשדות הנגזרים בקבוצות (מאמנים ושמותיהם) תמיד תואמים למצב האמיתי של המשתמשים.
+// כל שינוי — תפקיד, שם, מחיקת משתמש — מתוקן מיד בפעם הבאה שמנהל פותח את האפליקציה.
+function useCoachFieldsHealer(on, groups, users) {
+  let lastFix = e.useRef("");
+  j(() => {
+    if (!on || !groups.length || !users.length) return;
+    let fixes = [];
+    groups.forEach((g) => {
+      let cur = groupCoachIds(g),
+        valid = cur.filter((id) => {
+          let u = users.find((x) => x.id === id);
+          return u && isStaffMember(u);
+        }),
+        names = coachNamesFor(valid, users),
+        stored = Array.isArray(g.coachNames) ? g.coachNames : null,
+        same =
+          valid.length === cur.length &&
+          valid.every((v, i) => v === cur[i]) &&
+          (g.coachId || "") === (valid[0] || "") &&
+          stored &&
+          stored.length === names.length &&
+          names.every((n, i) => n === stored[i]);
+      same || fixes.push({ g: g, valid: valid, names: names });
+    });
+    if (!fixes.length) return;
+    let sig = fixes.map((f) => f.g.id + ":" + f.valid.join(",") + ":" + f.names.join(",")).join("|");
+    if (lastFix.current === sig) return;
+    lastFix.current = sig;
+    let batch = Te(P);
+    fixes.forEach((f) =>
+      batch.update(S(P, "groups", f.g.id), {
+        coachIds: f.valid,
+        coachId: f.valid[0] || "",
+        coachNames: f.names,
+      }),
+    );
+    batch.commit().catch((err) => console.warn("coach fields sync failed:", err));
+  }, [on, groups, users]);
+}
 function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
     staffMode = !!s && !isMemberRole(s),
@@ -2254,6 +2293,7 @@ function Q() {
       } catch (e2) {}
     };
   profileRef.current = s || null;
+  useCoachFieldsHealer(!!s && isAdminRole(s), i, l);
   if (
     (j(() => {
       let onHash = () => setRoute(parseHashRoute());
