@@ -4822,7 +4822,12 @@ function MemberPortal({
             "div",
             { className: "min-w-0" },
             e.createElement("p", { className: "font-bold text-blue-950 text-base truncate" }, p.name),
-            e.createElement("p", { className: "text-xs text-slate-500 truncate" }, g ? g.name : "ללא קבוצה"),
+            e.createElement(
+              "p",
+              { className: "text-xs text-slate-500 truncate" },
+              g ? g.name : "ללא קבוצה",
+              p.isActive === !1 ? " · כרטיס בארכיון" : "",
+            ),
           ),
           st.pct !== null &&
             e.createElement(
@@ -5253,6 +5258,11 @@ function MemberPortal({
             }),
         ),
         noGroup = activePlayers.filter((p) => !p.groupId),
+        danglingGroup = activePlayers.filter((p) => p.groupId && !groups.some((g) => g.id === p.groupId)),
+        archivedLinks = auditLinks.filter((l) => {
+          let pl = knownPlayer(l.playerId);
+          return pl && !pl.deleted && pl.isActive === !1;
+        }),
         noCoach = groups.filter((g) => !groupCoachNames(g, users || []).length),
         fixable = [...new Set(orphanLinks.concat(ghostLinks).map((l) => l.id))],
         fixAudit = async () => {
@@ -5261,6 +5271,7 @@ function MemberPortal({
             let batch = Te(P);
             fixable.forEach((id) => batch.delete(S(P, "links", id)));
             staleInvites.forEach((iv) => batch.update(S(P, "invites", iv.id), { revoked: !0 }));
+            danglingGroup.forEach((p) => batch.update(S(P, "players", p.id), { groupId: "" }));
             (await batch.commit(), setAudit(null), setAuditNonce((n) => n + 1));
           } catch (err) {
             setMgrErr("הניקוי נכשל: " + (err.message || err));
@@ -5321,10 +5332,12 @@ function MemberPortal({
                       auditRow("קישורי הורה לשחקן שנמחק", orphanLinks.length, "warn"),
                       auditRow("קישורים למשתמש שכבר לא קיים", ghostLinks.length, "warn"),
                       auditRow("הזמנות פתוחות לשחקן שנמחק", staleInvites.length, "warn"),
+                      auditRow("קישורים לכרטיס שחקן בארכיון", archivedLinks.length),
+                      auditRow("שחקנים המשויכים לקבוצה שנמחקה", danglingGroup.length, "warn"),
                       auditRow("שחקנים פעילים ללא קבוצה", noGroup.length),
                       auditRow("קבוצות ללא מאמן", noCoach.length),
                     ),
-                    fixable.length + staleInvites.length > 0
+                    fixable.length + staleInvites.length + danglingGroup.length > 0
                       ? e.createElement(
                           "button",
                           {
