@@ -40,6 +40,8 @@ import {
   serverTimestamp as Oe,
   query as fsQuery,
   where as fsWhere,
+  getDoc as fsGetDoc,
+  getDocs as fsGetDocs,
   terminate as fsTerminate,
   clearIndexedDbPersistence as fsClearCache,
 } from "firebase/firestore";
@@ -702,15 +704,16 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
-function L(t, groupIds, uid) {
+function L(t, groupIds, uid, enabled) {
   let [s, a] = b([]),
     [l, i] = b(!0),
     scoped = Array.isArray(groupIds),
+    on = enabled !== !1,
     scopeKey = scoped ? groupIds.slice().sort().join(",") : "";
   return (
     j(
       () => {
-        if (!uid) {
+        if (!uid || !on) {
           (a([]), i(!1));
           return;
         }
@@ -734,7 +737,7 @@ function L(t, groupIds, uid) {
           },
         );
       },
-      [t, scoped, scopeKey, uid || ""],
+      [t, scoped, scopeKey, uid || "", on],
     ),
     { data: s, loading: l }
   );
@@ -1795,11 +1798,12 @@ function tt() {
     [a, l] = b(""),
     [i, c] = b(""),
     [ok, setOk] = b(""),
+    [showReq, setShowReq] = b(!1),
     [n, m] = b(!1),
     o = async () => {
       (c(""), setOk(""), m(!0));
       try {
-        await Ue(D, t.trim(), a);
+        await Ue(D, loginIdToEmail(t), a);
       } catch (x) {
         c(
           et[x.code] ||
@@ -1813,6 +1817,11 @@ function tt() {
       if (!t.trim()) {
         (setOk(""),
           c("להזין אימייל למעלה ואז ללחוץ שוב על \u201Cשכחתי סיסמה\u201D"));
+        return;
+      }
+      if (!t.includes("@")) {
+        (setOk(""),
+          c("איפוס סיסמה במייל אפשרי רק למי שרשום עם כתובת אימייל. אם נכנסת עם מספר טלפון — בקש ממנהל המועדון הזמנה חדשה."));
         return;
       }
       (c(""), setOk(""), m(!0));
@@ -1854,8 +1863,8 @@ function tt() {
       e.createElement("input", {
         value: t,
         onChange: (x) => s(x.target.value),
-        type: "email",
-        placeholder: "אימייל",
+        type: "text",
+        placeholder: "טלפון או אימייל",
         dir: "ltr",
         onKeyDown: (x) => x.key === "Enter" && o(),
         className:
@@ -1905,11 +1914,21 @@ function tt() {
         "שכחתי סיסמה",
       ),
       e.createElement(
+        "button",
+        {
+          onClick: () => setShowReq(!0),
+          className: "text-blue-300 text-xs underline text-center mt-3",
+        },
+        "אין לי חשבון — בקשת גישה",
+      ),
+      e.createElement(
         "p",
-        { className: "text-blue-400 text-xs text-center mt-2" },
-        "לקבלת חשבון למערכת — פנה למנהל המועדון",
+        { className: "text-blue-400 text-[11px] text-center mt-1" },
+        "הורים ושחקנים נכנסים עם מספר הטלפון והסיסמה שבחרו בהזמנה",
       ),
     ),
+    showReq &&
+      e.createElement(AccessRequestForm, { onClose: () => setShowReq(!1) }),
   );
 }
 function st({
@@ -3307,5 +3326,900 @@ function ImportScreen({ groups: t, players: s }) {
           ),
         ),
       ),
+  );
+}
+
+// ===== גישת הורים ושחקנים לפורטל: טלפון, הזמנות וקישורים =====
+var MEMBER_EMAIL_DOMAIN = "members.ttcmh.app";
+var INVITE_TTL_DAYS = 7;
+var RELATION_LABELS = {
+  parent: "הורה",
+  self: "השחקן עצמו",
+  family: "בן משפחה",
+};
+var MEM_DAYS = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+function memberEmailFromPhone(v) {
+  return normalizePhone(v) + "@" + MEMBER_EMAIL_DOMAIN;
+}
+function loginIdToEmail(v) {
+  let s = String(v || "").trim();
+  return s.includes("@") ? s : memberEmailFromPhone(s);
+}
+function randomToken() {
+  let a = new Uint8Array(24);
+  (window.crypto || crypto).getRandomValues(a);
+  return Array.from(a)
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+function linkDocId(uid, playerId) {
+  return uid + "_" + playerId;
+}
+function inviteExpiryISO(days) {
+  let d = new Date();
+  d.setDate(d.getDate() + (days || INVITE_TTL_DAYS));
+  return d.toISOString();
+}
+function inviteStatus(inv) {
+  if (!inv) return "missing";
+  if (inv.revoked) return "revoked";
+  if (inv.usedAt) return "used";
+  if (inv.expiresAt && new Date(inv.expiresAt).getTime() <= Date.now())
+    return "expired";
+  return "open";
+}
+var INVITE_STATUS_LABELS = {
+  open: "ממתינה",
+  used: "מומשה",
+  expired: "פג תוקף",
+  revoked: "בוטלה",
+  missing: "לא נמצאה",
+};
+function portalBaseUrl() {
+  return location.origin + location.pathname;
+}
+function inviteUrl(token) {
+  return portalBaseUrl() + "#/invite/" + token;
+}
+function parseHashRoute() {
+  let m = String(location.hash || "").match(/^#\/invite\/([A-Za-z0-9]+)/);
+  return m ? { name: "invite", token: m[1] } : { name: "app" };
+}
+function clearHashRoute() {
+  try {
+    history.replaceState(null, "", portalBaseUrl());
+  } catch (e2) {
+    location.hash = "";
+  }
+}
+async function createInvite({
+  phone: phone,
+  displayName: displayName,
+  playerIds: playerIds,
+  playerNames: playerNames,
+  relation: relation,
+  createdBy: createdBy,
+}) {
+  let token = randomToken();
+  await De(S(P, "invites", token), {
+    phone: normalizePhone(phone),
+    displayName: String(displayName || "").trim(),
+    playerIds: playerIds || [],
+    playerNames: playerNames || [],
+    relation: relation || "parent",
+    createdBy: createdBy || "",
+    createdAt: new Date().toISOString(),
+    expiresAt: inviteExpiryISO(INVITE_TTL_DAYS),
+    expiresAtMs: Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1e3,
+    usedAt: null,
+    usedByUid: null,
+    revoked: !1,
+  });
+  return token;
+}
+async function loadInvite(token) {
+  let snap = await fsGetDoc(S(P, "invites", token));
+  return snap.exists() ? { id: token, ...snap.data() } : null;
+}
+async function revokeInvite(token) {
+  await O(S(P, "invites", token), { revoked: !0 });
+}
+function inviteMessage(inv, token) {
+  let names = (inv.playerNames || []).join(", ");
+  return (
+    `שלום ${inv.displayName || ""}!\n` +
+    `הוזמנת לפורטל ${X}${names ? " — " + names : ""}.\n` +
+    `לחיצה על הקישור, בחירת סיסמה, וזהו:\n${inviteUrl(token)}\n` +
+    `הקישור אישי ותקף ל-${INVITE_TTL_DAYS} ימים.`
+  );
+}
+function inviteWhatsappUrl(inv, token) {
+  return ne(normalizePhone(inv.phone), inviteMessage(inv, token));
+}
+async function signUpFromInvite({
+  token: token,
+  invite: invite,
+  password: password,
+  email: email,
+}) {
+  let cred = await Me(D, memberEmailFromPhone(invite.phone), password),
+    uid = cred.user.uid,
+    now = new Date().toISOString();
+  await De(S(P, "users", uid), {
+    name: invite.displayName || "",
+    role: "Member",
+    phone: normalizePhone(invite.phone),
+    email: String(email || "").trim(),
+    inviteToken: token,
+    consentAt: now,
+    createdAt: now,
+  });
+  for (let pid of invite.playerIds || [])
+    await De(S(P, "links", linkDocId(uid, pid)), {
+      uid: uid,
+      playerId: pid,
+      relation: invite.relation || "parent",
+      inviteToken: token,
+      createdAt: now,
+    });
+  await O(S(P, "invites", token), { usedAt: now, usedByUid: uid });
+  return uid;
+}
+async function createAccessRequest({
+  name: name,
+  phone: phone,
+  childName: childName,
+  relation: relation,
+  note: note,
+}) {
+  await V(M(P, "accessRequests"), {
+    name: String(name || "").trim(),
+    phone: normalizePhone(phone),
+    childName: String(childName || "").trim(),
+    relation: relation || "parent",
+    note: String(note || "").trim(),
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+}
+async function setAccessRequestStatus(id, status, handledBy) {
+  await O(S(P, "accessRequests", id), {
+    status: status,
+    handledBy: handledBy || "",
+    handledAt: new Date().toISOString(),
+  });
+}
+async function deleteLink(uid, playerId) {
+  await Ee(S(P, "links", linkDocId(uid, playerId)));
+}
+
+// ----- נתוני המשתמש-הורה: קישורים, שחקנים ונוכחות -----
+function useMemberData(uid) {
+  let [state, setState] = b({
+    loading: !0,
+    links: [],
+    players: [],
+    attendance: [],
+    error: "",
+  });
+  return (
+    j(() => {
+      if (!uid) {
+        setState({
+          loading: !1,
+          links: [],
+          players: [],
+          attendance: [],
+          error: "",
+        });
+        return;
+      }
+      let cancelled = !1;
+      return (
+        (async () => {
+          try {
+            let ls = await fsGetDocs(
+                fsQuery(M(P, "links"), fsWhere("uid", "==", uid)),
+              ),
+              links = ls.docs.map((d) => ({ id: d.id, ...d.data() })),
+              players = [];
+            for (let l of links) {
+              let ps = await fsGetDoc(S(P, "players", l.playerId));
+              ps.exists() && players.push({ id: ps.id, ...ps.data() });
+            }
+            let ids = players.map((p) => p.id).slice(0, 10),
+              attendance = [];
+            if (ids.length) {
+              let as = await fsGetDocs(
+                fsQuery(M(P, "attendance"), fsWhere("playerId", "in", ids)),
+              );
+              attendance = as.docs.map((d) => ({ id: d.id, ...d.data() }));
+            }
+            cancelled ||
+              setState({
+                loading: !1,
+                links: links,
+                players: players,
+                attendance: attendance,
+                error: "",
+              });
+          } catch (e2) {
+            cancelled ||
+              setState({
+                loading: !1,
+                links: [],
+                players: [],
+                attendance: [],
+                error: e2.message || String(e2),
+              });
+          }
+        })(),
+        () => {
+          cancelled = !0;
+        }
+      );
+    }, [uid]),
+    state
+  );
+}
+function memberMonthStats(attendance, playerId) {
+  let month = E().slice(0, 7),
+    rows = attendance.filter(
+      (a) => a.playerId === playerId && String(a.date || "").startsWith(month),
+    ),
+    present = rows.filter((a) => a.status === "Present").length;
+  return {
+    total: rows.length,
+    present: present,
+    pct: rows.length ? Math.round((present / rows.length) * 100) : null,
+  };
+}
+function memberRecent(attendance, playerId, n) {
+  return attendance
+    .filter((a) => a.playerId === playerId)
+    .sort((a, c) => String(c.date).localeCompare(String(a.date)))
+    .slice(0, n || 5);
+}
+
+// ----- מסך מימוש הזמנה -----
+function InviteScreen({ token: token }) {
+  let [loading, setLoading] = b(!0),
+    [invite, setInvite] = b(null),
+    [err, setErr] = b(""),
+    [pw, setPw] = b(""),
+    [pw2, setPw2] = b(""),
+    [mail, setMail] = b(""),
+    [consent, setConsent] = b(!1),
+    [busy, setBusy] = b(!1);
+  j(() => {
+    let cancelled = !1;
+    return (
+      loadInvite(token)
+        .then((inv) => {
+          cancelled || (setInvite(inv), setLoading(!1));
+        })
+        .catch((e2) => {
+          cancelled ||
+            (setErr(
+              "לא הצלחנו לטעון את ההזמנה: " + (e2.message || e2),
+            ),
+            setLoading(!1));
+        }),
+      () => {
+        cancelled = !0;
+      }
+    );
+  }, [token]);
+  let status = inviteStatus(invite),
+    ok = pw.length >= 6 && pw === pw2 && consent,
+    submit = async () => {
+      (setBusy(!0), setErr(""));
+      try {
+        (await signUpFromInvite({
+          token: token,
+          invite: invite,
+          password: pw,
+          email: mail,
+        }),
+          clearHashRoute(),
+          window.location.reload());
+      } catch (e2) {
+        (setErr(
+          e2.code === "auth/email-already-in-use"
+            ? "כבר קיים חשבון למספר הזה. אפשר להתחבר עם הטלפון והסיסמה הקיימת, או לבקש מהמנהל הזמנה חדשה."
+            : e2.code === "auth/weak-password"
+              ? "הסיסמה קצרה מדי — צריך לפחות 6 תווים"
+              : "ההרשמה נכשלה: " + (e2.message || e2),
+        ),
+          setBusy(!1));
+      }
+    },
+    shell = (...kids) =>
+      e.createElement(
+        "div",
+        {
+          dir: "rtl",
+          className:
+            "min-h-screen bg-blue-950 flex flex-col justify-center px-6 py-10",
+        },
+        e.createElement(
+          "div",
+          { className: "text-center mb-7" },
+          e.createElement("img", {
+            src: "./logo.png",
+            alt: "",
+            className:
+              "w-20 h-20 rounded-2xl bg-white mx-auto mb-3 object-contain p-1.5",
+          }),
+          e.createElement(
+            "h1",
+            { className: "text-white text-lg font-bold leading-snug" },
+            X,
+          ),
+          e.createElement("p", { className: "text-blue-300 text-xs mt-1" }, W),
+        ),
+        ...kids,
+      );
+  if (loading)
+    return shell(
+      e.createElement(
+        "p",
+        { className: "text-blue-200 text-sm text-center" },
+        "רגע, בודקים את ההזמנה…",
+      ),
+    );
+  if (status !== "open")
+    return shell(
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-white/10 rounded-2xl p-5 text-center flex flex-col gap-3",
+        },
+        e.createElement(
+          "p",
+          { className: "text-white text-sm leading-relaxed" },
+          status === "used"
+            ? "ההזמנה הזו כבר מומשה. אפשר להתחבר עם מספר הטלפון והסיסמה שבחרת."
+            : status === "expired"
+              ? "תוקף ההזמנה פג. בקש מהמנהל לשלוח הזמנה חדשה."
+              : status === "revoked"
+                ? "ההזמנה בוטלה על ידי מנהל המועדון."
+                : "ההזמנה לא נמצאה. ייתכן שהקישור הועתק חלקית.",
+        ),
+        err &&
+          e.createElement(
+            "p",
+            { className: "text-red-300 text-xs" },
+            err,
+          ),
+        e.createElement(
+          "button",
+          {
+            onClick: () => {
+              (clearHashRoute(), window.location.reload());
+            },
+            className:
+              "bg-emerald-500 text-white font-semibold rounded-xl py-3",
+          },
+          "למסך ההתחברות",
+        ),
+      ),
+    );
+  return shell(
+    e.createElement(
+      "div",
+      { className: "bg-white rounded-2xl p-5 flex flex-col gap-3.5" },
+      e.createElement(
+        "div",
+        null,
+        e.createElement(
+          "p",
+          { className: "text-blue-950 font-bold text-base" },
+          "שלום ",
+          invite.displayName || "",
+          "!",
+        ),
+        e.createElement(
+          "p",
+          { className: "text-slate-600 text-sm mt-1 leading-relaxed" },
+          "הוזמנת לפורטל המועדון",
+          (invite.playerNames || []).length
+            ? " כ" +
+                (RELATION_LABELS[invite.relation] || "הורה") +
+                " של " +
+                (invite.playerNames || []).join(", ")
+            : "",
+          ".",
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "bg-slate-50 rounded-xl p-3" },
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-500" },
+          "שם המשתמש שלך הוא מספר הטלפון",
+        ),
+        e.createElement(
+          "p",
+          { dir: "ltr", className: "text-sm text-blue-950 font-semibold" },
+          invite.phone,
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "בחירת סיסמה (לפחות 6 תווים)",
+        ),
+        e.createElement("input", {
+          value: pw,
+          onChange: (x) => setPw(x.target.value),
+          type: "password",
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm outline-none focus:border-emerald-400",
+        }),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "אימות הסיסמה",
+        ),
+        e.createElement("input", {
+          value: pw2,
+          onChange: (x) => setPw2(x.target.value),
+          type: "password",
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm outline-none focus:border-emerald-400",
+        }),
+        pw2 && pw !== pw2
+          ? e.createElement(
+              "p",
+              { className: "text-[11px] text-red-600" },
+              "הסיסמאות לא זהות",
+            )
+          : null,
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "אימייל (לא חובה — מאפשר איפוס סיסמה עצמאי)",
+        ),
+        e.createElement("input", {
+          value: mail,
+          onChange: (x) => setMail(x.target.value),
+          type: "email",
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm outline-none focus:border-emerald-400",
+        }),
+      ),
+      e.createElement(
+        "label",
+        { className: "flex items-start gap-2 text-[11px] text-slate-600" },
+        e.createElement("input", {
+          type: "checkbox",
+          checked: consent,
+          onChange: (x) => setConsent(x.target.checked),
+          className: "mt-0.5 w-4 h-4",
+        }),
+        e.createElement(
+          "span",
+          null,
+          "אני מאשר/ת שהמועדון ישמור שם, קבוצה, נוכחות ומספר טלפון לצורך ניהול האימונים והקשר עם המשפחה. המידע נשמר אצל המועדון בלבד, לא מועבר לגורם שלישי, וניתן לבקש את מחיקתו בכל עת.",
+        ),
+      ),
+      err &&
+        e.createElement(
+          "p",
+          { className: "text-red-600 text-xs leading-relaxed" },
+          err,
+        ),
+      e.createElement(
+        "button",
+        {
+          onClick: submit,
+          disabled: busy || !ok,
+          className:
+            "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
+        },
+        busy ? "רגע…" : "כניסה לפורטל",
+      ),
+    ),
+  );
+}
+
+// ----- טופס בקשת גישה (למי שאין לו הזמנה) -----
+function AccessRequestForm({ onClose: onClose }) {
+  let [name, setName] = b(""),
+    [phone, setPhone] = b(""),
+    [child, setChild] = b(""),
+    [rel, setRel] = b("parent"),
+    [note, setNote] = b(""),
+    [busy, setBusy] = b(!1),
+    [done, setDone] = b(!1),
+    [err, setErr] = b(""),
+    ok = name.trim().length > 1 && isValidPhone(phone),
+    submit = async () => {
+      (setBusy(!0), setErr(""));
+      try {
+        (await createAccessRequest({
+          name: name,
+          phone: phone,
+          childName: child,
+          relation: rel,
+          note: note,
+        }),
+          setDone(!0));
+      } catch (e2) {
+        setErr("השליחה נכשלה: " + (e2.message || e2));
+      } finally {
+        setBusy(!1);
+      }
+    },
+    field = (label, val, set, type) =>
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement("label", { className: "text-xs text-slate-500" }, label),
+        e.createElement("input", {
+          value: val,
+          onChange: (x) => set(x.target.value),
+          type: type || "text",
+          dir: type === "tel" ? "ltr" : "rtl",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
+        }),
+      );
+  return e.createElement(
+    "div",
+    {
+      className: "fixed inset-0 bg-black/50 flex items-end justify-center z-50",
+      onClick: onClose,
+    },
+    e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        onClick: (x) => x.stopPropagation(),
+        className:
+          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto",
+      },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between" },
+        e.createElement(
+          "button",
+          { onClick: onClose, className: "text-slate-400" },
+          e.createElement(T, { className: "w-5 h-5" }),
+        ),
+        e.createElement(
+          "h3",
+          { className: "font-bold text-blue-950" },
+          "בקשת גישה לפורטל",
+        ),
+      ),
+      done
+        ? e.createElement(
+            e.Fragment,
+            null,
+            e.createElement(
+              "p",
+              { className: "text-sm text-slate-700 leading-relaxed" },
+              "הבקשה נשלחה למנהל המועדון. ברגע שהיא תאושר תקבל/י הודעת וואטסאפ עם קישור אישי לכניסה.",
+            ),
+            e.createElement(
+              "button",
+              {
+                onClick: onClose,
+                className:
+                  "bg-emerald-500 text-white font-semibold rounded-xl py-3",
+              },
+              "סגירה",
+            ),
+          )
+        : e.createElement(
+            e.Fragment,
+            null,
+            field("השם שלך", name, setName),
+            field("טלפון (050-1234567)", phone, setPhone, "tel"),
+            field("שם השחקן/ית במועדון", child, setChild),
+            e.createElement(
+              "div",
+              { className: "flex flex-col gap-1" },
+              e.createElement(
+                "label",
+                { className: "text-xs text-slate-500" },
+                "מה הקשר שלך אליו/אליה",
+              ),
+              e.createElement(
+                "select",
+                {
+                  value: rel,
+                  onChange: (x) => setRel(x.target.value),
+                  className:
+                    "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none",
+                },
+                e.createElement("option", { value: "parent" }, "הורה"),
+                e.createElement(
+                  "option",
+                  { value: "self" },
+                  "אני השחקן/ית",
+                ),
+                e.createElement(
+                  "option",
+                  { value: "family" },
+                  "בן/בת משפחה",
+                ),
+              ),
+            ),
+            field("הערה למנהל (לא חובה)", note, setNote),
+            err &&
+              e.createElement(
+                "p",
+                { className: "text-red-600 text-xs" },
+                err,
+              ),
+            e.createElement(
+              "button",
+              {
+                onClick: submit,
+                disabled: busy || !ok,
+                className:
+                  "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
+              },
+              busy ? "שולח…" : "שליחת בקשה",
+            ),
+          ),
+    ),
+  );
+}
+
+// ----- הפורטל: המסך של הורה / שחקן / חבר מועדון -----
+function MemberPortal({ profile: profile, authUser: authUser }) {
+  let { loading, players, attendance, links, error } = useMemberData(
+      authUser?.uid,
+    ),
+    { data: groups } = L("groups", null, authUser?.uid),
+    groupOf = (p) => groups.find((g) => g.id === p.groupId) || null,
+    card = (p) => {
+      let g = groupOf(p),
+        st = memberMonthStats(attendance, p.id),
+        recent = memberRecent(attendance, p.id, 5);
+      return e.createElement(
+        "div",
+        {
+          key: p.id,
+          className: "bg-white rounded-2xl p-4 flex flex-col gap-3 shadow-sm",
+        },
+        e.createElement(
+          "div",
+          { className: "flex items-center justify-between gap-2" },
+          e.createElement(
+            "div",
+            { className: "min-w-0" },
+            e.createElement(
+              "p",
+              { className: "font-bold text-blue-950 text-base truncate" },
+              p.name,
+            ),
+            e.createElement(
+              "p",
+              { className: "text-xs text-slate-500 truncate" },
+              g ? g.name : "ללא קבוצה",
+            ),
+          ),
+          st.pct !== null &&
+            e.createElement(
+              "div",
+              { className: "text-center shrink-0" },
+              e.createElement(
+                "p",
+                {
+                  className:
+                    "text-xl font-bold " +
+                    (st.pct >= 75
+                      ? "text-emerald-600"
+                      : st.pct >= 50
+                        ? "text-amber-500"
+                        : "text-red-500"),
+                },
+                st.pct,
+                "%",
+              ),
+              e.createElement(
+                "p",
+                { className: "text-[10px] text-slate-400" },
+                "נוכחות החודש",
+              ),
+            ),
+        ),
+        g &&
+          (g.days || []).length &&
+          e.createElement(
+            "div",
+            { className: "bg-slate-50 rounded-xl px-3 py-2" },
+            e.createElement(
+              "p",
+              { className: "text-[11px] text-slate-500" },
+              "ימי אימון",
+            ),
+            e.createElement(
+              "p",
+              { className: "text-sm text-blue-950" },
+              (g.days || [])
+                .slice()
+                .sort((a, c) => a - c)
+                .map((d) => MEM_DAYS[d])
+                .join(", "),
+              g.startTime ? " · " + g.startTime : "",
+              g.endTime ? "-" + g.endTime : "",
+              g.location ? " · " + g.location : "",
+            ),
+          ),
+        recent.length
+          ? e.createElement(
+              "div",
+              { className: "flex flex-col gap-1" },
+              e.createElement(
+                "p",
+                { className: "text-[11px] text-slate-500" },
+                "אימונים אחרונים",
+              ),
+              ...recent.map((r) =>
+                e.createElement(
+                  "div",
+                  {
+                    key: r.id,
+                    className:
+                      "flex items-center justify-between text-xs border-b border-slate-100 py-1",
+                  },
+                  e.createElement(
+                    "span",
+                    { className: "text-slate-600" },
+                    Ke(r.date),
+                  ),
+                  e.createElement(
+                    "span",
+                    {
+                      className:
+                        r.status === "Present"
+                          ? "text-emerald-600 font-semibold"
+                          : "text-red-500 font-semibold",
+                    },
+                    r.status === "Present" ? "נוכח" : "נעדר",
+                  ),
+                ),
+              ),
+            )
+          : e.createElement(
+              "p",
+              { className: "text-xs text-slate-400" },
+              "עדיין אין רישומי נוכחות",
+            ),
+      );
+    };
+  return e.createElement(
+    "div",
+    { dir: "rtl", className: "min-h-screen bg-slate-50" },
+    e.createElement(
+      "div",
+      { className: "max-w-md mx-auto min-h-screen bg-slate-50 shadow-sm" },
+      e.createElement(
+        "header",
+        {
+          className:
+            "sticky top-0 z-30 bg-blue-950 text-white px-4 py-3.5 flex items-center gap-3",
+        },
+        e.createElement("img", {
+          src: "./logo.png",
+          alt: "",
+          className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0 order-last",
+        }),
+        e.createElement(
+          "div",
+          { className: "text-right flex-1 min-w-0" },
+          e.createElement(
+            "div",
+            { className: "text-sm font-bold leading-tight truncate" },
+            "פורטל המועדון",
+          ),
+          e.createElement(
+            "div",
+            { className: "text-[11px] text-blue-300 truncate" },
+            profile.name,
+          ),
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: () => logoutAndClearCache(),
+            "aria-label": "התנתקות",
+            className:
+              "text-blue-200 shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center",
+          },
+          e.createElement(Ce, { className: "w-5 h-5" }),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "p-4 flex flex-col gap-3" },
+        loading &&
+          e.createElement(
+            "p",
+            { className: "text-sm text-slate-500 text-center py-8" },
+            "טוען…",
+          ),
+        error &&
+          e.createElement(
+            "div",
+            { className: "bg-red-50 text-red-700 rounded-xl p-3 text-xs" },
+            "שגיאה בטעינת הנתונים: ",
+            error,
+          ),
+        !loading &&
+          !players.length &&
+          e.createElement(
+            "div",
+            { className: "bg-white rounded-2xl p-5 text-center" },
+            e.createElement(
+              "p",
+              { className: "text-sm text-slate-700 leading-relaxed" },
+              "החשבון שלך מחובר לפורטל, אבל עדיין לא שויך אליו שחקן. אם זו טעות — פנה למנהל המועדון.",
+            ),
+          ),
+        ...players.map(card),
+        e.createElement(
+          "div",
+          { className: "bg-white rounded-2xl p-4 flex flex-col gap-2 mt-1" },
+          e.createElement(
+            "p",
+            { className: "font-bold text-blue-950 text-sm" },
+            "המועדון",
+          ),
+          e.createElement(
+            "a",
+            {
+              href: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+              target: "_blank",
+              rel: "noopener",
+              className: "text-sm text-emerald-700 underline",
+            },
+            "תחרויות",
+          ),
+          e.createElement(
+            "a",
+            {
+              href: "https://www.facebook.com/TTCMH",
+              target: "_blank",
+              rel: "noopener",
+              className: "text-sm text-emerald-700 underline",
+            },
+            "פייסבוק",
+          ),
+          e.createElement(
+            "a",
+            {
+              href: "https://www.instagram.com/ttcmhr",
+              target: "_blank",
+              rel: "noopener",
+              className: "text-sm text-emerald-700 underline",
+            },
+            "אינסטגרם",
+          ),
+        ),
+      ),
+    ),
   );
 }
