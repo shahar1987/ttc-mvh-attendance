@@ -107,6 +107,7 @@ jobs:
           sed "s|./app.js|./app.js?v=$VERSION|g; s|./tailwind.css|./tailwind.css?v=$VERSION|g" index.html > site/index.html
           sed "s|__BUILD_VERSION__|$VERSION|g" sw.js > site/sw.js
           cp manifest.json site/manifest.json
+          if [ -f tttm.json ]; then cp tttm.json site/tttm.json; else echo '{"players":[]}' > site/tttm.json; fi
           grep -q "app.js?v=$VERSION" site/index.html || (echo "ERROR: cache-busting failed" && exit 1)
           grep -q "tailwind.css?v=$VERSION" site/index.html || (echo "ERROR: tailwind cache-busting failed" && exit 1)
 
