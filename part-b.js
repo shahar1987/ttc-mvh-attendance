@@ -816,11 +816,88 @@ function EditUserModal({ user: t, onClose: s }) {
     ),
   );
 }
-function ot({ users: t, groups: s, currentUserId: a }) {
+// בקשת ניהול חשבון. מבוצעת בענן על ידי GitHub Actions, כדי שלא יעברו פרטים אישיים דרך GitHub.
+async function requestAccountTask(type, user, byId) {
+  await V(M(P, "adminTasks"), {
+    type: type,
+    uid: user.id,
+    name: user.name || "",
+    status: "pending",
+    requestedBy: byId || "",
+    createdAt: new Date().toISOString(),
+  });
+}
+function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
   let [l, i] = b(""),
     [c, n] = b(null),
     [m, o] = b(!1),
     [editUser, setEditUser] = b(null),
+    { data: accountTasks } = L("adminTasks", null, uid),
+    [taskBusy, setTaskBusy] = b(""),
+    lastTaskFor = (u) =>
+      accountTasks
+        .filter((x) => x.uid === u.id)
+        .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)))[0] || null,
+    runAccountTask = async (type, u) => {
+      if (
+        type === "reset-access" &&
+        !window.confirm(
+          `לאפס את הגישה של "${u.name}"? חשבון ההתחברות, הפרופיל והקישורים שלו יימחקו, ותצטרך לשלוח לו הזמנה חדשה. הפעולה מתבצעת תוך כמה דקות.`,
+        )
+      )
+        return;
+      (setTaskBusy(u.id), i(""));
+      try {
+        await requestAccountTask(type, u, a);
+      } catch (err) {
+        i("הבקשה נכשלה: " + (err.message || err));
+      } finally {
+        setTaskBusy("");
+      }
+    },
+    taskNote = (u) => {
+      let task = lastTaskFor(u);
+      if (!task) return null;
+      let label =
+        task.status === "pending"
+          ? (task.type === "check" ? "בדיקת חשבון" : "איפוס גישה") + " — ממתין לביצוע (עד 15 דקות)"
+          : task.result || "";
+      return label
+        ? e.createElement(
+            "div",
+            {
+              className:
+                "text-[11px] mt-1 " + (task.status === "failed" ? "text-red-600" : "text-slate-500"),
+            },
+            label,
+          )
+        : null;
+    },
+    accountButtons = (u) =>
+      e.createElement(
+        "div",
+        { className: "flex items-center gap-1 shrink-0" },
+        e.createElement(
+          "button",
+          {
+            onClick: () => runAccountTask("check", u),
+            disabled: taskBusy === u.id,
+            className:
+              "text-[11px] font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+          },
+          "בדיקה",
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: () => runAccountTask("reset-access", u),
+            disabled: taskBusy === u.id,
+            className:
+              "text-[11px] font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+          },
+          "איפוס גישה",
+        ),
+      ),
     [cleaning, setCleaning] = b(!1),
     [assigningGroupId, setAssigningGroupId] = b(null),
     toggleGroupCoach = async (grp, coachId) => {
@@ -1064,6 +1141,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                       ? f.map((r) => r.name).join(", ")
                       : "לא שויכה קבוצה",
               ),
+              taskNote(u),
             ),
             e.createElement(
               "button",
@@ -1075,6 +1153,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
               },
               e.createElement($e, { className: "w-4 h-4 text-blue-900" }),
             ),
+            accountButtons(u),
             (isCoachRole(u) || isViewerRole(u)) &&
               e.createElement(
                 "button",
@@ -1182,6 +1261,47 @@ function ot({ users: t, groups: s, currentUserId: a }) {
           ),
       ),
     ),
+    (() => {
+      let members = t.filter(isMemberRole);
+      return members.length
+        ? e.createElement(
+            "div",
+            { className: "flex flex-col gap-2" },
+            e.createElement(
+              "h3",
+              { className: "text-sm font-semibold text-slate-500 px-1" },
+              "הורים ושחקנים מחוברים",
+            ),
+            e.createElement(
+              "div",
+              { className: "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100" },
+              ...members.map((u) =>
+                e.createElement(
+                  "div",
+                  { key: u.id, className: "px-4 py-3 flex items-center justify-between gap-2" },
+                  accountButtons(u),
+                  e.createElement(
+                    "div",
+                    { className: "flex-1 text-right min-w-0" },
+                    e.createElement("div", { className: "text-sm font-medium text-blue-950 truncate" }, u.name || "ללא שם"),
+                    e.createElement(
+                      "div",
+                      { className: "text-xs text-slate-400" },
+                      "הורה/שחקן · כניסה עם מספר טלפון",
+                    ),
+                    taskNote(u),
+                  ),
+                ),
+              ),
+            ),
+            e.createElement(
+              "p",
+              { className: "text-[11px] text-slate-400 px-1 leading-relaxed" },
+              "שכח סיסמה? \"איפוס גישה\" מוחק את החשבון שלו, ואז שולחים הזמנה חדשה מגישת הורים והוא בוחר סיסמה מחדש.",
+            ),
+          )
+        : null;
+    })(),
     m && e.createElement(rt, { onClose: () => o(!1), users: t }),
     editUser &&
       e.createElement(EditUserModal, {
@@ -2528,7 +2648,7 @@ function Q() {
         }),
       r &&
         m === "permissions" &&
-        e.createElement(ot, { users: l, groups: i, currentUserId: s.id }),
+        e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
       r &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
