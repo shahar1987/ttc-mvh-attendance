@@ -4642,6 +4642,9 @@ function MemberPortal({
     [annEdit, setAnnEdit] = b(null),
     [mgrQuery, setMgrQuery] = b(""),
     [mgrErr, setMgrErr] = b(""),
+    [audit, setAudit] = b(null),
+    [auditBusy, setAuditBusy] = b(!1),
+    [auditNonce, setAuditNonce] = b(0),
     announcements = announcementsRaw
       .filter(announcementVisible)
       .sort((a, c) => String(c.publishAt || c.createdAt).localeCompare(String(a.publishAt || a.createdAt))),
@@ -5231,7 +5234,54 @@ function MemberPortal({
             e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, value),
             e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, label),
           ),
-        groupName = (id) => (groups.find((g) => g.id === id) || {}).name || "ללא קבוצה";
+        groupName = (id) => (groups.find((g) => g.id === id) || {}).name || "ללא קבוצה",
+        knownPlayer = (pid) => (allPlayers || []).find((x) => x.id === pid),
+        auditLinks = (audit && audit.links) || [],
+        auditInvites = (audit && audit.invites) || [],
+        orphanLinks = auditLinks.filter((l) => {
+          let pl = knownPlayer(l.playerId);
+          return !pl || pl.deleted;
+        }),
+        ghostLinks = auditLinks.filter((l) => !(users || []).some((u) => u.id === l.uid)),
+        staleInvites = auditInvites.filter(
+          (iv) =>
+            !iv.usedAt &&
+            !iv.revoked &&
+            (iv.playerIds || []).some((pid) => {
+              let pl = knownPlayer(pid);
+              return !pl || pl.deleted;
+            }),
+        ),
+        noGroup = activePlayers.filter((p) => !p.groupId),
+        noCoach = groups.filter((g) => !groupCoachNames(g, users || []).length),
+        fixable = [...new Set(orphanLinks.concat(ghostLinks).map((l) => l.id))],
+        fixAudit = async () => {
+          (setAuditBusy(!0), setMgrErr(""));
+          try {
+            let batch = Te(P);
+            fixable.forEach((id) => batch.delete(S(P, "links", id)));
+            staleInvites.forEach((iv) => batch.update(S(P, "invites", iv.id), { revoked: !0 }));
+            (await batch.commit(), setAudit(null), setAuditNonce((n) => n + 1));
+          } catch (err) {
+            setMgrErr("הניקוי נכשל: " + (err.message || err));
+          } finally {
+            setAuditBusy(!1);
+          }
+        },
+        auditRow = (label, count, tone) =>
+          e.createElement(
+            "div",
+            { key: label, className: "py-1.5 flex items-center justify-between gap-2" },
+            e.createElement(
+              "span",
+              {
+                className:
+                  "text-sm font-bold " + (count ? (tone === "warn" ? "text-amber-600" : "text-slate-500") : "text-emerald-600"),
+              },
+              count || "0",
+            ),
+            e.createElement("span", { className: "text-xs text-slate-600 text-right flex-1" }, label),
+          );
       return e.createElement(
         e.Fragment,
         null,
@@ -5254,6 +5304,44 @@ function MemberPortal({
             statBox(announcements.length, "הודעות פעילות"),
           ),
         ),
+        isAdmin &&
+          e.createElement(
+            PCard,
+            { title: "בדיקת עקביות", icon: Ie },
+            audit === null
+              ? e.createElement("p", { className: "text-sm text-slate-400" }, "בודק…")
+              : audit.error
+                ? e.createElement("p", { className: "text-sm text-red-600" }, "הבדיקה נכשלה: " + audit.error)
+                : e.createElement(
+                    e.Fragment,
+                    null,
+                    e.createElement(
+                      "div",
+                      { className: "flex flex-col divide-y divide-slate-100" },
+                      auditRow("קישורי הורה לשחקן שנמחק", orphanLinks.length, "warn"),
+                      auditRow("קישורים למשתמש שכבר לא קיים", ghostLinks.length, "warn"),
+                      auditRow("הזמנות פתוחות לשחקן שנמחק", staleInvites.length, "warn"),
+                      auditRow("שחקנים פעילים ללא קבוצה", noGroup.length),
+                      auditRow("קבוצות ללא מאמן", noCoach.length),
+                    ),
+                    fixable.length + staleInvites.length > 0
+                      ? e.createElement(
+                          "button",
+                          {
+                            onClick: fixAudit,
+                            disabled: auditBusy,
+                            className:
+                              "self-start text-xs font-semibold text-white bg-amber-500 rounded-lg px-3 py-2 disabled:opacity-50",
+                          },
+                          auditBusy ? "מנקה…" : "ניקוי אוטומטי",
+                        )
+                      : e.createElement(
+                          "p",
+                          { className: "text-[11px] text-emerald-700" },
+                          "הכול מסונכרן — שמות המאמנים, ההרשאות והקישורים תואמים למצב במערכת.",
+                        ),
+                  ),
+          ),
         e.createElement(
           PCard,
           { title: "הודעות המועדון", icon: J },
@@ -5527,6 +5615,26 @@ function MemberPortal({
           onClose: () => (setAnnForm(!1), setAnnEdit(null)),
         }),
     );
+  // בדיקת עקביות: נטענת כשמנהל נכנס ללשונית הניהול, ומרעננת אחרי ניקוי
+  j(() => {
+    if (!isAdmin || tab !== "manage" || !uid) return;
+    let alive = !0;
+    (async () => {
+      try {
+        let [ls, inv] = await Promise.all([fsGetDocs(M(P, "links")), fsGetDocs(M(P, "invites"))]);
+        alive &&
+          setAudit({
+            links: ls.docs.map((d) => ({ id: d.id, ...d.data() })),
+            invites: inv.docs.map((d) => ({ id: d.id, ...d.data() })),
+          });
+      } catch (err) {
+        alive && setAudit({ error: err.message || String(err), links: [], invites: [] });
+      }
+    })();
+    return () => {
+      alive = !1;
+    };
+  }, [isAdmin, tab, uid || "", auditNonce]);
   if (embedded) return content;
   return e.createElement(
     "div",
