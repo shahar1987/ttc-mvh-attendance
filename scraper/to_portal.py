@@ -67,17 +67,30 @@ def main():
     if not players:
         raise SystemExit("no players parsed - the association page layout probably changed")
 
-    # אם שום דבר מהותי לא השתנה, שומרים על חותמת הזמן הישנה כדי שהקובץ
-    # יישאר זהה בייט-בייט ולא ייווצר קומיט מיותר בכל ריצה.
     try:
         with open(dst, encoding="utf-8") as f:
             prev = json.load(f)
+    except (OSError, ValueError):
+        prev = None
+
+    # שומר מפני פרסור חלקי: אם האיגוד שינה עמוד אחד, לא נמחק חצי מהנתונים
+    # הקיימים בלי שאף אחד ישים לב. הריצה נופלת והקובץ הישן נשאר במקומו.
+    if prev:
+        for key, got in (("players", players), ("teams", teams),
+                         ("matches", matches), ("tournaments", tournaments)):
+            had = len(prev.get(key) or [])
+            if had and len(got) < max(1, had // 2):
+                raise SystemExit(
+                    f"{key}: got {len(got)} but had {had} before - refusing to overwrite good data"
+                )
+
+    # אם שום דבר מהותי לא השתנה, שומרים על חותמת הזמן הישנה כדי שהקובץ
+    # יישאר זהה בייט-בייט ולא ייווצר קומיט מיותר בכל ריצה.
+    if prev:
         a = dict(prev); a.pop("updatedAt", None)
         b = dict(out); b.pop("updatedAt", None)
         if json.dumps(a, ensure_ascii=False, sort_keys=True) == json.dumps(b, ensure_ascii=False, sort_keys=True):
             out["updatedAt"] = prev.get("updatedAt", out["updatedAt"])
-    except (OSError, ValueError):
-        pass
 
     with open(dst, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
