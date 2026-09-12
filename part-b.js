@@ -376,7 +376,7 @@ function it({ groups: t, users: s, players: a, readOnly: RO }) {
       e.createElement(
         "p",
         { className: "text-center text-sm text-slate-400 py-8" },
-        'אין עדיין קבוצות. לחץ "הוספת קבוצה" כדי להתחיל.',
+        RO ? "אין עדיין קבוצות." : 'אין עדיין קבוצות. לחץ "הוספת קבוצה" כדי להתחיל.',
       ),
     unassigned.length > 0 &&
       e.createElement(
@@ -717,7 +717,7 @@ function EditUserModal({ user: t, onClose: s }) {
       if (!n.trim()) return;
       (setSv(!0), setEr(""));
       try {
-        (await O(S(P, "users", t.id), { name: n.trim(), phone: p.trim() }), s());
+        (await O(S(P, "users", t.id), { name: n.trim(), phone: p.trim() ? normalizePhone(p.trim()) : "" }), s());
       } catch (v) {
         setEr("השמירה נכשלה: " + v.message);
       } finally {
@@ -842,7 +842,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
     handleDeleteCoach = async (u) => {
       if (
         !window.confirm(
-          `למחוק את המשתמש "${u.name}"? הוא ינותק מכל הקבוצות שלו וחשבונו יוסר מהמערכת. הפעולה אינה הפיכה.`,
+          `למחוק את המשתמש "${u.name}"? הוא ינותק מכל הקבוצות שלו, מכל כרטיסי השחקן המקושרים אליו, וההרשאה שלו במערכת תוסר. הפעולה אינה הפיכה.`,
         )
       )
         return;
@@ -857,6 +857,9 @@ function ot({ users: t, groups: s, currentUserId: a }) {
             coachNames: coachNamesFor(rest, t),
           });
         });
+        // קישורי הורה↔שחקן של המשתמש נמחקים יחד איתו — אחרת חשבון שייווצר מחדש יקבל גישה אוטומטית
+        let ls = await fsGetDocs(fsQuery(M(P, "links"), fsWhere("uid", "==", u.id)));
+        ls.docs.forEach((d) => batch.delete(d.ref));
         (batch.delete(S(P, "users", u.id)), await batch.commit());
       } catch (err) {
         i(
@@ -945,7 +948,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
             e.createElement(
               "select",
               {
-                value: u.role || "Coach",
+                value: isAdminRole(u) ? "Admin" : isViewerRole(u) ? "Viewer" : "Coach",
                 disabled: c === u.id || g,
                 onChange: (r) => x(u, r.target.value),
                 className:
@@ -1006,7 +1009,7 @@ function ot({ users: t, groups: s, currentUserId: a }) {
                   disabled: deletingCoachId === u.id,
                   className:
                     "w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0 disabled:opacity-50",
-                  "aria-label": "מחיקת מאמן",
+                  "aria-label": "מחיקת משתמש",
                 },
                 e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
               ),
@@ -1456,7 +1459,57 @@ function re({
         },
         e.createElement(je, { className: "w-4 h-4" }),
         "חזרה לרשימת הקבוצות",
-      );
+      ),
+    // בחירת תאריך — זמינה גם כשהאימון של היום בוטל, כדי שאפשר יהיה להשלים נוכחות ליום אחר
+    datePickerRow = e.createElement(
+      "div",
+      {
+        className:
+          "mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap",
+      },
+      showDatePicker || isPast
+        ? e.createElement(
+            e.Fragment,
+            null,
+            e.createElement("input", {
+              type: "date",
+              value: m,
+              max: today,
+              min: minDate,
+              dir: "ltr",
+              onChange: (v) => {
+                v.target.value &&
+                  confirmLeave() &&
+                  ((dirtyRef.current = null), setSelDate(v.target.value));
+              },
+              className:
+                "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
+            }),
+            e.createElement(
+              "button",
+              {
+                onClick: () => {
+                  confirmLeave() &&
+                    ((dirtyRef.current = null),
+                    setSelDate(today),
+                    setShowDatePicker(!1));
+                },
+                className: "text-xs font-semibold text-blue-900",
+              },
+              "חזרה להיום",
+            ),
+          )
+        : e.createElement(
+            "button",
+            {
+              onClick: () => setShowDatePicker(!0),
+              className:
+                "flex items-center gap-1.5 text-xs font-semibold text-blue-900",
+            },
+            e.createElement(ge, { className: "w-3.5 h-3.5" }),
+            "עדכון נוכחות ליום שלא מולא",
+          ),
+    );
   if (cancelled)
     return e.createElement(
       "div",
@@ -1491,18 +1544,7 @@ function re({
             ),
           ),
         ),
-        isPast &&
-          e.createElement(
-            "button",
-            {
-              onClick: () => {
-                (setSelDate(today), setShowDatePicker(!1));
-              },
-              className:
-                "mt-2 pt-2 border-t border-slate-100 w-full text-xs font-semibold text-blue-900 text-right",
-            },
-            "חזרה להיום",
-          ),
+        datePickerRow,
       ),
       e.createElement(
         "div",
@@ -1579,55 +1621,7 @@ function re({
           ),
         ),
       ),
-      e.createElement(
-        "div",
-        {
-          className:
-            "mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap",
-        },
-        showDatePicker || isPast
-          ? e.createElement(
-              e.Fragment,
-              null,
-              e.createElement("input", {
-                type: "date",
-                value: m,
-                max: today,
-                min: minDate,
-                dir: "ltr",
-                onChange: (v) => {
-                  v.target.value &&
-                    confirmLeave() &&
-                    ((dirtyRef.current = null), setSelDate(v.target.value));
-                },
-                className:
-                  "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
-              }),
-              e.createElement(
-                "button",
-                {
-                  onClick: () => {
-                    confirmLeave() &&
-                      ((dirtyRef.current = null),
-                      setSelDate(today),
-                      setShowDatePicker(!1));
-                  },
-                  className: "text-xs font-semibold text-blue-900",
-                },
-                "חזרה להיום",
-              ),
-            )
-          : e.createElement(
-              "button",
-              {
-                onClick: () => setShowDatePicker(!0),
-                className:
-                  "flex items-center gap-1.5 text-xs font-semibold text-blue-900",
-              },
-              e.createElement(ge, { className: "w-3.5 h-3.5" }),
-              "עדכון נוכחות ליום שלא מולא",
-            ),
-      ),
+      datePickerRow,
       n.length > 0 &&
         e.createElement(
           "div",
@@ -1801,12 +1795,13 @@ function re({
                   : window.open(
                       ne(
                         normalizePhone(v.parentPhone),
-                        Ve(v.parentName, v.name, isAdultGroup(t)),
+                        Ve(v.parentName, v.name, isAdultGroup(t), playerGender(v)),
                       ),
                       "_blank",
                     ),
             }),
           EP &&
+            !RO &&
             e.createElement(
               "button",
               {
@@ -2111,9 +2106,11 @@ function Q() {
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid, staffMode),
-    { data: rawAttendance, loading: aLoading } = L("attendance", coachGroupIds, t?.uid, staffMode),
+    { data: rawAttendance, loading: aLoading, error: aError } = L("attendance", coachGroupIds, t?.uid, staffMode),
     { data: cancellations, loading: xLoading } = L("cancellations", coachGroupIds, t?.uid, staffMode),
     n = excludeCancelled(rawAttendance, cancellations),
+    // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
+    dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
     [m, o] = b("dashboard"),
     [attGroupId, setAttGroupId] = b(null),
@@ -2183,7 +2180,8 @@ function Q() {
           pr = profileRef.current;
         (pr && !isAdminRole(pr) && !isViewerRole(pr) && (scr = "attendance"),
           o(scr),
-          setAttGroupId(st.attGroup || null));
+          setAttGroupId(st.attGroup || null),
+          setPendingDate(null));
       };
       if (!history.state)
         try {
@@ -2351,6 +2349,12 @@ function Q() {
         ),
       ),
       !g && e.createElement(ct, null),
+      dataError &&
+        e.createElement(
+          "div",
+          { className: "bg-red-100 border-b border-red-300 px-4 py-2 text-center" },
+          e.createElement("p", { className: "text-[12px] text-red-800 leading-snug" }, dataError),
+        ),
       (r || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
@@ -2419,7 +2423,7 @@ function Q() {
           attendance: n,
           users: l,
           isAdmin: r,
-          onEditPlayer: openEditPlayer,
+          onEditPlayer: vw ? null : openEditPlayer,
           onWhatsapp: openWhatsapp,
           onAddPlayer: openAddPlayer,
           selectedGroupId: attGroupId,
@@ -2503,25 +2507,27 @@ function NewInviteModal({
       ? active.filter((p) => String(p.name || "").includes(q.trim()))
       : active.slice(0, 20),
     toggle = (p) => {
-      setSel((s) => {
-        let next = s.includes(p.id)
-          ? s.filter((x) => x !== p.id)
-          : isAdmin
-            ? [...s, p.id]
-            : [p.id];
-        if (!s.includes(p.id)) {
-          (name.trim() || setName(p.parentName || ""),
-            phone.trim() || setPhone(p.parentPhone || ""));
-        }
-        return next;
-      });
+      let adding = !sel.includes(p.id),
+        next = adding ? (isAdmin ? [...sel, p.id] : [p.id]) : sel.filter((x) => x !== p.id);
+      setSel(next);
+      // פרטי ההורה ממולאים לפי השחקן הראשון שנבחר ומתעדכנים כשמחליפים שחקן —
+      // כדי שהזמנה לא תישלח לטלפון של הורה אחר
+      if (adding && (!isAdmin || next.length === 1)) {
+        (setName(p.parentName || ""), setPhone(p.parentPhone || ""));
+      } else if (!adding && next.length === 0) {
+        (setName(""), setPhone(""));
+      }
     },
     ok = sel.length > 0 && name.trim().length > 1 && isValidPhone(phone),
     submit = async () => {
       (setBusy(!0), setErr(""));
+      // פותחים את הלשונית באופן סינכרוני (לפני ה-await) כדי שחוסם החלונות הקופצים לא יעצור את וואטסאפ
+      let win = null;
       try {
-        let win = window.open("", "_blank", "noopener"),
-          chosen = players.filter((p) => sel.includes(p.id)),
+        win = window.open("about:blank", "_blank");
+      } catch (e2) {}
+      try {
+        let chosen = players.filter((p) => sel.includes(p.id)),
           token = await createInvite({
             phone: phone,
             displayName: name,
@@ -2536,13 +2542,14 @@ function NewInviteModal({
             playerNames: chosen.map((p) => p.name),
           };
         let url = inviteWhatsappUrl(inv, token);
-        (win ? (win.location = url) : window.open(url, "_blank", "noopener"),
+        (win ? (win.location = url) : window.open(url, "_blank"),
           onCreated && onCreated(token),
           onClose());
       } catch (e2) {
-        (win && win.close(),
-          setErr("יצירת ההזמנה נכשלה: " + (e2.message || e2)),
-          setBusy(!1));
+        try {
+          win && win.close();
+        } catch (e3) {}
+        (setErr("יצירת ההזמנה נכשלה: " + (e2.message || e2)), setBusy(!1));
       }
     };
   return e.createElement(
@@ -2710,7 +2717,17 @@ function AccessScreen({
     { data: links } = L("links", null, uid, isAdmin),
     [tab, setTab] = b("requests"),
     [modal, setModal] = b(null),
-    pending = requests.filter((r) => r.status === "pending"),
+    // מאמן רואה רק בקשות שמזכירות שחקן מהקבוצות שלו; מנהל רואה הכול
+    pending = requests.filter(
+      (r) =>
+        r.status === "pending" &&
+        (isAdmin ||
+          players.some((p) => {
+            let a = String(p.name || "").replace(/\s+/g, " ").trim(),
+              c = String(r.childName || "").replace(/\s+/g, " ").trim();
+            return a && c && (a === c || a.includes(c) || c.includes(a));
+          })),
+    ),
     playerName = (id) => (players.find((p) => p.id === id) || {}).name || id,
     sortedInvites = invites
       .slice()
@@ -2812,6 +2829,7 @@ function AccessScreen({
                   },
                   "אישור ושליחת הזמנה",
                 ),
+                isAdmin &&
                 e.createElement(
                   "button",
                   {
