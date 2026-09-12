@@ -1,0 +1,54 @@
+name: Account tools
+
+# כלי ניהול חשבונות התחברות, להרצה ידנית בלבד.
+#
+#   בדיקה      — מציג אם קיים חשבון למספר/אימייל, מתי נוצר, ולמי הוא מקושר
+#   איפוס גישה — מוחק את חשבון ההתחברות, הפרופיל והקישורים, כדי שאפשר יהיה
+#                לשלוח הזמנה חדשה והאדם יבחר סיסמה מחדש (למי ששכח סיסמה,
+#                או למאמן שעזב וצריך להיעלם לגמרי)
+#
+# דורש סוד בשם FIREBASE_SERVICE_ACCOUNT בהגדרות הריפו (Settings → Secrets and
+# variables → Actions), שמכיל את קובץ המפתח של חשבון השירות מקונסולת Firebase.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "מה לעשות"
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - reset-access
+      who:
+        description: "מספר טלפון (05X…) או כתובת אימייל של איש צוות"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-tools
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install the Firebase admin library
+        run: npm install firebase-admin@12.7.0 --no-audit --no-fund
+
+      - name: Run the account tool
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ACTION: ${{ inputs.action }}
+          WHO: ${{ inputs.who }}
+        run: node scripts/admin_tool.mjs

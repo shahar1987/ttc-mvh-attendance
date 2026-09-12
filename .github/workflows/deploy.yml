@@ -7,23 +7,26 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# לא מבטלים בנייה שכבר רצה: ביטול באמצע פרסום משאיר את האתר על גרסה ישנה בלי שום סימן אדום
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Privacy guard - no real phone numbers in the source
         run: |
           MATCHES=$(grep -rnoE '(\+?972[- ]?5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' \
-            part-a.js part-b.js index.html sw.js manifest.json README.md 2>/dev/null \
+            part-a.js part-b.js index.html sw.js manifest.json README.md tttm.json 2>/dev/null \
             | grep -vE '050-?1234567' || true)
           if [ -n "$MATCHES" ]; then
             echo "ERROR: phone-number-like values found in source files:"
@@ -110,6 +113,7 @@ jobs:
           if [ -f tttm.json ]; then cp tttm.json site/tttm.json; else echo '{"players":[]}' > site/tttm.json; fi
           grep -q "app.js?v=$VERSION" site/index.html || (echo "ERROR: cache-busting failed" && exit 1)
           grep -q "tailwind.css?v=$VERSION" site/index.html || (echo "ERROR: tailwind cache-busting failed" && exit 1)
+          ! grep -q '__BUILD_VERSION__' site/sw.js || (echo "ERROR: sw.js version placeholder not replaced" && exit 1)
 
       - name: Verify the build
         run: |
@@ -153,9 +157,22 @@ jobs:
         with:
           path: site
 
+      - name: Open an issue if the build failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "❌ הבנייה של האפליקציה נכשלה" \
+            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }} || true
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
