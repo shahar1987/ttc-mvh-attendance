@@ -2448,7 +2448,16 @@ function WhatsappModal({
     },
     x = () => {
       if (!o || !l.trim()) return;
-      (n(!0), window.open(ne(m, l), "_blank"), a && a(), s());
+      let popup = window.open(ne(m, l), "_blank");
+      // אם חוסם חלונות קופצים מנע את הפתיחה, window.open מחזיר null/undefined —
+      // אין לסמן את ההודעה כ"נשלחה" במקרה כזה, כי ההורה לא קיבל כלום.
+      if (!popup) {
+        window.alert(
+          "הדפדפן חסם את פתיחת הוואטסאפ (חוסם חלונות קופצים). יש לאפשר חלונות קופצים לאתר ולנסות שוב — ההודעה לא סומנה כנשלחה.",
+        );
+        return;
+      }
+      (n(!0), a && a(), s());
     };
   return e.createElement(
     "div",

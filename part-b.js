@@ -1576,6 +1576,10 @@ function re({
       .join("|"),
     dayKey = t.id + "|" + m,
     dirtyRef = e.useRef(null),
+    // מזהי שחקנים שסומנו בפועל בסשן העריכה הנוכחי (בניגוד לכלל הרשאה — זה מעקב
+    // עריכה מקומי). נשמרים רק אלה כדי שמאמן שני שפותח את אותה קבוצה/תאריך לא
+    // ידרוס בשמירה שלו שחקנים שהוא עצמו לא נגע בהם (ראו פונקציית A למטה).
+    touchedRef = e.useRef(new Set()),
     isDirty = () => dirtyRef.current === dayKey,
     confirmLeave = () =>
       !isDirty() ||
@@ -1606,6 +1610,7 @@ function re({
   let C = (p, w) => {
       u &&
         ((dirtyRef.current = dayKey),
+        touchedRef.current.add(p),
         h((k) => ({ ...k, [p]: k[p] === w ? null : w })));
     },
     d = (p) => {
@@ -1613,6 +1618,7 @@ function re({
       let w = {};
       (n.forEach((k) => {
         w[k.id] = p;
+        touchedRef.current.add(k.id);
       }),
         (dirtyRef.current = dayKey),
         h(w));
@@ -1621,14 +1627,20 @@ function re({
       (r(!0), N(""));
       try {
         let p = Te(P),
-          saved = {};
-        (n.forEach((w) => {
+          saved = { ...x };
+        // רק שחקנים שנגעו בהם בפועל בעריכה הזו נכתבים לשרת — לא כל השחקנים
+        // בקבוצה. אחרת מאמן ששומר שני, בזמן שהמסך שלו לא התעדכן מהמאמן
+        // הראשון (ראו isDirty למעלה), היה דורס בשקט את הסימונים של הראשון
+        // לכל שחקן שהוא עצמו לא סימן.
+        (Array.from(touchedRef.current).forEach((pid) => {
+          let w = n.find((p2) => p2.id === pid);
+          if (!w) return;
           let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
             prev = l.find(
               (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
             ),
             st2 = x[w.id] || null;
-          if (((saved[w.id] = st2), !st2)) {
+          if (!st2) {
             p.delete(k);
             return;
           }
@@ -1648,6 +1660,7 @@ function re({
         }),
           await p.commit(),
           (dirtyRef.current = null),
+          touchedRef.current.clear(),
           h(saved),
           f(!1));
       } catch (p) {
@@ -1667,7 +1680,8 @@ function re({
         "button",
         {
           onClick: () => {
-            confirmLeave() && ((dirtyRef.current = null), i());
+            confirmLeave() &&
+              ((dirtyRef.current = null), touchedRef.current.clear(), i());
           },
           className:
             "flex items-center gap-1.5 text-sm text-slate-500 self-start",
@@ -1695,7 +1709,9 @@ function re({
               onChange: (v) => {
                 v.target.value &&
                   confirmLeave() &&
-                  ((dirtyRef.current = null), setSelDate(v.target.value));
+                  ((dirtyRef.current = null),
+                  touchedRef.current.clear(),
+                  setSelDate(v.target.value));
               },
               className:
                 "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
@@ -1706,6 +1722,7 @@ function re({
                 onClick: () => {
                   confirmLeave() &&
                     ((dirtyRef.current = null),
+                    touchedRef.current.clear(),
                     setSelDate(today),
                     setShowDatePicker(!1));
                 },

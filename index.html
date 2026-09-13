@@ -23,11 +23,14 @@
 <body>
   <div id="root"></div>
   <div id="boot-error" style="display:none;padding:24px;text-align:center;font-size:14px;color:#b91c1c;direction:rtl"></div>
+  <div id="update-banner" style="display:none;position:fixed;inset-inline:0;bottom:0;padding:10px 16px;background:#172554;color:#fff;font-size:13px;text-align:center;direction:rtl;z-index:9999;cursor:pointer">
+    גרסה חדשה זמינה — לחצו לרענון
+  </div>
   <script type="module">
     function showError(msg) {
       var el = document.getElementById('boot-error');
       el.style.display = 'block';
-      el.textContent = '\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d1\u05d8\u05e2\u05d9\u05e0\u05d4: ' + msg;
+      el.textContent = 'שגיאה בטעינה: ' + msg;
     }
     window.addEventListener('error', function (e) { showError(e.message || String(e.error)); });
     window.addEventListener('unhandledrejection', function (e) { showError(String(e.reason)); });
@@ -38,6 +41,16 @@
         navigator.serviceWorker.register('./sw.js').catch(function (e) {
           console.warn('Service worker registration failed:', e);
         });
+      });
+
+      // כשגרסה חדשה של ה-service worker תופסת שליטה על טאב שכבר פתוח (למשל
+      // טאבלט של מועדון שנשאר פתוח ימים), הקוד שכבר רץ בזיכרון נשאר ישן עד
+      // רענון. במקום להשאיר את זה תקוע בלי שהמאמן ישים לב, מציגים באנר קטן
+      // שמזמין לרענן — לא מרעננים אוטומטית כדי לא לאבד סימוני נוכחות שטרם נשמרו.
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        var el = document.getElementById('update-banner');
+        el.style.display = 'block';
+        el.addEventListener('click', function () { window.location.reload(); });
       });
     }
   </script>
