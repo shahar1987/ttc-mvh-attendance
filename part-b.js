@@ -1394,6 +1394,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     [showAll, setShowAll] = b(!1),
     [sync, setSync] = b(null),
     [showMapping, setShowMapping] = b(!1),
+    [showPaid, setShowPaid] = b(!1),
     [syncRequest, setSyncRequest] = b(null),
     [mappings, setMappings] = b([]),
     [drafts, setDrafts] = b({}),
@@ -1598,7 +1599,25 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       .filter((m) => m.players.length > 0),
     totalNotPaying = t.filter(
       (m) => m.isActive && !m.deleted && m.notPaying && !excludedGroupIds.has(m.groupId),
-    ).length;
+    ).length,
+    // "שילמו" = שחקן פעיל בקבוצה שממופה לקובץ המתנ"ס שאינו מסומן כלא משלם,
+    // כלומר הקובץ זיהה אותו כמשלם (או שאישרת אותו ידנית).
+    coveredGroupIds = new Set(mappings.map((m) => m.groupId)),
+    paidByGroup = s
+      .map((g) => ({
+        group: g,
+        players: t.filter(
+          (p) =>
+            p.isActive &&
+            !p.deleted &&
+            p.groupId === g.id &&
+            coveredGroupIds.has(p.groupId) &&
+            !excludedGroupIds.has(p.groupId) &&
+            !p.notPaying,
+        ),
+      }))
+      .filter((x) => x.players.length > 0),
+    totalPaid = paidByGroup.reduce((n, x) => n + x.players.length, 0);
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
@@ -1731,9 +1750,13 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                       className:
                         c.kind === "typo" || c.kind === "other-group"
                           ? "text-[10px] text-emerald-600"
-                          : "text-[10px] text-amber-600",
+                          : c.kind === "phone-family"
+                            ? "text-[10px] text-blue-600"
+                            : "text-[10px] text-amber-600",
                     },
-                    c.kind === "typo"
+                    c.kind === "phone-family"
+                      ? " \xB7 אותו טלפון בקובץ — לוודא מי מבני המשפחה"
+                      : c.kind === "typo"
                       ? " \xB7 כנראה אותו אדם"
                       : c.kind === "other-group"
                         ? " \xB7 שם זהה לגמרי, רק הקבוצה שונה"
@@ -1810,6 +1833,58 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
           ),
         ),
+      ),
+    e.createElement(
+      "button",
+      {
+        onClick: () => setShowPaid((v) => !v),
+        className: "self-start text-xs text-emerald-800 underline",
+      },
+      showPaid ? "הסתר את מי ששילם" : `שילמו (${totalPaid})`,
+    ),
+    showPaid &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "flex flex-col gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3",
+        },
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-emerald-800 leading-relaxed" },
+          "שחקנים שמופיעים גם בקובץ התשלומים וגם באפליקציה, או שאישרת אותם ידנית. מי שלא ברשימה הזו ושייך לקבוצה ממופה מופיע למטה כלא משלם.",
+        ),
+        totalPaid === 0
+          ? e.createElement(
+              "p",
+              { className: "text-xs text-emerald-900" },
+              "עדיין אף אחד לא זוהה כמשלם — הרץ סנכרון כדי לעדכן.",
+            )
+          : paidByGroup.map((x) =>
+              e.createElement(
+                "div",
+                { key: x.group.id, className: "flex flex-col gap-0.5" },
+                e.createElement(
+                  "p",
+                  { className: "text-xs font-semibold text-emerald-900" },
+                  `${x.group.name} (${x.players.length})`,
+                ),
+                x.players.map((p) =>
+                  e.createElement(
+                    "p",
+                    { key: p.id, className: "text-xs text-emerald-800" },
+                    p.name,
+                    p.notPayingSource === "manual"
+                      ? e.createElement(
+                          "span",
+                          { className: "text-[10px] text-emerald-600" },
+                          " \xB7 אושר ידנית",
+                        )
+                      : null,
+                  ),
+                ),
+              ),
+            ),
       ),
     !RO &&
       e.createElement(
