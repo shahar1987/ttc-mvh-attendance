@@ -17,6 +17,10 @@
 //   4. לכל שורה בקובץ: מזהים לאיזו קבוצה באפליקציה היא שייכת דרך המיפוי,
 //      ומנסים להתאים שם שחקן (שם מלא, או משפחה+פרטי בנפרד, בשני סדרים
 //      אפשריים) לשחקן פעיל באותה קבוצה בלבד. שחקן שנמצא בוודאות = שילם.
+//      אם ההתאמה המדויקת נכשלה אבל יש באותה קבוצה שחקן עם אותו שם משפחה
+//      ושם פרטי שונה/משובש — זה לא מסומן כשילם, אלא נרשם כהצעת תיקון שם
+//      (nameSuggestions) שהמנהל מאשר באפליקציה בלחיצה אחת. שני שחקנים פעילים
+//      עם אותו שם מלא בדיוק נרשמים כ-ambiguousNames (צריך להבחין ביניהם).
 //   5. כל שחקן פעיל בקבוצה ממופה (ולא מוחרגת) שלא נמצא בקובץ מסומן
 //      notPaying=true. שחקן שסומן ידנית באפליקציה (notPayingSource === "manual")
 //      לא נדרס אוטומטית — רק המנהל שמשנה אותו ידנית משנה אותו. סימוני sync
@@ -56,6 +60,80 @@ const DEFAULT_PAYMENT_MAPPINGS = [
 
 export function normalise(s) {
   return (s || "").toString().trim().replace(/\s+/g, " ");
+}
+
+// ניקוי שם לצורך השוואה: מסיר סימני כיוון בלתי-נראים ותווי זבל שנכנסים לפעמים
+// לייצוא מהמתנ"ס (למשל "אופנהיים?‎ דב"), ומשאיר אותיות, ספרות וגרש/גרשיים.
+export function cleanName(s) {
+  return normalise(
+    (s || "")
+      .toString()
+      .replace(/[​-‏‪-‮⁦-⁩]/g, "")
+      .replace(/[^֐-׿a-zA-Z0-9'"׳״\s]/g, " "),
+  );
+}
+
+// מרחק עריכה (Levenshtein) — לזיהוי טעויות כתיב קטנות בשם
+export function levenshtein(a, b) {
+  a = a || "";
+  b = b || "";
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// שם משפחה נחשב זהה אם הוא זהה ממש, או שונה בתו אחד בשמות ארוכים (4+ אותיות).
+// בשמות קצרים ("כהן", "לוי") לא מרשים סטייה — אחרת "כהן" ו"להן" ייחשבו זהים.
+export function familyMatches(token, family) {
+  if (!token || !family) return false;
+  if (token === family) return true;
+  if (family.length <= 3 || token.length <= 3) return false;
+  return levenshtein(token, family) <= 1;
+}
+
+// שם פרטי נחשב "אותו שם עם טעות/קיצור" אם אחד הוא תחילית של השני (אבי/אביב)
+// או שמרחק העריכה ביניהם קטן.
+export function firstNameSimilar(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const short = a.length <= b.length ? a : b;
+  const long = a.length <= b.length ? b : a;
+  if (short.length >= 3 && long.startsWith(short)) return true;
+  return levenshtein(a, b) <= (Math.min(a.length, b.length) >= 5 ? 2 : 1);
+}
+
+// מחפש בקבוצה שחקנים שנראים כמו אותו אדם למרות שההתאמה המדויקת נכשלה:
+// שם משפחה תואם, והשם הפרטי שונה (טעות כתיב, כינוי, או שם אחר לגמרי).
+// לעולם לא מסמן אוטומטית ששילם — רק מציע למנהל לאשר באפליקציה.
+export function fuzzyMatches(pool, fileFamily, filePersonal) {
+  const out = [];
+  for (const p of pool) {
+    const tokens = cleanName(p.name).split(" ").filter(Boolean);
+    if (tokens.length < 2) continue;
+    const famIdx = tokens.findIndex((tk) => familyMatches(tk, fileFamily));
+    if (famIdx === -1) continue;
+    const rest = tokens.filter((_, i) => i !== famIdx).join(" ");
+    if (!rest) continue;
+    out.push({
+      playerId: p.id,
+      kind: firstNameSimilar(rest, filePersonal) ? "typo" : "family-only",
+    });
+  }
+  // קודם ההשערות החזקות (טעות כתיב), אחר כך "רק שם משפחה זהה"
+  return out.sort((x, y) => (x.kind === "typo" ? -1 : 1) - (y.kind === "typo" ? -1 : 1));
 }
 
 export function parseCsv(text) {
@@ -148,6 +226,22 @@ async function main() {
   admin.initializeApp({ credential: admin.credential.cert(sa) });
   const db = admin.firestore();
 
+  // מצב "ondemand" = הריצה הקצרה שרצה כל כמה דקות ובודקת רק אם המנהל לחץ
+  // "רענון עכשיו" באפליקציה. אם אין בקשה ממתינה — יוצאים מיד בלי לגעת בכלום.
+  const requestRef = db.collection("system").doc("paymentSyncRequest");
+  const syncMode = process.env.SYNC_MODE === "ondemand" ? "ondemand" : "full";
+  if (syncMode === "ondemand") {
+    const reqSnap = await requestRef.get();
+    const req = reqSnap.exists ? reqSnap.data() : null;
+    const pending = req && req.requestedAt && (!req.handledAt || req.handledAt < req.requestedAt);
+    if (!pending) {
+      console.log("אין בקשת רענון ממתינה — לא בוצע דבר");
+      return;
+    }
+    console.log("התקבלה בקשת רענון מהאפליקציה — מתחיל סנכרון");
+    await requestRef.set({ startedAt: new Date().toISOString() }, { merge: true });
+  }
+
   const jwt = new JWT({
     email: sa.client_email,
     key: sa.private_key,
@@ -193,6 +287,7 @@ async function main() {
   const files = (await listRes.json()).files || [];
   if (!files.length) {
     console.error("לא נמצא אף קובץ בתיקיית הדרייב — לא בוצע עדכון");
+    await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
     process.exit(1);
   }
   const file = files[0];
@@ -228,9 +323,13 @@ async function main() {
         unmatchedCount: 0,
         unmatchedNames: [],
         unmatchedGroupLabels: [],
+        sameFamilyFlags: [],
+        nameSuggestions: [],
+        ambiguousNames: [],
       },
       { merge: true },
     );
+    await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
     return;
   }
   const header = rows[0];
@@ -247,9 +346,18 @@ async function main() {
     activeByGroup.get(p.groupId).push(p);
   }
 
+  // הצעות תיקון שם שהמנהל כבר סימן "להתעלם" — לא חוזרות בכל ריצה
+  const ignoresSnap = await db.collection("system").doc("paymentSyncIgnores").get();
+  const ignoredKeys = new Set(
+    (ignoresSnap.exists ? ignoresSnap.data().keys || [] : []).map((k) => String(k)),
+  );
+
   const paidIds = new Set();
-  const unmatchedNames = [];
+  const unmatchedNames = []; // שמות מהקובץ שלא נמצא להם שום קצה חוט באפליקציה
+  const ambiguousNames = []; // שמות שמופיעים ביותר משחקן פעיל אחד באותה קבוצה
+  const nameSuggestions = []; // { groupId, fileName, candidates:[{playerId,kind}] }
   const unmatchedGroupLabelsSet = new Set();
+  const matchedFamilyRows = []; // { groupId, family, playerId } — לזיהוי שמות משפחה כפולים בין משלמים
   for (const row of dataRows) {
     const rawGroupLabel = cols.groupCol !== -1 ? normalise(row[cols.groupCol]) : "";
     const mapping = rawGroupLabel ? mappingByLabel.get(rawGroupLabel) : null;
@@ -259,17 +367,50 @@ async function main() {
     }
     if (!mapping) continue;
     const pool = activeByGroup.get(mapping.groupId) || [];
-    const names = candidateNames(row, cols);
+    const names = candidateNames(row, cols).map(cleanName).filter(Boolean);
     if (!names.length) continue;
+    const fileFamily = cols.familyCol !== -1 ? cleanName(row[cols.familyCol]) : "";
+    const filePersonal = cols.personalCol !== -1 ? cleanName(row[cols.personalCol]) : "";
     const nameSet = new Set(names);
-    const candidates = pool.filter((p) => nameSet.has(normalise(p.name)));
+    const candidates = pool.filter((p) => nameSet.has(cleanName(p.name)));
     if (candidates.length === 1) {
       paidIds.add(candidates[0].id);
+      if (fileFamily) {
+        matchedFamilyRows.push({
+          groupId: mapping.groupId,
+          family: fileFamily,
+          playerId: candidates[0].id,
+        });
+      }
+    } else if (candidates.length > 1) {
+      // שני שחקנים פעילים עם אותו שם מלא בדיוק — אי אפשר לדעת מי מהם שילם.
+      // המנהל צריך להבחין ביניהם באפליקציה (למשל להוסיף שם אב/כינוי).
+      ambiguousNames.push(names[0]);
     } else {
-      // 0 התאמות, או יותר מהתאמה אחת (שני ילדים באותו שם) — לא ניתן לשייך
-      // באופן חד-משמעי, כדי לא לסמן ילד לא נכון כמי ששילם.
-      unmatchedNames.push(names[0]);
+      // אין התאמה מדויקת — מחפשים "כמעט התאמה" (שם משפחה תואם, שם פרטי שונה)
+      // כדי להציע למנהל תיקון שם, במקום פשוט לסמן את השחקן כלא משלם.
+      const fuzzy = (fileFamily && filePersonal ? fuzzyMatches(pool, fileFamily, filePersonal) : [])
+        .filter((c) => !ignoredKeys.has(`${c.playerId}::${names[0]}`))
+        .slice(0, 4);
+      if (fuzzy.length) nameSuggestions.push({ groupId: mapping.groupId, fileName: names[0], candidates: fuzzy });
+      else unmatchedNames.push(names[0]);
     }
+  }
+
+  // שמות משפחה כפולים בין משלמים באותה קבוצה — לא שגיאה, אבל שווה להראות
+  // למנהל כדי שיוודא שהשמות באפליקציה מספיק ברורים ומובחנים (למשל להוסיף
+  // שם פרטי מלא יותר או כינוי) ולא יישען על ניחוש בהתאמה הבאה.
+  const familyGroups = new Map(); // key: groupId::family -> Set(playerId)
+  for (const { groupId, family, playerId } of matchedFamilyRows) {
+    const key = `${groupId}::${family}`;
+    if (!familyGroups.has(key)) familyGroups.set(key, new Set());
+    familyGroups.get(key).add(playerId);
+  }
+  const sameFamilyFlags = [];
+  for (const [key, idSet] of familyGroups) {
+    if (idSet.size < 2) continue;
+    const [groupId] = key.split("::");
+    sameFamilyFlags.push({ groupId, playerIds: Array.from(idSet) });
   }
 
   // שלב 5: כתיבה ל-Firestore — כל שחקן פעיל בקבוצה ממופה (ולא מוחרגת) ולא
@@ -308,14 +449,22 @@ async function main() {
       unmatchedCount: unmatchedNames.length,
       unmatchedNames,
       unmatchedGroupLabels: Array.from(unmatchedGroupLabelsSet),
+      sameFamilyFlags,
+      nameSuggestions,
+      ambiguousNames,
     },
     { merge: true },
   );
 
+  // מסמנים שבקשת הרענון (אם הייתה) טופלה — גם בריצה השבועית/ידנית
+  await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
+
   // רק מספרים ליומן הציבורי — לעולם לא שמות
   console.log(
     `הסתיים: ${paidIds.size} שחקנים ששילמו זוהו, ${unmatchedNames.length} שמות מהקובץ לא זוהו, ` +
-      `${unmatchedGroupLabelsSet.size} שמות קבוצה בקובץ בלי מיפוי, ${writes} עדכוני notPaying נכתבו`,
+      `${unmatchedGroupLabelsSet.size} שמות קבוצה בקובץ בלי מיפוי, ${writes} עדכוני notPaying נכתבו, ` +
+      `${sameFamilyFlags.length} קבוצות עם שם משפחה כפול בין משלמים, ` +
+      `${nameSuggestions.length} הצעות תיקון שם, ${ambiguousNames.length} שמות כפולים באפליקציה`,
   );
 }
 
