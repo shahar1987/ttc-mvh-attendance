@@ -1310,16 +1310,166 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       }),
   );
 }
+const PAYMENT_EXCLUDED_GROUP_NAME = "חוגים רמת כורזים";
+
+// מיפוי ברירת מחדל בין שמות הקבוצות כפי שהן מופיעות בקובץ המתנ"ס לבין הקבוצות
+// באפליקציה, כולל כמה אימונים בשבוע הרישום הזה אמור לכסות. נזרע פעם אחת
+// לאוסף paymentMappings אם הוא ריק (ראו אפקט הזריעה למטה) — משם והלאה זו
+// טבלה ניתנת לעריכה מלאה במסך, לא ערך קבוע בקוד. שורות עם "לאשר" בהערה
+// הן ניחוש סביר שטרם אומת מול המנהל.
+const DEFAULT_PAYMENT_MAPPINGS = [
+  { mtnsLabel: 'טנ"ש דפנה בוגרים 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "שני או חמישי" },
+  { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, note: "לאשר — שני וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתחילים 2', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 2, note: "לאשר — ראשון וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתקדמים 2', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 2, note: "לאשר — הקבוצה בפועל מתאמנת 3 פעמים בשבוע, זה רישום חלקי" },
+  { mtnsLabel: 'טנ"ש ישוב מתקדמים 3', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 3, note: "ראשון, שני וחמישי" },
+  { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, note: "לאשר — שני או רביעי" },
+  { mtnsLabel: 'טנ"ש כורזים מתחיל 2', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 2, note: "שני ורביעי" },
+  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, note: "שני ורביעי" },
+  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, note: "יום ראשון — בקובץ אין מספר ליד השם" },
+  { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
+  { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים?" },
+];
+
+function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, onDelete }) {
+  return e.createElement(
+    "div",
+    { className: "bg-white rounded-xl border border-slate-200 p-3 flex flex-col gap-2" },
+    e.createElement("input", {
+      value: row.mtnsLabel || "",
+      onChange: (ev) => onDraft(row.id, { mtnsLabel: ev.target.value }),
+      onBlur: () => onCommitText(row.id),
+      placeholder: 'שם הקבוצה בקובץ המתנ"ס',
+      className:
+        "w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-2.5 text-sm text-right outline-none focus:border-emerald-400",
+    }),
+    e.createElement(
+      "div",
+      { className: "flex items-center gap-2" },
+      e.createElement(
+        "select",
+        {
+          value: row.groupId || "",
+          onChange: (ev) => onCommitNow(row.id, { groupId: ev.target.value }),
+          className:
+            "flex-1 bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-sm text-right outline-none focus:border-emerald-400",
+        },
+        e.createElement("option", { value: "" }, "-- קבוצה באפליקציה --"),
+        groups.map((g) => e.createElement("option", { key: g.id, value: g.id }, g.name)),
+      ),
+      e.createElement("input", {
+        type: "number",
+        min: 0,
+        value: row.sessionsPerWeek === null || row.sessionsPerWeek === undefined ? "" : row.sessionsPerWeek,
+        onChange: (ev) =>
+          onCommitNow(row.id, {
+            sessionsPerWeek: ev.target.value === "" ? null : Number(ev.target.value),
+          }),
+        placeholder: "אימונים/שבוע",
+        className:
+          "w-28 bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-sm text-center outline-none focus:border-emerald-400",
+      }),
+      e.createElement(
+        "button",
+        {
+          onClick: () => onDelete(row.id),
+          className: "min-w-[36px] min-h-[36px] rounded-full bg-red-50 flex items-center justify-center shrink-0",
+          "aria-label": "מחק מיפוי",
+        },
+        e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
+      ),
+    ),
+    e.createElement("input", {
+      value: row.note || "",
+      onChange: (ev) => onDraft(row.id, { note: ev.target.value }),
+      onBlur: () => onCommitText(row.id),
+      placeholder: "הערה (לא חובה)",
+      className: "w-full bg-transparent text-xs text-slate-400 text-right outline-none",
+    }),
+  );
+}
+
 function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
   let [a, l] = b(""),
     [showAll, setShowAll] = b(!1),
-    [sync, setSync] = b(null);
+    [sync, setSync] = b(null),
+    [showMapping, setShowMapping] = b(!1),
+    [mappings, setMappings] = b([]),
+    [drafts, setDrafts] = b({}),
+    [newLabel, setNewLabel] = b(""),
+    [newGroupId, setNewGroupId] = b(""),
+    [newSessions, setNewSessions] = b(""),
+    seededRef = e.useRef(!1);
   j(() => {
     let unsub = ae(S(P, "system", "paymentSync"), (snap) =>
       setSync(snap.exists() ? snap.data() : null),
     );
     return unsub;
   }, []);
+  j(() => {
+    let unsub = ae(M(P, "paymentMappings"), (snap) => {
+      let rows = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((x, y) => (x.mtnsLabel || "").localeCompare(y.mtnsLabel || "", "he"));
+      setMappings(rows);
+      if (!RO && snap.empty && !seededRef.current) {
+        seededRef.current = !0;
+        fsGetDoc(S(P, "system", "paymentMappingsSeeded")).then((flagSnap) => {
+          if (flagSnap.exists()) return;
+          let batch = Te(P);
+          DEFAULT_PAYMENT_MAPPINGS.forEach((row, idx) =>
+            batch.set(S(P, "paymentMappings", `seed-${idx}`), row),
+          );
+          batch.set(S(P, "system", "paymentMappingsSeeded"), {
+            seededAt: new Date().toISOString(),
+          });
+          batch.commit().catch(() => {});
+        });
+      }
+    });
+    return unsub;
+  }, [RO]);
+  let mappableGroups = s.filter((g) => g.name !== PAYMENT_EXCLUDED_GROUP_NAME),
+    excludedGroupIds = new Set(
+      s.filter((g) => g.name === PAYMENT_EXCLUDED_GROUP_NAME).map((g) => g.id),
+    ),
+    updateDraft = (id, patch) =>
+      setDrafts((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } })),
+    commitMappingNow = (id, patch) =>
+      O(S(P, "paymentMappings", id), patch).catch((err) =>
+        alert("שמירת המיפוי נכשלה: " + (err.message || err)),
+      ),
+    commitMappingText = (id) => {
+      let patch = drafts[id];
+      if (!patch) return;
+      commitMappingNow(id, patch);
+      setDrafts((d) => {
+        let n = { ...d };
+        delete n[id];
+        return n;
+      });
+    },
+    deleteMapping = (id) => {
+      confirm("למחוק את שורת המיפוי הזו?") &&
+        Ee(S(P, "paymentMappings", id)).catch((err) =>
+          alert("מחיקה נכשלה: " + (err.message || err)),
+        );
+    },
+    addMapping = () => {
+      if (!newLabel.trim()) return;
+      V(M(P, "paymentMappings"), {
+        mtnsLabel: newLabel.trim(),
+        groupId: newGroupId || null,
+        sessionsPerWeek: newSessions === "" ? null : Number(newSessions),
+        note: "",
+      })
+        .then(() => {
+          setNewLabel("");
+          setNewGroupId("");
+          setNewSessions("");
+        })
+        .catch((err) => alert("הוספת מיפוי נכשלה: " + (err.message || err)));
+    };
   let toggle = (p) => {
       RO ||
         O(S(P, "players", p.id), {
@@ -1329,6 +1479,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     },
     base = t
       .filter((m) => m.isActive && !m.deleted)
+      .filter((m) => !excludedGroupIds.has(m.groupId))
       .filter((m) => showAll || m.notPaying)
       .filter(
         (m) =>
@@ -1338,7 +1489,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       .map((m) => ({ group: m, players: base.filter((o) => o.groupId === m.id) }))
       .filter((m) => m.players.length > 0),
     totalNotPaying = t.filter(
-      (m) => m.isActive && !m.deleted && m.notPaying,
+      (m) => m.isActive && !m.deleted && m.notPaying && !excludedGroupIds.has(m.groupId),
     ).length;
   return e.createElement(
     "div",
@@ -1376,6 +1527,98 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           )
         : null,
     ),
+    !RO &&
+      e.createElement(
+        "button",
+        {
+          onClick: () => setShowMapping((v) => !v),
+          className: "self-start text-xs text-blue-900 underline",
+        },
+        showMapping
+          ? "הסתר מיפוי קבוצות מתנ\"ס"
+          : `מיפוי קבוצות מתנ"ס (${mappings.length})`,
+      ),
+    !RO &&
+      showMapping &&
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3" },
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-500 leading-relaxed" },
+          'כאן קובעים לאיזו קבוצה באפליקציה כל שם קבוצה בקובץ המתנ"ס מתאים, וכמה אימונים בשבוע הרישום הזה אמור לכסות. המספר ניתן לעריכה חופשית בכל עת ולא קבוע בקוד. קבוצת "' +
+            PAYMENT_EXCLUDED_GROUP_NAME +
+            '" לא מוצגת כאן ולא נכללת במסך הזה כרגע.',
+        ),
+        mappings.map((row) =>
+          e.createElement(PaymentMappingRow, {
+            key: row.id,
+            row: { ...row, ...(drafts[row.id] || {}) },
+            groups: mappableGroups,
+            onDraft: updateDraft,
+            onCommitText: commitMappingText,
+            onCommitNow: commitMappingNow,
+            onDelete: deleteMapping,
+          }),
+        ),
+        mappings.length === 0 &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-slate-400 text-center py-2" },
+            "אין עדיין שורות מיפוי",
+          ),
+        e.createElement(
+          "div",
+          { className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-col gap-2" },
+          e.createElement(
+            "p",
+            { className: "text-xs font-semibold text-emerald-800" },
+            "הוספת שורת מיפוי חדשה",
+          ),
+          e.createElement("input", {
+            value: newLabel,
+            onChange: (ev) => setNewLabel(ev.target.value),
+            placeholder: 'שם הקבוצה בקובץ המתנ"ס (למשל: טנ"ש דפנה בוגרים 1)',
+            className:
+              "w-full bg-white border border-emerald-200 rounded-lg py-2 px-2.5 text-sm text-right outline-none",
+          }),
+          e.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            e.createElement(
+              "select",
+              {
+                value: newGroupId,
+                onChange: (ev) => setNewGroupId(ev.target.value),
+                className:
+                  "flex-1 bg-white border border-emerald-200 rounded-lg py-2 px-2 text-sm text-right outline-none",
+              },
+              e.createElement("option", { value: "" }, "-- קבוצה באפליקציה --"),
+              mappableGroups.map((g) => e.createElement("option", { key: g.id, value: g.id }, g.name)),
+            ),
+            e.createElement("input", {
+              type: "number",
+              min: 0,
+              value: newSessions,
+              onChange: (ev) => setNewSessions(ev.target.value),
+              placeholder: "אימונים/שבוע",
+              className:
+                "w-28 bg-white border border-emerald-200 rounded-lg py-2 px-2 text-sm text-center outline-none",
+            }),
+          ),
+          e.createElement(
+            "button",
+            {
+              onClick: addMapping,
+              disabled: !newLabel.trim(),
+              className:
+                "self-start flex items-center gap-1 text-xs font-semibold text-emerald-700 disabled:opacity-40",
+            },
+            e.createElement(K, { className: "w-3.5 h-3.5" }),
+            "הוספה",
+          ),
+        ),
+      ),
     e.createElement(
       "div",
       { className: "relative" },
