@@ -168,6 +168,77 @@ export function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sa
   return exact.concat(similar);
 }
 
+// --- זיהוי לפי טלפון ---------------------------------------------------
+// הטלפון הוא המזהה החזק ביותר שיש בקובץ: הוא לא משתנה גם כשהשם כתוב אחרת.
+// אבל בקובץ המתנ"ס זה הטלפון של ההורה, כלומר הוא מזהה בוודאות את המשפחה —
+// לא את הילד. לאחים יש אותו מספר בדיוק, ולכן הוא תמיד משולב עם השם הפרטי
+// ולעולם לא מסמן לבדו מי שילם.
+
+// משאיר ספרות בלבד ומוריד קידומת בינלאומית/אפס מוביל, כדי ש-"972523332422",
+// "0523332422" ו-"052" + "3332422" (שתי עמודות בקובץ) יהיו אותו מפתח.
+export function normalisePhone(s) {
+  let d = (s || "").toString().replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("972")) d = d.slice(3);
+  if (d.startsWith("0")) d = d.slice(1);
+  if (d.length < 8 || d.length > 10) return "";
+  return d;
+}
+
+export function detectPhoneColumns(header) {
+  const cols = [];
+  header.forEach((h, i) => {
+    const s = (h || "").toString();
+    if (s.includes("טלפון") || s.includes("נייד") || s.includes("סלולר") || s.startsWith("טל"))
+      cols.push(i);
+  });
+  return cols;
+}
+
+// כל המספרים שאפשר לחלץ משורה: כל עמודת טלפון בנפרד, וגם צירוף של עמודות
+// סמוכות (בקובץ המתנ"ס הקידומת והמספר יושבים בשתי עמודות נפרדות).
+export function rowPhones(row, phoneCols) {
+  const out = new Set();
+  const parts = phoneCols.map((i) => (row[i] || "").toString().replace(/\D/g, ""));
+  parts.forEach((p, idx) => {
+    const single = normalisePhone(p);
+    if (single) out.add(single);
+    const next = parts[idx + 1];
+    if (p && next) {
+      const joined = normalisePhone(p + next);
+      if (joined) out.add(joined);
+    }
+  });
+  return Array.from(out);
+}
+
+export function buildPhoneIndex(players) {
+  const idx = new Map();
+  for (const p of players) {
+    for (const raw of [p.parentPhone, p.phone, p.mobile]) {
+      const key = normalisePhone(raw);
+      if (!key) continue;
+      if (!idx.has(key)) idx.set(key, []);
+      if (!idx.get(key).some((x) => x.id === p.id)) idx.get(key).push(p);
+    }
+  }
+  return idx;
+}
+
+// מבין השחקנים שחולקים את הטלפון של השורה — מי מהם באמת האדם שבשורה,
+// לפי השם הפרטי (כולל שיבושים קלים: "אביב" מול "אביבי").
+export function playersMatchingPhone(byPhone, nameSet, filePersonal) {
+  return byPhone.filter((p) => {
+    const clean = cleanName(p.name);
+    if (nameSet.has(clean)) return true;
+    if (!filePersonal) return false;
+    return clean
+      .split(" ")
+      .filter(Boolean)
+      .some((tk) => tk === filePersonal || firstNameSimilar(tk, filePersonal));
+  });
+}
+
 export function parseCsv(text) {
   let rows = [];
   let lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
@@ -366,6 +437,7 @@ async function main() {
   }
   const header = rows[0];
   const cols = detectColumns(header);
+  const phoneCols = detectPhoneColumns(header);
   const dataRows = rows.slice(1).filter((r) => r.some((c) => (c || "").trim()));
 
   // שלב 4: התאמת כל שורה לשחקן פעיל, דרך המיפוי
@@ -385,6 +457,9 @@ async function main() {
   const ignoredKeys = new Set(
     (ignoresSnap.exists ? ignoresSnap.data().keys || [] : []).map((k) => String(k)),
   );
+
+  const playersByPhone = buildPhoneIndex(activePlayers);
+  let phoneMatchedCount = 0;
 
   const paidIds = new Set();
   const unmatchedNames = []; // שמות מהקובץ שלא נמצא להם שום קצה חוט באפליקציה
@@ -423,6 +498,39 @@ async function main() {
     } else {
       // אין התאמה מדויקת — מחפשים "כמעט התאמה" (שם משפחה תואם, שם פרטי שונה)
       // כדי להציע למנהל תיקון שם, במקום פשוט לסמן את השחקן כלא משלם.
+      // שלב א': טלפון. מזהה את המשפחה בוודאות גם כששם המשפחה או הקבוצה שונים;
+      // השם הפרטי הוא שמכריע מי מבני המשפחה זה. אם אי אפשר להכריע — שואלים.
+      const byPhone = [];
+      for (const key of rowPhones(row, phoneCols))
+        for (const p of playersByPhone.get(key) || [])
+          if (!byPhone.some((x) => x.id === p.id)) byPhone.push(p);
+      if (byPhone.length) {
+        const named = playersMatchingPhone(byPhone, nameSet, filePersonal);
+        if (named.length === 1) {
+          paidIds.add(named[0].id);
+          phoneMatchedCount++;
+          if (fileFamily)
+            matchedFamilyRows.push({
+              groupId: named[0].groupId,
+              family: fileFamily,
+              playerId: named[0].id,
+            });
+          continue;
+        }
+        const phoneCandidates = (named.length > 1 ? named : byPhone)
+          .map((p) => ({ playerId: p.id, kind: "phone-family" }))
+          .filter((c) => !ignoredKeys.has(`${c.playerId}::${names[0]}`))
+          .slice(0, 4);
+        if (phoneCandidates.length) {
+          nameSuggestions.push({
+            groupId: mapping.groupId,
+            fileName: names[0],
+            candidates: phoneCandidates,
+          });
+          continue;
+        }
+      }
+      // שלב ב': שם בלבד (כשאין טלפון בקובץ, או שהוא לא מוכר לאף אחד באפליקציה)
       const inGroup = fileFamily && filePersonal ? fuzzyMatches(pool, fileFamily, filePersonal) : [];
       // ואם גם הקבוצה בקובץ שונה מהקבוצה באפליקציה — מחפשים בשאר הקבוצות
       const cross = crossGroupMatches(
@@ -432,7 +540,13 @@ async function main() {
         filePersonal,
         mapping.groupId,
       );
-      const rank = { "other-group": 0, typo: 1, "other-group-typo": 2, "family-only": 3 };
+      const rank = {
+        "phone-family": 0,
+        "other-group": 1,
+        typo: 2,
+        "other-group-typo": 3,
+        "family-only": 4,
+      };
       const fuzzy = inGroup
         .concat(cross)
         .filter((c) => !ignoredKeys.has(`${c.playerId}::${names[0]}`))
@@ -511,7 +625,8 @@ async function main() {
 
   // רק מספרים ליומן הציבורי — לעולם לא שמות
   console.log(
-    `הסתיים: ${paidIds.size} שחקנים ששילמו זוהו, ${unmatchedNames.length} שמות מהקובץ לא זוהו, ` +
+    `הסתיים: ${paidIds.size} שחקנים ששילמו זוהו (${phoneMatchedCount} מהם לפי טלפון), ` +
+      `${unmatchedNames.length} שמות מהקובץ לא זוהו, ` +
       `${unmatchedGroupLabelsSet.size} שמות קבוצה בקובץ בלי מיפוי, ${writes} עדכוני notPaying נכתבו, ` +
       `${sameFamilyFlags.length} קבוצות עם שם משפחה כפול בין משלמים, ` +
       `${nameSuggestions.length} הצעות תיקון שם, ${ambiguousNames.length} שמות כפולים באפליקציה`,
