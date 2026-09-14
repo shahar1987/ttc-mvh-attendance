@@ -1400,6 +1400,9 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     [newLabel, setNewLabel] = b(""),
     [newGroupId, setNewGroupId] = b(""),
     [newSessions, setNewSessions] = b(""),
+    // הצעות שכבר טופלו בלחיצה (אושרו או נדחו) — נעלמות מיד מהמסך, בלי לחכות
+    // לסנכרון הבא שמחשב מחדש את רשימת ההצעות בשרת
+    [handledSuggestions, setHandledSuggestions] = b({}),
     seededRef = e.useRef(!1);
   j(() => {
     let unsub = ae(S(P, "system", "paymentSync"), (snap) =>
@@ -1453,15 +1456,36 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         fileName: sg.fileName,
         group: s.find((g) => g.id === sg.groupId),
         candidates: (sg.candidates || [])
-          .map((c) => ({ ...c, player: t.find((p) => p.id === c.playerId) }))
-          .filter((c) => c.player && c.player.isActive && !c.player.deleted),
+          .map((c) => {
+            let player = t.find((p) => p.id === c.playerId);
+            return {
+              ...c,
+              player,
+              // קבוצת השחקן באפליקציה — מוצגת כשהיא שונה מהקבוצה שבקובץ
+              otherGroupName:
+                player && player.groupId !== sg.groupId
+                  ? s.find((g) => g.id === player.groupId)?.name || ""
+                  : "",
+            };
+          })
+          .filter(
+            (c) =>
+              c.player &&
+              c.player.isActive &&
+              !c.player.deleted &&
+              !handledSuggestions[`${c.playerId}::${sg.fileName}`],
+          ),
       }))
       .filter((sg) => sg.candidates.length > 0),
+    markSuggestionHandled = (playerId, fileName) =>
+      setHandledSuggestions((h) => ({ ...h, [`${playerId}::${fileName}`]: !0 })),
     // אישור הצעת תיקון: מעדכן את השם באפליקציה לשם שבקובץ ומסמן ששילם — בלחיצה אחת
     applySuggestion = (playerId, fileName, currentName) => {
       if (
         !confirm(
-          `לשנות את השם באפליקציה מ"${currentName}" ל"${fileName}" ולסמן ששילם?`,
+          currentName === fileName
+            ? `לסמן ש"${fileName}" שילם?`
+            : `לשנות את השם באפליקציה מ"${currentName}" ל"${fileName}" ולסמן ששילם?`,
         )
       )
         return;
@@ -1469,7 +1493,9 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         name: fileName,
         notPaying: !1,
         notPayingSource: "sync",
-      }).catch((err) => alert("העדכון נכשל: " + (err.message || err)));
+      })
+        .then(() => markSuggestionHandled(playerId, fileName))
+        .catch((err) => alert("העדכון נכשל: " + (err.message || err)));
     },
     // דחיית הצעה: נשמרת כדי שלא תחזור בכל סנכרון
     ignoreSuggestion = (playerId, fileName) => {
@@ -1484,6 +1510,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             { merge: !0 },
           );
         })
+        .then(() => markSuggestionHandled(playerId, fileName))
         .catch((err) => alert("השמירה נכשלה: " + (err.message || err)));
     },
     syncPending =
@@ -1673,17 +1700,29 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                   "span",
                   { className: "text-xs text-slate-600" },
                   `באפליקציה: ${c.player.name}`,
-                  c.kind === "typo"
+                  c.otherGroupName
                     ? e.createElement(
                         "span",
-                        { className: "text-[10px] text-emerald-600" },
-                        " \xB7 כנראה אותו אדם",
+                        { className: "text-[10px] text-slate-400" },
+                        ` \xB7 בקבוצה ${c.otherGroupName}`,
                       )
-                    : e.createElement(
-                        "span",
-                        { className: "text-[10px] text-amber-600" },
-                        " \xB7 רק שם משפחה זהה",
-                      ),
+                    : null,
+                  e.createElement(
+                    "span",
+                    {
+                      className:
+                        c.kind === "typo" || c.kind === "other-group"
+                          ? "text-[10px] text-emerald-600"
+                          : "text-[10px] text-amber-600",
+                    },
+                    c.kind === "typo"
+                      ? " \xB7 כנראה אותו אדם"
+                      : c.kind === "other-group"
+                        ? " \xB7 שם זהה לגמרי, רק הקבוצה שונה"
+                        : c.kind === "other-group-typo"
+                          ? " \xB7 שם דומה בקבוצה אחרת"
+                          : " \xB7 רק שם משפחה זהה",
+                  ),
                 ),
                 e.createElement(
                   "span",
