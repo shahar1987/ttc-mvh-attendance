@@ -3,8 +3,8 @@
 """
 גיבוי יומי של נתוני המועדון מ-Firestore.
 
-נוכחות היא הדאטה שאי אפשר לשחזר: אם רשומה נדרסת, אין לאן לחזור.
-הסקריפט מושך את כל האוספים הקריטיים ושומר אותם כ-JSON.
+כל אוסף נשמר לקובץ קבוע שנדרס בכל הרצה.
+ההיסטוריה נשמרת ב-git — ראה README בריפו הגיבויים.
 
 הרצה:  python backup/export_firestore.py <output_dir>
 דורש:  GOOGLE_APPLICATION_CREDENTIALS מצביע ל-service account JSON
@@ -17,13 +17,7 @@ from datetime import datetime, timezone, timedelta
 from google.cloud import firestore
 
 # האוספים שאי אפשר לשחזר אם יאבדו
-COLLECTIONS = [
-    "attendance",      # הכי קריטי — אי אפשר לשחזר נוכחות שנמחקה
-    "cancellations",   # בלעדיהם אחוזי הנוכחות מעוותים
-    "players",         # כולל שחקנים בארכיון
-    "groups",
-    "users",
-]
+COLLECTIONS = ["attendance", "cancellations", "players"]
 
 
 def serialise(value):
@@ -40,10 +34,7 @@ def serialise(value):
 
 
 def export_collection(db, name):
-    docs = {}
-    for doc in db.collection(name).stream():
-        docs[doc.id] = serialise(doc.to_dict())
-    return docs
+    return {doc.id: serialise(doc.to_dict()) for doc in db.collection(name).stream()}
 
 
 def main():
@@ -52,39 +43,44 @@ def main():
 
     db = firestore.Client()
 
-    # שעון ישראל — כדי ששם התיקייה יתאים ליום האמיתי ולא ל-UTC
+    # שעון ישראל — לא UTC. בדיוק הבאג שיש באפליקציה עצמה.
     israel_now = datetime.now(timezone(timedelta(hours=3)))
-    stamp = israel_now.strftime("%Y-%m-%d")
+    summary = {
+        "date": israel_now.strftime("%Y-%m-%d"),
+        "generatedAt": israel_now.isoformat(),
+        "counts": {},
+    }
 
-    summary = {"date": stamp, "generatedAt": israel_now.isoformat(), "counts": {}}
-    day_dir = os.path.join(out_dir, stamp)
-    os.makedirs(day_dir, exist_ok=True)
-
+    failed = []
     for name in COLLECTIONS:
         try:
             data = export_collection(db, name)
-        except Exception as exc:            # אוסף אחד שנכשל לא יפיל את הגיבוי כולו
+        except Exception as exc:          # אוסף שנכשל לא יפיל את השאר
             print(f"שגיאה ביצוא {name}: {exc}", file=sys.stderr)
             summary["counts"][name] = f"ERROR: {exc}"
+            failed.append(name)
             continue
 
-        path = os.path.join(day_dir, f"{name}.json")
-        with open(path, "w", encoding="utf-8") as fh:
+        # sort_keys כדי ש-git diff יראה רק שינויים אמיתיים ולא סדר משתנה
+        with open(os.path.join(out_dir, f"{name}.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=1, sort_keys=True)
         summary["counts"][name] = len(data)
         print(f"{name}: {len(data)} מסמכים")
 
-    with open(os.path.join(day_dir, "_summary.json"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(out_dir, "_summary.json"), "w", encoding="utf-8") as fh:
         json.dump(summary, fh, ensure_ascii=False, indent=1)
 
-    # בדיקת שפיות: גיבוי ריק של נוכחות הוא כמעט תמיד תקלה,
-    # ועדיף שההרצה תיכשל ברעש משתידחוף גיבוי ריק על גבי הקודם.
+    # גיבוי ריק של נוכחות הוא כמעט תמיד תקלה. עדיף להיכשל
+    # ברעש מלדרוס גיבוי תקין בקובץ ריק.
     att = summary["counts"].get("attendance")
     if isinstance(att, int) and att == 0:
         print("אזהרה: אפס רשומות נוכחות — נראה כמו תקלה", file=sys.stderr)
         sys.exit(1)
+    if failed:
+        print(f"אוספים שנכשלו: {', '.join(failed)}", file=sys.stderr)
+        sys.exit(1)
 
-    print(f"\nהגיבוי נשמר ב-{day_dir}")
+    print("\nהיצוא הסתיים בהצלחה")
 
 
 if __name__ == "__main__":
