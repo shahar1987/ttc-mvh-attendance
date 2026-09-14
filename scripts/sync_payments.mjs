@@ -136,6 +136,38 @@ export function fuzzyMatches(pool, fileFamily, filePersonal) {
   return out.sort((x, y) => (x.kind === "typo" ? -1 : 1) - (y.kind === "typo" ? -1 : 1));
 }
 
+// שכבה שנייה, רק כשאין שום קצה חוט בקבוצה הממופה: אותו אדם עשוי להיות רשום
+// במתנ"ס תחת תוכנית אחת ובאפליקציה לשחק בקבוצה אחרת (למשל נרשם ל"ישוב
+// מתקדמים" אבל מתאמן בסגל הליגות). מחפשים אותו בשאר הקבוצות — אבל רק כשהשם
+// באמת מזהה אותו:
+//   - שם מלא זהה לגמרי -> הצעה חזקה ("other-group")
+//   - שם משפחה תואם + שם פרטי דומה -> הצעה ("other-group-typo")
+// שם משפחה זהה בלבד בקבוצה אחרת לא מוצע בכלל — שם יושבים האחים (אותו שם
+// משפחה, שם פרטי אחר, קבוצות שונות), וזו בדיוק ההצעה שעלולה לסמן את האח הלא
+// נכון כמשלם או לשנות לו את השם.
+export function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sameGroupId) {
+  const exact = [];
+  const similar = [];
+  for (const p of players) {
+    if (p.groupId === sameGroupId) continue;
+    const clean = cleanName(p.name);
+    if (nameSet.has(clean)) {
+      exact.push({ playerId: p.id, kind: "other-group" });
+      continue;
+    }
+    if (!fileFamily || !filePersonal) continue;
+    const tokens = clean.split(" ").filter(Boolean);
+    if (tokens.length < 2) continue;
+    const famIdx = tokens.findIndex((tk) => familyMatches(tk, fileFamily));
+    if (famIdx === -1) continue;
+    const rest = tokens.filter((_, i) => i !== famIdx).join(" ");
+    if (rest && firstNameSimilar(rest, filePersonal)) {
+      similar.push({ playerId: p.id, kind: "other-group-typo" });
+    }
+  }
+  return exact.concat(similar);
+}
+
 export function parseCsv(text) {
   let rows = [];
   let lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
@@ -340,10 +372,12 @@ async function main() {
   const playersSnap = await db.collection("players").get();
   const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const activeByGroup = new Map();
+  const activePlayers = [];
   for (const p of players) {
     if (p.deleted || p.isActive === false) continue;
     if (!activeByGroup.has(p.groupId)) activeByGroup.set(p.groupId, []);
     activeByGroup.get(p.groupId).push(p);
+    if (!excludedGroupIds.has(p.groupId)) activePlayers.push(p);
   }
 
   // הצעות תיקון שם שהמנהל כבר סימן "להתעלם" — לא חוזרות בכל ריצה
@@ -389,8 +423,20 @@ async function main() {
     } else {
       // אין התאמה מדויקת — מחפשים "כמעט התאמה" (שם משפחה תואם, שם פרטי שונה)
       // כדי להציע למנהל תיקון שם, במקום פשוט לסמן את השחקן כלא משלם.
-      const fuzzy = (fileFamily && filePersonal ? fuzzyMatches(pool, fileFamily, filePersonal) : [])
+      const inGroup = fileFamily && filePersonal ? fuzzyMatches(pool, fileFamily, filePersonal) : [];
+      // ואם גם הקבוצה בקובץ שונה מהקבוצה באפליקציה — מחפשים בשאר הקבוצות
+      const cross = crossGroupMatches(
+        activePlayers,
+        nameSet,
+        fileFamily,
+        filePersonal,
+        mapping.groupId,
+      );
+      const rank = { "other-group": 0, typo: 1, "other-group-typo": 2, "family-only": 3 };
+      const fuzzy = inGroup
+        .concat(cross)
         .filter((c) => !ignoredKeys.has(`${c.playerId}::${names[0]}`))
+        .sort((x, y) => (rank[x.kind] ?? 9) - (rank[y.kind] ?? 9))
         .slice(0, 4);
       if (fuzzy.length) nameSuggestions.push({ groupId: mapping.groupId, fileName: names[0], candidates: fuzzy });
       else unmatchedNames.push(names[0]);
