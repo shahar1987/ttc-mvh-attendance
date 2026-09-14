@@ -1526,6 +1526,7 @@ function re({
   profile: s,
   players: a,
   attendance: l,
+  users: US,
   onBack: i,
   onArchivePlayer: c,
   onEditPlayer: EP,
@@ -1544,6 +1545,22 @@ function re({
     m = selDate,
     isPast = m !== today,
     o = l.some((p) => p.groupId === t.id && p.date === m),
+    existingDayRecords = () => l.filter((p) => p.groupId === t.id && p.date === m),
+    staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
+    confirmOverwrite = () => {
+      let recs = existingDayRecords();
+      if (recs.length === 0) return !0;
+      let names = [...new Set(recs.map((r) => staffName(r.markedBy)))].join(", "),
+        latest = recs.reduce(
+          (mx, r) => (r.updatedAt && (!mx || r.updatedAt > mx) ? r.updatedAt : mx),
+          null,
+        ),
+        whenTxt = latest ? new Date(latest).toLocaleString("he-IL") : "לא ידוע",
+        who = names || "לא ידוע";
+      return window.confirm(
+        `נוכחות לתאריך ${Ke(m)} בקבוצת ${t.name} כבר מולאה ע"י ${who} (${whenTxt}). לערוך ולשמור מחדש?`,
+      );
+    },
     cancelled = findCancellation(CX, t.id, m),
     [showCancel, setShowCancel] = b(!1),
     [cancelErr, setCancelErr] = b(""),
@@ -1650,6 +1667,7 @@ function re({
             groupId: t.id,
             status: st2,
             markedBy: s.id,
+            updatedAt: new Date().toISOString(),
           };
           (st2 === "Absent" &&
             prev &&
@@ -2102,7 +2120,7 @@ function re({
         : e.createElement(
             "button",
             {
-              onClick: () => f(!0),
+              onClick: () => confirmOverwrite() && f(!0),
               className:
                 "w-full bg-blue-900 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
             },
@@ -2190,6 +2208,7 @@ function mt({
             profile: t,
             players: a,
             attendance: l,
+            users: US,
             onBack: o ? null : () => onSelectGroup(null),
             onEditPlayer: EP,
             onWhatsapp: WA,
