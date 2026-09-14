@@ -838,13 +838,13 @@ async function qe(t) {
     console.warn("Push registration skipped:", s);
   }
 }
+// תג "2 היעדרויות" בשורת מילוי הנוכחות. משתמש בדיוק באותו חישוב של כרטיס
+// ההתראות (lastTwoAbsences): רשומה אחת לכל תאריך, נוכחות גוברת על היעדרות,
+// והיום הנוכחי לא נספר. קודם היה כאן חישוב נפרד שספר כל רשומה בנפרד — שחקן
+// עם שתי רשומות באותו יום (למשל אחרי מעבר קבוצה) סומן בטעות.
+// מחזיר את שני התאריכים עצמם (או null), כדי שאפשר יהיה להציג אותם בתג.
 function Qe(t, s) {
-  let a = t
-    .filter((l) => l.playerId === s && l.date !== E())
-    .sort((l, i) => i.date.localeCompare(l.date));
-  return a.length < 2
-    ? !1
-    : a[0].status === "Absent" && a[1].status === "Absent";
+  return lastTwoAbsences(t, s);
 }
 // אחוז הנוכחות של הקבוצה בחודש הנוכחי (כמו "נוכחות ממוצעת החודש" בכרטיס שמעל)
 function Ze(t, s, a) {
@@ -1817,7 +1817,8 @@ function U({ icon: t, label: s, value: a, accent: l }) {
     ),
   );
 }
-function Re({ player: t, onOpenWhatsapp: s }) {
+function Re({ player: t, onOpenWhatsapp: s, dates: DS }) {
+  let two = Array.isArray(DS) && DS.length === 2 ? DS : null;
   return e.createElement(
     "div",
     { className: "flex items-center gap-1.5 shrink-0" },
@@ -1826,9 +1827,19 @@ function Re({ player: t, onOpenWhatsapp: s }) {
       {
         className:
           "flex items-center gap-1 bg-amber-50 text-amber-700 text-[11px] font-semibold px-2 py-1 rounded-full border border-amber-200",
+        // התאריכים עצמם בתג: אפשר לראות מיד על אילו שני אימונים הספירה מבוססת
+        title: two
+          ? `היעדרויות ב־${formatHeDate(two[0])} וב־${formatHeDate(two[1])}`
+          : "",
       },
       e.createElement(ye, { className: "w-3 h-3" }),
       "2 היעדרויות",
+      two &&
+        e.createElement(
+          "span",
+          { className: "font-normal text-amber-600" },
+          `\xB7 ${fmtDateShort(two[0])}, ${fmtDateShort(two[1])}`,
+        ),
     ),
     e.createElement(
       "button",
