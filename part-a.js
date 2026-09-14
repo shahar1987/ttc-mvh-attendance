@@ -28,6 +28,7 @@ import {
   RotateCcw as UndoIcon,
   Trophy as TrophyIcon,
   Settings as SettingsIcon,
+  RefreshCw as RefreshIcon,
 } from "lucide-react";
 import {
   collection as M,
