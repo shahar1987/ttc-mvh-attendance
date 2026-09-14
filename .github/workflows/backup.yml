@@ -1,13 +1,33 @@
 name: Nightly backup
 
+# מייצא מדי לילה את attendance, cancellations ו-players מ-Firestore
+# (backup/export_firestore.py) ודוחף אותם ל-shahar1987/ttc-mvh-backups
+# הפרטי — לא לריפו הזה, כי הוא ציבורי והנתונים כוללים שמות ילדים,
+# טלפוני הורים ושיוך לקבוצות (כולל פרקינסון). ראו README שם.
+#
+# דורש שני סודות (Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT — כבר קיים בריפו הזה (אותו אחד ש-Account
+#     tools משתמש בו, Firebase console → Project settings → Service
+#     accounts → Generate new private key)
+#   BACKUP_REPO_TOKEN — PAT מסוג fine-grained, הרשאת Contents: Read and
+#     write, מוגבל אך ורק לריפו ttc-mvh-backups
 on:
   schedule:
     - cron: "0 23 * * *"   # 02:00 שעון ישראל — אחרי שכל האימונים נרשמו
   workflow_dispatch:      # מאפשר גם הרצה ידנית מהלשונית Actions
 
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -21,11 +41,11 @@ jobs:
       # מאשר באמצע הריצה עם שגיאה מבלבלת.
       - name: Check that the secrets exist
         env:
-          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
         run: |
           MISSING=""
-          [ -z "$FIREBASE_SA_JSON" ]  && MISSING="$MISSING FIREBASE_SA_JSON"
+          [ -z "$FIREBASE_SERVICE_ACCOUNT" ]  && MISSING="$MISSING FIREBASE_SERVICE_ACCOUNT"
           [ -z "$BACKUP_REPO_TOKEN" ] && MISSING="$MISSING BACKUP_REPO_TOKEN"
           if [ -n "$MISSING" ]; then
             echo "חסרים Secrets:$MISSING"
@@ -37,9 +57,9 @@ jobs:
       - name: Write service account
         run: |
           umask 077
-          printf '%s' "$FIREBASE_SA_JSON" > /tmp/sa.json
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
         env:
-          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Export Firestore
         env:
@@ -71,3 +91,13 @@ jobs:
             git push
             echo "הגיבוי נדחף"
           fi
+
+      - name: Open an issue if the backup failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "❌ הגיבוי הלילי של נתוני הנוכחות נכשל" \
+            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }} || true
