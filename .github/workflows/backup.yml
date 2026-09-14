@@ -29,27 +29,28 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: python backup/export_firestore.py backup-out
 
+      - name: Show what was exported
+        run: cat backup-out/_summary.json
+
       - name: Push to the private backups repo
         env:
           BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
         run: |
-          STAMP=$(TZ=Asia/Jerusalem date +%Y-%m-%d)
+          STAMP=$(TZ=Asia/Jerusalem date '+%Y-%m-%d %H:%M')
           git clone --depth 1 \
             "https://x-access-token:${BACKUP_TOKEN}@github.com/shahar1987/ttc-mvh-backups.git" repo
-          mkdir -p "repo/daily"
-          cp -r "backup-out/$STAMP" "repo/daily/$STAMP"
+
+          # קבצים קבועים שנדרסים — ההיסטוריה נשמרת ב-git
+          cp backup-out/*.json repo/
+
           cd repo
           git config user.name  "backup-bot"
           git config user.email "noreply@github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "אין שינויים — לא נוצר קומיט"
+            echo "אין שינויים מאתמול — לא נוצר קומיט"
           else
             git commit -m "backup $STAMP"
             git push
+            echo "הגיבוי נדחף"
           fi
-
-      - name: Verify the backup is not empty
-        run: |
-          STAMP=$(TZ=Asia/Jerusalem date +%Y-%m-%d)
-          cat "backup-out/$STAMP/_summary.json"
