@@ -35,7 +35,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install firebase-admin@12.7.0 google-auth-library@11.0.2 --no-audit --no-fund
+        run: npm install firebase-admin@12.7.0 google-auth-library@11.0.2 xlsx@0.18.5 --no-audit --no-fund
 
       - name: Sync payment status from Drive
         env:
