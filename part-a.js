@@ -222,6 +222,47 @@ function playerGender(p) {
     ? p.gender
     : guessGender(p ? p.name : "");
 }
+// ----- הרשמה ותשלום -----
+function sessionsLabel(n) {
+  return n === 1
+    ? "פעם בשבוע"
+    : n === 2
+      ? "פעמיים בשבוע"
+      : n
+        ? `${n} פעמים בשבוע`
+        : "";
+}
+// "פעמיים בשבוע · 290 ₪" — התיאור של מסלול הרשמה אחד בטבלת המיפוי
+function trackLabel(row) {
+  let parts = [sessionsLabel(Number(row && row.sessionsPerWeek))].filter(Boolean);
+  if (row && row.price) parts.push(`${row.price} ₪`);
+  return parts.join(" · ");
+}
+// ההודעה שנשלחת מכפתור הוואטסאפ במסך "מי לא משלם".
+// בקבוצות ילדים פונים להורה ושם הילד מופיע בגוף ההודעה; בקבוצות בוגרים
+// ופרקינסון פונים ישירות לשחקן, בלשון יחיד לפי מגדר.
+function paymentMsg(player, group, track) {
+  let adult = isAdultGroup(group),
+    parent = String((player && player.parentName) || "").trim(),
+    child = String((player && player.name) || "").trim(),
+    greet = adult ? child : parent || child,
+    f = playerGender(player) === "f",
+    forWhom = adult || !parent || parent === child ? "" : ` של ${child}`,
+    ask = adult ? (f ? "אשמח שתסדירי" : "אשמח שתסדיר") : "אשמח שתסדירו",
+    write = adult ? (f ? "תכתבי" : "תכתוב") : "תכתבו",
+    lbl = trackLabel(track),
+    link =
+      track && track.registrationUrl
+        ? `להרשמה ותשלום${lbl ? ` — ${lbl}` : ""}:\n${track.registrationUrl}\n\n`
+        : "";
+  return (
+    `היי ${greet} 🏓\n\n` +
+    `התשלום עבור האימונים${forWhom} העונה עדיין לא הוסדר. ${ask}, כדי שנוכל להמשיך את הפעילות כסדרה.\n\n` +
+    link +
+    `ואם משהו לא ברור או שיש קושי — ${write} לי בפרטי. אני כאן, ותמיד אפשר למצוא פתרון ביחד.\n\n` +
+    `תודה רבה,\nשלום\n${X} ${W}`
+  );
+}
 function absenceMsg(p, gender, date, adult) {
   let g = gender || playerGender(p),
     name = (p && p.name) || "",
