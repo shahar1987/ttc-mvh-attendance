@@ -467,6 +467,10 @@ async function main() {
   for (const p of players) {
     if (p.deleted || p.isActive === false) continue;
     if (!coveredGroupIds.has(p.groupId)) continue; // קבוצה בלי מיפוי, או מוחרגת — לא נוגעים
+    // החלטה ידנית של המנהל (סימון ידני, או אישור הצעת תיקון שם במסך) גוברת
+    // תמיד — לשני הכיוונים. בלי זה מי שאושר ידנית כמשלם היה חוזר להיות מסומן
+    // כלא משלם בהרצה הבאה, כי בקובץ הוא רשום תחת קבוצה אחרת.
+    if (p.notPayingSource === "manual") continue;
     const shouldBeNotPaying = !paidIds.has(p.id);
     if (shouldBeNotPaying && !p.notPaying) {
       batch.set(
