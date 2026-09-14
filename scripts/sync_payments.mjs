@@ -46,14 +46,16 @@ const PAYMENT_EXCLUDED_GROUP_NAME = "חוגים רמת כורזים";
 // לשקף גם שם (ולהפך) כדי שלא יתבלבלו זו מזו.
 const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש דפנה בוגרים 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "שני או חמישי" },
-  { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, note: "לאשר — שני וחמישי" },
-  { mtnsLabel: 'טנ"ש ישוב מתחילים 2', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 2, note: "לאשר — ראשון וחמישי" },
-  { mtnsLabel: 'טנ"ש ישוב מתקדמים 2', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 2, note: "לאשר — הקבוצה בפועל מתאמנת 3 פעמים בשבוע, זה רישום חלקי" },
+  { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, note: "שני וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתחילים 1', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 1, note: "ראשון או חמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתחילים 2', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 2, note: "ראשון וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתקדמים 2', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 2, note: "הקבוצה מתאמנת 3 פעמים בשבוע — זה רישום חלקי" },
   { mtnsLabel: 'טנ"ש ישוב מתקדמים 3', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 3, note: "ראשון, שני וחמישי" },
-  { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, note: "לאשר — שני או רביעי" },
+  { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, note: "שני או רביעי" },
   { mtnsLabel: 'טנ"ש כורזים מתחיל 2', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 2, note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, note: "יום ראשון — בקובץ אין מספר ליד השם" },
+  { mtnsLabel: 'טנ"ש כורזים בוגר 1', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 1, note: "שני או רביעי 19:30-21:00" },
+  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, note: "שני ורביעי 19:30-21:00" },
+  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, note: "יום ראשון 09:30-10:30 — בקובץ אין מספר ליד השם" },
   { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
   { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים?" },
 ];
