@@ -1394,6 +1394,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     [showAll, setShowAll] = b(!1),
     [sync, setSync] = b(null),
     [showMapping, setShowMapping] = b(!1),
+    [syncRequest, setSyncRequest] = b(null),
     [mappings, setMappings] = b([]),
     [drafts, setDrafts] = b({}),
     [newLabel, setNewLabel] = b(""),
@@ -1403,6 +1404,12 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
   j(() => {
     let unsub = ae(S(P, "system", "paymentSync"), (snap) =>
       setSync(snap.exists() ? snap.data() : null),
+    );
+    return unsub;
+  }, []);
+  j(() => {
+    let unsub = ae(S(P, "system", "paymentSyncRequest"), (snap) =>
+      setSyncRequest(snap.exists() ? snap.data() : null),
     );
     return unsub;
   }, []);
@@ -1433,6 +1440,62 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     excludedGroupIds = new Set(
       s.filter((g) => g.name === PAYMENT_EXCLUDED_GROUP_NAME).map((g) => g.id),
     ),
+    familyFlags = (sync?.sameFamilyFlags || [])
+      .map((f) => ({
+        group: s.find((g) => g.id === f.groupId),
+        names: (f.playerIds || [])
+          .map((id) => t.find((p) => p.id === id)?.name)
+          .filter(Boolean),
+      }))
+      .filter((f) => f.names.length >= 2),
+    suggestions = (sync?.nameSuggestions || [])
+      .map((sg) => ({
+        fileName: sg.fileName,
+        group: s.find((g) => g.id === sg.groupId),
+        candidates: (sg.candidates || [])
+          .map((c) => ({ ...c, player: t.find((p) => p.id === c.playerId) }))
+          .filter((c) => c.player && c.player.isActive && !c.player.deleted),
+      }))
+      .filter((sg) => sg.candidates.length > 0),
+    // אישור הצעת תיקון: מעדכן את השם באפליקציה לשם שבקובץ ומסמן ששילם — בלחיצה אחת
+    applySuggestion = (playerId, fileName, currentName) => {
+      if (
+        !confirm(
+          `לשנות את השם באפליקציה מ"${currentName}" ל"${fileName}" ולסמן ששילם?`,
+        )
+      )
+        return;
+      O(S(P, "players", playerId), {
+        name: fileName,
+        notPaying: !1,
+        notPayingSource: "sync",
+      }).catch((err) => alert("העדכון נכשל: " + (err.message || err)));
+    },
+    // דחיית הצעה: נשמרת כדי שלא תחזור בכל סנכרון
+    ignoreSuggestion = (playerId, fileName) => {
+      let key = `${playerId}::${fileName}`;
+      fsGetDoc(S(P, "system", "paymentSyncIgnores"))
+        .then((snap) => {
+          let keys = (snap.exists() ? snap.data().keys : null) || [];
+          if (keys.includes(key)) return;
+          return De(
+            S(P, "system", "paymentSyncIgnores"),
+            { keys: keys.concat([key]) },
+            { merge: !0 },
+          );
+        })
+        .catch((err) => alert("השמירה נכשלה: " + (err.message || err)));
+    },
+    syncPending =
+      !!syncRequest?.requestedAt &&
+      (!syncRequest.handledAt || syncRequest.handledAt < syncRequest.requestedAt),
+    triggerManualSync = () => {
+      De(
+        S(P, "system", "paymentSyncRequest"),
+        { requestedAt: new Date().toISOString() },
+        { merge: !0 },
+      ).catch((err) => alert("שליחת בקשת הרענון נכשלה: " + (err.message || err)));
+    },
     updateDraft = (id, patch) =>
       setDrafts((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } })),
     commitMappingNow = (id, patch) =>
@@ -1527,6 +1590,170 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           )
         : null,
     ),
+    !RO &&
+      e.createElement(
+        "div",
+        { className: "flex items-center gap-2 flex-wrap" },
+        e.createElement(
+          "button",
+          {
+            onClick: triggerManualSync,
+            disabled: syncPending,
+            className:
+              "flex items-center gap-1.5 bg-blue-900 text-white text-xs font-semibold rounded-lg px-3 py-2 disabled:opacity-50",
+          },
+          e.createElement(RefreshIcon, {
+            className: `w-3.5 h-3.5 ${syncPending ? "animate-spin" : ""}`,
+          }),
+          syncPending ? "רענון בתהליך..." : "רענון עכשיו מהקובץ בדרייב",
+        ),
+        syncPending
+          ? e.createElement(
+              "span",
+              { className: "text-[11px] text-slate-500" },
+              "הרשימה תתעדכן לבד, בדרך כלל תוך כ-15 דקות",
+            )
+          : null,
+        e.createElement(
+          "a",
+          {
+            href: "https://github.com/shahar1987/ttc-mvh-attendance/actions/workflows/sync-payments.yml",
+            target: "_blank",
+            rel: "noreferrer",
+            className: "text-[11px] text-slate-400 underline",
+          },
+          "להרצה מיידית",
+        ),
+      ),
+    !RO &&
+      suggestions.length > 0 &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex flex-col gap-3",
+        },
+        e.createElement(
+          "p",
+          { className: "text-sm font-semibold text-blue-900" },
+          `${suggestions.length} שמות בקובץ שכנראה כתובים אחרת באפליקציה`,
+        ),
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-blue-700 leading-relaxed" },
+          "לכל שורה: מימין השם כפי שהוא בקובץ המתנ\"ס, ומתחת השחקן באפליקציה עם אותו שם משפחה. אישור משנה את השם באפליקציה לשם שבקובץ ומסמן שהוא שילם.",
+        ),
+        suggestions.map((sg, idx) =>
+          e.createElement(
+            "div",
+            {
+              key: idx,
+              className: "bg-white border border-blue-200 rounded-lg p-2.5 flex flex-col gap-2",
+            },
+            e.createElement(
+              "p",
+              { className: "text-xs font-semibold text-slate-800" },
+              `בקובץ: ${sg.fileName}`,
+              sg.group
+                ? e.createElement(
+                    "span",
+                    { className: "font-normal text-slate-400" },
+                    ` \xB7 ${sg.group.name}`,
+                  )
+                : null,
+            ),
+            sg.candidates.map((c) =>
+              e.createElement(
+                "div",
+                {
+                  key: c.playerId,
+                  className: "flex items-center justify-between gap-2 flex-wrap",
+                },
+                e.createElement(
+                  "span",
+                  { className: "text-xs text-slate-600" },
+                  `באפליקציה: ${c.player.name}`,
+                  c.kind === "typo"
+                    ? e.createElement(
+                        "span",
+                        { className: "text-[10px] text-emerald-600" },
+                        " \xB7 כנראה אותו אדם",
+                      )
+                    : e.createElement(
+                        "span",
+                        { className: "text-[10px] text-amber-600" },
+                        " \xB7 רק שם משפחה זהה",
+                      ),
+                ),
+                e.createElement(
+                  "span",
+                  { className: "flex items-center gap-1.5" },
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () =>
+                        applySuggestion(c.playerId, sg.fileName, c.player.name),
+                      className:
+                        "bg-emerald-600 text-white text-[11px] font-semibold rounded-md px-2.5 py-1.5",
+                    },
+                    "עדכן וסמן ששילם",
+                  ),
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () => ignoreSuggestion(c.playerId, sg.fileName),
+                      className: "text-[11px] text-slate-400 underline px-1",
+                    },
+                    "לא רלוונטי",
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    !RO &&
+      sync?.ambiguousNames?.length
+      ? e.createElement(
+          "div",
+          {
+            className:
+              "bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex flex-col gap-1",
+          },
+          e.createElement(
+            "p",
+            { className: "text-sm font-semibold text-red-900" },
+            "שמות זהים לגמרי לשני שחקנים באותה קבוצה — צריך להבחין ביניהם באפליקציה",
+          ),
+          e.createElement(
+            "p",
+            { className: "text-[11px] text-red-700 leading-relaxed" },
+            sync.ambiguousNames.join(", ") +
+              " — עד שהשמות יהיו שונים אי אפשר לדעת מי מהם שילם, ולכן שניהם נשארים מסומנים כלא משלמים.",
+          ),
+        )
+      : null,
+    !RO &&
+      familyFlags.length > 0 &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex flex-col gap-1.5",
+        },
+        e.createElement(
+          "p",
+          { className: "text-sm font-semibold text-orange-900" },
+          "שם משפחה זהה בין כמה משלמים באותה קבוצה — כדאי לוודא שהשמות באפליקציה ברורים ומובחנים",
+        ),
+        familyFlags.map((f, idx) =>
+          e.createElement(
+            "p",
+            { key: idx, className: "text-[11px] text-orange-800" },
+            `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
+          ),
+        ),
+      ),
     !RO &&
       e.createElement(
         "button",
