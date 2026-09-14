@@ -1317,18 +1317,29 @@ const PAYMENT_EXCLUDED_GROUP_NAME = "חוגים רמת כורזים";
 // לאוסף paymentMappings אם הוא ריק (ראו אפקט הזריעה למטה) — משם והלאה זו
 // טבלה ניתנת לעריכה מלאה במסך, לא ערך קבוע בקוד. שורות עם "לאשר" בהערה
 // הן ניחוש סביר שטרם אומת מול המנהל.
+// כתובות ההרשמה של המתנ"ס. כולן על אותו בסיס, ונבדלות ב-HugSerialNo (אזור)
+// וב-KvutsaNo (המסלול בתוך האזור). לפרקינסון יש כתובת עם token משלה.
+const HUGIM_BASE =
+  "https://www.hugim.org.il/HugimWeb.dll?FromMatnasSite=1&KodMatnas=540&HugIndexNo=2347";
+const hugimUrl = (serial, kvutsa) =>
+  `${HUGIM_BASE}&HugSerialNo=${serial}&KvutsaNo=${kvutsa}`;
+const HUGIM_PARKINSON_URL =
+  "https://www.hugim.org.il/HugimWeb.dll/gOBWeYUwlcSTR79oQk7R4evIWIK/?FromMatnasSite=1&KodMatnas=540&HugIndexNo=2347&HugSerialNo=8&KvutsaNo=1";
+
 const DEFAULT_PAYMENT_MAPPINGS = [
-  { mtnsLabel: 'טנ"ש דפנה בוגרים 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "שני או חמישי" },
-  { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, note: "לאשר — שני וחמישי" },
-  { mtnsLabel: 'טנ"ש ישוב מתחילים 2', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 2, note: "לאשר — ראשון וחמישי" },
-  { mtnsLabel: 'טנ"ש ישוב מתקדמים 2', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 2, note: "לאשר — הקבוצה בפועל מתאמנת 3 פעמים בשבוע, זה רישום חלקי" },
-  { mtnsLabel: 'טנ"ש ישוב מתקדמים 3', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 3, note: "ראשון, שני וחמישי" },
-  { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, note: "לאשר — שני או רביעי" },
-  { mtnsLabel: 'טנ"ש כורזים מתחיל 2', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 2, note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, note: "יום ראשון — בקובץ אין מספר ליד השם" },
-  { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
-  { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים?" },
+  { mtnsLabel: 'טנ"ש דפנה בוגרים 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(0, 5), note: "שני או חמישי" },
+  { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 6), note: "שני וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתחילים 1', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(0, 1), note: "ראשון או חמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתחילים 2', groupId: "fDzvQ3QoyY1fAQhPCaTG", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 2), note: "ראשון וחמישי" },
+  { mtnsLabel: 'טנ"ש ישוב מתקדמים 2', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 3), note: "הקבוצה מתאמנת 3 פעמים בשבוע — זה רישום חלקי" },
+  { mtnsLabel: 'טנ"ש ישוב מתקדמים 3', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 3, price: 390, registrationUrl: hugimUrl(0, 4), note: "ראשון, שני וחמישי" },
+  { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(3, 1), note: "שני או רביעי" },
+  { mtnsLabel: 'טנ"ש כורזים מתחיל 2', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(3, 2), note: "שני ורביעי" },
+  { mtnsLabel: 'טנ"ש כורזים בוגרים', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(3, 4), note: "שני או רביעי" },
+  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(3, 5), note: "שני ורביעי" },
+  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, registrationUrl: HUGIM_PARKINSON_URL, note: "יום ראשון — בקובץ אין מספר ליד השם" },
+  { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 9), note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
+  { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים? אין עדיין קישור הרשמה" },
 ];
 
 function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, onDelete }) {
@@ -1379,6 +1390,31 @@ function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, on
         e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
       ),
     ),
+    e.createElement(
+      "div",
+      { className: "flex items-center gap-2" },
+      e.createElement("input", {
+        value: row.registrationUrl || "",
+        onChange: (ev) => onDraft(row.id, { registrationUrl: ev.target.value }),
+        onBlur: () => onCommitText(row.id),
+        placeholder: "קישור הרשמה למסלול הזה",
+        dir: "ltr",
+        className:
+          "flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg py-2 px-2.5 text-xs text-left outline-none focus:border-emerald-400",
+      }),
+      e.createElement("input", {
+        type: "number",
+        min: 0,
+        value: row.price === null || row.price === undefined ? "" : row.price,
+        onChange: (ev) =>
+          onCommitNow(row.id, {
+            price: ev.target.value === "" ? null : Number(ev.target.value),
+          }),
+        placeholder: "מחיר ₪",
+        className:
+          "w-24 bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-sm text-center outline-none focus:border-emerald-400",
+      }),
+    ),
     e.createElement("input", {
       value: row.note || "",
       onChange: (ev) => onDraft(row.id, { note: ev.target.value }),
@@ -1386,6 +1422,100 @@ function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, on
       placeholder: "הערה (לא חובה)",
       className: "w-full bg-transparent text-xs text-slate-400 text-right outline-none",
     }),
+  );
+}
+
+// בחירת מסלול ההרשמה לפני פתיחת וואטסאפ, כשלקבוצה של השחקן יש יותר ממסלול אחד
+// (פעם/פעמיים בשבוע וכו'). כל אפשרות היא קישור אמיתי, כדי שהדפדפן לא יחסום
+// את הפתיחה של וואטסאפ כחלון קופץ.
+function PaymentTrackPicker({ player, group, tracks, onClose }) {
+  return e.createElement(
+    "div",
+    {
+      className:
+        "fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-3 z-50",
+      onClick: onClose,
+    },
+    e.createElement(
+      "div",
+      {
+        onClick: (ev) => ev.stopPropagation(),
+        className:
+          "bg-white rounded-2xl w-full max-w-sm p-4 flex flex-col gap-3 max-h-[85vh] overflow-y-auto",
+      },
+      e.createElement(
+        "div",
+        { className: "text-right" },
+        e.createElement(
+          "div",
+          { className: "font-bold text-blue-950" },
+          "איזה מסלול לשלוח?",
+        ),
+        e.createElement(
+          "div",
+          { className: "text-xs text-slate-500" },
+          player.name,
+          group ? ` · ${group.name}` : "",
+        ),
+      ),
+      tracks.length === 0
+        ? e.createElement(
+            "p",
+            { className: "text-xs text-amber-700 text-right leading-relaxed" },
+            'לא הוגדר קישור הרשמה לקבוצה הזו. אפשר להוסיף אותו בטבלת "מיפוי קבוצות מתנ״ס" למטה, ואז הכפתור ישלח את ההודעה עם הקישור.',
+          )
+        : null,
+      ...tracks.map((tr) =>
+        e.createElement(
+          "a",
+          {
+            key: tr.id,
+            href: ne(normalizePhone(player.parentPhone), paymentMsg(player, group, tr)),
+            target: "_blank",
+            rel: "noreferrer",
+            onClick: onClose,
+            className:
+              "border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-3 min-h-[44px] flex items-center justify-between gap-2 active:scale-[0.98] transition-transform",
+          },
+          e.createElement(te, { className: "w-4 h-4 text-emerald-600 shrink-0" }),
+          e.createElement(
+            "div",
+            { className: "text-right flex-1 min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm font-semibold text-emerald-800" },
+              trackLabel(tr) || tr.mtnsLabel,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-[11px] text-emerald-700/70 break-words" },
+              tr.mtnsLabel,
+            ),
+          ),
+        ),
+      ),
+      e.createElement(
+        "a",
+        {
+          href: ne(normalizePhone(player.parentPhone), paymentMsg(player, group, null)),
+          target: "_blank",
+          rel: "noreferrer",
+          onClick: onClose,
+          className:
+            "text-xs text-slate-500 underline text-right min-h-[44px] flex items-center justify-end",
+        },
+        "שליחה בלי קישור הרשמה",
+      ),
+      e.createElement(
+        "button",
+        {
+          onClick: onClose,
+          className:
+            "text-sm text-slate-500 min-h-[44px] border border-slate-200 rounded-xl",
+        },
+        "ביטול",
+      ),
+    ),
   );
 }
 
@@ -1406,7 +1536,10 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     [handledSuggestions, setHandledSuggestions] = b({}),
     // הצעות שטופלו בעבר ונשמרו ב-Firestore — כדי שלא יחזרו אחרי יציאה וכניסה
     [syncIgnores, setSyncIgnores] = b([]),
-    seededRef = e.useRef(!1);
+    // השחקן שנבחר לשליחת הודעת תשלום, כשצריך לבחור בין כמה מסלולי הרשמה
+    [payTarget, setPayTarget] = b(null),
+    seededRef = e.useRef(!1),
+    linksRef = e.useRef(!1);
   j(() => {
     let unsub = ae(S(P, "system", "paymentSyncIgnores"), (snap) =>
       setSyncIgnores((snap.exists() ? snap.data().keys : null) || []),
@@ -1442,13 +1575,56 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           batch.set(S(P, "system", "paymentMappingsSeeded"), {
             seededAt: new Date().toISOString(),
           });
+          batch.set(S(P, "system", "paymentLinksSeeded"), {
+            seededAt: new Date().toISOString(),
+          });
+          batch.commit().catch(() => {});
+        });
+      }
+      // השלמה חד-פעמית של קישורי ההרשמה והמחירים לטבלה שכבר נזרעה בלי השדות
+      // האלה, ושל שורות מסלול שחסרו בה לגמרי (מתחילים 1, כורזים בוגרים 1).
+      // רץ פעם אחת בלבד — משם והלאה הטבלה במסך היא מקור האמת, כדי שעריכה
+      // ידנית לא תידרס בכל טעינה.
+      if (!RO && !snap.empty && !linksRef.current) {
+        linksRef.current = !0;
+        fsGetDoc(S(P, "system", "paymentLinksSeeded")).then((flagSnap) => {
+          if (flagSnap.exists()) return;
+          let byLabel = new Map(
+              rows.map((r) => [String(r.mtnsLabel || "").trim(), r]),
+            ),
+            batch = Te(P),
+            writes = 0;
+          DEFAULT_PAYMENT_MAPPINGS.forEach((def, idx) => {
+            let existing = byLabel.get(def.mtnsLabel);
+            if (!existing) {
+              (batch.set(S(P, "paymentMappings", `link-${idx}`), def), writes++);
+              return;
+            }
+            if (!def.registrationUrl || existing.registrationUrl) return;
+            let patch = { registrationUrl: def.registrationUrl };
+            if (def.price && !existing.price) patch.price = def.price;
+            (batch.set(S(P, "paymentMappings", existing.id), patch, {
+              merge: !0,
+            }),
+              writes++);
+          });
+          batch.set(S(P, "system", "paymentLinksSeeded"), {
+            seededAt: new Date().toISOString(),
+          });
           batch.commit().catch(() => {});
         });
       }
     });
     return unsub;
   }, [RO]);
-  let mappableGroups = s.filter((g) => g.name !== PAYMENT_EXCLUDED_GROUP_NAME),
+  // מסלולי ההרשמה של קבוצה, לפי טבלת המיפוי: רק שורות עם קישור, מהזול ליקר
+  let tracksFor = (groupId) =>
+      mappings
+        .filter((r) => r.groupId === groupId && r.registrationUrl)
+        .sort(
+          (r1, r2) => (r1.sessionsPerWeek || 0) - (r2.sessionsPerWeek || 0),
+        ),
+    mappableGroups = s.filter((g) => g.name !== PAYMENT_EXCLUDED_GROUP_NAME),
     excludedGroupIds = new Set(
       s.filter((g) => g.name === PAYMENT_EXCLUDED_GROUP_NAME).map((g) => g.id),
     ),
@@ -2036,20 +2212,39 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                 "div",
                 { className: "flex items-center gap-1.5 shrink-0" },
                 isValidPhone(x.parentPhone) &&
-                  e.createElement(
-                    "a",
-                    {
-                      href: ne(normalizePhone(x.parentPhone), ""),
-                      target: "_blank",
-                      rel: "noreferrer",
-                      className:
-                        "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center",
-                      "aria-label": "וואטסאפ",
-                    },
-                    e.createElement(te, {
-                      className: "w-4 h-4 text-emerald-600",
-                    }),
-                  ),
+                  (tracksFor(x.groupId).length === 1
+                    ? // מסלול יחיד (פרקינסון, סגל ליגות) — פתיחה ישירה בלי חלונית
+                      e.createElement(
+                        "a",
+                        {
+                          href: ne(
+                            normalizePhone(x.parentPhone),
+                            paymentMsg(x, m, tracksFor(x.groupId)[0]),
+                          ),
+                          target: "_blank",
+                          rel: "noreferrer",
+                          className:
+                            "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center",
+                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
+                          title: "שליחת הודעת תשלום בוואטסאפ",
+                        },
+                        e.createElement(te, {
+                          className: "w-4 h-4 text-emerald-600",
+                        }),
+                      )
+                    : e.createElement(
+                        "button",
+                        {
+                          onClick: () => setPayTarget({ player: x, group: m }),
+                          className:
+                            "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center active:scale-95 transition-transform",
+                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
+                          title: "שליחת הודעת תשלום בוואטסאפ",
+                        },
+                        e.createElement(te, {
+                          className: "w-4 h-4 text-emerald-600",
+                        }),
+                      )),
                 !RO &&
                   e.createElement(
                     "button",
@@ -2097,6 +2292,13 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
       ),
     ),
+    payTarget &&
+      e.createElement(PaymentTrackPicker, {
+        player: payTarget.player,
+        group: payTarget.group,
+        tracks: tracksFor(payTarget.player.groupId),
+        onClose: () => setPayTarget(null),
+      }),
   );
 }
 function dt({
