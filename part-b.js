@@ -1326,6 +1326,15 @@ const hugimUrl = (serial, kvutsa) =>
 const HUGIM_PARKINSON_URL =
   "https://www.hugim.org.il/HugimWeb.dll/gOBWeYUwlcSTR79oQk7R4evIWIK/?FromMatnasSite=1&KodMatnas=540&HugIndexNo=2347&HugSerialNo=8&KvutsaNo=1";
 
+// מעלים את המספר כשמתקנים שמות/מחירים/קישורים בטבלת ברירת המחדל וצריך
+// שהתיקון יגיע גם לשורות שכבר נכתבו ל-Firestore בגרסה קודמת.
+const PAYMENT_LINKS_VERSION = 2;
+// שם שגוי שנכתב בגרסה קודמת → השם הנכון. מאתר את השורה הקיימת ומשנה לה את
+// השם, במקום ליצור שורה כפולה לצידה.
+const PAYMENT_LABEL_FIXES = {
+  'טנ"ש כורזים בוגר 1': 'טנ"ש כורזים בוגרים',
+};
+
 const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש דפנה בוגרים 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(0, 5), note: "שני או חמישי" },
   { mtnsLabel: 'טנ"ש דפנה בוגרים 2', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 6), note: "שני וחמישי" },
@@ -1335,9 +1344,9 @@ const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש ישוב מתקדמים 3', groupId: "bM8Yl9Az2vhFBQJ3CXJ4", sessionsPerWeek: 3, price: 390, registrationUrl: hugimUrl(0, 4), note: "ראשון, שני וחמישי" },
   { mtnsLabel: 'טנ"ש כורזים מתחיל 1', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(3, 1), note: "שני או רביעי" },
   { mtnsLabel: 'טנ"ש כורזים מתחיל 2', groupId: "NVeFs6lOj2QgEaoB6DmO", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(3, 2), note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש כורזים בוגרים', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(3, 4), note: "שני או רביעי" },
-  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(3, 5), note: "שני ורביעי" },
-  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, registrationUrl: HUGIM_PARKINSON_URL, note: "יום ראשון — בקובץ אין מספר ליד השם" },
+  { mtnsLabel: 'טנ"ש כורזים בוגר 1', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 1, price: 190, registrationUrl: hugimUrl(3, 4), note: "שני או רביעי 19:30-21:00" },
+  { mtnsLabel: 'טנ"ש כורזים בוגרים 2', groupId: "SbtjPwNpIHRsLlOy2JwK", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(3, 5), note: "שני ורביעי 19:30-21:00" },
+  { mtnsLabel: 'טנ"ש מבח"ר', groupId: "W0xfmRmSDEAzvM2E1ITF", sessionsPerWeek: 1, price: 100, registrationUrl: HUGIM_PARKINSON_URL, note: "יום ראשון 09:30-10:30 — בקובץ אין מספר ליד השם" },
   { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 9), note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
   { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים? אין עדיין קישור הרשמה" },
 ];
@@ -1581,34 +1590,41 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           batch.commit().catch(() => {});
         });
       }
-      // השלמה חד-פעמית של קישורי ההרשמה והמחירים לטבלה שכבר נזרעה בלי השדות
-      // האלה, ושל שורות מסלול שחסרו בה לגמרי (מתחילים 1, כורזים בוגרים 1).
-      // רץ פעם אחת בלבד — משם והלאה הטבלה במסך היא מקור האמת, כדי שעריכה
-      // ידנית לא תידרס בכל טעינה.
+      // השלמה של קישורי ההרשמה והמחירים לטבלה שכבר נזרעה בלי השדות האלה, ושל
+      // שורות מסלול שחסרו בה לגמרי. רצה פעם אחת לכל גרסה (PAYMENT_LINKS_VERSION)
+      // — כך אפשר לשגר תיקון לשמות/מחירים בלי לדרוס עריכה ידנית בכל טעינה.
       if (!RO && !snap.empty && !linksRef.current) {
         linksRef.current = !0;
         fsGetDoc(S(P, "system", "paymentLinksSeeded")).then((flagSnap) => {
-          if (flagSnap.exists()) return;
+          let seen = flagSnap.exists() ? Number(flagSnap.data().version) || 1 : 0;
+          if (seen >= PAYMENT_LINKS_VERSION) return;
           let byLabel = new Map(
               rows.map((r) => [String(r.mtnsLabel || "").trim(), r]),
             ),
-            batch = Te(P),
-            writes = 0;
+            batch = Te(P);
           DEFAULT_PAYMENT_MAPPINGS.forEach((def, idx) => {
-            let existing = byLabel.get(def.mtnsLabel);
+            // שורה שנוצרה בגרסה קודמת תחת שם שגוי מזוהה לפי הכינוי הישן שלה,
+            // ומקבלת את השם הנכון במקום ליצור כפילות
+            let legacy = PAYMENT_LABEL_FIXES[def.mtnsLabel],
+              existing =
+                byLabel.get(def.mtnsLabel) || (legacy && byLabel.get(legacy));
             if (!existing) {
-              (batch.set(S(P, "paymentMappings", `link-${idx}`), def), writes++);
+              batch.set(S(P, "paymentMappings", `link-${idx}`), def);
               return;
             }
-            if (!def.registrationUrl || existing.registrationUrl) return;
-            let patch = { registrationUrl: def.registrationUrl };
+            let patch = {};
+            if (existing.mtnsLabel !== def.mtnsLabel)
+              patch.mtnsLabel = def.mtnsLabel;
+            if (def.registrationUrl && !existing.registrationUrl)
+              patch.registrationUrl = def.registrationUrl;
             if (def.price && !existing.price) patch.price = def.price;
-            (batch.set(S(P, "paymentMappings", existing.id), patch, {
-              merge: !0,
-            }),
-              writes++);
+            if (Object.keys(patch).length)
+              batch.set(S(P, "paymentMappings", existing.id), patch, {
+                merge: !0,
+              });
           });
           batch.set(S(P, "system", "paymentLinksSeeded"), {
+            version: PAYMENT_LINKS_VERSION,
             seededAt: new Date().toISOString(),
           });
           batch.commit().catch(() => {});

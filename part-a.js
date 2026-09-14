@@ -232,10 +232,12 @@ function sessionsLabel(n) {
         ? `${n} פעמים בשבוע`
         : "";
 }
-// "פעמיים בשבוע · 290 ₪" — התיאור של מסלול הרשמה אחד בטבלת המיפוי
+// "פעמיים בשבוע · 290 ₪ לחודש" — התיאור של מסלול הרשמה אחד בטבלת המיפוי.
+// המחיר באתר המתנ"ס הוא תמיד מחיר חודשי, ולכן נכתב כך במפורש: "290 ₪" לבד
+// נקרא כאילו זה התשלום לכל העונה.
 function trackLabel(row) {
   let parts = [sessionsLabel(Number(row && row.sessionsPerWeek))].filter(Boolean);
-  if (row && row.price) parts.push(`${row.price} ₪`);
+  if (row && row.price) parts.push(`${row.price} ₪ לחודש`);
   return parts.join(" · ");
 }
 // ההודעה שנשלחת מכפתור הוואטסאפ במסך "מי לא משלם".
