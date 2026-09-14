@@ -1310,6 +1310,193 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       }),
   );
 }
+function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
+  let [a, l] = b(""),
+    [showAll, setShowAll] = b(!1),
+    [sync, setSync] = b(null);
+  j(() => {
+    let unsub = ae(S(P, "system", "paymentSync"), (snap) =>
+      setSync(snap.exists() ? snap.data() : null),
+    );
+    return unsub;
+  }, []);
+  let toggle = (p) => {
+      RO ||
+        O(S(P, "players", p.id), {
+          notPaying: !p.notPaying,
+          notPayingSource: "manual",
+        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err)));
+    },
+    base = t
+      .filter((m) => m.isActive && !m.deleted)
+      .filter((m) => showAll || m.notPaying)
+      .filter(
+        (m) =>
+          (m.name || "").includes(a) || (m.parentName || "").includes(a),
+      ),
+    n = s
+      .map((m) => ({ group: m, players: base.filter((o) => o.groupId === m.id) }))
+      .filter((m) => m.players.length > 0),
+    totalNotPaying = t.filter(
+      (m) => m.isActive && !m.deleted && m.notPaying,
+    ).length;
+  return e.createElement(
+    "div",
+    { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    e.createElement(
+      "div",
+      {
+        className:
+          "bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col gap-1",
+      },
+      e.createElement(
+        "p",
+        { className: "text-sm font-semibold text-amber-900" },
+        `${totalNotPaying} שחקנים מסומנים כרגע כלא משלמים`,
+      ),
+      sync
+        ? e.createElement(
+            "p",
+            { className: "text-[11px] text-amber-700" },
+            `עדכון אחרון מהקובץ בדרייב: ${new Date(sync.updatedAt).toLocaleString("he-IL")}`,
+            sync.unmatchedCount
+              ? ` \xB7 ${sync.unmatchedCount} שמות מהקובץ לא זוהו בוודאות`
+              : "",
+          )
+        : e.createElement(
+            "p",
+            { className: "text-[11px] text-amber-700" },
+            "עדיין לא בוצע עדכון אוטומטי מהקובץ בדרייב (רץ פעם בשבוע). אפשר לסמן שחקנים ידנית כאן בינתיים.",
+          ),
+      sync?.unmatchedNames?.length
+        ? e.createElement(
+            "p",
+            { className: "text-[11px] text-amber-700 leading-relaxed" },
+            "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
+          )
+        : null,
+    ),
+    e.createElement(
+      "div",
+      { className: "relative" },
+      e.createElement(Ne, {
+        className:
+          "w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2",
+      }),
+      e.createElement("input", {
+        value: a,
+        onChange: (m) => l(m.target.value),
+        placeholder: "חיפוש לפי שם שחקן או הורה",
+        className:
+          "w-full bg-white border border-slate-200 rounded-xl py-3 pr-9 pl-3 text-sm text-right outline-none focus:border-emerald-400",
+      }),
+    ),
+    !RO &&
+      e.createElement(
+        "button",
+        {
+          onClick: () => setShowAll((v) => !v),
+          className: "self-start text-xs text-blue-900 underline",
+        },
+        showAll
+          ? "הצג רק מי שלא משלם"
+          : "הצג את כל השחקנים (כדי לסמן ידנית)",
+      ),
+    n.length === 0 &&
+      e.createElement(
+        "p",
+        { className: "text-center text-sm text-slate-400 py-8" },
+        showAll ? "לא נמצאו תוצאות" : "אין כרגע אף שחקן שמסומן כלא משלם",
+      ),
+    n.map(({ group: m, players: o }) =>
+      e.createElement(
+        "div",
+        { key: m.id, className: "flex flex-col gap-2" },
+        e.createElement(
+          "h3",
+          { className: "text-xs font-semibold text-slate-500 px-1" },
+          m.name,
+        ),
+        e.createElement(
+          "div",
+          {
+            className:
+              "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
+          },
+          o.map((x) =>
+            e.createElement(
+              "div",
+              {
+                key: x.id,
+                className: "px-4 py-3 flex items-center justify-between gap-2",
+              },
+              e.createElement(
+                "div",
+                { className: "flex items-center gap-1.5 shrink-0" },
+                isValidPhone(x.parentPhone) &&
+                  e.createElement(
+                    "a",
+                    {
+                      href: ne(normalizePhone(x.parentPhone), ""),
+                      target: "_blank",
+                      rel: "noreferrer",
+                      className:
+                        "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center",
+                      "aria-label": "וואטסאפ",
+                    },
+                    e.createElement(te, {
+                      className: "w-4 h-4 text-emerald-600",
+                    }),
+                  ),
+                !RO &&
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () => toggle(x),
+                      className: `min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center ${x.notPaying ? "bg-red-100" : "bg-slate-100"}`,
+                      "aria-label": x.notPaying
+                        ? "בטל סימון לא משלם"
+                        : "סמן כלא משלם",
+                    },
+                    e.createElement(BanIcon, {
+                      className: `w-4 h-4 ${x.notPaying ? "text-red-600" : "text-slate-400"}`,
+                    }),
+                  ),
+              ),
+              e.createElement(
+                "div",
+                { className: "text-right flex-1" },
+                e.createElement(
+                  "div",
+                  {
+                    className:
+                      "text-sm font-medium text-blue-950 flex items-center gap-1.5 justify-end",
+                  },
+                  x.notPaying &&
+                    e.createElement(
+                      "span",
+                      {
+                        className:
+                          "text-[10px] bg-red-100 text-red-700 rounded-full px-1.5 py-0.5",
+                      },
+                      "לא משלם",
+                    ),
+                  x.name,
+                ),
+                e.createElement(
+                  "div",
+                  { className: "text-xs text-slate-400" },
+                  x.parentName ? x.parentName + " \xB7 " : "",
+                  x.parentPhone,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 function dt({
   open: t,
   onClose: s,
@@ -1381,6 +1568,12 @@ function dt({
                 label:
                   "ספר טלפונים",
                 icon: se,
+              },
+              {
+                key: "payments",
+                label:
+                  "מי לא משלם",
+                icon: ye,
               },
               {
                 key: "reports",
@@ -2618,6 +2811,7 @@ function Q() {
                 "ניהול קבוצות",
               phonebook:
                 "ספר טלפונים",
+              payments: "מי לא משלם",
               permissions:
                 "ניהול הרשאות",
               access:
@@ -2682,6 +2876,9 @@ function Q() {
           cancellations,
           readOnly: vw,
         }),
+      r &&
+        m === "payments" &&
+        e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: !1 }),
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
