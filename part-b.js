@@ -2767,111 +2767,132 @@ function re({
             Array.isArray(p.trainingDays) &&
             p.trainingDays.length > 0 &&
             !p.trainingDays.includes(new Date(m + "T00:00:00").getDay());
+        // שורה עליונה: השם המלא + כפתורי הגיע/לא הגיע. שורה תחתונה: כל התגים
+        // והפעולות המשניות. קודם הכל היה בשורה אחת, והשם — האלמנט היחיד שהיה
+        // גמיש — נחתך ("מוריס מ") ברגע שהופיע תג ההיעדרויות.
+        let secondary = [
+          k && !RO
+            ? e.createElement(Re, {
+                key: "abs",
+                player: p,
+                dates: k,
+                onOpenWhatsapp: (v) =>
+                  WA
+                    ? WA(v)
+                    : window.open(
+                        ne(
+                          normalizePhone(v.parentPhone),
+                          Ve(v.parentName, v.name, isAdultGroup(t), playerGender(v)),
+                        ),
+                        "_blank",
+                      ),
+              })
+            : null,
+          showWa && WA && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "wa",
+                  onClick: () => WA(p, "absence", t.id, m),
+                  className: `min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform ${waSent ? "bg-slate-100" : "bg-emerald-500"}`,
+                  "aria-label": waSent
+                    ? "הודעה נשלחה — שליחה חוזרת"
+                    : "שליחת הודעת וואטסאפ על היעדרות",
+                  title: waSent ? "הודעה נשלחה" : "שליחת הודעה על היעדרות",
+                },
+                e.createElement(te, {
+                  className: `w-4 h-4 ${waSent ? "text-slate-400" : "text-white"}`,
+                }),
+              )
+            : null,
+          EP && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "edit",
+                  onClick: () => EP(p),
+                  className:
+                    "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 shrink-0",
+                  "aria-label": "עריכת פרטי שחקן",
+                },
+                e.createElement($e, { className: "w-4 h-4" }),
+              )
+            : null,
+          c
+            ? e.createElement(
+                "button",
+                {
+                  key: "arch",
+                  onClick: () => {
+                    window.confirm(
+                      `להעביר את ${p.name} לארכיון? ההיסטוריה שלו תישמר.`,
+                    ) && c(p.id);
+                  },
+                  className:
+                    "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-300 shrink-0",
+                  "aria-label": "העברה לארכיון",
+                },
+                e.createElement(Ae, { className: "w-4 h-4" }),
+              )
+            : null,
+          isOffDay
+            ? e.createElement(
+                "span",
+                {
+                  key: "offday",
+                  className:
+                    "text-[10px] font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 shrink-0",
+                },
+                `לא יום קבוע (${playerDaysLabel(p)})`,
+              )
+            : null,
+        ].filter(Boolean);
         return e.createElement(
           "div",
-          { key: p.id, className: "px-3 py-3 flex items-center gap-2" },
+          { key: p.id, className: "px-3 py-3 flex flex-col gap-2" },
           e.createElement(
             "div",
-            { className: "flex-1 text-right min-w-0" },
+            { className: "flex items-center gap-2" },
             e.createElement(
               "div",
               {
                 className:
-                  "text-sm font-medium text-blue-950 truncate flex items-center gap-1 justify-start",
+                  "flex-1 text-right text-sm font-medium text-blue-950 break-words",
               },
               p.name,
-              isOffDay &&
-                e.createElement(
-                  "span",
-                  {
-                    className:
-                      "text-[9px] font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 shrink-0",
-                  },
-                  `לא יום קבוע (${playerDaysLabel(p)})`,
-                ),
-            ),
-          ),
-          e.createElement(
-            "div",
-            { className: "flex gap-1.5 shrink-0" },
-            e.createElement(
-              "button",
-              {
-                onClick: () => C(p.id, "Present"),
-                disabled: !u,
-                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
-              },
-              "הגיע",
             ),
             e.createElement(
-              "button",
-              {
-                onClick: () => C(p.id, "Absent"),
-                disabled: !u,
-                className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
-              },
-              "לא הגיע",
-            ),
-          ),
-          showWa &&
-            WA &&
-            !RO &&
-            e.createElement(
-              "button",
-              {
-                onClick: () => WA(p, "absence", t.id, m),
-                className: `min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shrink-0 active:scale-95 transition-transform ${waSent ? "bg-slate-100" : "bg-emerald-500"}`,
-                "aria-label": waSent
-                  ? "הודעה נשלחה — שליחה חוזרת"
-                  : "שליחת הודעת וואטסאפ על היעדרות",
-                title: waSent ? "הודעה נשלחה" : "שליחת הודעה על היעדרות",
-              },
-              e.createElement(te, {
-                className: `w-4 h-4 ${waSent ? "text-slate-400" : "text-white"}`,
-              }),
-            ),
-          k &&
-            !RO &&
-            e.createElement(Re, {
-              player: p,
-              onOpenWhatsapp: (v) =>
-                WA
-                  ? WA(v)
-                  : window.open(
-                      ne(
-                        normalizePhone(v.parentPhone),
-                        Ve(v.parentName, v.name, isAdultGroup(t), playerGender(v)),
-                      ),
-                      "_blank",
-                    ),
-            }),
-          EP &&
-            !RO &&
-            e.createElement(
-              "button",
-              {
-                onClick: () => EP(p),
-                className:
-                  "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 shrink-0",
-                "aria-label": "עריכת פרטי שחקן",
-              },
-              e.createElement($e, { className: "w-4 h-4" }),
-            ),
-          c &&
-            e.createElement(
-              "button",
-              {
-                onClick: () => {
-                  window.confirm(
-                    `להעביר את ${p.name} לארכיון? ההיסטוריה שלו תישמר.`,
-                  ) && c(p.id);
+              "div",
+              { className: "flex gap-1.5 shrink-0" },
+              e.createElement(
+                "button",
+                {
+                  onClick: () => C(p.id, "Present"),
+                  disabled: !u,
+                  className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
                 },
+                "הגיע",
+              ),
+              e.createElement(
+                "button",
+                {
+                  onClick: () => C(p.id, "Absent"),
+                  disabled: !u,
+                  className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
+                },
+                "לא הגיע",
+              ),
+            ),
+          ),
+          // השורה התחתונה נבנית רק אם יש בה משהו — אחרת נוצר רווח ריק מתחת לשם
+          secondary.length > 0 &&
+            e.createElement(
+              "div",
+              {
                 className:
-                  "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-300 shrink-0",
-                "aria-label":
-                  "העברה לארכיון",
+                  "flex items-center justify-start gap-1.5 flex-wrap",
               },
-              e.createElement(Ae, { className: "w-4 h-4" }),
+              secondary,
             ),
         );
       }),
