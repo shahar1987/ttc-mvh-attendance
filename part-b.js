@@ -1403,7 +1403,15 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     // הצעות שכבר טופלו בלחיצה (אושרו או נדחו) — נעלמות מיד מהמסך, בלי לחכות
     // לסנכרון הבא שמחשב מחדש את רשימת ההצעות בשרת
     [handledSuggestions, setHandledSuggestions] = b({}),
+    // הצעות שטופלו בעבר ונשמרו ב-Firestore — כדי שלא יחזרו אחרי יציאה וכניסה
+    [syncIgnores, setSyncIgnores] = b([]),
     seededRef = e.useRef(!1);
+  j(() => {
+    let unsub = ae(S(P, "system", "paymentSyncIgnores"), (snap) =>
+      setSyncIgnores((snap.exists() ? snap.data().keys : null) || []),
+    );
+    return unsub;
+  }, []);
   j(() => {
     let unsub = ae(S(P, "system", "paymentSync"), (snap) =>
       setSync(snap.exists() ? snap.data() : null),
@@ -1473,7 +1481,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
               c.player &&
               c.player.isActive &&
               !c.player.deleted &&
-              !handledSuggestions[`${c.playerId}::${sg.fileName}`],
+              !handledSuggestions[`${c.playerId}::${sg.fileName}`] &&
+              !syncIgnores.includes(`${c.playerId}::${sg.fileName}`),
           ),
       }))
       .filter((sg) => sg.candidates.length > 0),
@@ -1489,27 +1498,36 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         )
       )
         return;
+      // notPayingSource: "manual" — האישור שלך גובר על הסנכרון, כך שההרצה הבאה
+      // לא תחזיר אותו לרשימת הלא-משלמים גם כשבקובץ הוא רשום תחת קבוצה אחרת
       O(S(P, "players", playerId), {
         name: fileName,
         notPaying: !1,
-        notPayingSource: "sync",
+        notPayingSource: "manual",
       })
-        .then(() => markSuggestionHandled(playerId, fileName))
+        .then(() => {
+          markSuggestionHandled(playerId, fileName);
+          return persistHandledSuggestion(playerId, fileName);
+        })
         .catch((err) => alert("העדכון נכשל: " + (err.message || err)));
     },
-    // דחיית הצעה: נשמרת כדי שלא תחזור בכל סנכרון
-    ignoreSuggestion = (playerId, fileName) => {
+    // רישום ב-Firestore שההצעה טופלה — גם באישור וגם בדחייה — כדי שלא תחזור
+    // אחרי ריענון המסך ולא תיווצר מחדש בסנכרון הבא
+    persistHandledSuggestion = (playerId, fileName) => {
       let key = `${playerId}::${fileName}`;
-      fsGetDoc(S(P, "system", "paymentSyncIgnores"))
-        .then((snap) => {
-          let keys = (snap.exists() ? snap.data().keys : null) || [];
-          if (keys.includes(key)) return;
-          return De(
-            S(P, "system", "paymentSyncIgnores"),
-            { keys: keys.concat([key]) },
-            { merge: !0 },
-          );
-        })
+      return fsGetDoc(S(P, "system", "paymentSyncIgnores")).then((snap) => {
+        let keys = (snap.exists() ? snap.data().keys : null) || [];
+        if (keys.includes(key)) return;
+        return De(
+          S(P, "system", "paymentSyncIgnores"),
+          { keys: keys.concat([key]) },
+          { merge: !0 },
+        );
+      });
+    },
+    // דחיית הצעה
+    ignoreSuggestion = (playerId, fileName) => {
+      persistHandledSuggestion(playerId, fileName)
         .then(() => markSuggestionHandled(playerId, fileName))
         .catch((err) => alert("השמירה נכשלה: " + (err.message || err)));
     },
