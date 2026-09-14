@@ -1503,6 +1503,39 @@ function PaymentTrackPicker({ player, group, tracks, onClose }) {
           ),
         ),
       ),
+      // שליחת כל המסלולים בהודעה אחת, כשההורה הוא זה שיבחר
+      tracks.length > 1 &&
+        e.createElement(
+          "a",
+          {
+            href: ne(
+              normalizePhone(player.parentPhone),
+              paymentMsg(player, group, tracks),
+            ),
+            target: "_blank",
+            rel: "noreferrer",
+            onClick: onClose,
+            className:
+              "border border-blue-200 bg-blue-50 rounded-xl px-3 py-3 min-h-[44px] flex items-center justify-between gap-2 active:scale-[0.98] transition-transform",
+          },
+          e.createElement(te, { className: "w-4 h-4 text-blue-700 shrink-0" }),
+          e.createElement(
+            "div",
+            { className: "text-right flex-1 min-w-0" },
+            e.createElement(
+              "div",
+              { className: "text-sm font-semibold text-blue-900" },
+              tracks.length === 2
+                ? "שליחת שתי האפשרויות יחד"
+                : `שליחת כל ${tracks.length} האפשרויות יחד`,
+            ),
+            e.createElement(
+              "div",
+              { className: "text-[11px] text-blue-800/70" },
+              "ההודעה תכלול את כל הקישורים וההורה יבחר",
+            ),
+          ),
+        ),
       e.createElement(
         "a",
         {

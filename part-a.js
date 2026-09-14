@@ -243,8 +243,13 @@ function trackLabel(row) {
 // ההודעה שנשלחת מכפתור הוואטסאפ במסך "מי לא משלם".
 // בקבוצות ילדים פונים להורה ושם הילד מופיע בגוף ההודעה; בקבוצות בוגרים
 // ופרקינסון פונים ישירות לשחקן, בלשון יחיד לפי מגדר.
-function paymentMsg(player, group, track) {
-  let adult = isAdultGroup(group),
+// tracks: מסלול אחד, מערך מסלולים (כדי לשלוח כמה אפשרויות ולתת להורה לבחור),
+// או null — ואז ההודעה נשלחת בלי קישור בכלל.
+function paymentMsg(player, group, tracks) {
+  let list = (
+      Array.isArray(tracks) ? tracks : tracks ? [tracks] : []
+    ).filter((tr) => tr && tr.registrationUrl),
+    adult = isAdultGroup(group),
     parent = String((player && player.parentName) || "").trim(),
     child = String((player && player.name) || "").trim(),
     greet = adult ? child : parent || child,
@@ -252,11 +257,21 @@ function paymentMsg(player, group, track) {
     forWhom = adult || !parent || parent === child ? "" : ` של ${child}`,
     ask = adult ? (f ? "אשמח שתסדירי" : "אשמח שתסדיר") : "אשמח שתסדירו",
     write = adult ? (f ? "תכתבי" : "תכתוב") : "תכתבו",
-    lbl = trackLabel(track),
+    pick = adult ? (f ? "שמתאימה לך" : "שמתאימה לך") : "שמתאימה לכם",
+    link = "";
+  if (list.length === 1) {
+    let lbl = trackLabel(list[0]);
+    link = `להרשמה ותשלום${lbl ? ` — ${lbl}` : ""}:\n${list[0].registrationUrl}\n\n`;
+  } else if (list.length > 1) {
     link =
-      track && track.registrationUrl
-        ? `להרשמה ותשלום${lbl ? ` — ${lbl}` : ""}:\n${track.registrationUrl}\n\n`
-        : "";
+      `${list.length === 2 ? "שתי אפשרויות" : `${list.length} אפשרויות`} הרשמה — לבחור את זו ${pick}:\n\n` +
+      list
+        .map(
+          (tr) => `${trackLabel(tr) || tr.mtnsLabel}\n${tr.registrationUrl}`,
+        )
+        .join("\n\n") +
+      "\n\n";
+  }
   return (
     `היי ${greet} 🏓\n\n` +
     `התשלום עבור האימונים${forWhom} העונה עדיין לא הוסדר. ${ask}, כדי שנוכל להמשיך את הפעילות כסדרה.\n\n` +
