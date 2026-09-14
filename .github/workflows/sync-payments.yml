@@ -1,8 +1,12 @@
 name: Sync payment status
 
-# מדי שבוע קורא את קובץ "מי לא משלם" מתיקיית הדרייב הייעודית ומעדכן את השדה
+# קורא את קובץ הנרשמים/משלמים מתיקיית הדרייב הייעודית ומעדכן את השדה
 # players.notPaying ב-Firestore (scripts/sync_payments.mjs). מוצג באפליקציה
 # במסך "מי לא משלם" (בתוך אזור הניהול).
+#
+# רץ בשלושה מצבים: פעם בשבוע (סנכרון מלא), בכל לחיצה על "רענון עכשיו"
+# באפליקציה (בדיקה קצרה כל 10 דקות שמאתרת בקשה ממתינה ב-system/paymentSyncRequest),
+# והרצה ידנית מהלשונית Actions.
 #
 # משתמש באותו service account שכבר קיים בריפו הזה (FIREBASE_SERVICE_ACCOUNT) —
 # הוא שותף כ-Viewer בתיקיית הדרייב, ו-Google Drive API הופעל עבורו בפרויקט
@@ -12,8 +16,9 @@ name: Sync payment status
 # שחקנים. שמות שלא זוהו נשמרים ב-Firestore (מוגן בהרשאות) לבדיקת המנהל באפליקציה.
 on:
   schedule:
-    - cron: "0 1 * * 0"   # יום ראשון, סביב 03:00-04:00 שעון ישראל
-  workflow_dispatch:      # מאפשר גם הרצה ידנית מהלשונית Actions
+    - cron: "0 1 * * 0"     # יום ראשון, סביב 03:00-04:00 שעון ישראל — סנכרון מלא
+    - cron: "*/10 * * * *"  # כל 10 דקות: בדיקה קצרה אם נלחץ "רענון עכשיו" באפליקציה
+  workflow_dispatch:        # מאפשר גם הרצה ידנית מהלשונית Actions
 
 permissions:
   contents: read
@@ -40,10 +45,14 @@ jobs:
       - name: Sync payment status from Drive
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # ריצת ה-10 דקות רק בודקת אם יש בקשת רענון ממתינה ויוצאת מיד אם אין.
+          # הריצה השבועית וההרצה הידנית תמיד מסנכרנות במלואן.
+          SYNC_MODE: ${{ github.event.schedule == '*/10 * * * *' && 'ondemand' || 'full' }}
         run: node scripts/sync_payments.mjs
 
+      # לא פותחים issue על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות issues ביום
       - name: Open an issue if the sync failed
-        if: failure()
+        if: failure() && github.event.schedule != '*/10 * * * *'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
