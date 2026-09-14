@@ -1,56 +1,52 @@
-name: Nightly backup
+name: Daily data backup
 
+# מייצא מדי יום את attendance, cancellations ו-players מ-Firestore ל-JSON,
+# ודוחף אותם לריפו הפרטי shahar1987/ttc-mvh-backups (לא לריפו הזה — הריפו
+# הזה ציבורי, וזה היה חושף שמות ילדים וטלפוני הורים לכל אחד באינטרנט).
+#
+# דורש שני סודות (Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT — כבר קיים בריפו הזה
+#   BACKUP_REPO_TOKEN — PAT מסוג fine-grained, הרשאת Contents: Read and
+#     write, מוגבל אך ורק לריפו ttc-mvh-backups (ראו README שם)
 on:
   schedule:
-    - cron: "0 23 * * *"   # 02:00 שעון ישראל — אחרי שכל האימונים נרשמו
-  workflow_dispatch:      # מאפשר גם הרצה ידנית מהלשונית Actions
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: daily-backup
+  cancel-in-progress: false
 
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: 20
 
-      - run: pip install google-cloud-firestore
+      - name: Install the Firebase admin library
+        run: npm install firebase-admin@12.7.0 --no-audit --no-fund
 
-      - name: Write service account
+      - name: Export collections and push to the private backup repo
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: node scripts/export_backup.mjs
+
+      - name: Open an issue if the backup failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          umask 077
-          printf '%s' "$FIREBASE_SA_JSON" > /tmp/sa.json
-        env:
-          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
-
-      - name: Export Firestore
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
-        run: python backup/export_firestore.py backup-out
-
-      - name: Show what was exported
-        run: cat backup-out/_summary.json
-
-      - name: Push to the private backups repo
-        env:
-          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
-        run: |
-          STAMP=$(TZ=Asia/Jerusalem date '+%Y-%m-%d %H:%M')
-          git clone --depth 1 \
-            "https://x-access-token:${BACKUP_TOKEN}@github.com/shahar1987/ttc-mvh-backups.git" repo
-
-          # קבצים קבועים שנדרסים — ההיסטוריה נשמרת ב-git
-          cp backup-out/*.json repo/
-
-          cd repo
-          git config user.name  "backup-bot"
-          git config user.email "noreply@github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "אין שינויים מאתמול — לא נוצר קומיט"
-          else
-            git commit -m "backup $STAMP"
-            git push
-            echo "הגיבוי נדחף"
-          fi
+          gh issue create \
+            --title "❌ הגיבוי היומי של נתוני הנוכחות נכשל" \
+            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }} || true
