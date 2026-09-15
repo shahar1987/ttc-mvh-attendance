@@ -60,6 +60,42 @@ const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים?" },
 ];
 
+// --- בחירת קובץ המקור בדרייב ------------------------------------------
+// בתיקייה יושב גם גיליון גוגל שהוא קובץ הפלט ("מי לא משלם - רשימה שבועית").
+// אם ניקח פשוט את הקובץ שעודכן לאחרונה, יום אחד נפענח את הפלט של עצמנו כקלט
+// ונסמן את כל המועדון כלא משלם. לכן: גיליון גוגל לעולם לא נבחר כמקור.
+const SOURCE_MIME_ALLOW = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/octet-stream",
+  "text/csv",
+  "text/plain",
+]);
+export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+
+export function pickSourceFile(files) {
+  const usable = (files || []).filter(
+    (f) =>
+      f &&
+      f.mimeType !== GOOGLE_SHEET_MIME &&
+      (SOURCE_MIME_ALLOW.has(f.mimeType) || /\.(xlsx|xlsm|xls|csv)$/i.test(f.name || "")),
+  );
+  usable.sort((a, b) => String(b.modifiedTime || "").localeCompare(String(a.modifiedTime || "")));
+  return usable[0] || null;
+}
+
+// --- סיבה לכל "לא משלם" -------------------------------------------------
+// לא מספיק לדעת שמישהו לא נמצא בקובץ — צריך לדעת למה, אחרת אי אפשר להבדיל
+// בין "באמת לא נרשם" לבין "נרשם אבל השם כתוב אחרת".
+export function notPayingReason(player, filePhoneKeys, normalisePhoneFn) {
+  const key = [player.parentPhone, player.phone, player.mobile]
+    .map((x) => normalisePhoneFn(x))
+    .find(Boolean);
+  if (!key) return "no-phone";
+  if (filePhoneKeys.has(key)) return "phone-in-file";
+  return "not-in-file";
+}
+
 export function normalise(s) {
   return (s || "").toString().trim().replace(/\s+/g, " ");
 }
@@ -313,6 +349,51 @@ export function candidateNames(row, cols) {
   return [];
 }
 
+// --- snapshot של הקובץ, להשוואה בין הרצות -------------------------------
+// שומרים טביעת אצבע קלה של כל שורה ("שם::שם הקבוצה בקובץ") כדי לדעת בהרצה
+// הבאה מי נוסף, מי נעלם, ולמי השתנתה התדירות — וכדי לזהות קובץ חלקי לפני
+// שהוא מסמן חצי מועדון כלא משלם.
+export function snapshotRows(dataRows, cols) {
+  const out = [];
+  for (const r of dataRows) {
+    const label = cols.groupCol !== -1 ? normalise(r[cols.groupCol]) : "";
+    const name = cleanName(candidateNames(r, cols)[0] || "");
+    if (name) out.push(`${name}::${label}`);
+  }
+  return out;
+}
+
+export function diffSnapshots(prevKeys, curKeys) {
+  const toMap = (arr) => {
+    const m = new Map();
+    for (const k of arr || []) {
+      const i = String(k).indexOf("::");
+      const name = i === -1 ? String(k) : String(k).slice(0, i);
+      const label = i === -1 ? "" : String(k).slice(i + 2);
+      if (name) m.set(name, label);
+    }
+    return m;
+  };
+  const a = toMap(prevKeys);
+  const b = toMap(curKeys);
+  const added = [];
+  const removed = [];
+  const changed = [];
+  for (const [name, label] of b) {
+    if (!a.has(name)) added.push(name);
+    else if (a.get(name) !== label) changed.push({ name, from: a.get(name), to: label });
+  }
+  for (const name of a.keys()) if (!b.has(name)) removed.push(name);
+  return { added, removed, changed };
+}
+
+// קובץ נחשב חלקי אם הוא קטן משמעותית מהקודם — ייצוא שנקטע באמצע, סינון
+// שנשכח, או קובץ של קבוצה אחת שהועלה בטעות. במקרה כזה לא נוגעים בסימונים.
+export function isPartialFile(prevRowCount, curRowCount) {
+  if (!prevRowCount || prevRowCount < 5) return false;
+  return curRowCount < prevRowCount * 0.8;
+}
+
 async function driveFetch(url, token) {
   let r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) throw new Error(`Drive request failed (${r.status}): ${url}`);
@@ -386,17 +467,21 @@ async function main() {
   // שלב 2: איתור הקובץ שעודכן לאחרונה בתיקייה
   const q = encodeURIComponent(`'${DRIVE_FOLDER_ID}' in parents and trashed = false`);
   const listRes = await driveFetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&fields=files(id,name,mimeType,modifiedTime)&pageSize=5`,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&fields=files(id,name,mimeType,modifiedTime,size)&pageSize=50`,
     token,
   );
   const files = (await listRes.json()).files || [];
-  if (!files.length) {
-    console.error("לא נמצא אף קובץ בתיקיית הדרייב — לא בוצע עדכון");
+  const file = pickSourceFile(files);
+  if (!file) {
+    console.error(
+      `לא נמצא קובץ רישום מתאים בתיקיית הדרייב (${files.length} קבצים נסרקו, אף אחד מהם אינו xlsx/csv) — לא בוצע עדכון`,
+    );
     await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
     process.exit(1);
   }
-  const file = files[0];
-  console.log(`נמצא קובץ עדכני, עודכן ב-${file.modifiedTime}`);
+  console.log(
+    `נמצא קובץ רישום (${file.mimeType}), עודכן ב-${file.modifiedTime}; ${files.length - 1} קבצים אחרים בתיקייה לא נבחרו`,
+  );
 
   // שלב 3: הורדת התוכן (כ-CSV אם זה גיליון גוגל, אחרת כבינארי גולמי — עשוי
   // להיות קובץ Excel אמיתי) ופענוח לשורות
@@ -442,6 +527,34 @@ async function main() {
   const phoneCols = detectPhoneColumns(header);
   const dataRows = rows.slice(1).filter((r) => r.some((c) => (c || "").trim()));
 
+  // שלב 3.5: השוואה ל-snapshot הקודם + הגנה מפני קובץ חלקי.
+  // זו ההגנה החשובה ביותר כאן: קובץ שנקטע באמצע נראה בדיוק כמו "פתאום כולם
+  // הפסיקו לשלם", ובלי הבדיקה הזו הריצה הלילית הייתה מסמנת חצי מועדון.
+  const snapRef = db.collection("system").doc("paymentSnapshot");
+  const prevSnapDoc = await snapRef.get();
+  const prevSnap = prevSnapDoc.exists ? prevSnapDoc.data() : null;
+  const rowKeys = snapshotRows(dataRows, cols);
+  const fileDiff = diffSnapshots(prevSnap && prevSnap.rowKeys, rowKeys);
+  const partialFile = isPartialFile(prevSnap && prevSnap.rowCount, dataRows.length);
+  if (partialFile) {
+    console.error(
+      `הקובץ מכיל ${dataRows.length} שורות מול ${prevSnap.rowCount} בהרצה הקודמת — ירידה חריגה. ` +
+        `לא שונה שום סימון; ממתין לאישור במסך.`,
+    );
+    await db.collection("system").doc("paymentSync").set(
+      {
+        updatedAt: new Date().toISOString(),
+        sourceFile: file.name,
+        sourceModifiedTime: file.modifiedTime,
+        needsReview: true,
+        partialFile: { rows: dataRows.length, prevRows: prevSnap.rowCount },
+      },
+      { merge: true },
+    );
+    await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
+    return;
+  }
+
   // שלב 4: התאמת כל שורה לשחקן פעיל, דרך המיפוי
   const playersSnap = await db.collection("players").get();
   const players = playersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -469,23 +582,42 @@ async function main() {
   const nameSuggestions = []; // { groupId, fileName, candidates:[{playerId,kind}] }
   const unmatchedGroupLabelsSet = new Set();
   const matchedFamilyRows = []; // { groupId, family, playerId } — לזיהוי שמות משפחה כפולים בין משלמים
+  const filePhoneKeys = new Set(); // כל הטלפונים שמופיעים בקובץ — לזיהוי "רשום אבל בשם אחר"
+  const paidMeta = new Map(); // playerId -> { sessionsPaid, label } — לבדיקת פער תדירות
+  // מונים לבקרה: כל שורה בקובץ חייבת ליפול לאחת מהקטגוריות, אחרת משהו נפל בשקט
+  let rowsMatched = 0;
+  let rowsNoMapping = 0;
+  let rowsNoName = 0;
   for (const row of dataRows) {
+    for (const k of rowPhones(row, phoneCols)) filePhoneKeys.add(k);
     const rawGroupLabel = cols.groupCol !== -1 ? normalise(row[cols.groupCol]) : "";
     const mapping = rawGroupLabel ? mappingByLabel.get(rawGroupLabel) : null;
     if (rawGroupLabel && !mapping) {
       unmatchedGroupLabelsSet.add(rawGroupLabel);
+      rowsNoMapping++;
       continue; // אין מיפוי לקבוצה הזו — לא ניתן לשייך לקבוצה באפליקציה, מדלגים
     }
-    if (!mapping) continue;
+    if (!mapping) {
+      rowsNoMapping++;
+      continue;
+    }
     const pool = activeByGroup.get(mapping.groupId) || [];
     const names = candidateNames(row, cols).map(cleanName).filter(Boolean);
-    if (!names.length) continue;
+    if (!names.length) {
+      rowsNoName++;
+      continue;
+    }
     const fileFamily = cols.familyCol !== -1 ? cleanName(row[cols.familyCol]) : "";
     const filePersonal = cols.personalCol !== -1 ? cleanName(row[cols.personalCol]) : "";
     const nameSet = new Set(names);
     const candidates = pool.filter((p) => nameSet.has(cleanName(p.name)));
     if (candidates.length === 1) {
       paidIds.add(candidates[0].id);
+      rowsMatched++;
+      paidMeta.set(candidates[0].id, {
+        sessionsPaid: Number(mapping.sessionsPerWeek) || null,
+        label: rawGroupLabel,
+      });
       if (fileFamily) {
         matchedFamilyRows.push({
           groupId: mapping.groupId,
@@ -510,6 +642,11 @@ async function main() {
         const named = playersMatchingPhone(byPhone, nameSet, filePersonal);
         if (named.length === 1) {
           paidIds.add(named[0].id);
+          rowsMatched++;
+          paidMeta.set(named[0].id, {
+            sessionsPaid: Number(mapping.sessionsPerWeek) || null,
+            label: rawGroupLabel,
+          });
           phoneMatchedCount++;
           if (fileFamily)
             matchedFamilyRows.push({
@@ -580,9 +717,19 @@ async function main() {
   // לא נדרס.
   const batch = db.batch();
   let writes = 0;
+  let paidFinal = 0;
+  let notPayingFinal = 0;
+  const notPayingReasons = {}; // playerId -> "no-phone" | "phone-in-file" | "not-in-file"
   for (const p of players) {
     if (p.deleted || p.isActive === false) continue;
     if (!coveredGroupIds.has(p.groupId)) continue; // קבוצה בלי מיפוי, או מוחרגת — לא נוגעים
+    // המצב הסופי של השחקן אחרי הריצה הזו — כולל החלטות ידניות שלא נדרסות
+    const finalNotPaying =
+      p.notPayingSource === "manual" ? !!p.notPaying : !paidIds.has(p.id);
+    if (finalNotPaying) {
+      notPayingFinal++;
+      notPayingReasons[p.id] = notPayingReason(p, filePhoneKeys, normalisePhone);
+    } else paidFinal++;
     // החלטה ידנית של המנהל (סימון ידני, או אישור הצעת תיקון שם במסך) גוברת
     // תמיד — לשני הכיוונים. בלי זה מי שאושר ידנית כמשלם היה חוזר להיות מסומן
     // כלא משלם בהרצה הבאה, כי בקובץ הוא רשום תחת קבוצה אחרת.
@@ -606,6 +753,52 @@ async function main() {
   }
   if (writes) await batch.commit();
 
+  // שלב 6: פער תדירות — על כמה אימונים בשבוע הוא שילם מול כמה הקבוצה מתאמנת.
+  // זה בדיוק המקרה של מי שרשום לפעם בשבוע ומגיע פעמיים.
+  const playerById = new Map(players.map((p) => [p.id, p]));
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  const sessionGaps = [];
+  for (const [pid, meta] of paidMeta) {
+    const p = playerById.get(pid);
+    if (!p) continue;
+    const g = groupById.get(p.groupId);
+    const groupSessions = Array.isArray(g && g.days) ? g.days.length : null;
+    if (!meta.sessionsPaid || !groupSessions) continue;
+    if (meta.sessionsPaid < groupSessions)
+      sessionGaps.push({
+        playerId: pid,
+        groupId: p.groupId,
+        paid: meta.sessionsPaid,
+        actual: groupSessions,
+        label: meta.label,
+      });
+  }
+
+  // שלב 7: בקרות — כל שחקן פעיל בקבוצה ממופה חייב להופיע באחד משני הצדדים,
+  // וכל שורה בקובץ חייבת להיספר באחת מהקטגוריות. אם לא — משהו נפל בדרך.
+  const activeCovered = paidFinal + notPayingFinal;
+  const fileAccounted =
+    rowsMatched +
+    nameSuggestions.length +
+    ambiguousNames.length +
+    unmatchedNames.length +
+    rowsNoMapping +
+    rowsNoName;
+  const reconciliation = {
+    activeCovered,
+    paid: paidFinal,
+    notPaying: notPayingFinal,
+    fileRows: dataRows.length,
+    fileAccounted,
+    rowsMatched,
+    rowsNoMapping,
+    rowsNoName,
+    // כל שורה בקובץ נספרה בדיוק פעם אחת, וכל שחקן פעיל בקבוצה ממופה נמצא
+    // באחד משני הצדדים. אם אחד מאלה לא מתקיים — יש באג, לא מסקנה.
+    fileBalanced: fileAccounted === dataRows.length,
+    lowCoverage: activeCovered > 0 && dataRows.length < activeCovered * 0.5,
+  };
+
   await db.collection("system").doc("paymentSync").set(
     {
       updatedAt: new Date().toISOString(),
@@ -618,9 +811,33 @@ async function main() {
       sameFamilyFlags,
       nameSuggestions,
       ambiguousNames,
+      needsReview: false,
+      partialFile: null,
+      notPayingReasons,
+      sessionGaps,
+      reconciliation,
+      fileDiff: {
+        added: fileDiff.added.length,
+        removed: fileDiff.removed.length,
+        changed: fileDiff.changed,
+        removedNames: fileDiff.removed.slice(0, 40),
+        addedNames: fileDiff.added.slice(0, 40),
+        isFirstRun: !prevSnap,
+      },
     },
     { merge: true },
   );
+
+  // שמירת ה-snapshot רק אחרי ריצה תקינה — קובץ חלקי יוצא למעלה ולא מגיע לכאן,
+  // כך שההשוואה הבאה עדיין נעשית מול הקובץ המלא האחרון שהיה.
+  await snapRef.set({
+    fileId: file.id,
+    fileName: file.name,
+    modifiedTime: file.modifiedTime,
+    rowCount: dataRows.length,
+    rowKeys,
+    updatedAt: new Date().toISOString(),
+  });
 
   // מסמנים שבקשת הרענון (אם הייתה) טופלה — גם בריצה השבועית/ידנית
   await requestRef.set({ handledAt: new Date().toISOString() }, { merge: true });
@@ -631,8 +848,14 @@ async function main() {
       `${unmatchedNames.length} שמות מהקובץ לא זוהו, ` +
       `${unmatchedGroupLabelsSet.size} שמות קבוצה בקובץ בלי מיפוי, ${writes} עדכוני notPaying נכתבו, ` +
       `${sameFamilyFlags.length} קבוצות עם שם משפחה כפול בין משלמים, ` +
-      `${nameSuggestions.length} הצעות תיקון שם, ${ambiguousNames.length} שמות כפולים באפליקציה`,
+      `${nameSuggestions.length} הצעות תיקון שם, ${ambiguousNames.length} שמות כפולים באפליקציה, ` +
+      `${sessionGaps.length} פערי תדירות, ` +
+      `שינויים מול הקובץ הקודם: +${fileDiff.added.length} / -${fileDiff.removed.length} / ~${fileDiff.changed.length}`,
   );
+  if (reconciliation.lowCoverage)
+    console.warn(
+      `שים לב: בקובץ ${dataRows.length} שורות מול ${activeCovered} שחקנים פעילים בקבוצות ממופות — ייתכן קובץ חלקי`,
+    );
 }
 
 main().catch((err) => {
