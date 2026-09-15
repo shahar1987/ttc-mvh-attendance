@@ -5309,6 +5309,7 @@ function MemberPortal({
               )
             : e.createElement("p", { className: "text-sm text-slate-500" }, "אין הודעות עדיין"),
           isStaff &&
+            canDo(profile, "sendMessages") &&
             e.createElement(
               "button",
               { onClick: () => setAnnForm(!0), className: "self-start text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2" },
@@ -5383,7 +5384,9 @@ function MemberPortal({
           .sort((a, c) =>
             String(c.publishAt || c.createdAt || "").localeCompare(String(a.publishAt || a.createdAt || "")),
           ),
-        canEditAnn = (a) => !!isAdmin || a.authorUid === profile.id,
+        canEditAnn = (a) =>
+          !!isAdmin ||
+          (canDo(profile, "sendMessages") && a.authorUid === profile.id),
         removeAnn = async (a) => {
           if (!window.confirm('למחוק את ההודעה "' + (a.title || "") + '"?')) return;
           try {

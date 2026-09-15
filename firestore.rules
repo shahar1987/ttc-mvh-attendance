@@ -2,11 +2,13 @@ rules_version = '2';
 
 // כללי אבטחה — מועדון טניס שולחן מבואות החרמון
 //
-// לפריסה: העתקה ל-Firebase Console > Firestore > Rules > Publish
-// או:  firebase deploy --only firestore:rules
+// לפריסה: העתקה ל-Firebase Console > Firestore > Rules > Publish.
+// הקובץ הזה הוא המקור — לערוך כאן ולא בקונסולה, כך שיש היסטוריה.
 //
-// הקובץ הזה הוא המקור — לערוך כאן ולא בקונסולה,
-// כך שיש היסטוריה ואפשר לראות מה השתנה ומתי.
+// שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
+// cancellations, announcements, paymentMappings, links, invites,
+// accessRequests, reminders, adminTasks, system, auditLog. אוסף שלא מופיע
+// כאן חסום לחלוטין על ידי הכלל האחרון.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -21,31 +23,43 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isAdmin() {
-      return isSignedIn() && me().role == 'Admin';
+    // יש למשתמש פרופיל מאושר במערכת. קריאה של נתוני המועדון דורשת את זה —
+    // לא מספיק להיות מחובר עם חשבון גוגל כלשהו.
+    function hasProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // הרשאה פרטנית. מנהל מקבל הכל אוטומטית.
-    // הערכים: reports, payments, phonebook, competitions,
-    //           manageGroups, sendMessages
+    // התפקיד נשמר באפליקציה כ-"Admin"/"Coach"/"Viewer"/"Member", אבל
+    // ההשוואה כאן חסינה לאותיות גדולות/קטנות כדי שמסמך ישן לא ינעל אף אחד.
+    function roleIs(r) {
+      return hasProfile() && me().get('role', '').lower() == r;
+    }
+
+    function isAdmin() {
+      return roleIs('admin');
+    }
+
+    // הרשאה פרטנית שהמנהל פותח לכל משתמש בנפרד, במסך "ניהול הרשאות".
+    // הערכים: reports, payments, phonebook, manageGroups, competitions,
+    //         sendMessages, access — זהים ל-APP_PERMISSIONS שבקוד.
     function hasPerm(p) {
-      return isSignedIn() && (
-        me().role == 'Admin' ||
+      return hasProfile() && (
+        me().get('role', '').lower() == 'admin' ||
         p in me().get('permissions', [])
       );
     }
 
     function isCoachOfGroup(groupId) {
       let g = get(/databases/$(database)/documents/groups/$(groupId)).data;
-      return isSignedIn() && (
+      return hasProfile() && (
         g.get('coachId', '') == request.auth.uid ||
         request.auth.uid in g.get('coachIds', [])
       );
     }
 
     // ---------- משתמשים ----------
-    // רק מנהל משנה תפקידים והרשאות — אחרת משתמש יוכל
-    // להעניק לעצמו גישה לכל דבר.
+    // רק מנהל משנה תפקידים והרשאות — אחרת מאמן יוכל להעניק לעצמו גישה לכל דבר.
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
@@ -58,105 +72,106 @@ service cloud.firestore {
 
     // ---------- קבוצות ----------
     match /groups/{groupId} {
-      allow read: if isSignedIn();
-      allow create, delete: if isAdmin() || hasPerm('manageGroups');
+      allow read: if hasProfile();
+      allow create, delete: if hasPerm('manageGroups');
       // מאמן רשאי לערוך את הקבוצה שלו, אבל לא להעביר אותה למאמן אחר
-      allow update: if isAdmin() || hasPerm('manageGroups')
+      allow update: if hasPerm('manageGroups')
         || (isCoachOfGroup(groupId)
             && request.resource.data.get('coachId', '') == resource.data.get('coachId', '')
             && request.resource.data.get('coachIds', []) == resource.data.get('coachIds', []));
     }
 
     // ---------- שחקנים ----------
+    // הרשאת payments נכללת כי מסך "מי לא משלם" מסמן notPaying ומתקן שמות.
     match /players/{playerId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin() || hasPerm('manageGroups')
-        || isCoachOfGroup(request.resource.data.groupId);
-      allow update: if isAdmin() || hasPerm('manageGroups')
-        || isCoachOfGroup(resource.data.groupId);
+      allow read: if hasProfile();
+      allow create: if hasPerm('manageGroups')
+        || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      allow update: if hasPerm('manageGroups') || hasPerm('payments')
+        || isCoachOfGroup(resource.data.get('groupId', ''));
       allow delete: if isAdmin();
     }
 
     // ---------- נוכחות ----------
     // הדאטה הקריטית ביותר. מחיקה — רק מנהל.
     match /attendance/{attendanceId} {
-      allow read: if isSignedIn();
+      allow read: if hasProfile();
       allow create, update: if isAdmin()
-        || isCoachOfGroup(request.resource.data.groupId);
+        || isCoachOfGroup(request.resource.data.get('groupId', ''));
       allow delete: if isAdmin();
     }
 
     // ---------- ביטולי אימונים ----------
+    // ביטול נוצר עם groupId, וביטול הביטול מוחק את אותו מסמך — ולכן
+    // במחיקה בודקים את הקבוצה של המסמך הקיים ולא של הבקשה.
     match /cancellations/{id} {
-      allow read: if isSignedIn();
-      allow create, delete: if isAdmin()
-        || isCoachOfGroup(request.resource.data.groupId);
+      allow read: if hasProfile();
+      allow create, update: if isAdmin()
+        || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      allow delete: if isAdmin()
+        || isCoachOfGroup(resource.data.get('groupId', ''));
     }
 
     // ---------- דוחות ----------
-    // הדוחות מחושבים מהנתונים הקיימים, אז אין אוסף נפרד.
-    // ההרשאה 'reports' נאכפת בממשק בלבד — הנתונים עצמם
-    // מוגנים על ידי הכללים של attendance ו-players.
+    // הדוחות מחושבים מהנתונים הקיימים ואין להם אוסף נפרד, ולכן ההרשאה
+    // 'reports' נאכפת בממשק בלבד. הנתונים עצמם מוגנים על ידי הכללים של
+    // attendance ו-players.
 
     // ---------- בדיקת תשלומים ----------
-    match /paymentSnapshots/{id} {
-      allow read, write: if hasPerm('payments');
-    }
     match /paymentMappings/{id} {
-      allow read, write: if hasPerm('payments');
-    }
-    match /matchDecisions/{id} {
-      allow read, write: if hasPerm('payments');
+      allow read: if hasProfile();
+      allow write: if hasPerm('payments');
     }
 
-    // ---------- תחרויות ----------
-    match /competitions/{id} {
-      allow read: if isSignedIn();
-      allow write: if hasPerm('competitions');
-    }
-    match /tournaments/{id} {
-      allow read: if isSignedIn();
-      allow write: if hasPerm('competitions');
-    }
-
-    // ---------- הודעות להורים ----------
+    // ---------- הודעות המועדון ----------
+    // כל בעל פרופיל קורא (גם הורים), כותב רק מי שיש לו הרשאת הודעות,
+    // ועורך/מוחק רק המנהל או מי שכתב את ההודעה.
     match /announcements/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin() || hasPerm('sendMessages');
+      allow read: if hasProfile();
+      allow create: if hasPerm('sendMessages')
+        && request.resource.data.get('authorUid', '') == request.auth.uid;
+      allow update, delete: if isAdmin()
+        || (hasPerm('sendMessages')
+            && resource.data.get('authorUid', '') == request.auth.uid);
     }
 
     // ---------- תזכורות למאמנים ----------
     match /reminders/{id} {
-      allow read, create: if isAdmin() || hasPerm('sendMessages');
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     // ---------- יומן פעולות ----------
     // כל משתמש מחובר יכול לכתוב רישום, רק מנהל קורא.
     // אסור לערוך או למחוק — יומן שאפשר לשנות חסר ערך.
     match /auditLog/{id} {
-      allow create: if isSignedIn()
-        && request.resource.data.who == request.auth.uid;
+      allow create: if hasProfile()
+        && request.resource.data.get('who', '') == request.auth.uid;
       allow read: if isAdmin();
       allow update, delete: if false;
     }
 
     // ---------- גישת הורים ----------
     match /links/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if hasProfile();
+      allow write: if hasPerm('access');
     }
     match /invites/{id} {
+      // הזמנה נקראת לפי הטוקן שבקישור, לפני שיש למוזמן פרופיל
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if hasPerm('access');
     }
     match /accessRequests/{id} {
       allow create: if true;          // הורה מגיש בקשה לפני שיש לו חשבון
-      allow read, update, delete: if isAdmin();
+      allow read, update, delete: if hasPerm('access');
     }
 
     // ---------- מערכת ----------
+    // מסמכי מצב של הסנכרון (paymentSync, paymentSnapshot, paymentSyncRequest,
+    // paymentSyncIgnores, זריעות). נקראים באפליקציה, נכתבים על ידי המנהל
+    // או בעל הרשאת התשלומים; סקריפטי ה-Admin SDK עוקפים את הכללים ממילא.
     match /system/{id} {
-      allow read: if isSignedIn();
+      allow read: if hasProfile();
       allow write: if isAdmin() || hasPerm('payments');
     }
     match /adminTasks/{id} {
