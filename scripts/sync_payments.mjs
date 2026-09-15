@@ -307,19 +307,70 @@ export function parseCsv(text) {
 
 // ממיר את הקובץ שהתקבל מהדרייב למערך שורות (מערך של מערכי תאים), בין אם זה
 // CSV/גיליון גוגל מיוצא (טקסט) או קובץ Excel בינארי אמיתי שהועלה ידנית.
+// כותרת נחשבת כותרת של טבלת רישום אם יש בה עמודת קבוצה ועמודת שם כלשהי.
+export function looksLikeHeader(row) {
+  const joined = (row || []).join(" ");
+  return joined.includes("קבוצה") && joined.includes("שם");
+}
+
+// הקובץ של המתנ"ס מכיל כמה גיליונות. גרסאות קודמות קראו רק את הראשון, וזה
+// אומר שכל מי שרשום בגיליון אחר פשוט לא היה נספר כמשלם. כאן נקראים כל
+// הגיליונות שיש בהם טבלת רישום אמיתית, השורות מאוחדות, וכפילויות (אותו אדם
+// שמופיע בשני גיליונות, או גיליון שהועתק) מוסרות לפי תוכן השורה.
+export function rowsFromWorkbook(wb) {
+  let header = null;
+  const seen = new Set();
+  const out = [];
+  const perSheet = [];
+  for (const name of wb.SheetNames) {
+    const sheet = wb.Sheets[name];
+    if (!sheet) continue;
+    const rows = XLSX.utils
+      .sheet_to_json(sheet, { header: 1, defval: "", raw: false })
+      .map((r) => r.map((c) => normalise(c)))
+      .filter((r) => r.some((c) => (c || "").trim()));
+    const headerIdx = rows.findIndex(looksLikeHeader);
+    if (headerIdx === -1) {
+      perSheet.push({ name, rows: 0, skipped: true });
+      continue;
+    }
+    if (!header) {
+      header = rows[headerIdx];
+      out.push(header);
+    }
+    let added = 0;
+    for (const r of rows.slice(headerIdx + 1)) {
+      if (looksLikeHeader(r)) continue; // כותרת חוזרת באמצע הגיליון
+      const key = r.join("\u0001");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+      added++;
+    }
+    perSheet.push({ name, rows: added, skipped: false });
+  }
+  return { rows: header ? out : [], perSheet };
+}
+
 export function rowsFromFile(buffer, { isSpreadsheetExport }) {
   if (isSpreadsheetExport) {
-    return parseCsv(buffer.toString("utf8"));
+    return { rows: parseCsv(buffer.toString("utf8")), perSheet: [] };
   }
   try {
     const wb = XLSX.read(buffer, { type: "buffer" });
+    const parsed = rowsFromWorkbook(wb);
+    if (parsed.rows.length) return parsed;
+    // אין גיליון עם כותרת מזוהה — נופלים לגיליון הראשון כמו קודם
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils
-      .sheet_to_json(sheet, { header: 1, defval: "", raw: false })
-      .map((r) => r.map((c) => normalise(c)));
+    return {
+      rows: XLSX.utils
+        .sheet_to_json(sheet, { header: 1, defval: "", raw: false })
+        .map((r) => r.map((c) => normalise(c))),
+      perSheet: [],
+    };
   } catch {
     // לא Excel בינארי — כנראה CSV/טקסט רגיל שהועלה ישירות
-    return parseCsv(buffer.toString("utf8"));
+    return { rows: parseCsv(buffer.toString("utf8")), perSheet: [] };
   }
 }
 
@@ -501,7 +552,15 @@ async function main() {
     ).arrayBuffer();
     buffer = Buffer.from(arrayBuf);
   }
-  const rows = rowsFromFile(buffer, { isSpreadsheetExport });
+  const parsedFile = rowsFromFile(buffer, { isSpreadsheetExport });
+  const rows = parsedFile.rows;
+  if (parsedFile.perSheet.length)
+    console.log(
+      "גיליונות בקובץ: " +
+        parsedFile.perSheet
+          .map((sh) => `${sh.name}=${sh.skipped ? "ללא טבלת רישום" : sh.rows + " שורות"}`)
+          .join(", "),
+    );
   if (!rows.length) {
     console.log("הקובץ ריק — אין שינוי");
     await db.collection("system").doc("paymentSync").set(
