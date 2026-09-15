@@ -1842,7 +1842,60 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
       }))
       .filter((x) => x.players.length > 0),
-    totalPaid = paidByGroup.reduce((n, x) => n + x.players.length, 0);
+    totalPaid = paidByGroup.reduce((n, x) => n + x.players.length, 0),
+    // למה בדיוק השחקן הזה מסומן כלא משלם — בלי זה אי אפשר להבדיל בין
+    // "באמת לא נרשם" לבין "נרשם, אבל השם בקובץ כתוב אחרת"
+    reasonText = (id) => {
+      let r = sync?.notPayingReasons?.[id];
+      return r === "no-phone"
+        ? "אין טלפון הורה תקין באפליקציה — אי אפשר להצליב מול הקובץ"
+        : r === "phone-in-file"
+          ? "הטלפון שלו כן מופיע בקובץ, אבל בשם אחר — כדאי לבדוק"
+          : r === "not-in-file"
+            ? "לא נמצא בקובץ הרישום"
+            : "";
+    },
+    // מי שילם על פחות אימונים בשבוע ממה שהקבוצה שלו מתאמנת בפועל
+    sessionGaps = (sync?.sessionGaps || [])
+      .map((g) => ({
+        ...g,
+        player: t.find((p) => p.id === g.playerId),
+        group: s.find((x) => x.id === g.groupId),
+      }))
+      .filter((g) => g.player && g.player.isActive && !g.player.deleted),
+    exportNotPayingCsv = () => {
+      let rows = [["שם", "קבוצה", "שם הורה", "טלפון", "סיבה"]];
+      t.filter(
+        (p) =>
+          p.isActive &&
+          !p.deleted &&
+          p.notPaying &&
+          !excludedGroupIds.has(p.groupId),
+      ).forEach((p) =>
+        rows.push([
+          p.name || "",
+          s.find((g) => g.id === p.groupId)?.name || "",
+          p.parentName || "",
+          p.parentPhone || "",
+          reasonText(p.id),
+        ]),
+      );
+      let csv = rows
+          .map((r) =>
+            r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(","),
+          )
+          .join("\r\n"),
+        // BOM — בלעדיו אקסל פותח עברית כג'יבריש
+        blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }),
+        url = URL.createObjectURL(blob),
+        link = document.createElement("a");
+      link.href = url;
+      link.download = `לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
@@ -1878,7 +1931,54 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
           )
         : null,
+      sync?.reconciliation
+        ? e.createElement(
+            "p",
+            {
+              className: sync.reconciliation.fileBalanced
+                ? "text-[11px] text-amber-700 leading-relaxed"
+                : "text-[11px] text-red-700 font-semibold leading-relaxed",
+            },
+            `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
+            sync.reconciliation.fileBalanced
+              ? ""
+              : " — יש פער בין הקובץ לספירה, כדאי לבדוק לפני שמסיקים מסקנות",
+          )
+        : null,
+      sync?.reconciliation?.lowCoverage
+        ? e.createElement(
+            "p",
+            { className: "text-[11px] text-red-700 font-semibold leading-relaxed" },
+            "בקובץ הרבה פחות שורות ממספר השחקנים הפעילים — ייתכן שזה קובץ חלקי. אל תסיק שכולם לא משלמים.",
+          )
+        : null,
+      sync?.fileDiff && !sync.fileDiff.isFirstRun
+        ? e.createElement(
+            "p",
+            { className: "text-[11px] text-amber-700" },
+            `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות/קבוצה`,
+          )
+        : null,
     ),
+    sync?.needsReview && sync?.partialFile
+      ? e.createElement(
+          "div",
+          {
+            className:
+              "bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3 flex flex-col gap-1",
+          },
+          e.createElement(
+            "p",
+            { className: "text-sm font-semibold text-red-900" },
+            "הסנכרון נעצר — הקובץ בדרייב נראה חלקי",
+          ),
+          e.createElement(
+            "p",
+            { className: "text-[11px] text-red-700 leading-relaxed" },
+            `בקובץ האחרון ${sync.partialFile.rows} שורות לעומת ${sync.partialFile.prevRows} בהרצה הקודמת. כדי לא לסמן בטעות שחקנים ששילמו, שום סימון לא שונה והרשימה למטה היא עדיין זו מהסנכרון הקודם. אם הקובץ באמת התעדכן — להעלות אותו שוב במלואו וללחוץ רענון.`,
+          ),
+        )
+      : null,
     !RO &&
       e.createElement(
         "div",
@@ -1912,6 +2012,16 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             className: "text-[11px] text-slate-400 underline",
           },
           "להרצה מיידית",
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: exportNotPayingCsv,
+            disabled: totalNotPaying === 0,
+            className:
+              "text-xs font-semibold text-blue-900 border border-blue-200 rounded-lg px-3 py-2 disabled:opacity-40",
+          },
+          "ייצוא רשימה לאקסל",
         ),
       ),
     !RO &&
@@ -2056,6 +2166,39 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             "p",
             { key: idx, className: "text-[11px] text-orange-800" },
             `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
+          ),
+        ),
+      ),
+    !RO &&
+      sessionGaps.length > 0 &&
+      e.createElement(
+        "div",
+        {
+          className:
+            "bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex flex-col gap-1.5",
+        },
+        e.createElement(
+          "p",
+          { className: "text-sm font-semibold text-violet-900" },
+          `${sessionGaps.length} שחקנים רשומים לפחות אימונים ממה שהקבוצה מתאמנת בפועל`,
+        ),
+        e.createElement(
+          "p",
+          { className: "text-[11px] text-violet-700 leading-relaxed" },
+          'המספר נלקח משורת המיפוי של הקבוצה בקובץ המתנ"ס, מול ימי האימון של הקבוצה באפליקציה. זה לא בהכרח חוב — יש מי שנרשם בכוונה לפעם בשבוע — אבל שווה לוודא.',
+        ),
+        sessionGaps.map((g, idx) =>
+          e.createElement(
+            "p",
+            { key: idx, className: "text-[11px] text-violet-800" },
+            `${g.player.name} \xB7 ${g.group?.name || "קבוצה"} \xB7 שילם על ${g.paid} בשבוע, הקבוצה מתאמנת ${g.actual}`,
+            g.label
+              ? e.createElement(
+                  "span",
+                  { className: "text-[10px] text-violet-500" },
+                  ` \xB7 בקובץ: ${g.label}`,
+                )
+              : null,
           ),
         ),
       ),
@@ -2335,6 +2478,20 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                   x.parentName ? x.parentName + " \xB7 " : "",
                   x.parentPhone,
                 ),
+                x.notPaying && reasonText(x.id)
+                  ? e.createElement(
+                      "div",
+                      { className: "text-[11px] text-slate-500 leading-snug" },
+                      reasonText(x.id),
+                    )
+                  : null,
+                x.notPaying && x.notPayingSource === "manual"
+                  ? e.createElement(
+                      "div",
+                      { className: "text-[10px] text-slate-400" },
+                      "סומן ידנית \xB7 הסנכרון לא משנה אותו",
+                    )
+                  : null,
               ),
             ),
           ),
