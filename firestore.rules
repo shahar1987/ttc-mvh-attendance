@@ -1,0 +1,171 @@
+rules_version = '2';
+
+// כללי אבטחה — מועדון טניס שולחן מבואות החרמון
+//
+// לפריסה: העתקה ל-Firebase Console > Firestore > Rules > Publish
+// או:  firebase deploy --only firestore:rules
+//
+// הקובץ הזה הוא המקור — לערוך כאן ולא בקונסולה,
+// כך שיש היסטוריה ואפשר לראות מה השתנה ומתי.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- עזר ----------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && me().role == 'Admin';
+    }
+
+    // הרשאה פרטנית. מנהל מקבל הכל אוטומטית.
+    // הערכים: reports, payments, phonebook, competitions,
+    //           manageGroups, sendMessages
+    function hasPerm(p) {
+      return isSignedIn() && (
+        me().role == 'Admin' ||
+        p in me().get('permissions', [])
+      );
+    }
+
+    function isCoachOfGroup(groupId) {
+      let g = get(/databases/$(database)/documents/groups/$(groupId)).data;
+      return isSignedIn() && (
+        g.get('coachId', '') == request.auth.uid ||
+        request.auth.uid in g.get('coachIds', [])
+      );
+    }
+
+    // ---------- משתמשים ----------
+    // רק מנהל משנה תפקידים והרשאות — אחרת משתמש יוכל
+    // להעניק לעצמו גישה לכל דבר.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        // משתמש רגיל רשאי לעדכן רק את טוקן ה-Push שלו
+        || (request.auth.uid == userId
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['fcmToken']));
+    }
+
+    // ---------- קבוצות ----------
+    match /groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin() || hasPerm('manageGroups');
+      // מאמן רשאי לערוך את הקבוצה שלו, אבל לא להעביר אותה למאמן אחר
+      allow update: if isAdmin() || hasPerm('manageGroups')
+        || (isCoachOfGroup(groupId)
+            && request.resource.data.get('coachId', '') == resource.data.get('coachId', '')
+            && request.resource.data.get('coachIds', []) == resource.data.get('coachIds', []));
+    }
+
+    // ---------- שחקנים ----------
+    match /players/{playerId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || hasPerm('manageGroups')
+        || isCoachOfGroup(request.resource.data.groupId);
+      allow update: if isAdmin() || hasPerm('manageGroups')
+        || isCoachOfGroup(resource.data.groupId);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- נוכחות ----------
+    // הדאטה הקריטית ביותר. מחיקה — רק מנהל.
+    match /attendance/{attendanceId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin()
+        || isCoachOfGroup(request.resource.data.groupId);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- ביטולי אימונים ----------
+    match /cancellations/{id} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin()
+        || isCoachOfGroup(request.resource.data.groupId);
+    }
+
+    // ---------- דוחות ----------
+    // הדוחות מחושבים מהנתונים הקיימים, אז אין אוסף נפרד.
+    // ההרשאה 'reports' נאכפת בממשק בלבד — הנתונים עצמם
+    // מוגנים על ידי הכללים של attendance ו-players.
+
+    // ---------- בדיקת תשלומים ----------
+    match /paymentSnapshots/{id} {
+      allow read, write: if hasPerm('payments');
+    }
+    match /paymentMappings/{id} {
+      allow read, write: if hasPerm('payments');
+    }
+    match /matchDecisions/{id} {
+      allow read, write: if hasPerm('payments');
+    }
+
+    // ---------- תחרויות ----------
+    match /competitions/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPerm('competitions');
+    }
+    match /tournaments/{id} {
+      allow read: if isSignedIn();
+      allow write: if hasPerm('competitions');
+    }
+
+    // ---------- הודעות להורים ----------
+    match /announcements/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || hasPerm('sendMessages');
+    }
+
+    // ---------- תזכורות למאמנים ----------
+    match /reminders/{id} {
+      allow read, create: if isAdmin() || hasPerm('sendMessages');
+    }
+
+    // ---------- יומן פעולות ----------
+    // כל משתמש מחובר יכול לכתוב רישום, רק מנהל קורא.
+    // אסור לערוך או למחוק — יומן שאפשר לשנות חסר ערך.
+    match /auditLog/{id} {
+      allow create: if isSignedIn()
+        && request.resource.data.who == request.auth.uid;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // ---------- גישת הורים ----------
+    match /links/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /invites/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /accessRequests/{id} {
+      allow create: if true;          // הורה מגיש בקשה לפני שיש לו חשבון
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ---------- מערכת ----------
+    match /system/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || hasPerm('payments');
+    }
+    match /adminTasks/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
