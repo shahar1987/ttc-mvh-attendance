@@ -17,6 +17,91 @@ function isMemberRole(u) {
 function isStaffMember(u) {
   return isAdminRole(u) || isCoachRole(u);
 }
+// --- הרשאות פרטניות -----------------------------------------------------
+// מעבר לתפקיד (מנהל/מאמן/צופה), לכל משתמש אפשר לפתוח או לסגור יכולות
+// ספציפיות. מנהל מקבל הכל תמיד ואי אפשר לקחת ממנו. הרשימה הזו חייבת להישאר
+// זהה לשמות שבקובץ firestore.rules — שם זה נאכף בשרת, כאן רק מוצג.
+const APP_PERMISSIONS = [
+  {
+    key: "reports",
+    label: "דוחות",
+    desc: "כל הדוחות והסטטיסטיקות של המועדון",
+  },
+  {
+    key: "payments",
+    label: "מי לא משלם",
+    desc: "בדיקת התשלומים, הסנכרון מהקובץ ושליחת תזכורות",
+  },
+  {
+    key: "phonebook",
+    label: "ספר טלפונים",
+    desc: "כל השחקנים וההורים עם מספרי הטלפון",
+  },
+  {
+    key: "manageGroups",
+    label: "ניהול קבוצות ושחקנים",
+    desc: "הוספה, עריכה וארכוב של קבוצות ושחקנים, וייבוא שחקנים",
+  },
+  {
+    key: "competitions",
+    label: "תחרויות ודירוג",
+    desc: "מערכת התחרויות של המועדון",
+  },
+  {
+    key: "sendMessages",
+    label: "הודעות מהמועדון",
+    desc: "פרסום הודעות בפורטל לכל ההורים",
+  },
+  {
+    key: "access",
+    label: "גישת הורים",
+    desc: "אישור בקשות גישה וקישור הורים לכרטיס שחקן",
+  },
+];
+const ALL_PERMISSION_KEYS = APP_PERMISSIONS.map((p) => p.key);
+// ברירת מחדל לפי תפקיד — משמשת רק למשתמשים שעדיין לא הוגדרו להם הרשאות
+// פרטניות, כדי שאף אחד לא יאבד גישה שהייתה לו לפני השינוי הזה.
+const DEFAULT_PERMISSIONS_BY_ROLE = {
+  admin: ALL_PERMISSION_KEYS,
+  viewer: ["reports", "phonebook", "competitions"],
+  coach: ["access", "competitions"],
+  member: [],
+};
+// תפריט הצוות. כל פריט מסומן בהרשאה שפותחת אותו; פריט בלי הרשאה פתוח לכל
+// משתמש צוות (מילוי נוכחות ופורטל המועדון — הבסיס של העבודה היומיומית).
+const STAFF_MENU_ITEMS = [
+  { key: "dashboard", label: "דשבורד", icon: le, perm: "reports", viewerToo: !0 },
+  { key: "attendance", label: "מילוי נוכחות", icon: Z },
+  { key: "groups", label: "ניהול קבוצות", icon: H, perm: "manageGroups", viewerToo: !0 },
+  { key: "phonebook", label: "ספר טלפונים", icon: se, perm: "phonebook" },
+  { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
+  { key: "reports", label: "דוחות", icon: ReportsIcon, perm: "reports" },
+  { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
+  { key: "access", label: "גישת הורים", icon: J, perm: "access" },
+  { key: "portal", label: "פורטל המועדון", icon: le },
+  { key: "import", label: "ייבוא שחקנים", icon: K, perm: "manageGroups" },
+  {
+    key: "tournaments",
+    label: "תחרויות",
+    icon: TrophyIcon,
+    external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
+    perm: "competitions",
+  },
+];
+
+function userPermissions(u) {
+  if (isAdminRole(u)) return ALL_PERMISSION_KEYS;
+  if (u && Array.isArray(u.permissions))
+    return u.permissions.filter((k) => ALL_PERMISSION_KEYS.includes(k));
+  return DEFAULT_PERMISSIONS_BY_ROLE[roleKey(u)] || [];
+}
+// האם כבר נקבעו למשתמש הרשאות פרטניות (בניגוד לברירת מחדל לפי תפקיד)
+function hasExplicitPermissions(u) {
+  return !!(u && Array.isArray(u.permissions));
+}
+function canDo(u, key) {
+  return isAdminRole(u) || userPermissions(u).includes(key);
+}
 function coachNamesFor(ids, users) {
   return (ids || [])
     .map((id) => (users || []).find((u) => u.id === id))
@@ -832,6 +917,9 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
     [c, n] = b(null),
     [m, o] = b(!1),
     [editUser, setEditUser] = b(null),
+    [permBusy, setPermBusy] = b(""),
+    [openPerms, setOpenPerms] = b({}),
+    permSeedRef = e.useRef(!1),
     { data: accountTasks } = L("adminTasks", null, uid),
     [taskBusy, setTaskBusy] = b(""),
     lastTaskFor = (u) =>
@@ -853,6 +941,28 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
         i("הבקשה נכשלה: " + (err.message || err));
       } finally {
         setTaskBusy("");
+      }
+    },
+    // פתיחה/סגירה של הרשאה בודדת. נשמר על מסמך המשתמש, כך שכל מכשיר וכל
+    // משתמש אחר רואה את זה מיד (יש מאזין חי על users), וגם כללי האבטחה
+    // בשרת נשענים על אותו שדה — כלומר זה לא רק הסתרה בממשק.
+    togglePerm = async (u, key) => {
+      if (isAdminRole(u)) return; // למנהל יש הכל, אין מה לשנות
+      let current = userPermissions(u),
+        next = current.includes(key)
+          ? current.filter((k) => k !== key)
+          : current.concat([key]);
+      (setPermBusy(u.id + "::" + key), i(""));
+      try {
+        await O(S(P, "users", u.id), {
+          permissions: ALL_PERMISSION_KEYS.filter((k) => next.includes(k)),
+          permissionsUpdatedAt: new Date().toISOString(),
+          permissionsUpdatedBy: a,
+        });
+      } catch (err) {
+        i("עדכון ההרשאה נכשל: " + (err.message || err));
+      } finally {
+        setPermBusy("");
       }
     },
     taskNote = (u) => {
@@ -1015,6 +1125,111 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       }
     },
     h = t.filter(isAdminRole);
+  // מיגרציה חד-פעמית: משתמשי צוות שנוצרו לפני שהיו הרשאות פרטניות מקבלים
+  // כאן את ההרשאות שהתפקיד שלהם נתן להם עד היום, כתובות במפורש על המסמך.
+  // בלי זה הממשק היה מראה להם גישה שכללי האבטחה בשרת כבר לא מאשרים.
+  j(() => {
+    if (permSeedRef.current) return;
+    let missing = t.filter(
+      (u) => !isMemberRole(u) && !isAdminRole(u) && !hasExplicitPermissions(u),
+    );
+    if (!t.length || !missing.length) return;
+    permSeedRef.current = !0;
+    let batch = Te(P);
+    missing.forEach((u) =>
+      batch.set(
+        S(P, "users", u.id),
+        {
+          permissions: userPermissions(u),
+          permissionsUpdatedAt: new Date().toISOString(),
+          permissionsUpdatedBy: "migration",
+        },
+        { merge: !0 },
+      ),
+    );
+    batch.commit().catch(() => {
+      permSeedRef.current = !1;
+    });
+  }, [t]);
+  let permRow = (u) =>
+    isAdminRole(u)
+      ? e.createElement(
+          "p",
+          { className: "text-[11px] text-slate-400 px-1" },
+          "מנהל — גישה מלאה לכל המסכים, אי אפשר להגביל",
+        )
+      : e.createElement(
+          "div",
+          { className: "flex flex-col gap-1.5" },
+          e.createElement(
+            "button",
+            {
+              onClick: () =>
+                setOpenPerms((o2) => ({ ...o2, [u.id]: !o2[u.id] })),
+              className: "self-start text-[11px] text-blue-900 underline",
+            },
+            openPerms[u.id]
+              ? "סגירת ההרשאות"
+              : `הרשאות (${userPermissions(u).length}/${ALL_PERMISSION_KEYS.length})`,
+          ),
+          openPerms[u.id] &&
+            e.createElement(
+              "div",
+              {
+                className:
+                  "bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-col gap-1.5",
+              },
+              APP_PERMISSIONS.map((perm) => {
+                let on = userPermissions(u).includes(perm.key),
+                  busy = permBusy === u.id + "::" + perm.key;
+                return e.createElement(
+                  "button",
+                  {
+                    key: perm.key,
+                    onClick: () => togglePerm(u, perm.key),
+                    disabled: busy,
+                    className:
+                      "flex items-start gap-2 text-right rounded-lg px-2 py-1.5 disabled:opacity-50 " +
+                      (on ? "bg-emerald-50" : "bg-white"),
+                  },
+                  e.createElement(
+                    "span",
+                    {
+                      className:
+                        "w-5 h-5 rounded-md shrink-0 flex items-center justify-center mt-0.5 " +
+                        (on
+                          ? "bg-emerald-500 text-white"
+                          : "border border-slate-300 bg-white"),
+                    },
+                    on ? e.createElement(Z, { className: "w-3.5 h-3.5" }) : null,
+                  ),
+                  e.createElement(
+                    "span",
+                    { className: "flex-1" },
+                    e.createElement(
+                      "span",
+                      {
+                        className:
+                          "block text-xs font-medium " +
+                          (on ? "text-emerald-900" : "text-slate-700"),
+                      },
+                      perm.label,
+                    ),
+                    e.createElement(
+                      "span",
+                      { className: "block text-[10px] text-slate-400 leading-snug" },
+                      perm.desc,
+                    ),
+                  ),
+                );
+              }),
+              e.createElement(
+                "p",
+                { className: "text-[10px] text-slate-400 leading-snug px-1" },
+                "השינוי נשמר מיד ומתעדכן אצל כולם. מילוי נוכחות לקבוצות שלו ופורטל המועדון פתוחים לכל מאמן ואינם ניתנים להגבלה.",
+              ),
+            ),
+        );
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
@@ -1094,8 +1309,11 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             "div",
             {
               key: u.id,
-              className: "px-4 py-3 flex items-center justify-between gap-2",
+              className: "px-4 py-3 flex flex-col gap-2",
             },
+            e.createElement(
+              "div",
+              { className: "flex items-center justify-between gap-2" },
             e.createElement(
               "select",
               {
@@ -1166,6 +1384,8 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
                 },
                 e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
               ),
+            ),
+            permRow(u),
           );
         }),
         t.length === 0 &&
@@ -2512,6 +2732,7 @@ function dt({
   onClose: s,
   isAdmin: a,
   isViewer: VW,
+  profile: PR,
   view: l,
   setView: i,
   onLogout: c,
@@ -2554,141 +2775,13 @@ function dt({
       e.createElement(
         "nav",
         { className: "flex-1 py-2 overflow-y-auto" },
-        (a
-          ? [
-              {
-                key: "dashboard",
-                label: "דשבורד",
-                icon: le,
-              },
-              {
-                key: "attendance",
-                label:
-                  "מילוי נוכחות",
-                icon: Z,
-              },
-              {
-                key: "groups",
-                label:
-                  "ניהול קבוצות",
-                icon: H,
-              },
-              {
-                key: "phonebook",
-                label:
-                  "ספר טלפונים",
-                icon: se,
-              },
-              {
-                key: "payments",
-                label:
-                  "מי לא משלם",
-                icon: ye,
-              },
-              {
-                key: "reports",
-                label: "דוחות",
-                icon: ReportsIcon,
-              },
-              {
-                key: "permissions",
-                label:
-                  "ניהול הרשאות",
-                icon: Ie,
-              },
-              {
-                key: "access",
-                label:
-                  "גישת הורים",
-                icon: J,
-              },
-              {
-                key: "portal",
-                label:
-                  "פורטל המועדון",
-                icon: le,
-              },
-              {
-                key: "import",
-                label:
-                  "ייבוא שחקנים",
-                icon: K,
-              },
-              {
-                key: "tournaments",
-                label: "תחרויות",
-                icon: TrophyIcon,
-                external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
-              },
-            ]
-          : VW
-            ? [
-                {
-                  key: "dashboard",
-                  label: "דשבורד",
-                  icon: le,
-                },
-                {
-                  key: "attendance",
-                  label: "נוכחות",
-                  icon: Z,
-                },
-                {
-                  key: "groups",
-                  label: "קבוצות",
-                  icon: H,
-                },
-                {
-                  key: "phonebook",
-                  label:
-                    "ספר טלפונים",
-                  icon: se,
-                },
-                {
-                  key: "reports",
-                  label: "דוחות",
-                  icon: ReportsIcon,
-                },
-                {
-                  key: "portal",
-                  label:
-                    "פורטל המועדון",
-                  icon: le,
-                },
-                {
-                  key: "tournaments",
-                  label: "תחרויות",
-                  icon: TrophyIcon,
-                  external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
-                },
-              ]
-            : [
-                {
-                  key: "attendance",
-                  label:
-                    "מילוי נוכחות",
-                  icon: Z,
-                },
-                {
-                  key: "access",
-                  label:
-                    "גישת הורים",
-                  icon: J,
-                },
-                {
-                  key: "portal",
-                  label:
-                    "פורטל המועדון",
-                  icon: le,
-                },
-                {
-                  key: "tournaments",
-                  label: "תחרויות",
-                  icon: TrophyIcon,
-                  external: "https://shahar1987.github.io/ttc-mvh-tournaments/",
-                },
-              ]
-        ).map(({ key: h, label: u, icon: f, external: ext }) =>
+        STAFF_MENU_ITEMS.filter((it) =>
+          it.adminOnly
+            ? a
+            : it.perm
+              ? canDo(PR, it.perm) || (it.viewerToo && VW)
+              : !0,
+                ).map(({ key: h, label: u, icon: f, external: ext }) =>
           e.createElement(
             "button",
             {
@@ -3871,7 +3964,7 @@ function Q() {
           { className: "bg-red-100 border-b border-red-300 px-4 py-2 text-center" },
           e.createElement("p", { className: "text-[12px] text-red-800 leading-snug" }, dataError),
         ),
-      (r || vw) &&
+      (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
           users: l,
@@ -3887,17 +3980,17 @@ function Q() {
           cancellations,
           readOnly: vw,
         }),
-      (r || vw) &&
+      (canDo(s, "manageGroups") || vw) &&
         m === "groups" &&
         e.createElement(it, { groups: i, users: l, players: c, readOnly: vw }),
-      (r || vw) &&
+      canDo(s, "phonebook") &&
         m === "phonebook" &&
         e.createElement(lt, {
           players: c,
           groups: i,
           onEditPlayer: vw ? null : openEditPlayer,
         }),
-      (r || vw) &&
+      canDo(s, "reports") &&
         m === "reports" &&
         e.createElement(ReportsScreen, {
           groups: i,
@@ -3907,16 +4000,16 @@ function Q() {
           cancellations,
           readOnly: vw,
         }),
-      r &&
+      canDo(s, "payments") &&
         m === "payments" &&
         e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: !1 }),
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
-      r &&
+      canDo(s, "manageGroups") &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
-      (r || isCoachRole(s)) &&
+      canDo(s, "access") &&
         m === "access" &&
         e.createElement(AccessScreen, {
           players: c,
@@ -3961,6 +4054,7 @@ function Q() {
         onClose: () => h(!1),
         isAdmin: r,
         isViewer: vw,
+        profile: s,
         view: m,
         setView: goToScreen,
         userName: s.name,
