@@ -610,7 +610,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
           "p",
           {
             className:
-              "text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
+              "text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
           },
           "שים לב: כבר נשמרה נוכחות להיום. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
         ),
@@ -691,7 +691,7 @@ function QuotaAlertsCard({ alerts: t }) {
         ),
         e.createElement(
           "div",
-          { className: "text-[11px] text-blue-700 leading-snug" },
+          { className: "text-xs text-blue-700 leading-snug" },
           "שחקנים שהגיעו ליותר אימונים ממה שהוגדר עבורם",
         ),
       ),
@@ -1479,7 +1479,7 @@ function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
           r.missedDates.length > 0 &&
             e.createElement(
               "div",
-              { className: "text-[11px] text-red-500 text-right leading-relaxed" },
+              { className: "text-xs text-red-500 text-right leading-relaxed" },
               "לא מולא: " + r.missedDates.map(formatHeDate).join(", "),
             ),
         ),
@@ -1884,7 +1884,7 @@ function Re({ player: t, onOpenWhatsapp: s, dates: DS }) {
       "span",
       {
         className:
-          "flex items-center gap-1 bg-amber-50 text-amber-700 text-[11px] font-semibold px-2 py-1 rounded-full border border-amber-200",
+          "flex items-center gap-1 bg-amber-50 text-amber-700 text-xs font-semibold px-2 py-1 rounded-full border border-amber-200",
         // התאריכים עצמם בתג: אפשר לראות מיד על אילו שני אימונים הספירה מבוססת
         title: two
           ? `היעדרויות ב־${formatHeDate(two[0])} וב־${formatHeDate(two[1])}`
@@ -2058,7 +2058,7 @@ function tt() {
       ),
       e.createElement(
         "p",
-        { className: "text-blue-400 text-[11px] text-center mt-1" },
+        { className: "text-blue-400 text-xs text-center mt-1" },
         "הורים ושחקנים נכנסים עם מספר הטלפון והסיסמה שבחרו בהזמנה",
       ),
     ),
@@ -2338,7 +2338,7 @@ function st({
                     "span",
                     {
                       className:
-                        "mr-1.5 text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5",
+                        "mr-1.5 text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5",
                     },
                     "בוטל היום",
                   ),
@@ -2361,7 +2361,7 @@ function st({
               ),
               e.createElement(
                 "div",
-                { className: "text-[10px] text-slate-400" },
+                { className: "text-xs text-slate-400" },
                 "נוכחות החודש",
               ),
             ),
@@ -2608,7 +2608,7 @@ function WhatsappModal({
       }),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-400 text-right leading-relaxed" },
+        { className: "text-xs text-slate-400 text-right leading-relaxed" },
         "אפשר לערוך את הנוסח לפני השליחה. ההודעה נפתחת בוואטסאפ שלך ונשלחת ממך.",
       ),
       !o &&
@@ -2667,7 +2667,7 @@ function AlertsCard({
         ),
         e.createElement(
           "div",
-          { className: "text-[11px] text-amber-700 leading-snug" },
+          { className: "text-xs text-amber-700 leading-snug" },
           i || "שחקנים שנעדרו משני האימונים האחרונים",
         ),
       ),
@@ -2778,7 +2778,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
         ),
         e.createElement(
           "div",
-          { className: "text-[11px] text-sky-700 leading-snug" },
+          { className: "text-xs text-sky-700 leading-snug" },
           "שחקנים שנעדרו ולא נשלחה להם הודעה (עד 7 ימים אחורה)",
         ),
       ),
@@ -2888,7 +2888,7 @@ function MissingDaysCard({ items: t, users: US, showCoach: SC, onAction: OA, act
         ),
         e.createElement(
           "div",
-          { className: "text-[11px] text-orange-700 leading-snug" },
+          { className: "text-xs text-orange-700 leading-snug" },
           "ימי אימון בשבוע האחרון שלא נשמרה בהם נוכחות",
         ),
       ),
@@ -2941,6 +2941,7 @@ function at({
   allowedGroupIds: l,
   defaultGroupId: DG,
   canDelete: CD,
+  players: PL,
 }) {
   let i = !!a,
     c = l ? t.filter((v) => l.includes(v.id)) : t,
@@ -2959,10 +2960,24 @@ function at({
     },
     [r, y] = b(!1),
     [N, C] = b(""),
+    // בהוספה השדות הלא-חובה מקופלים כדי שכפתור השמירה יישאר על המסך גם עם
+    // מקלדת פתוחה; בעריכה הכל פתוח כי באים לשנות פרט ספציפי
+    [more, setMore] = b(i),
+    [lastSaved, setLastSaved] = b(""),
+    nameRef = e.useRef(null),
     d = f.trim().length === 0 || isValidPhone(f),
     selAdult = isAdultGroup(t.find((v) => v.id === o) || null),
+    // שחקן פעיל אחר באותה קבוצה עם אותו שם — אזהרה, לא חסימה
+    dupName = (PL || []).find(
+      (v) =>
+        v.groupId === o &&
+        v.isActive &&
+        !v.deleted &&
+        v.id !== a?.id &&
+        (v.name || "").trim() === n.trim(),
+    ),
     A = n.trim() && o && d,
-    I = async () => {
+    I = async (addAnother) => {
       (y(!0), C(""));
       try {
         let v = {
@@ -2975,15 +2990,23 @@ function at({
           yearlyTarget: WT.trim() ? Number(WT) * 52 : null,
           trainingDays: TD,
         };
-        (i
+        i
           ? await O(S(P, "players", a.id), v)
           : await V(M(P, "players"), {
               ...v,
               joinDate: E(),
               endDate: null,
               isActive: !0,
-            }),
-          s());
+            });
+        if (addAnother) {
+          // "שמירה והוספת עוד": הקבוצה וימי האימון נשארים, הפרטים האישיים מתנקים
+          setLastSaved(v.name);
+          m("");
+          u("");
+          g("");
+          setWT("");
+          nameRef.current && nameRef.current.focus();
+        } else s();
       } catch (v) {
         C("השמירה נכשלה: " + v.message);
       } finally {
@@ -3011,19 +3034,79 @@ function at({
         y(!1);
       }
     },
-    p = (v, k, $, D2) =>
+    p = (v, k, $, D2, ref) =>
       e.createElement(
         "div",
         { className: "flex flex-col gap-1" },
         e.createElement("label", { className: "text-xs text-slate-500" }, v),
         e.createElement("input", {
+          ref: ref || null,
           value: k,
           onChange: (z) => $(z.target.value),
           dir: D2 || "rtl",
           className:
             "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 min-h-[44px]",
         }),
-      );
+      ),
+    moreFields = e.createElement(
+      e.Fragment,
+      null,
+      !selAdult && p("שם ההורה (לא חובה)", h, u),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1.5" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "ימי אימון קבועים (לא חובה)",
+        ),
+        e.createElement(
+          "div",
+          { className: "flex gap-1.5 flex-wrap" },
+          We.map((v, $) =>
+            e.createElement(
+              "button",
+              {
+                key: $,
+                type: "button",
+                onClick: () => toggleTD($),
+                className: `w-10 h-10 rounded-lg text-sm font-semibold border transition-colors ${TD.includes($) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                "aria-label": v,
+              },
+              ie[$],
+            ),
+          ),
+        ),
+        e.createElement(
+          "p",
+          { className: "text-xs text-slate-400 leading-relaxed" },
+          "אם לא נבחרו ימים, השחקן ייחשב זמין בכל ימי האימון של הקבוצה.",
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement(
+          "label",
+          { className: "text-xs text-slate-500" },
+          "מכסת אימונים שבועית צפויה (לא חובה — להתראה על חריגה)",
+        ),
+        e.createElement("input", {
+          value: WT,
+          onChange: (v) => setWT(v.target.value.replace(/[^0-9]/g, "")),
+          placeholder: "מספר אימונים בשבוע",
+          inputMode: "numeric",
+          className:
+            "border border-slate-200 rounded-lg py-2.5 px-3 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
+        }),
+        WT.trim() &&
+          e.createElement(
+            "p",
+            { className: "text-xs text-slate-400 text-right" },
+            `החישוב האוטומטי: כ-${Math.round(Number(WT) * 4.345)} בחודש, ${Number(WT) * 52} בשנה`,
+          ),
+      )
+    );
   return e.createElement(
     "div",
     {
@@ -3057,7 +3140,13 @@ function at({
           i ? "עריכת פרטי שחקן" : "הוספת שחקן",
         ),
       ),
-      p("שם השחקן", n, m),
+      p("שם השחקן", n, m, null, nameRef),
+      dupName &&
+        e.createElement(
+          "p",
+          { className: "text-xs text-amber-700 text-right" },
+          "שים לב: כבר יש בקבוצה הזו שחקן פעיל בשם הזה.",
+        ),
       e.createElement(
         "div",
         { className: "flex flex-col gap-1" },
@@ -3079,38 +3168,6 @@ function at({
           ),
         ),
       ),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1.5" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "ימי אימון קבועים (לא חובה)",
-        ),
-        e.createElement(
-          "div",
-          { className: "flex gap-1.5 flex-wrap" },
-          We.map((v, $) =>
-            e.createElement(
-              "button",
-              {
-                key: $,
-                type: "button",
-                onClick: () => toggleTD($),
-                className: `w-10 h-10 rounded-lg text-sm font-semibold border transition-colors ${TD.includes($) ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
-                "aria-label": v,
-              },
-              ie[$],
-            ),
-          ),
-        ),
-        e.createElement(
-          "p",
-          { className: "text-[11px] text-slate-400 leading-relaxed" },
-          "אם לא נבחרו ימים, השחקן ייחשב זמין בכל ימי האימון של הקבוצה.",
-        ),
-      ),
-      !selAdult && p("שם ההורה (לא חובה)", h, u),
       p(
         selAdult ? "טלפון השחקן" : "טלפון ההורה",
         f,
@@ -3119,7 +3176,7 @@ function at({
       ),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-400 text-right leading-relaxed" },
+        { className: "text-xs text-slate-400 text-right leading-relaxed" },
         selAdult
           ? "זו קבוצת מבוגרים — הודעות על היעדרות יישלחו לשחקן עצמו."
           : "זו קבוצת ילדים ונוער — הודעות על היעדרות יישלחו להורה."
@@ -3131,29 +3188,27 @@ function at({
           { className: "text-xs text-red-600 text-right" },
           "מספר לא תקין. אפשר להזין 050-1234567 או 9725XXXXXXXX.",
         ),
+      // כפתור פתיחה/סגירה של השדות הלא-חובה
       e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "מכסת אימונים שבועית צפויה (לא חובה — להתראה על חריגה)",
-        ),
-        e.createElement("input", {
-          value: WT,
-          onChange: (v) => setWT(v.target.value.replace(/[^0-9]/g, "")),
-          placeholder: "מספר אימונים בשבוע",
-          inputMode: "numeric",
+        "button",
+        {
+          type: "button",
+          onClick: () => setMore(!more),
+          "aria-expanded": more,
           className:
-            "border border-slate-200 rounded-lg py-2.5 px-3 text-center text-sm outline-none focus:border-emerald-400 min-h-[44px]",
-        }),
-        WT.trim() &&
-          e.createElement(
-            "p",
-            { className: "text-xs text-slate-400 text-right" },
-            `החישוב האוטומטי: כ-${Math.round(Number(WT) * 4.345)} בחודש, ${Number(WT) * 52} בשנה`,
-          ),
+            "self-start text-sm font-semibold text-blue-900 min-h-[44px] flex items-center gap-1.5",
+        },
+        more ? "פחות פרטים" : "פרטים נוספים (לא חובה)",
       ),
+      more && moreFields,
+      lastSaved &&
+        e.createElement(
+          "p",
+          { className: "text-xs text-emerald-700 text-right" },
+          "נשמר: ",
+          lastSaved,
+          ". אפשר להוסיף את הבא.",
+        ),
       N &&
         e.createElement(
           "p",
@@ -3164,12 +3219,23 @@ function at({
         "button",
         {
           disabled: !A || r,
-          onClick: I,
+          onClick: () => I(!1),
           className:
             "mt-1 bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-xl py-3.5 min-h-[44px]",
         },
         r ? "שומר…" : "שמירה",
       ),
+      !i &&
+        e.createElement(
+          "button",
+          {
+            disabled: !A || r,
+            onClick: () => I(!0),
+            className:
+              "bg-white border border-emerald-300 disabled:border-slate-200 disabled:text-slate-400 text-emerald-700 font-semibold rounded-xl py-3 min-h-[44px] text-sm",
+          },
+          "שמירה והוספת שחקן נוסף",
+        ),
       i &&
         CD &&
         e.createElement(
@@ -3334,7 +3400,7 @@ function ImportScreen({ groups: t, players: s }) {
       e.createElement("div", { className: "text-xl font-bold" }, value),
       e.createElement(
         "div",
-        { className: "text-[11px] text-slate-500 leading-tight" },
+        { className: "text-xs text-slate-500 leading-tight" },
         label,
       ),
     );
@@ -3359,7 +3425,7 @@ function ImportScreen({ groups: t, players: s }) {
       ),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-400 text-right mt-1" },
+        { className: "text-xs text-slate-400 text-right mt-1" },
         "שחקן שכבר קיים באותה קבוצה לא ייובא פעמיים. קבוצה חדשה תיווצר בלי מאמן — אפשר לשייך אותה במסך ניהול הקבוצות.",
       ),
     ),
@@ -3429,7 +3495,7 @@ function ImportScreen({ groups: t, players: s }) {
           e.createElement(
             "span",
             {
-              className: `text-[10px] px-2 py-0.5 rounded-full shrink-0 ${r.status === "new" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`,
+              className: `text-xs px-2 py-0.5 rounded-full shrink-0 ${r.status === "new" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`,
             },
             r.status === "new" ? "חדש" : "קיים",
           ),
@@ -3443,7 +3509,7 @@ function ImportScreen({ groups: t, players: s }) {
             ),
             e.createElement(
               "div",
-              { className: "text-[11px] text-slate-400 truncate" },
+              { className: "text-xs text-slate-400 truncate" },
               r.groupName,
               r.phone ? " · " + normalizePhone(r.phone) : " · ללא טלפון",
             ),
@@ -3929,7 +3995,7 @@ function InviteScreen({ token: token }) {
         { className: "bg-slate-50 rounded-xl p-3" },
         e.createElement(
           "p",
-          { className: "text-[11px] text-slate-500" },
+          { className: "text-xs text-slate-500" },
           "שם המשתמש שלך הוא מספר הטלפון",
         ),
         e.createElement(
@@ -3948,7 +4014,7 @@ function InviteScreen({ token: token }) {
         ),
         e.createElement(
           "p",
-          { className: "text-[11px] text-slate-400" },
+          { className: "text-xs text-slate-400" },
           "אם כבר יש לך חשבון בפורטל — הזן את הסיסמה הקיימת שלך, והשחקן יצורף אליו",
         ),
         e.createElement("input", {
@@ -3979,7 +4045,7 @@ function InviteScreen({ token: token }) {
         pw2 && pw !== pw2
           ? e.createElement(
               "p",
-              { className: "text-[11px] text-red-600" },
+              { className: "text-xs text-red-600" },
               "הסיסמאות לא זהות",
             )
           : null,
@@ -4003,7 +4069,7 @@ function InviteScreen({ token: token }) {
       ),
       e.createElement(
         "label",
-        { className: "flex items-start gap-2 text-[11px] text-slate-600" },
+        { className: "flex items-start gap-2 text-xs text-slate-600" },
         e.createElement("input", {
           type: "checkbox",
           checked: consent,
@@ -4273,7 +4339,7 @@ function TttmBadge({ entry: entry, updatedAt: updatedAt }) {
       { className: "flex items-baseline justify-between gap-2" },
       e.createElement(
         "span",
-        { className: "text-[11px] text-blue-300" },
+        { className: "text-xs text-blue-300" },
         "דירוג ארצי",
       ),
       entry.rank
@@ -4293,7 +4359,7 @@ function TttmBadge({ entry: entry, updatedAt: updatedAt }) {
       { className: "flex items-baseline justify-between gap-2" },
       e.createElement(
         "span",
-        { className: "text-[11px] text-blue-300" },
+        { className: "text-xs text-blue-300" },
         tttmCategoryLabel(entry.category),
       ),
       entry.points
@@ -4308,7 +4374,7 @@ function TttmBadge({ entry: entry, updatedAt: updatedAt }) {
     updatedAt &&
       e.createElement(
         "div",
-        { className: "text-[10px] text-blue-400" },
+        { className: "text-xs text-blue-400" },
         "מאתר האיגוד · עודכן ",
         tttmUpdatedLabel(updatedAt),
       ),
@@ -4768,7 +4834,7 @@ function MemberPortal({
               className:
                 "bg-red-600 text-white rounded-2xl px-4 py-3 flex flex-col gap-0.5 cursor-pointer",
             },
-            e.createElement("span", { className: "text-[11px] font-semibold opacity-90" }, "הודעה דחופה"),
+            e.createElement("span", { className: "text-xs font-semibold opacity-90" }, "הודעה דחופה"),
             e.createElement("span", { className: "font-bold" }, urgent.title),
             urgent.body && e.createElement("span", { className: "text-sm opacity-90" }, urgent.body.slice(0, 140)),
           ),
@@ -4830,7 +4896,7 @@ function MemberPortal({
                   "div",
                   { className: "text-center" },
                   e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, monthCount(p.id)),
-                  e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, "אימונים החודש"),
+                  e.createElement("p", { className: "text-xs text-slate-500 mt-1" }, "אימונים החודש"),
                 ),
                 e.createElement(
                   "div",
@@ -4842,7 +4908,7 @@ function MemberPortal({
                   ),
                   e.createElement(
                     "p",
-                    { className: "text-[11px] text-slate-500 mt-1" },
+                    { className: "text-xs text-slate-500 mt-1" },
                     entry && entry.points ? "דירוג ארצי · " + Math.round(entry.points) + " נק'" : "דירוג ארצי",
                   ),
                 ),
@@ -4864,7 +4930,7 @@ function MemberPortal({
                     e.createElement("p", { className: "font-bold text-sm text-blue-950" }, a.title),
                     e.createElement(
                       "p",
-                      { className: "text-[11px] text-slate-500" },
+                      { className: "text-xs text-slate-500" },
                       fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
                       a.authorName ? " · " + a.authorName : "",
                     ),
@@ -4930,7 +4996,7 @@ function MemberPortal({
                 st.pct,
                 "%",
               ),
-              e.createElement("p", { className: "text-[10px] text-slate-400" }, "נוכחות החודש"),
+              e.createElement("p", { className: "text-xs text-slate-400" }, "נוכחות החודש"),
             ),
         ),
         entry && e.createElement(TttmBadge, { entry: entry, updatedAt: tttm.updatedAt }),
@@ -4950,7 +5016,7 @@ function MemberPortal({
           ? e.createElement(
               "div",
               { className: "flex flex-col gap-1" },
-              e.createElement("p", { className: "text-[11px] text-slate-500" }, "אימונים אחרונים"),
+              e.createElement("p", { className: "text-xs text-slate-500" }, "אימונים אחרונים"),
               ...recent.map((r) =>
                 e.createElement(
                   "div",
@@ -5092,7 +5158,7 @@ function MemberPortal({
                           e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, g.name),
                           e.createElement(
                             "p",
-                            { className: "text-[11px] text-slate-500 truncate" },
+                            { className: "text-xs text-slate-500 truncate" },
                             [g.location, groupCoachLabelFor(g, users) && "מאמן " + groupCoachLabelFor(g, users)]
                               .filter(Boolean)
                               .join(" · "),
@@ -5105,7 +5171,7 @@ function MemberPortal({
                 noSchedule.length
                   ? e.createElement(
                       "p",
-                      { className: "text-[11px] text-slate-400" },
+                      { className: "text-xs text-slate-400" },
                       "ללא ימים קבועים: " + noSchedule.map((g) => g.name).join(", "),
                     )
                   : null,
@@ -5151,7 +5217,7 @@ function MemberPortal({
                     "div",
                     { className: "text-center" },
                     e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, t.position),
-                    e.createElement("p", { className: "text-[10px] text-slate-500 mt-1" }, "מקום"),
+                    e.createElement("p", { className: "text-xs text-slate-500 mt-1" }, "מקום"),
                   ),
               ),
               e.createElement(
@@ -5170,7 +5236,7 @@ function MemberPortal({
                 e.createElement(
                   "div",
                   { className: "border-t border-slate-100 pt-2" },
-                  e.createElement("p", { className: "text-[11px] text-slate-500 mb-1" }, "המשחק הבא"),
+                  e.createElement("p", { className: "text-xs text-slate-500 mb-1" }, "המשחק הבא"),
                   e.createElement(MatchCard, { m: { ...t.nextMatch, league: t.nextMatch.league || t.league } }),
                 ),
             ),
@@ -5251,7 +5317,7 @@ function MemberPortal({
         tttm.updatedAt &&
           e.createElement(
             "p",
-            { className: "text-[11px] text-slate-400 text-center" },
+            { className: "text-xs text-slate-400 text-center" },
             "מאתר האיגוד · עודכן ",
             tttmUpdatedLabel(tttm.updatedAt),
           ),
@@ -5300,7 +5366,7 @@ function MemberPortal({
                     a.body && e.createElement("p", { className: "text-sm text-slate-700 whitespace-pre-line mt-0.5" }, a.body),
                     e.createElement(
                       "p",
-                      { className: "text-[11px] text-slate-400 mt-1" },
+                      { className: "text-xs text-slate-400 mt-1" },
                       fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
                       a.authorName ? " · " + a.authorName : "",
                     ),
@@ -5405,7 +5471,7 @@ function MemberPortal({
             "div",
             { key: label, className: "flex-1 min-w-[70px] text-center" },
             e.createElement("p", { className: "text-2xl font-bold text-blue-950 leading-none" }, value),
-            e.createElement("p", { className: "text-[11px] text-slate-500 mt-1" }, label),
+            e.createElement("p", { className: "text-xs text-slate-500 mt-1" }, label),
           ),
         groupName = (id) => (groups.find((g) => g.id === id) || {}).name || "ללא קבוצה",
         knownPlayer = (pid) => (allPlayers || []).find((x) => x.id === pid),
@@ -5532,13 +5598,13 @@ function MemberPortal({
                         )
                       : e.createElement(
                           "p",
-                          { className: "text-[11px] text-emerald-700" },
+                          { className: "text-xs text-emerald-700" },
                           "הכול מסונכרן — שמות המאמנים, ההרשאות והקישורים תואמים למצב במערכת.",
                         ),
                     badPhone.length || dupNames.length
                       ? e.createElement(
                           "p",
-                          { className: "text-[11px] text-slate-500 leading-relaxed" },
+                          { className: "text-xs text-slate-500 leading-relaxed" },
                           badPhone.length
                             ? "ללא טלפון תקין: " +
                               badPhone.slice(0, 6).map((p) => p.name).join(", ") +
@@ -5612,7 +5678,7 @@ function MemberPortal({
                         ),
                       e.createElement(
                         "p",
-                        { className: "text-[11px] text-slate-400 mt-1" },
+                        { className: "text-xs text-slate-400 mt-1" },
                         fmtDateShort(localISO(new Date(a.publishAt || a.createdAt || Date.now()))),
                         a.authorName ? " · " + a.authorName : "",
                         scheduled ? " · מתוזמן" : "",
@@ -5650,7 +5716,7 @@ function MemberPortal({
                       entry && entry.rank
                         ? e.createElement(
                             "span",
-                            { className: "text-[11px] text-slate-500" },
+                            { className: "text-xs text-slate-500" },
                             "דירוג ",
                             entry.rank,
                           )
@@ -5671,7 +5737,7 @@ function MemberPortal({
                       e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, p.name),
                       e.createElement(
                         "p",
-                        { className: "text-[11px] text-slate-500 truncate" },
+                        { className: "text-xs text-slate-500 truncate" },
                         groupName(p.groupId),
                         p.parentName ? " · " + p.parentName : "",
                       ),
@@ -5683,7 +5749,7 @@ function MemberPortal({
           shown.length > 40 &&
             e.createElement(
               "p",
-              { className: "text-[11px] text-slate-400" },
+              { className: "text-xs text-slate-400" },
               "מוצגים 40 מתוך " + shown.length + " — אפשר לחפש שם",
             ),
         ),
@@ -5709,7 +5775,7 @@ function MemberPortal({
                   e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, g.name),
                   e.createElement(
                     "p",
-                    { className: "text-[11px] text-slate-500 truncate" },
+                    { className: "text-xs text-slate-500 truncate" },
                     [
                       groupDaysForPlayers(g, []).length
                         ? "ימים " + groupDaysForPlayers(g, []).map((d) => HEB_DAYS_FULL[d]).join(", ")
@@ -5738,14 +5804,14 @@ function MemberPortal({
                     e.createElement(
                       "div",
                       { key: u.id, className: "py-2 flex items-center justify-between gap-2" },
-                      e.createElement("span", { className: "text-[11px] text-slate-500 shrink-0" }, roleLabelHe(u)),
+                      e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, roleLabelHe(u)),
                       e.createElement(
                         "div",
                         { className: "flex-1 min-w-0 text-right" },
                         e.createElement("p", { className: "text-sm font-semibold text-blue-950 truncate" }, u.name),
                         e.createElement(
                           "p",
-                          { className: "text-[11px] text-slate-500 truncate" },
+                          { className: "text-xs text-slate-500 truncate" },
                           roleLabelHe(u) === "מנהל"
                             ? "גישה מלאה לכל הקבוצות"
                             : roleLabelHe(u) === "צופה"
@@ -5761,7 +5827,7 @@ function MemberPortal({
               ),
               e.createElement(
                 "p",
-                { className: "text-[11px] text-slate-400" },
+                { className: "text-xs text-slate-400" },
                 "שינוי תפקידים, שיוך מאמנים וקישור הורים — בתפריט של האפליקציה: ניהול הרשאות וגישת הורים.",
               ),
             )
@@ -5797,7 +5863,7 @@ function MemberPortal({
             key: key,
             onClick: () => setTab(key),
             className:
-              "flex flex-col items-center gap-0.5 min-w-[56px] py-1 text-[11px] " +
+              "flex flex-col items-center gap-0.5 min-w-[56px] py-1 text-xs " +
               (tab === key ? "text-blue-900 font-bold" : "text-slate-400"),
           },
           e.createElement(Icon, { className: "w-5 h-5" }),
@@ -5858,7 +5924,7 @@ function MemberPortal({
           "div",
           { className: "text-right flex-1 min-w-0" },
           e.createElement("div", { className: "text-sm font-bold leading-tight truncate" }, "פורטל המועדון"),
-          e.createElement("div", { className: "text-[11px] text-blue-300 truncate" }, profile.name),
+          e.createElement("div", { className: "text-xs text-blue-300 truncate" }, profile.name),
         ),
       ),
       e.createElement("div", { className: "flex-1 flex flex-col" }, content),
