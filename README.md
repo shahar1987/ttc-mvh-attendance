@@ -33,12 +33,20 @@ React (ללא JSX בקוד המקור — `React.createElement` ישירות), �
 
 1. התקנת תלויות: `react`, `react-dom`, `lucide-react`, `firebase`, `esbuild`, `sharp`.
 2. איחוד `part-a.js` + `part-b.js` ל-`bundle.js`.
-3. Bundling עם `esbuild` (ESM, minified) ל-`site/app.js`.
+3. Bundling עם `esbuild` (ESM, minified) ל-`site/app.js`, ובניית `site/tailwind.css` לפי `tailwind.config.js`.
 4. יצירת אייקוני PWA (192/512/maskable) מתוך `logo.png` באמצעות `sharp`.
 5. הרכבת `site/index.html` עם cache-busting (`app.js?v=<sha>`).
 6. בדיקות תקינות (גודל bundle, אין `import` גולמי של react).
 7. **בדיקת עשן** אוטומטית בדפדפן אמיתי (Playwright) — מוודאת שאין שגיאות עמוד, שהמסך אינו ריק, שמסך ההתחברות מוצג ושהכיוון RTL תקין.
 8. פריסה ל-GitHub Pages (`actions/deploy-pages`).
+
+### צבעים וגופן
+
+כל הצבעים של האפליקציה מוגדרים במקום אחד — `tailwind.config.js`. הקוד משתמש בשמות
+הרגילים של Tailwind (`emerald` ל"הגיע", `red` ל"לא הגיע", `amber` ל"ממתין",
+`slate` לרקעים וטקסט, `blue` לכחול המועדון), והקובץ ממפה אותם לגוונים רכים
+שכולם עוברים יחס ניגודיות 4.5:1 לפי תקן WCAG. לשינוי צבע — לערוך שם בלבד.
+הגופן הוא Assistant מ-Google Fonts, עם נפילה לגופן המערכת אם הוא לא נטען.
 
 **אין לערוך את `app.js` או את `bundle.js` ישירות** — הם נוצרים אוטומטית מ-`part-a.js`/`part-b.js` בכל build.
 
@@ -70,6 +78,7 @@ users         — משתמשי המערכת ותפקידיהם (מנהל/מאמ�
 | `sw.js` | Service Worker לתמיכה באופליין ובהתקנה |
 | `logo.png` | לוגו המועדון — מקור ליצירת אייקוני ה-PWA |
 | `icon.svg` | אייקון גיבוי |
+| `tailwind.config.js` | פלטת הצבעים והגופן של האפליקציה |
 | `.github/workflows/deploy.yml` | תהליך הבנייה, הבדיקות והפריסה האוטומטי |
 
 `bundle.js` ו-`app.js` הם קבצים גזורים (build output) ואינם צריכים להיערך ידנית.

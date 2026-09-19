@@ -60,9 +60,6 @@ jobs:
       - name: Build Tailwind CSS locally (self-hosted, works offline)
         run: |
           npm install tailwindcss@3.4.10 --no-audit --no-fund
-          cat > tailwind.config.js <<'TW'
-          module.exports = { content: ["./bundle.js", "./index.html"], theme: { extend: {} } };
-          TW
           printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > tw-input.css
           npx tailwindcss -c tailwind.config.js -i tw-input.css -o site/tailwind.css --minify
           SIZE=$(stat -c%s site/tailwind.css)

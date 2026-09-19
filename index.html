@@ -6,7 +6,7 @@
   <title>נוכחות מועדון טניס שולחן מבואות החרמון</title>
 
   <link rel="manifest" href="./manifest.json" />
-  <meta name="theme-color" content="#172554" />
+  <meta name="theme-color" content="#1B2A41" />
   <link rel="icon" href="./icon-192.png" />
 
   <!-- iOS needs these to install to the home screen as a real app -->
@@ -15,15 +15,25 @@
   <meta name="apple-mobile-web-app-title" content="נוכחות מועדון" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
 
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" />
   <link rel="stylesheet" href="./tailwind.css" />
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+    /* גופן עברי אחד לכל המכשירים; אם Google Fonts לא נטען — נופלים לגופן המערכת */
+    body { font-family: "Assistant", system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+    /* סימון פוקוס למי שמנווט במקלדת (טאבלט עם מקלדת, קורא מסך) */
+    :focus-visible { outline: 2px solid #2E7D6B; outline-offset: 2px; }
+    /* מי שביקש במערכת ההפעלה פחות תנועה — בלי אנימציות */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <div id="boot-error" style="display:none;padding:24px;text-align:center;font-size:14px;color:#b91c1c;direction:rtl"></div>
-  <div id="update-banner" style="display:none;position:fixed;inset-inline:0;bottom:0;padding:10px 16px;background:#172554;color:#fff;font-size:13px;text-align:center;direction:rtl;z-index:9999;cursor:pointer">
+  <div id="update-banner" style="display:none;position:fixed;inset-inline:0;bottom:0;padding:10px 16px;background:#1B2A41;color:#fff;font-size:13px;text-align:center;direction:rtl;z-index:9999;cursor:pointer">
     גרסה חדשה זמינה — לחצו לרענון
   </div>
   <script type="module">
