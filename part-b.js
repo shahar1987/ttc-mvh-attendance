@@ -252,7 +252,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
             "p",
             {
               className:
-                "text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed",
+                "text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed",
             },
             'היה רשום כאן: "',
             r,
@@ -326,7 +326,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
         ),
         e.createElement(
           "p",
-          { className: "text-[11px] text-slate-400 leading-relaxed" },
+          { className: "text-xs text-slate-400 leading-relaxed" },
           AG
             ? "הודעות על היעדרות יישלחו לשחקן עצמו, בפנייה ישירה."
             : "הודעות על היעדרות יישלחו להורה.",
@@ -359,7 +359,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
         l.length === 0 &&
           e.createElement(
             "p",
-            { className: "text-[11px] text-slate-400" },
+            { className: "text-xs text-slate-400" },
             "אפשר ליצור את הקבוצה עכשיו ולשייך מאמן בהמשך במסך ההרשאות.",
           ),
       ),
@@ -693,7 +693,7 @@ function rt({ onClose: t, users: US }) {
         }),
         e.createElement(
           "p",
-          { className: "text-[11px] text-slate-400" },
+          { className: "text-xs text-slate-400" },
           "מסור אותה למשתמש והמלץ לו להחליף אותה. אם המשתמש נמחק בעבר ואתה מוסיף אותו שוב עם אותו אימייל — הזן את הסיסמה הנוכחית שלו.",
         ),
       ),
@@ -877,7 +877,7 @@ function EditUserModal({ user: t, onClose: s }) {
       ),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-400 text-right leading-relaxed" },
+        { className: "text-xs text-slate-400 text-right leading-relaxed" },
         t.email
           ? `אימייל להתחברות: ${t.email}. לא ניתן לשנות כתובת אימייל או סיסמה מהאפליקציה.`
           : "לא ניתן לשנות כתובת אימייל או סיסמה מהאפליקציה. את ההרשאה אפשר לשנות ברשימה עצמה.",
@@ -977,7 +977,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             "div",
             {
               className:
-                "text-[11px] mt-1 " + (task.status === "failed" ? "text-red-600" : "text-slate-500"),
+                "text-xs mt-1 " + (task.status === "failed" ? "text-red-600" : "text-slate-500"),
             },
             label,
           )
@@ -993,7 +993,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("check", u),
             disabled: taskBusy === u.id,
             className:
-              "text-[11px] font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
           },
           "בדיקה",
         ),
@@ -1003,7 +1003,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("reset-access", u),
             disabled: taskBusy === u.id,
             className:
-              "text-[11px] font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
           },
           "איפוס גישה",
         ),
@@ -1155,7 +1155,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
     isAdminRole(u)
       ? e.createElement(
           "p",
-          { className: "text-[11px] text-slate-400 px-1" },
+          { className: "text-xs text-slate-400 px-1" },
           "מנהל — גישה מלאה לכל המסכים, אי אפשר להגביל",
         )
       : e.createElement(
@@ -1166,7 +1166,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             {
               onClick: () =>
                 setOpenPerms((o2) => ({ ...o2, [u.id]: !o2[u.id] })),
-              className: "self-start text-[11px] text-blue-900 underline",
+              className: "self-start text-xs text-blue-900 underline",
             },
             openPerms[u.id]
               ? "סגירת ההרשאות"
@@ -1217,7 +1217,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
                     ),
                     e.createElement(
                       "span",
-                      { className: "block text-[10px] text-slate-400 leading-snug" },
+                      { className: "block text-xs text-slate-400 leading-snug" },
                       perm.desc,
                     ),
                   ),
@@ -1225,7 +1225,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
               }),
               e.createElement(
                 "p",
-                { className: "text-[10px] text-slate-400 leading-snug px-1" },
+                { className: "text-xs text-slate-400 leading-snug px-1" },
                 "השינוי נשמר מיד ומתעדכן אצל כולם. מילוי נוכחות לקבוצות שלו ופורטל המועדון פתוחים לכל מאמן ואינם ניתנים להגבלה.",
               ),
             ),
@@ -1466,7 +1466,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
                 ),
             e.createElement(
               "div",
-              { className: "text-[11px] text-slate-400 text-right" },
+              { className: "text-xs text-slate-400 text-right" },
               assigned.length > 0
                 ? "משויכים: " + assigned.join(", ")
                 : "לא שויך מאמן",
@@ -1516,7 +1516,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             ),
             e.createElement(
               "p",
-              { className: "text-[11px] text-slate-400 px-1 leading-relaxed" },
+              { className: "text-xs text-slate-400 px-1 leading-relaxed" },
               "שכח סיסמה? \"איפוס גישה\" מוחק את החשבון שלו, ואז שולחים הזמנה חדשה מגישת הורים והוא בוחר סיסמה מחדש.",
             ),
           )
@@ -1717,7 +1717,7 @@ function PaymentTrackPicker({ player, group, tracks, onClose }) {
             ),
             e.createElement(
               "div",
-              { className: "text-[11px] text-emerald-700/70 break-words" },
+              { className: "text-xs text-emerald-700/70 break-words" },
               tr.mtnsLabel,
             ),
           ),
@@ -1751,7 +1751,7 @@ function PaymentTrackPicker({ player, group, tracks, onClose }) {
             ),
             e.createElement(
               "div",
-              { className: "text-[11px] text-blue-800/70" },
+              { className: "text-xs text-blue-800/70" },
               "ההודעה תכלול את כל הקישורים וההורה יבחר",
             ),
           ),
@@ -2133,7 +2133,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       sync
         ? e.createElement(
             "p",
-            { className: "text-[11px] text-amber-700" },
+            { className: "text-xs text-amber-700" },
             `עדכון אחרון מהקובץ בדרייב: ${new Date(sync.updatedAt).toLocaleString("he-IL")}`,
             sync.unmatchedCount
               ? ` \xB7 ${sync.unmatchedCount} שמות מהקובץ לא זוהו בוודאות`
@@ -2141,13 +2141,13 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           )
         : e.createElement(
             "p",
-            { className: "text-[11px] text-amber-700" },
+            { className: "text-xs text-amber-700" },
             "עדיין לא בוצע עדכון אוטומטי מהקובץ בדרייב (רץ פעם בשבוע). אפשר לסמן שחקנים ידנית כאן בינתיים.",
           ),
       sync?.unmatchedNames?.length
         ? e.createElement(
             "p",
-            { className: "text-[11px] text-amber-700 leading-relaxed" },
+            { className: "text-xs text-amber-700 leading-relaxed" },
             "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
           )
         : null,
@@ -2156,8 +2156,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             "p",
             {
               className: sync.reconciliation.fileBalanced
-                ? "text-[11px] text-amber-700 leading-relaxed"
-                : "text-[11px] text-red-700 font-semibold leading-relaxed",
+                ? "text-xs text-amber-700 leading-relaxed"
+                : "text-xs text-red-700 font-semibold leading-relaxed",
             },
             `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
             sync.reconciliation.fileBalanced
@@ -2168,14 +2168,14 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       sync?.reconciliation?.lowCoverage
         ? e.createElement(
             "p",
-            { className: "text-[11px] text-red-700 font-semibold leading-relaxed" },
+            { className: "text-xs text-red-700 font-semibold leading-relaxed" },
             "בקובץ הרבה פחות שורות ממספר השחקנים הפעילים — ייתכן שזה קובץ חלקי. אל תסיק שכולם לא משלמים.",
           )
         : null,
       sync?.fileDiff && !sync.fileDiff.isFirstRun
         ? e.createElement(
             "p",
-            { className: "text-[11px] text-amber-700" },
+            { className: "text-xs text-amber-700" },
             `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות/קבוצה`,
           )
         : null,
@@ -2194,7 +2194,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           ),
           e.createElement(
             "p",
-            { className: "text-[11px] text-red-700 leading-relaxed" },
+            { className: "text-xs text-red-700 leading-relaxed" },
             `בקובץ האחרון ${sync.partialFile.rows} שורות לעומת ${sync.partialFile.prevRows} בהרצה הקודמת. כדי לא לסמן בטעות שחקנים ששילמו, שום סימון לא שונה והרשימה למטה היא עדיין זו מהסנכרון הקודם. אם הקובץ באמת התעדכן — להעלות אותו שוב במלואו וללחוץ רענון.`,
           ),
         )
@@ -2219,7 +2219,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         syncPending
           ? e.createElement(
               "span",
-              { className: "text-[11px] text-slate-500" },
+              { className: "text-xs text-slate-500" },
               "הרשימה תתעדכן לבד, בדרך כלל תוך כ-15 דקות",
             )
           : null,
@@ -2229,7 +2229,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             href: "https://github.com/shahar1987/ttc-mvh-attendance/actions/workflows/sync-payments.yml",
             target: "_blank",
             rel: "noreferrer",
-            className: "text-[11px] text-slate-400 underline",
+            className: "text-xs text-slate-400 underline",
           },
           "להרצה מיידית",
         ),
@@ -2259,7 +2259,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
         e.createElement(
           "p",
-          { className: "text-[11px] text-blue-700 leading-relaxed" },
+          { className: "text-xs text-blue-700 leading-relaxed" },
           "לכל שורה: מימין השם כפי שהוא בקובץ המתנ\"ס, ומתחת השחקן באפליקציה עם אותו שם משפחה. אישור משנה את השם באפליקציה לשם שבקובץ ומסמן שהוא שילם.",
         ),
         suggestions.map((sg, idx) =>
@@ -2295,7 +2295,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                   c.otherGroupName
                     ? e.createElement(
                         "span",
-                        { className: "text-[10px] text-slate-400" },
+                        { className: "text-xs text-slate-400" },
                         ` \xB7 בקבוצה ${c.otherGroupName}`,
                       )
                     : null,
@@ -2304,10 +2304,10 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                     {
                       className:
                         c.kind === "typo" || c.kind === "other-group"
-                          ? "text-[10px] text-emerald-600"
+                          ? "text-xs text-emerald-600"
                           : c.kind === "phone-family"
-                            ? "text-[10px] text-blue-600"
-                            : "text-[10px] text-amber-600",
+                            ? "text-xs text-blue-600"
+                            : "text-xs text-amber-600",
                     },
                     c.kind === "phone-family"
                       ? " \xB7 אותו טלפון בקובץ — לוודא מי מבני המשפחה"
@@ -2329,7 +2329,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                       onClick: () =>
                         applySuggestion(c.playerId, sg.fileName, c.player.name),
                       className:
-                        "bg-emerald-600 text-white text-[11px] font-semibold rounded-md px-2.5 py-1.5",
+                        "bg-emerald-600 text-white text-xs font-semibold rounded-md px-2.5 py-1.5",
                     },
                     "עדכן וסמן ששילם",
                   ),
@@ -2337,7 +2337,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                     "button",
                     {
                       onClick: () => ignoreSuggestion(c.playerId, sg.fileName),
-                      className: "text-[11px] text-slate-400 underline px-1",
+                      className: "text-xs text-slate-400 underline px-1",
                     },
                     "לא רלוונטי",
                   ),
@@ -2362,7 +2362,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           ),
           e.createElement(
             "p",
-            { className: "text-[11px] text-red-700 leading-relaxed" },
+            { className: "text-xs text-red-700 leading-relaxed" },
             sync.ambiguousNames.join(", ") +
               " — עד שהשמות יהיו שונים אי אפשר לדעת מי מהם שילם, ולכן שניהם נשארים מסומנים כלא משלמים.",
           ),
@@ -2384,7 +2384,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         familyFlags.map((f, idx) =>
           e.createElement(
             "p",
-            { key: idx, className: "text-[11px] text-orange-800" },
+            { key: idx, className: "text-xs text-orange-800" },
             `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
           ),
         ),
@@ -2404,18 +2404,18 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
         e.createElement(
           "p",
-          { className: "text-[11px] text-violet-700 leading-relaxed" },
+          { className: "text-xs text-violet-700 leading-relaxed" },
           'המספר נלקח משורת המיפוי של הקבוצה בקובץ המתנ"ס, מול ימי האימון של הקבוצה באפליקציה. זה לא בהכרח חוב — יש מי שנרשם בכוונה לפעם בשבוע — אבל שווה לוודא.',
         ),
         sessionGaps.map((g, idx) =>
           e.createElement(
             "p",
-            { key: idx, className: "text-[11px] text-violet-800" },
+            { key: idx, className: "text-xs text-violet-800" },
             `${g.player.name} \xB7 ${g.group?.name || "קבוצה"} \xB7 שילם על ${g.paid} בשבוע, הקבוצה מתאמנת ${g.actual}`,
             g.label
               ? e.createElement(
                   "span",
-                  { className: "text-[10px] text-violet-500" },
+                  { className: "text-xs text-violet-500" },
                   ` \xB7 בקובץ: ${g.label}`,
                 )
               : null,
@@ -2439,7 +2439,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         },
         e.createElement(
           "p",
-          { className: "text-[11px] text-emerald-800 leading-relaxed" },
+          { className: "text-xs text-emerald-800 leading-relaxed" },
           "שחקנים שמופיעים גם בקובץ התשלומים וגם באפליקציה, או שאישרת אותם ידנית. מי שלא ברשימה הזו ושייך לקבוצה ממופה מופיע למטה כלא משלם.",
         ),
         totalPaid === 0
@@ -2465,7 +2465,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                     p.notPayingSource === "manual"
                       ? e.createElement(
                           "span",
-                          { className: "text-[10px] text-emerald-600" },
+                          { className: "text-xs text-emerald-600" },
                           " \xB7 אושר ידנית",
                         )
                       : null,
@@ -2492,7 +2492,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         { className: "flex flex-col gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3" },
         e.createElement(
           "p",
-          { className: "text-[11px] text-slate-500 leading-relaxed" },
+          { className: "text-xs text-slate-500 leading-relaxed" },
           'כאן קובעים לאיזו קבוצה באפליקציה כל שם קבוצה בקובץ המתנ"ס מתאים, וכמה אימונים בשבוע הרישום הזה אמור לכסות. המספר ניתן לעריכה חופשית בכל עת ולא קבוע בקוד. קבוצת "' +
             PAYMENT_EXCLUDED_GROUP_NAME +
             '" לא מוצגת כאן ולא נכללת במסך הזה כרגע.',
@@ -2686,7 +2686,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                       "span",
                       {
                         className:
-                          "text-[10px] bg-red-100 text-red-700 rounded-full px-1.5 py-0.5",
+                          "text-xs bg-red-100 text-red-700 rounded-full px-1.5 py-0.5",
                       },
                       "לא משלם",
                     ),
@@ -2701,14 +2701,14 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                 x.notPaying && reasonText(x.id)
                   ? e.createElement(
                       "div",
-                      { className: "text-[11px] text-slate-500 leading-snug" },
+                      { className: "text-xs text-slate-500 leading-snug" },
                       reasonText(x.id),
                     )
                   : null,
                 x.notPaying && x.notPayingSource === "manual"
                   ? e.createElement(
                       "div",
-                      { className: "text-[10px] text-slate-400" },
+                      { className: "text-xs text-slate-400" },
                       "סומן ידנית \xB7 הסנכרון לא משנה אותו",
                     )
                   : null,
@@ -2910,19 +2910,28 @@ function re({
   }, [t.id, ID, IN]);
   j(() => {
     if (isDirty()) return;
-    let p = {};
+    let p = {},
+      // יום שעדיין אין לו רישום נפתח כשכולם מסומנים "הגיע" — המאמן מתקן רק
+      // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
+      // עשר הקשות. השחקנים נכנסים ל-touched כדי שהשמירה תכתוב אותם.
+      prefill = !o && !RO;
     (n.forEach((w) => {
       let k = l.find(
         (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
       );
-      p[w.id] = k ? k.status : null;
+      p[w.id] = k ? k.status : prefill ? "Present" : null;
+      prefill && touchedRef.current.add(w.id);
     }),
       h(p),
       f(RO ? !1 : !o));
   }, [t.id, rosterKey, m, daySig]);
   let C = (p, w) => {
-      u &&
-        ((dirtyRef.current = dayKey),
+      if (!u) return;
+      // רטט קצר באנדרואיד — "נקלט" בלי להסתכל על המסך
+      try {
+        navigator.vibrate && navigator.vibrate(10);
+      } catch (e2) {}
+      ((dirtyRef.current = dayKey),
         touchedRef.current.add(p),
         h((k) => ({ ...k, [p]: k[p] === w ? null : w })));
     },
@@ -3181,29 +3190,6 @@ function re({
           n.length,
         ),
     ),
-    !RO &&
-      AP &&
-      e.createElement(
-        "button",
-        {
-          onClick: () => AP(t),
-          className:
-            "bg-white border border-emerald-300 text-emerald-700 rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
-        },
-        e.createElement(K, { className: "w-4 h-4" }),
-        "הוספת שחקן לקבוצה",
-      ),
-    !RO &&
-    e.createElement(
-      "button",
-      {
-        onClick: () => setShowCancel(!0),
-        className:
-          "bg-white border border-slate-200 text-slate-600 rounded-xl py-3 min-h-[44px] text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
-      },
-      e.createElement(BanIcon, { className: "w-4 h-4 text-slate-400" }),
-      "האימון בוטל",
-    ),
     cancelErr &&
       e.createElement(
         "p",
@@ -3342,7 +3328,7 @@ function re({
                 {
                   key: "offday",
                   className:
-                    "text-[10px] font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 shrink-0",
+                    "text-xs font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 shrink-0",
                 },
                 `לא יום קבוע (${playerDaysLabel(p)})`,
               )
@@ -3404,6 +3390,34 @@ function re({
           "אין שחקנים פעילים בקבוצה זו",
         ),
     ),
+    // פעולות משניות מתחת לרשימה — המשימה העיקרית (סימון) באה קודם
+    !RO &&
+      e.createElement(
+        "div",
+        { className: "grid grid-cols-2 gap-2" },
+        AP
+          ? e.createElement(
+              "button",
+              {
+                onClick: () => AP(t),
+                className:
+                  "bg-white border border-emerald-300 text-emerald-700 rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+              },
+              e.createElement(K, { className: "w-4 h-4" }),
+              "הוספת שחקן",
+            )
+          : e.createElement("span", null),
+        e.createElement(
+          "button",
+          {
+            onClick: () => setShowCancel(!0),
+            className:
+              "bg-white border border-slate-200 text-slate-600 rounded-xl py-3 min-h-[44px] text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+          },
+          e.createElement(BanIcon, { className: "w-4 h-4 text-slate-400" }),
+          "האימון בוטל",
+        ),
+      ),
     y &&
       e.createElement("p", { className: "text-xs text-red-600 text-right" }, y),
     u &&
@@ -3411,7 +3425,7 @@ function re({
       n.length > 0 &&
       e.createElement(
         "p",
-        { className: "text-[11px] text-amber-700 text-right leading-relaxed" },
+        { className: "text-xs text-amber-700 text-right leading-relaxed" },
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
     !RO &&
@@ -3432,7 +3446,7 @@ function re({
             },
             g
               ? "שומר…"
-              : "שמירת נוכחות",
+              : `שמירת נוכחות · ${I} הגיעו, ${n.length - I - unmarked} לא`,
           )
         : e.createElement(
             "button",
@@ -3508,18 +3522,6 @@ function mt({
             actionLabel: "מילוי עכשיו",
             onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
           }),
-          !RO &&
-          e.createElement(AlertsCard, {
-            alerts: myAlerts.filter((r) => r.player.groupId === h.id),
-            onWhatsapp: WA,
-            onEdit: EP,
-          }),
-          !RO &&
-          e.createElement(AbsenceMsgCard, {
-            items: myPending.filter((r) => r.record.groupId === h.id),
-            onWhatsapp: WA,
-            currentUserId: t.id,
-          }),
           e.createElement(re, {
             group: h,
             profile: t,
@@ -3534,6 +3536,19 @@ function mt({
             initialDate: ID,
             initialNonce: IN,
             readOnly: RO,
+          }),
+          // התראות והודעות ממתינות אחרי הרשימה — לא לפני המשימה העיקרית
+          !RO &&
+          e.createElement(AlertsCard, {
+            alerts: myAlerts.filter((r) => r.player.groupId === h.id),
+            onWhatsapp: WA,
+            onEdit: EP,
+          }),
+          !RO &&
+          e.createElement(AbsenceMsgCard, {
+            items: myPending.filter((r) => r.record.groupId === h.id),
+            onWhatsapp: WA,
+            currentUserId: t.id,
           }),
           i &&
             e.createElement(
@@ -3594,7 +3609,7 @@ function mt({
               e.createElement(
                 "span",
                 {
-                  className: `text-[11px] font-semibold px-2 py-1 rounded-full shrink-0 ${cx ? "bg-slate-100 text-slate-500" : y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
+                  className: `text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${cx ? "bg-slate-100 text-slate-500" : y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
                 },
                 cx
                   ? "בוטל"
@@ -3614,7 +3629,7 @@ function mt({
                       "span",
                       {
                         className:
-                          "mr-1.5 text-[11px] font-bold text-emerald-600",
+                          "mr-1.5 text-xs font-bold text-emerald-600",
                       },
                       "\xB7 היום",
                     ),
@@ -3658,7 +3673,7 @@ function ct() {
     },
     e.createElement(
       "p",
-      { className: "text-[12px] text-amber-900 leading-snug" },
+      { className: "text-xs text-amber-900 leading-snug" },
       "אין חיבור לאינטרנט — אפשר להמשיך לסמן נוכחות, והנתונים יסונכרנו אוטומטית כשהחיבור יחזור.",
     ),
   );
@@ -3869,7 +3884,7 @@ function Q() {
             e.createElement("br", null),
             e.createElement(
               "span",
-              { className: "text-blue-300 text-[10px]" },
+              { className: "text-blue-300 text-xs" },
               "מזהה למנהל: users/",
               t.uid,
             ),
@@ -3950,7 +3965,7 @@ function Q() {
           ),
           e.createElement(
             "div",
-            { className: "text-[11px] text-blue-300 truncate" },
+            { className: "text-xs text-blue-300 truncate" },
             s.name,
             " \xB7 ",
             r ? "מנהל" : vw ? "צופה" : "מאמן",
@@ -3962,7 +3977,7 @@ function Q() {
         e.createElement(
           "div",
           { className: "bg-red-100 border-b border-red-300 px-4 py-2 text-center" },
-          e.createElement("p", { className: "text-[12px] text-red-800 leading-snug" }, dataError),
+          e.createElement("p", { className: "text-xs text-red-800 leading-snug" }, dataError),
         ),
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
@@ -4065,6 +4080,7 @@ function Q() {
       playerModal &&
         e.createElement(at, {
           groups: i,
+          players: c,
           player: playerModal.player,
           defaultGroupId: playerModal.groupId,
           allowedGroupIds: r
@@ -4309,7 +4325,7 @@ function NewInviteModal({
       ),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-400 text-center" },
+        { className: "text-xs text-slate-400 text-center" },
         "הקישור אישי, חד-פעמי ותקף ל-7 ימים",
       ),
     ),
@@ -4365,7 +4381,7 @@ function AccessScreen({
               "span",
               {
                 className:
-                  "mr-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5",
+                  "mr-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5",
               },
               count,
             )
@@ -4522,7 +4538,7 @@ function AccessScreen({
                   "span",
                   {
                     className:
-                      "shrink-0 text-[10px] rounded-full px-2 py-1 " +
+                      "shrink-0 text-xs rounded-full px-2 py-1 " +
                       (st === "open"
                         ? "bg-amber-100 text-amber-700"
                         : st === "used"
@@ -4567,7 +4583,7 @@ function AccessScreen({
               st === "used" &&
                 e.createElement(
                   "p",
-                  { className: "text-[11px] text-slate-400" },
+                  { className: "text-xs text-slate-400" },
                   "מומשה · מחובר ל-",
                   (inv.playerIds || []).map(playerName).join(", "),
                 ),
@@ -4576,7 +4592,7 @@ function AccessScreen({
           isAdmin &&
             e.createElement(
               "p",
-              { className: "text-[11px] text-slate-400 text-center mt-2" },
+              { className: "text-xs text-slate-400 text-center mt-2" },
               "סה״כ קישורי הורה-שחקן פעילים: ",
               links.length,
             ),
@@ -4715,7 +4731,7 @@ function NewLinkModal({
       ),
       e.createElement(
         "p",
-        { className: "text-[11px] text-slate-500 leading-relaxed" },
+        { className: "text-xs text-slate-500 leading-relaxed" },
         "קישור נותן למשתמש לראות בפורטל את כרטיס השחקן ואת הנוכחות שלו. כך גם אתה יכול לקשר את עצמך לשחקן ולראות בדיוק מה ההורים רואים.",
       ),
       picker(
@@ -4752,7 +4768,7 @@ function NewLinkModal({
       exists &&
         e.createElement(
           "p",
-          { className: "text-[11px] text-amber-600" },
+          { className: "text-xs text-amber-600" },
           "הקישור הזה כבר קיים",
         ),
       err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
