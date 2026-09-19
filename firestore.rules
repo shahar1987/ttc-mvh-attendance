@@ -7,7 +7,7 @@ rules_version = '2';
 //
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
-// accessRequests, reminders, adminTasks, system, auditLog. אוסף שלא מופיע
+// accessRequests, reminders, adminTasks, system, auditLog, tournaments. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 
 service cloud.firestore {
@@ -176,6 +176,13 @@ service cloud.firestore {
     }
     match /adminTasks/{id} {
       allow read, write: if isAdmin();
+    }
+
+    // ---------- תחרויות ----------
+    // אפליקציית "תן לי שולחן" (ttc-mvh-tournaments). כל חבר מועדון רשום
+    // יכול לנהל תחרות. המסמך zz-connection-test הוא בדיקת החיבור של האפליקציה.
+    match /tournaments/{id} {
+      allow read, write: if hasProfile();
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
