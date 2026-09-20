@@ -1071,7 +1071,19 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       try {
         // ירידה מתפקיד מאמן מסירה אותו אוטומטית מכל הקבוצות, אחרת הוא ימשיך להופיע כמאמן
         let stillCoach = roleKey(f) === "admin" || roleKey(f) === "coach",
-          affected = stillCoach ? [] : s.filter((grp) => isGroupCoach(grp, u.id));
+          affected = stillCoach ? [] : s.filter((grp) => isGroupCoach(grp, u.id)),
+          // שינוי תפקיד מאפס את ההרשאות הפרטניות לברירת המחדל של התפקיד החדש.
+          // בלי זה מאמן שהורד לצופה נשאר עם "גישת הורים" ו"תחרויות" שקיבל
+          // כמאמן, וכללי האבטחה בשרת ממשיכים לכבד אותן.
+          patch =
+            roleKey(f) === roleKey(u)
+              ? { role: f }
+              : {
+                  role: f,
+                  permissions: DEFAULT_PERMISSIONS_BY_ROLE[roleKey(f)] || [],
+                  permissionsUpdatedAt: new Date().toISOString(),
+                  permissionsUpdatedBy: a || "",
+                };
         if (affected.length) {
           let batch = Te(P);
           affected.forEach((grp) => {
@@ -1082,8 +1094,8 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
               coachNames: coachNamesFor(rest, t),
             });
           });
-          (batch.update(S(P, "users", u.id), { role: f }), await batch.commit());
-        } else await O(S(P, "users", u.id), { role: f });
+          (batch.update(S(P, "users", u.id), patch), await batch.commit());
+        } else await O(S(P, "users", u.id), patch);
       } catch (g) {
         i(
           "עדכון נכשל: " +
@@ -1510,6 +1522,10 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
                       "הורה/שחקן · כניסה עם מספר טלפון",
                     ),
                     taskNote(u),
+                    // הורה מתחיל בלי שום הרשאה. הפאנל הזה הוא הדרך לפתוח לחבר
+                    // מועדון את "תחרויות" — בלעדיה הייבוא באפליקציית התחרויות
+                    // אינו רשאי לקרוא את רשימת השחקנים.
+                    permRow(u),
                   ),
                 ),
               ),
@@ -4017,7 +4033,7 @@ function Q() {
         }),
       canDo(s, "payments") &&
         m === "payments" &&
-        e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: !1 }),
+        e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: vw }),
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
