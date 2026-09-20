@@ -1,0 +1,43 @@
+name: Firestore rules tests
+
+# כללי האבטחה מתפרסמים ידנית בקונסולה, ולכן אין כאן שום פריסה — רק בדיקה
+# שהקובץ תקין תחבירית ושההגנות שבו באמת עובדות, לפני שמעתיקים אותו לקונסולה.
+on:
+  push:
+    paths:
+      - 'firestore.rules'
+      - 'rules-tests/**'
+      - '.github/workflows/firestore-rules.yml'
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'rules-tests/**'
+      - '.github/workflows/firestore-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        working-directory: rules-tests
+        run: npm install --no-audit --no-fund
+
+      - name: Run the security rules tests
+        working-directory: rules-tests
+        run: npm test
