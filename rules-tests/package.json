@@ -1,0 +1,14 @@
+{
+  "name": "ttc-mvh-rules-tests",
+  "private": true,
+  "type": "module",
+  "description": "בדיקות לכללי האבטחה של Firestore. מריצים: npm install && npm test",
+  "scripts": {
+    "test": "cd .. && firebase emulators:exec --only firestore --project demo-ttcmh \"node rules-tests/rules.test.mjs\""
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "firebase-tools": "^14.0.0"
+  }
+}

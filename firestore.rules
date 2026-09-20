@@ -9,6 +9,11 @@ rules_version = '2';
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
+//
+// שני עקרונות שחוזרים לאורך הקובץ:
+// 1. הורה (תפקיד "Member") רואה את הילדים שקושרו אליו ב-links, ולא את המועדון.
+// 2. כשבודקים בעלות על מסמך קיים בודקים את resource.data — מה שכתוב כרגע
+//    במסד — ולא את request.resource.data, שהוא מה שהבקשה מבקשת לכתוב.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,15 +24,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function me() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    // קריאה אחת של מסמך המשתמש שמשרתת גם את hasProfile וגם את me.
+    // Firestore מגביל כלל לעשר קריאות מסמך לכל בקשה, ולכן חשוב לא לכפול:
+    // get יחיד מחזיר null כשהמסמך חסר, וזה כל מה שצריך כדי לבדוק קיום.
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
     // יש למשתמש פרופיל מאושר במערכת. קריאה של נתוני המועדון דורשת את זה —
     // לא מספיק להיות מחובר עם חשבון גוגל כלשהו.
     function hasProfile() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && userDoc() != null;
+    }
+
+    function me() {
+      return userDoc().data;
     }
 
     // התפקיד נשמר באפליקציה כ-"Admin"/"Coach"/"Viewer"/"Member", אבל
@@ -40,6 +51,13 @@ service cloud.firestore {
       return roleIs('admin');
     }
 
+    // צוות המועדון: מנהל, מאמן, צופה — כל מי שאינו הורה/שחקן.
+    // ההשוואה היא "שונה מ-member" ולא רשימה סגורה, בדיוק כמו isMemberRole
+    // שבקוד, כדי שתפקיד שנכתב בטעות לא ינעל משתמש קיים מחוץ למערכת.
+    function isTeam() {
+      return hasProfile() && me().get('role', '').lower() != 'member';
+    }
+
     // הרשאה פרטנית שהמנהל פותח לכל משתמש בנפרד, במסך "ניהול הרשאות".
     // הערכים: reports, payments, phonebook, manageGroups, competitions,
     //         sendMessages, access — זהים ל-APP_PERMISSIONS שבקוד.
@@ -50,19 +68,57 @@ service cloud.firestore {
       );
     }
 
+    function groupDoc(groupId) {
+      return get(/databases/$(database)/documents/groups/$(groupId));
+    }
+
     function isCoachOfGroup(groupId) {
-      let g = get(/databases/$(database)/documents/groups/$(groupId)).data;
-      return hasProfile() && (
-        g.get('coachId', '') == request.auth.uid ||
-        request.auth.uid in g.get('coachIds', [])
-      );
+      return hasProfile()
+        && groupId is string && groupId != ''
+        && groupDoc(groupId) != null
+        && (groupDoc(groupId).data.get('coachId', '') == request.auth.uid
+            || request.auth.uid in groupDoc(groupId).data.get('coachIds', []));
+    }
+
+    // הורה מקושר לכרטיס שחקן דרך מסמך ב-links שמזהה אותו: uid_playerId.
+    function isLinkedToPlayer(playerId) {
+      return isSignedIn()
+        && playerId is string && playerId != ''
+        && exists(/databases/$(database)/documents/links/$(request.auth.uid + '_' + playerId));
+    }
+
+    function inviteDoc(token) {
+      return get(/databases/$(database)/documents/invites/$(token));
+    }
+
+    // הזמנה שאפשר להסתמך עליה: קיימת, לא בוטלה ולא פג תוקפה.
+    // expiresAtMs נכתב על ידי createInvite; הזמנה ישנה בלי השדה לא תיפסל.
+    function inviteLive(token) {
+      return token is string && token.size() > 0
+        && inviteDoc(token) != null
+        && inviteDoc(token).data.get('revoked', false) == false
+        && inviteDoc(token).data.get('expiresAtMs', 99999999999999) > request.time.toMillis();
     }
 
     // ---------- משתמשים ----------
+    // כל אחד קורא את הפרופיל של עצמו — בלי זה האפליקציה לא יכולה לדעת מי הוא.
+    // רשימת המשתמשים, עם שמות וטלפונים, נפתחת לצוות בלבד.
     // רק מנהל משנה תפקידים והרשאות — אחרת מאמן יוכל להעניק לעצמו גישה לכל דבר.
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create, delete: if isAdmin();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isTeam());
+      allow list: if isTeam();
+
+      // הרשמה דרך קישור הזמנה: המוזמן יוצר לעצמו פרופיל של "Member" בלבד,
+      // ורק אם הוא מצמיד אליו טוקן הזמנה חי. בלי הסעיף הזה אי אפשר להירשם
+      // כלל, כי משתמש חדש אינו מנהל ואין מי שייצור עבורו את המסמך.
+      allow create: if isAdmin()
+        || (isSignedIn()
+            && request.auth.uid == userId
+            && request.resource.data.get('role', '') == 'Member'
+            && !('permissions' in request.resource.data)
+            && inviteLive(request.resource.data.get('inviteToken', '')));
+
+      allow delete: if isAdmin();
       allow update: if isAdmin()
         // משתמש רגיל רשאי לעדכן רק את טוקן ה-Push שלו
         || (request.auth.uid == userId
@@ -71,6 +127,8 @@ service cloud.firestore {
     }
 
     // ---------- קבוצות ----------
+    // שם, מקום, ימים ושעות. אין כאן פרטי שחקנים, וההורה בפורטל צריך את
+    // הקבוצה של הילד — ולכן הקריאה פתוחה לכל בעל פרופיל.
     match /groups/{groupId} {
       allow read: if hasProfile();
       allow create, delete: if hasPerm('manageGroups');
@@ -82,32 +140,48 @@ service cloud.firestore {
     }
 
     // ---------- שחקנים ----------
-    // הרשאת payments נכללת כי מסך "מי לא משלם" מסמן notPaying ומתקן שמות.
+    // שם הילד, טלפון ההורה והשיוך לקבוצה. רשימת כל השחקנים היא לצוות בלבד,
+    // ולמי שהמנהל פתח לו במפורש הרשאת "תחרויות" (הייבוא באפליקציית התחרויות).
+    // הורה קורא רק את הכרטיסים של הילדים שקושרו אליו.
+    // הרשאת payments נכללת בעריכה כי מסך "מי לא משלם" מסמן notPaying ומתקן שמות.
     match /players/{playerId} {
-      allow read: if hasProfile();
+      allow get: if isTeam() || hasPerm('competitions') || isLinkedToPlayer(playerId);
+      allow list: if isTeam() || hasPerm('competitions');
       allow create: if hasPerm('manageGroups')
         || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      // מאמן עורך רק שחקן שכבר בקבוצה שלו, ואינו מעביר אותו לקבוצה אחרת
       allow update: if hasPerm('manageGroups') || hasPerm('payments')
-        || isCoachOfGroup(resource.data.get('groupId', ''));
+        || (isCoachOfGroup(resource.data.get('groupId', ''))
+            && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
       allow delete: if isAdmin();
     }
 
     // ---------- נוכחות ----------
-    // הדאטה הקריטית ביותר. מחיקה — רק מנהל.
+    // הדאטה הקריטית ביותר. הורה רואה רק את הנוכחות של הילדים המקושרים אליו;
+    // האפליקציה שואלת לפי playerId, והכלל נבדק על כל מסמך שמוחזר.
+    // מחיקה — רק מנהל.
     match /attendance/{attendanceId} {
-      allow read: if hasProfile();
-      allow create, update: if isAdmin()
+      allow read: if isTeam() || isLinkedToPlayer(resource.data.get('playerId', ''));
+      allow create: if isAdmin()
         || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      // בעדכון בודקים את הקבוצה של המסמך הקיים, ולא של הבקשה — אחרת מאמן
+      // יכול למשוך אליו כל רשומה במועדון פשוט על ידי כתיבת ה-groupId שלו.
+      allow update: if isAdmin()
+        || (isCoachOfGroup(resource.data.get('groupId', ''))
+            && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
       allow delete: if isAdmin();
     }
 
     // ---------- ביטולי אימונים ----------
     // ביטול נוצר עם groupId, וביטול הביטול מוחק את אותו מסמך — ולכן
-    // במחיקה בודקים את הקבוצה של המסמך הקיים ולא של הבקשה.
+    // במחיקה ובעדכון בודקים את הקבוצה של המסמך הקיים ולא של הבקשה.
     match /cancellations/{id} {
       allow read: if hasProfile();
-      allow create, update: if isAdmin()
+      allow create: if isAdmin()
         || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      allow update: if isAdmin()
+        || (isCoachOfGroup(resource.data.get('groupId', ''))
+            && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
       allow delete: if isAdmin()
         || isCoachOfGroup(resource.data.get('groupId', ''));
     }
@@ -119,7 +193,7 @@ service cloud.firestore {
 
     // ---------- בדיקת תשלומים ----------
     match /paymentMappings/{id} {
-      allow read: if hasProfile();
+      allow read: if isTeam();
       allow write: if hasPerm('payments');
     }
 
@@ -152,27 +226,71 @@ service cloud.firestore {
     }
 
     // ---------- גישת הורים ----------
-    match /links/{id} {
-      allow read: if hasProfile();
-      allow write: if hasPerm('access');
+    // הורה רואה את הקישורים של עצמו (האפליקציה שואלת לפי uid); הרשימה
+    // המלאה — רק למי שיש לו הרשאת "גישת הורים".
+    match /links/{linkId} {
+      allow read: if hasPerm('access')
+        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
+      // ההרשמה דרך הזמנה יוצרת את הקישור בעצמה, ורק לילדים שההזמנה מפרטת:
+      // מזהה המסמך חייב להיות uid_playerId של המבקש, והשחקן חייב להופיע
+      // ברשימת playerIds של הזמנה חיה.
+      allow create: if hasPerm('access')
+        || (isSignedIn()
+            && request.resource.data.get('uid', '') == request.auth.uid
+            && linkId == request.auth.uid + '_' + request.resource.data.get('playerId', '')
+            && inviteLive(request.resource.data.get('inviteToken', ''))
+            && request.resource.data.get('playerId', '')
+                 in inviteDoc(request.resource.data.get('inviteToken', '')).data.get('playerIds', []));
+      allow update, delete: if hasPerm('access');
     }
-    match /invites/{id} {
-      // הזמנה נקראת לפי הטוקן שבקישור, לפני שיש למוזמן פרופיל
-      allow read: if isSignedIn();
-      allow write: if hasPerm('access');
+
+    match /invites/{token} {
+      // מזהה המסמך הוא הטוקן שבקישור — 24 בתים אקראיים (192 ביט), כלומר
+      // הקישור עצמו הוא המפתח. קריאה של הזמנה בודדת חייבת לעבוד לפני שיש
+      // חשבון, כי מסך ההזמנה נטען לפני ההתחברות. שליפה של כל ההזמנות —
+      // ובתוכן שמות ילדים וטלפונים — רק למי שיש לו הרשאת "גישת הורים".
+      allow get: if true;
+      allow list: if hasPerm('access');
+      allow create, delete: if hasPerm('access');
+      // בסוף ההרשמה המוזמן מסמן את ההזמנה כמומשה, ולא נוגע בשום שדה אחר.
+      allow update: if hasPerm('access')
+        || (isSignedIn()
+            && resource.data.get('revoked', false) == false
+            && request.resource.data.diff(resource.data)
+                 .affectedKeys().hasOnly(['usedAt', 'usedByUid'])
+            && request.resource.data.get('usedByUid', '') == request.auth.uid);
     }
+
     match /accessRequests/{id} {
-      allow create: if true;          // הורה מגיש בקשה לפני שיש לו חשבון
+      // הורה מגיש בקשה לפני שיש לו חשבון, ולכן אין כאן דרישת התחברות.
+      // במקום זה הבקשה מוגבלת בדיוק לשדות ולאורכים שהטופס שולח, כדי שלא
+      // יהיה אפשר למלא את המסד בתוכן מבחוץ ולשרוף את המכסה.
+      allow create: if request.resource.data.keys().hasOnly(
+             ['name', 'phone', 'childName', 'relation', 'note', 'status', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'phone', 'status', 'createdAt'])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.get('childName', '') is string
+        && request.resource.data.get('childName', '').size() <= 60
+        && request.resource.data.get('relation', '') is string
+        && request.resource.data.get('relation', '').size() <= 20
+        && request.resource.data.get('note', '') is string
+        && request.resource.data.get('note', '').size() <= 300
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAt.size() <= 40;
       allow read, update, delete: if hasPerm('access');
     }
 
     // ---------- מערכת ----------
     // מסמכי מצב של הסנכרון (paymentSync, paymentSnapshot, paymentSyncRequest,
-    // paymentSyncIgnores, זריעות). נקראים באפליקציה, נכתבים על ידי המנהל
+    // paymentSyncIgnores, זריעות). נקראים במסכי הצוות, נכתבים על ידי המנהל
     // או בעל הרשאת התשלומים; סקריפטי ה-Admin SDK עוקפים את הכללים ממילא.
     match /system/{id} {
-      allow read: if hasProfile();
-      allow write: if isAdmin() || hasPerm('payments');
+      allow read: if isTeam();
+      allow write: if hasPerm('payments');
     }
     match /adminTasks/{id} {
       allow read, write: if isAdmin();
@@ -180,9 +298,13 @@ service cloud.firestore {
 
     // ---------- תחרויות ----------
     // אפליקציית "תן לי שולחן" (ttc-mvh-tournaments). כל חבר מועדון רשום
-    // יכול לנהל תחרות. המסמך zz-connection-test הוא בדיקת החיבור של האפליקציה.
+    // יכול לנהל תחרות, אבל מחיקה — רק למי שיש לו הרשאת "תחרויות", כדי
+    // שהורה לא יוכל למחוק את התחרויות של המועדון.
+    // המסמך zz-connection-test הוא בדיקת החיבור של האפליקציה.
     match /tournaments/{id} {
-      allow read, write: if hasProfile();
+      allow read: if hasProfile();
+      allow create, update: if hasProfile();
+      allow delete: if hasPerm('competitions');
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.

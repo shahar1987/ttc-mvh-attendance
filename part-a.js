@@ -4939,6 +4939,7 @@ function MemberPortal({
               )
             : e.createElement("p", { className: "text-sm text-slate-500" }, "אין הודעות חדשות"),
           isStaff &&
+            canDo(profile, "sendMessages") &&
             e.createElement(
               "button",
               {
@@ -5619,14 +5620,15 @@ function MemberPortal({
         e.createElement(
           PCard,
           { title: "הודעות המועדון", icon: J },
-          e.createElement(
-            "button",
-            {
-              onClick: () => (setAnnEdit(null), setAnnForm(!0)),
-              className: "self-start text-xs font-semibold text-white bg-emerald-500 rounded-lg px-3 py-2",
-            },
-            "+ הודעה חדשה",
-          ),
+          canDo(profile, "sendMessages") &&
+            e.createElement(
+              "button",
+              {
+                onClick: () => (setAnnEdit(null), setAnnForm(!0)),
+                className: "self-start text-xs font-semibold text-white bg-emerald-500 rounded-lg px-3 py-2",
+              },
+              "+ הודעה חדשה",
+            ),
           allAnns.length
             ? e.createElement(
                 "div",

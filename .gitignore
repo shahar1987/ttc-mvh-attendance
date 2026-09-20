@@ -1,0 +1,4 @@
+rules-tests/node_modules/
+rules-tests/package-lock.json
+firestore-debug.log
+ui-debug.log
