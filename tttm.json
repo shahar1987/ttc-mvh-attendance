@@ -2,7 +2,7 @@
  "club": "הפועל מבואות חרמון",
  "clubId": "160",
  "source": "https://tttm.co.il/c/160-p/",
- "updatedAt": "2026-09-20T08:33:40.356598Z",
+ "updatedAt": "2026-09-23T08:32:39.526443Z",
  "ranked": 12,
  "players": [
   {
@@ -101,9 +101,19 @@
    "points": 139.6
   },
   {
+   "tttmId": "11960",
+   "name": "אדם שיטרית",
+   "category": "M12"
+  },
+  {
    "tttmId": "11152",
    "name": "אוהד בן ארוש",
    "category": "M13"
+  },
+  {
+   "tttmId": "11961",
+   "name": "אורי אשד",
+   "category": "C14"
   },
   {
    "tttmId": "120",
@@ -129,6 +139,16 @@
    "tttmId": "7537",
    "name": "רוני גלבוע",
    "category": "S70"
+  },
+  {
+   "tttmId": "11959",
+   "name": "רועי לוי",
+   "category": "B11"
+  },
+  {
+   "tttmId": "11962",
+   "name": "שגיא אלון",
+   "category": "C14"
   }
  ],
  "teams": [
@@ -501,6 +521,15 @@
     "בוגרים"
    ],
    "url": "https://tttm.co.il/e/1166/אליפות-פתח-תקווה-01.10.26"
+  },
+  {
+   "eventId": "1174",
+   "name": "מאסטרס כרמיאל 1",
+   "date": "2026-10-10",
+   "venue": "",
+   "registrationUntil": "",
+   "categories": [],
+   "url": "https://tttm.co.il/e/1174/מאסטרס-כרמיאל-1"
   },
   {
    "eventId": "1170",
