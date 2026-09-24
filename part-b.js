@@ -604,6 +604,7 @@ function rt({ onClose: t, users: US }) {
     [x, h] = b("Coach"),
     [u, f] = b(!1),
     [g, r] = b(""),
+    [queued, setQueued] = b(!1),
     y = s.trim() && l.trim() && c.length >= 6,
     N = {
       "auth/email-already-in-use":
@@ -694,7 +695,7 @@ function rt({ onClose: t, users: US }) {
         e.createElement(
           "p",
           { className: "text-xs text-slate-400" },
-          "מסור אותה למשתמש והמלץ לו להחליף אותה. אם המשתמש נמחק בעבר ואתה מוסיף אותו שוב עם אותו אימייל — הזן את הסיסמה הנוכחית שלו.",
+          "מסור אותה למשתמש והמלץ לו להחליף אותה. אם המשתמש נמחק בעבר ואתה מוסיף אותו שוב עם אותו אימייל, הוא יחזור עם הסיסמה הקודמת שלו.",
         ),
       ),
       e.createElement(
@@ -752,7 +753,22 @@ function rt({ onClose: t, users: US }) {
           { className: "text-xs text-red-600 leading-relaxed" },
           g,
         ),
-      e.createElement(
+      queued &&
+        e.createElement(
+          "div",
+          { className: "bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-col gap-2" },
+          e.createElement(
+            "p",
+            { className: "text-sm text-emerald-900 leading-relaxed" },
+            `${s.trim()} כבר היה רשום בעבר. הוא יחזור לרשימה תוך כרבע שעה, עם הסיסמה הקודמת שלו. אין צורך לעשות שום דבר נוסף.`,
+          ),
+          e.createElement(
+            "button",
+            { onClick: t, className: "bg-emerald-500 text-white font-semibold rounded-xl py-3" },
+            "סגירה",
+          ),
+        ),
+      !queued && e.createElement(
         "button",
         {
           disabled: !y || u,
@@ -772,12 +788,33 @@ function rt({ onClose: t, users: US }) {
               }),
                 t());
             } catch (d) {
-              r(
+              // לכתובת כבר יש חשבון התחברות (בדרך כלל משתמש שנמחק מהרשימה) והסיסמה
+              // שהוזנה אינה שלו. במקום לעצור, מבקשים מהענן להחזיר אותו לרשימה עם
+              // הסיסמה הקודמת שלו — הכלי מאתר את החשבון לפי האימייל.
+              if (
                 d.code === "auth/wrong-password" ||
-                  d.code === "auth/invalid-credential" ||
-                  d.code === "auth/invalid-login-credentials"
-                  ? "לכתובת הזו כבר קיים חשבון התחברות (גם אם מחקת את המשתמש מהרשימה). כדי לשחזר אותו הזן את הסיסמה הנוכחית של אותו חשבון, או בחר כתובת אימייל אחרת."
-                  : N[d.code] ||
+                d.code === "auth/invalid-credential" ||
+                d.code === "auth/invalid-login-credentials"
+              ) {
+                try {
+                  await V(M(P, "adminTasks"), {
+                    type: "restore",
+                    uid: "",
+                    email: l.trim().toLowerCase(),
+                    name: s.trim(),
+                    role: x,
+                    phone: normalizePhone(m.trim()),
+                    status: "pending",
+                    createdAt: new Date().toISOString(),
+                  });
+                  setQueued(!0);
+                } catch (q) {
+                  r("שליחת בקשת השחזור נכשלה: " + (q.message || q));
+                }
+                return;
+              }
+              r(
+                N[d.code] ||
                       "יצירת המשתמש נכשלה: " +
                         d.message,
               );
@@ -1255,6 +1292,28 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       e.createElement(K, { className: "w-4 h-4" }),
       " הוספת משתמש",
     ),
+    // בקשות להחזיר משתמש שנמחק: מוצגות עד שהן מבוצעות, וכישלון נשאר גלוי יממה
+    accountTasks
+      .filter(
+        (x) =>
+          x.type === "restore" &&
+          (x.status === "pending" ||
+            (x.status === "failed" && Date.now() - Date.parse(x.createdAt || 0) < 864e5)),
+      )
+      .map((x) =>
+        e.createElement(
+          "p",
+          {
+            key: x.id,
+            className:
+              "text-xs rounded-xl px-3 py-2 leading-relaxed " +
+              (x.status === "failed" ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-600"),
+          },
+          x.status === "failed"
+            ? `החזרת ${x.name || x.email} נכשלה: ${x.result || ""}`
+            : `${x.name || x.email} יחזור לרשימה תוך כרבע שעה.`,
+        ),
+      ),
     staleRows.length > 0 &&
       e.createElement(
         "div",

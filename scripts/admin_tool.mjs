@@ -8,6 +8,9 @@
 //   check         — בודק אם קיים חשבון התחברות ומתי היתה התחברות אחרונה
 //   reset-access  — מוחק חשבון התחברות, פרופיל וקישורים, כדי שאפשר יהיה
 //                   לשלוח הזמנה חדשה והאדם יבחר סיסמה מחדש
+//   restore       — מחזיר לרשימה משתמש צוות שנמחק ממנה. חשבון ההתחברות שלו
+//                   נשאר, ולכן אי אפשר ליצור אותו מחדש מהאפליקציה בלי הסיסמה
+//                   שלו. הכלי מאתר את החשבון לפי האימייל ויוצר לו פרופיל חדש.
 //
 // התוצאה נכתבת בחזרה למסמך הבקשה, והאפליקציה מציגה אותה למנהל.
 import admin from "firebase-admin";
@@ -53,6 +56,12 @@ async function main() {
       );
 
     try {
+      if (type === "restore") {
+        await finish(...(await restoreProfile(auth, db, task)));
+        done++;
+        continue;
+      }
+
       if (!uid) throw new Error("missing uid");
 
       let user = null;
@@ -119,6 +128,42 @@ async function main() {
 
   console.log(`done: ${done}, failed: ${failed}`);
   return failed ? 1 : 0;
+}
+
+// תפקידים שמותר להחזיר דרך התור. מנהל מוגדר רק ידנית, כמו ב-reset-access.
+const RESTORE_ROLES = ["Coach", "Viewer"];
+
+async function restoreProfile(auth, db, task) {
+  const email = String(task.email || "").trim().toLowerCase();
+  const role = String(task.role || "");
+  const name = String(task.name || "").trim();
+  if (!email || !name) return ["failed", "חסרים שם או אימייל."];
+  if (!RESTORE_ROLES.includes(role))
+    return ["failed", "אפשר להחזיר כך רק מאמן או צופה. מנהל מוגדר ידנית בקונסולת Firebase."];
+
+  let user;
+  try {
+    user = await auth.getUserByEmail(email);
+  } catch (err) {
+    if (err.code !== "auth/user-not-found") throw err;
+    return ["failed", "לא נמצא חשבון התחברות לכתובת הזו. אפשר פשוט להוסיף את המשתמש מחדש."];
+  }
+
+  const profileRef = db.collection("users").doc(user.uid);
+  // create נכשל אם הפרופיל כבר קיים, כך שלעולם לא דורסים משתמש פעיל
+  try {
+    await profileRef.create({
+      name,
+      role,
+      phone: String(task.phone || ""),
+      email,
+    });
+  } catch (err) {
+    if (err.code === 6 /* ALREADY_EXISTS */)
+      return ["failed", "המשתמש כבר נמצא ברשימה."];
+    throw err;
+  }
+  return ["done", `${name} הוחזר לרשימה. הוא נכנס עם הסיסמה הקודמת שלו, ואם שכח אותה אפשר ללחוץ "שכחתי סיסמה" במסך הכניסה.`];
 }
 
 main()
