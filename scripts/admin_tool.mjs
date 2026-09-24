@@ -10,7 +10,8 @@
 //                   לשלוח הזמנה חדשה והאדם יבחר סיסמה מחדש
 //   restore       — מחזיר לרשימה משתמש צוות שנמחק ממנה. חשבון ההתחברות שלו
 //                   נשאר, ולכן אי אפשר ליצור אותו מחדש מהאפליקציה בלי הסיסמה
-//                   שלו. הכלי מאתר את החשבון לפי האימייל ויוצר לו פרופיל חדש.
+//                   שלו. הכלי מאתר את החשבון לפי האימייל, מגדיר את הסיסמה
+//                   שהמנהל הזין ויוצר לו פרופיל. הסיסמה נמחקת מהבקשה בסוף.
 //
 // התוצאה נכתבת בחזרה למסמך הבקשה, והאפליקציה מציגה אותה למנהל.
 import admin from "firebase-admin";
@@ -57,7 +58,11 @@ async function main() {
 
     try {
       if (type === "restore") {
-        await finish(...(await restoreProfile(auth, db, task)));
+        try {
+          await finish(...(await restoreProfile(auth, db, task)));
+        } finally {
+          await taskDoc.ref.update({ password: admin.firestore.FieldValue.delete() });
+        }
         done++;
         continue;
       }
@@ -137,9 +142,11 @@ async function restoreProfile(auth, db, task) {
   const email = String(task.email || "").trim().toLowerCase();
   const role = String(task.role || "");
   const name = String(task.name || "").trim();
+  const password = String(task.password || "");
   if (!email || !name) return ["failed", "חסרים שם או אימייל."];
   if (!RESTORE_ROLES.includes(role))
     return ["failed", "אפשר להחזיר כך רק מאמן או צופה. מנהל מוגדר ידנית בקונסולת Firebase."];
+  if (password && password.length < 6) return ["failed", "הסיסמה קצרה מ-6 תווים."];
 
   let user;
   try {
@@ -150,20 +157,20 @@ async function restoreProfile(auth, db, task) {
   }
 
   const profileRef = db.collection("users").doc(user.uid);
-  // create נכשל אם הפרופיל כבר קיים, כך שלעולם לא דורסים משתמש פעיל
-  try {
-    await profileRef.create({
-      name,
-      role,
-      phone: String(task.phone || ""),
-      email,
-    });
-  } catch (err) {
-    if (err.code === 6 /* ALREADY_EXISTS */)
-      return ["failed", "המשתמש כבר נמצא ברשימה."];
-    throw err;
-  }
-  return ["done", `${name} הוחזר לרשימה. הוא נכנס עם הסיסמה הקודמת שלו, ואם שכח אותה אפשר ללחוץ "שכחתי סיסמה" במסך הכניסה.`];
+  const profileSnap = await profileRef.get();
+  // לעולם לא נוגעים בחשבון של מנהל דרך התור
+  if (profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin")
+    return ["failed", "זה חשבון של מנהל. מנהלים מטופלים ידנית בקונסולת Firebase."];
+
+  if (password) await auth.updateUser(user.uid, { password });
+  const profile = { name, role, phone: String(task.phone || ""), email };
+  if (!profileSnap.exists) await profileRef.set(profile);
+  else await profileRef.update(profile);
+
+  return [
+    "done",
+    `${name} הוחזר לרשימה` + (password ? " ונכנס עם הסיסמה החדשה שהוזנה." : "."),
+  ];
 }
 
 main()
