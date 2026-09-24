@@ -760,7 +760,7 @@ function rt({ onClose: t, users: US }) {
           e.createElement(
             "p",
             { className: "text-sm text-emerald-900 leading-relaxed" },
-            `${s.trim()} כבר היה רשום בעבר. הוא יחזור לרשימה תוך כרבע שעה, עם הסיסמה הקודמת שלו. אין צורך לעשות שום דבר נוסף.`,
+            `${s.trim()} כבר היה רשום בעבר. הוא יחזור לרשימה אוטומטית, עם הסיסמה הקודמת שלו. זה יכול לקחת עד כמה שעות, ואין צורך לעשות שום דבר נוסף.`,
           ),
           e.createElement(
             "button",
@@ -1311,7 +1311,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
           },
           x.status === "failed"
             ? `החזרת ${x.name || x.email} נכשלה: ${x.result || ""}`
-            : `${x.name || x.email} יחזור לרשימה תוך כרבע שעה.`,
+            : `${x.name || x.email} יחזור לרשימה בקרוב (עד כמה שעות).`,
         ),
       ),
     staleRows.length > 0 &&
