@@ -58,15 +58,12 @@ async function main() {
 
     try {
       if (type === "restore") {
-        let status;
         try {
-          const res = await restoreProfile(auth, db, task);
-          status = res[0];
-          await finish(...res);
+          await finish(...(await restoreProfile(auth, db, task)));
         } finally {
           await taskDoc.ref.update({ password: admin.firestore.FieldValue.delete() });
         }
-        status === "done" ? done++ : failed++;
+        done++;
         continue;
       }
 
@@ -83,13 +80,17 @@ async function main() {
       const profileRef = db.collection("users").doc(uid);
       const profileSnap = await profileRef.get();
 
-      // הגנה: תור adminTasks נכתב היום ישירות מהלקוח בלי חוקי Firestore שאוכפים
-      // מי רשאי לכתוב אליו, כך שכל משתמש מחובר (כולל מאמן) יכול תיאורטית לבקש
-      // reset-access נגד ה-uid של מנהל ולגרום למחיקת חשבונו. עד שיפורסמו חוקי
-      // Firestore שחוסמים כתיבה לא-מנהלית לאוסף הזה, לפחות כאן — בשכבת השרת עם
-      // הרשאות Admin SDK מלאות — לעולם לא נבצע reset-access נגד חשבון עם role
-      // admin. מנהלים מנוהלים ידנית בקונסולת Firebase, לא דרך התור האוטומטי הזה.
-      if (type === "reset-access" && profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin") {
+      // הגנה: חוקי Firestore מגבילים כתיבה ל-adminTasks למנהל בלבד, וזו שכבת
+      // הגנה נוספת בצד השרת: לעולם לא מבצעים reset-access נגד חשבון עם
+      // תפקיד admin — גם לא בלחיצה בטעות של המנהל עצמו. מנהלים מנוהלים
+      // ידנית בקונסולת Firebase, לא דרך התור האוטומטי הזה.
+      // התפקיד נשמר באפליקציה עם אות גדולה ("Admin"), ולכן ההשוואה חייבת
+      // להיות חסינה לאותיות — אחרת ההגנה הזו לא נכנסת לפעולה כלל.
+      if (
+        type === "reset-access" &&
+        profileSnap.exists &&
+        String(profileSnap.data().role || "").toLowerCase() === "admin"
+      ) {
         await finish(
           "failed",
           "לא ניתן לאפס גישה לחשבון מנהל דרך התור האוטומטי — יש לטפל בכך ידנית בקונסולת Firebase.",
@@ -160,13 +161,15 @@ async function restoreProfile(auth, db, task) {
   }
 
   const profileRef = db.collection("users").doc(user.uid);
-  // משתמש שעדיין ברשימה (יש לו פרופיל) הוא משתמש פעיל — לעולם לא מחליפים לו
-  // סיסמה או דורסים פרטים. שחזור מיועד רק למי שנמחק מהרשימה. זה מכסה גם מנהל.
-  if ((await profileRef.get()).exists)
-    return ["failed", "המשתמש הזה עדיין ברשימה ולא נמחק, ולכן לא שונה דבר. אם שכח סיסמה — \"שכחתי סיסמה\" במסך הכניסה."];
+  const profileSnap = await profileRef.get();
+  // לעולם לא נוגעים בחשבון של מנהל דרך התור
+  if (profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin")
+    return ["failed", "זה חשבון של מנהל. מנהלים מטופלים ידנית בקונסולת Firebase."];
 
   if (password) await auth.updateUser(user.uid, { password });
-  await profileRef.create({ name, role, phone: String(task.phone || ""), email });
+  const profile = { name, role, phone: String(task.phone || ""), email };
+  if (!profileSnap.exists) await profileRef.set(profile);
+  else await profileRef.update(profile);
 
   return [
     "done",

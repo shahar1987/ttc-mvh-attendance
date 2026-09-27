@@ -104,6 +104,14 @@ await t('לא מקשר את עצמו לילד שלא בהזמנה', () => assert
 await t('לא מקשר בשם מישהו אחר', () => assertFails(setDoc(doc(as('newParent'), 'links/parent2_p2'), { uid: 'parent2', playerId: 'p2', inviteToken: 'tok_open' })));
 await t('לא מוחק לעצמו את סימון המימוש', () => assertFails(updateDoc(doc(as('newParent'), 'invites/tok_open'), { revoked: false, playerIds: ['p1'] })));
 
+// tok_open כבר מומש למעלה. הקישור עובר בוואטסאפ ומועבר הלאה, ולכן מי שקיבל
+// אותו אחרי ההורה האמיתי לא יכול לפתוח באמצעותו חשבון ולהתקשר לאותו ילד.
+console.log('\n— קישור הזמנה שכבר מומש —');
+await t('טוקן שמומש לא פותח חשבון נוסף', () => assertFails(setDoc(doc(as('evil7'), 'users/evil7'), { name: 'x', role: 'Member', inviteToken: 'tok_open', createdAt: 'now' })));
+await t('טוקן שמומש לא מקשר אף אחד לילד', () => assertFails(setDoc(doc(as('parent2'), 'links/parent2_p2'), { uid: 'parent2', playerId: 'p2', inviteToken: 'tok_open', createdAt: 'now' })));
+await t('אי אפשר לסמן מימוש פעם שנייה', () => assertFails(updateDoc(doc(as('parent2'), 'invites/tok_open'), { usedAt: 'later', usedByUid: 'parent2' })));
+await t('חשבון בלי פרופיל לא מקשר את עצמו לילד', () => assertFails(setDoc(doc(as('ghost1'), 'links/ghost1_p2'), { uid: 'ghost1', playerId: 'p2', inviteToken: 'tok_open', createdAt: 'now' })));
+
 console.log('\n— בקשות גישה מבחוץ —');
 await t('טופס תקין עובר', () => assertSucceeds(addDoc(collection(anon(), 'accessRequests'), { name: 'הורה', phone: '0501111111', childName: 'ילד', relation: 'parent', note: '', status: 'pending', createdAt: '2026-09-20' })));
 await t('שדה זר נחסם', () => assertFails(addDoc(collection(anon(), 'accessRequests'), { name: 'x', phone: 'y', status: 'pending', createdAt: 'z', junk: 'a'.repeat(100) })));
