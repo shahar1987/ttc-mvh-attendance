@@ -58,12 +58,15 @@ async function main() {
 
     try {
       if (type === "restore") {
+        let status;
         try {
-          await finish(...(await restoreProfile(auth, db, task)));
+          const res = await restoreProfile(auth, db, task);
+          status = res[0];
+          await finish(...res);
         } finally {
           await taskDoc.ref.update({ password: admin.firestore.FieldValue.delete() });
         }
-        done++;
+        status === "done" ? done++ : failed++;
         continue;
       }
 
@@ -86,7 +89,7 @@ async function main() {
       // Firestore שחוסמים כתיבה לא-מנהלית לאוסף הזה, לפחות כאן — בשכבת השרת עם
       // הרשאות Admin SDK מלאות — לעולם לא נבצע reset-access נגד חשבון עם role
       // admin. מנהלים מנוהלים ידנית בקונסולת Firebase, לא דרך התור האוטומטי הזה.
-      if (type === "reset-access" && profileSnap.exists && profileSnap.data().role === "admin") {
+      if (type === "reset-access" && profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin") {
         await finish(
           "failed",
           "לא ניתן לאפס גישה לחשבון מנהל דרך התור האוטומטי — יש לטפל בכך ידנית בקונסולת Firebase.",
@@ -157,15 +160,13 @@ async function restoreProfile(auth, db, task) {
   }
 
   const profileRef = db.collection("users").doc(user.uid);
-  const profileSnap = await profileRef.get();
-  // לעולם לא נוגעים בחשבון של מנהל דרך התור
-  if (profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin")
-    return ["failed", "זה חשבון של מנהל. מנהלים מטופלים ידנית בקונסולת Firebase."];
+  // משתמש שעדיין ברשימה (יש לו פרופיל) הוא משתמש פעיל — לעולם לא מחליפים לו
+  // סיסמה או דורסים פרטים. שחזור מיועד רק למי שנמחק מהרשימה. זה מכסה גם מנהל.
+  if ((await profileRef.get()).exists)
+    return ["failed", "המשתמש הזה עדיין ברשימה ולא נמחק, ולכן לא שונה דבר. אם שכח סיסמה — \"שכחתי סיסמה\" במסך הכניסה."];
 
   if (password) await auth.updateUser(user.uid, { password });
-  const profile = { name, role, phone: String(task.phone || ""), email };
-  if (!profileSnap.exists) await profileRef.set(profile);
-  else await profileRef.update(profile);
+  await profileRef.create({ name, role, phone: String(task.phone || ""), email });
 
   return [
     "done",
