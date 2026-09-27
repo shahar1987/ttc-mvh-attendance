@@ -796,6 +796,11 @@ function rt({ onClose: t, users: US }) {
                 d.code === "auth/invalid-credential" ||
                 d.code === "auth/invalid-login-credentials"
               ) {
+                // כתובת של משתמש שעדיין ברשימה — זה לא שחזור, ולא נוגעים בסיסמה שלו
+                if ((US || []).some((v) => (v.email || "").toLowerCase() === l.trim().toLowerCase())) {
+                  r("לכתובת הזו כבר יש משתמש ברשימה למעלה. אם הוא שכח סיסמה — \"שכחתי סיסמה\" במסך הכניסה.");
+                  return;
+                }
                 try {
                   await V(M(P, "adminTasks"), {
                     type: "restore",
