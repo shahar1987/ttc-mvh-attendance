@@ -99,7 +99,10 @@ jobs:
             .toFile('site/icon-512-maskable.png');
           ICONS
           node mkicons.mjs
-          cp logo.png site/logo.png
+          # the app shows the logo at 36-64px, but logo.png is 640px / ~206KB — almost half of a first
+          # load on hall wifi. Publish a 160px copy (sharp is already installed for the icons above);
+          # the icons are still made from the full-size source.
+          node -e "require('sharp')('logo.png').resize(160,160,{fit:'contain',background:{r:255,g:255,b:255,alpha:0}}).png({compressionLevel:9}).toFile('site/logo.png').then(i=>console.log('logo.png',i.size,'bytes'))"
 
       - name: Assemble the site with a cache-busting version
         run: |

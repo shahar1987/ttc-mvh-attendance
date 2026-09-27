@@ -4648,7 +4648,7 @@ function MatchCard({ m: m, compact: compact }) {
           rel: "noopener",
           onClick: (x) => x.stopPropagation(),
           className:
-            "self-start inline-flex items-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-3 py-2",
+            "self-start inline-flex items-center gap-1.5 text-sm font-semibold text-blue-900 bg-blue-50 rounded-lg px-3 py-2 min-h-[44px]",
         },
         e.createElement(ge, { className: "w-3.5 h-3.5" }),
         "הוסף ליומן",
