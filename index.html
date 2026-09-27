@@ -27,6 +27,10 @@
     /* 27.9: ברירת המחדל של Tailwind לטקסט מציין-מקום היא 2.5:1 — כמעט בלתי קריא */
     ::placeholder { color: #64748b; opacity: 1; }
     /* שדות בחירה, תאריך וטקסט: לפחות 44px לאצבע (בדוחות ובהרשאות הם ירדו ל-30-40px) */
+    /* 27.9: אותו כלל לכל כפתור — בהרשאות, בקבוצות, בדוחות ובפורטל כפתורים ירדו ל-16-40px.
+       כפתור אייקון עגול קטן גדל גם ברוחב, כדי שיישאר עגול ולא ביצה. */
+    button { min-height: 44px; }
+    button[class~="w-6"], button[class~="w-7"], button[class~="w-8"] { min-width: 44px; }
     select, input[type="date"], input[type="text"], input[type="search"], input[type="tel"], input[type="email"], input[type="number"], input:not([type]) { min-height: 44px; }
     /* מי שביקש במערכת ההפעלה פחות תנועה — בלי אנימציות */
     @media (prefers-reduced-motion: reduce) {

@@ -498,7 +498,7 @@ function it({ groups: t, users: s, players: a, readOnly: RO }) {
                 onChange: (v) =>
                   setReassign((k) => ({ ...k, [p.id]: v.target.value })),
                 className:
-                  "border border-slate-200 rounded-lg py-2 px-2 text-xs outline-none bg-white min-h-[38px]",
+                  "border border-slate-200 rounded-lg py-2 px-2 text-sm outline-none bg-white min-h-[44px]",
               },
               e.createElement(
                 "option",
@@ -516,7 +516,7 @@ function it({ groups: t, users: s, players: a, readOnly: RO }) {
                 disabled: !reassign[p.id] || busyReassign === p.id,
                 onClick: () => doReassign(p),
                 className:
-                  "bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg px-3 min-h-[38px] shrink-0",
+                  "bg-emerald-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold rounded-lg px-3 min-h-[44px] shrink-0",
               },
               "שיבוץ",
             ),
@@ -1391,7 +1391,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             },
             e.createElement(
               "div",
-              { className: "flex items-center justify-between gap-2" },
+              { className: "flex items-center justify-between gap-2 flex-wrap" },
             e.createElement(
               "select",
               {
@@ -1419,7 +1419,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             ),
             e.createElement(
               "div",
-              { className: "flex-1 min-w-0 text-right break-words" },
+              { className: "flex-1 min-w-[9rem] text-right break-words" },
               e.createElement(
                 "div",
                 { className: "text-sm font-medium text-blue-950" },
@@ -2327,7 +2327,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             href: "https://github.com/shahar1987/ttc-mvh-attendance/actions/workflows/sync-payments.yml",
             target: "_blank",
             rel: "noreferrer",
-            className: "text-xs text-slate-400 underline",
+            className: "text-sm text-slate-600 underline inline-flex items-center min-h-[44px]",
           },
           "להרצה מיידית",
         ),
