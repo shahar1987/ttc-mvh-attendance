@@ -808,6 +808,14 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
+// 27.9: מנהל וצופה האזינו לכל היסטוריית הנוכחות — היא גדלה כל עונה, ובטלפון חדש על ויפי חלש
+// כולה ירדה לפני שהמסך הראשון נפתח. הם טוענים 13 חודשים אחורה (עונה שלמה ועוד). מאמן לא מושפע:
+// השאילתה שלו כבר מסוננת לפי קבוצה, ותנאי תאריך נוסף עליה היה דורש אינדקס שאין — והנתונים לא היו נטענים.
+const ATT_HISTORY_FROM = (() => {
+  let d = new Date();
+  d.setMonth(d.getMonth() - 13);
+  return d.toLocaleDateString("en-CA");
+})();
 function L(t, groupIds, uid, enabled, filter) {
   let [s, a] = b([]),
     [l, i] = b(!0),
@@ -975,34 +983,41 @@ function PrintStyleTag() {
 }
 function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
   return e.createElement(
-    "div",
-    { className: "flex items-center gap-2 flex-wrap" },
+    e.Fragment,
+    null,
     e.createElement(
       "div",
-      { className: "flex flex-col gap-1" },
-      e.createElement("label", { className: "text-xs text-slate-500" }, "מתאריך"),
-      e.createElement("input", {
-        type: "date",
-        value: startDate,
-        onChange: (ev) => onChangeStart(ev.target.value),
-        dir: "ltr",
-        className:
-          "border border-slate-200 rounded-lg py-2 px-2.5 text-sm outline-none focus:border-emerald-400",
-      }),
+      { className: "flex items-center gap-2 flex-wrap" },
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement("label", { className: "text-xs text-slate-500" }, "מתאריך"),
+        e.createElement("input", {
+          type: "date",
+          value: startDate,
+          onChange: (ev) => onChangeStart(ev.target.value),
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2 px-2.5 text-sm outline-none focus:border-emerald-400",
+        }),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-1" },
+        e.createElement("label", { className: "text-xs text-slate-500" }, "עד תאריך"),
+        e.createElement("input", {
+          type: "date",
+          value: endDate,
+          onChange: (ev) => onChangeEnd(ev.target.value),
+          dir: "ltr",
+          className:
+            "border border-slate-200 rounded-lg py-2 px-2.5 text-sm outline-none focus:border-emerald-400",
+        }),
+      ),
     ),
-    e.createElement(
-      "div",
-      { className: "flex flex-col gap-1" },
-      e.createElement("label", { className: "text-xs text-slate-500" }, "עד תאריך"),
-      e.createElement("input", {
-        type: "date",
-        value: endDate,
-        onChange: (ev) => onChangeEnd(ev.target.value),
-        dir: "ltr",
-        className:
-          "border border-slate-200 rounded-lg py-2 px-2.5 text-sm outline-none focus:border-emerald-400",
-      }),
-    ),
+    // 27.9: מנהל טוען 13 חודשים אחורה — טווח שמתחיל לפני כן לא יוצג ריק בשקט
+    startDate && startDate < ATT_HISTORY_FROM &&
+      e.createElement("p", { className: "text-sm text-amber-800" }, `נתונים מלפני ${formatHeDate(ATT_HISTORY_FROM)} לא נטענים בחשבון מנהל, ולכן לא ייכללו בדוח.`),
   );
 }
 function ReportActionBar({ onPrint, onExportCsv }) {
@@ -1052,6 +1067,35 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
       );
       return rec ? rec.status : null;
     },
+    // 27.9: האחוז ישב בעמודה האחרונה, אחרי כל התאריכים — בטלפון צריך היה לגלול הצידה כדי לראות אותו.
+    // עכשיו הוא ליד השם, ולצדו מגמה: שלושת האימונים האחרונים מול כל השאר בטווח.
+    playerStats = (pid) => {
+      let recs = dates.map((d) => cellStatus(pid, d)).filter(Boolean),
+        pr = recs.filter((x) => x === "Present").length,
+        pct = recs.length ? Math.round((pr / recs.length) * 100) : null,
+        last = recs.slice(-3),
+        rest = recs.slice(0, -3),
+        rate = (a) => a.filter((x) => x === "Present").length / a.length,
+        trend =
+          last.length === 3 && rest.length >= 3
+            ? rate(last) - rate(rest) >= 0.25
+              ? "up"
+              : rate(rest) - rate(last) >= 0.25
+                ? "down"
+                : "flat"
+            : null;
+      return { pct, trend };
+    },
+    pctClass = (v) =>
+      v === null ? "text-slate-500" : v >= 75 ? "text-emerald-700" : v >= 50 ? "text-amber-700" : "text-red-700",
+    trendCell = (t) =>
+      t === "up"
+        ? e.createElement("span", { className: "text-emerald-700", "aria-label": "מגמת שיפור" }, "↑")
+        : t === "down"
+          ? e.createElement("span", { className: "text-red-700", "aria-label": "מגמת ירידה" }, "↓")
+          : t === "flat"
+            ? e.createElement("span", { className: "text-slate-500", "aria-label": "יציב" }, "→")
+            : e.createElement("span", { className: "text-slate-400" }, "–"),
     exportCsv = () => {
       let headers = ["שחקן", ...dates.map(formatHeDate), "אחוז נוכחות"],
         rows = groupPlayers.map((p) => {
@@ -1122,7 +1166,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
             { className: "overflow-x-auto" },
             e.createElement(
               "table",
-              { className: "w-full text-xs border-collapse" },
+              { className: "w-full text-sm border-collapse" },
               e.createElement(
                 "thead",
                 null,
@@ -1137,6 +1181,16 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                     },
                     "שחקן",
                   ),
+                  e.createElement(
+                    "th",
+                    { className: "border border-slate-200 px-1.5 py-1.5 bg-slate-100" },
+                    "%",
+                  ),
+                  e.createElement(
+                    "th",
+                    { className: "border border-slate-200 px-1.5 py-1.5 bg-slate-100 whitespace-nowrap" },
+                    "מגמה",
+                  ),
                   dates.map((d) =>
                     e.createElement(
                       "th",
@@ -1147,11 +1201,6 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                       },
                       formatHeDate(d),
                     ),
-                  ),
-                  e.createElement(
-                    "th",
-                    { className: "border border-slate-200 px-1.5 py-1.5 bg-slate-100" },
-                    "%",
                   ),
                 ),
               ),
@@ -1179,6 +1228,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                       totalCount > 0
                         ? Math.round((presentCount / totalCount) * 100) + "%"
                         : "–";
+                  let st2 = playerStats(p.id);
                   return e.createElement(
                     "tr",
                     { key: p.id },
@@ -1190,12 +1240,17 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                       },
                       p.name,
                     ),
-                    cells,
                     e.createElement(
                       "td",
-                      { className: "border border-slate-200 text-center font-semibold" },
+                      { className: `border border-slate-200 text-center font-bold ${pctClass(st2.pct)}` },
                       pct,
                     ),
+                    e.createElement(
+                      "td",
+                      { className: "border border-slate-200 text-center font-bold text-base" },
+                      trendCell(st2.trend),
+                    ),
+                    cells,
                   );
                 }),
                 groupPlayers.length === 0 &&
@@ -1513,15 +1568,29 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
         });
         let records = [...byDate.values()].sort((a, c) => c.date.localeCompare(a.date)),
           lastTwo = records.slice(0, 2),
-          flagged = lastTwo.length === 2 && lastTwo.every((r) => r.status === "Absent");
+          flagged = lastTwo.length === 2 && lastTwo.every((r) => r.status === "Absent"),
+          // 27.9: למה הוא ברשימה — כמה אימונים ברצף הוא לא מגיע, ומה הייתה הנוכחות שלו לפני כן.
+          // ילד שהגיע תמיד ופתאום נעלם שונה מילד שממילא מגיע מעט.
+          streak = 0;
+        for (let r of records) {
+          if (r.status !== "Absent") break;
+          streak++;
+        }
+        let before = records.slice(streak),
+          beforePct = before.length >= 3
+            ? Math.round((before.filter((r) => r.status === "Present").length / before.length) * 100)
+            : null;
         return {
           player: p,
           group: groups.find((g) => g.id === p.groupId) || null,
           lastDate: records[0]?.date || null,
           flagged,
+          streak,
+          beforePct,
         };
       })
-      .filter((x) => x.flagged),
+      .filter((x) => x.flagged)
+      .sort((a, c) => c.streak - a.streak || (c.beforePct || 0) - (a.beforePct || 0)),
     exportCsv = () => {
       let headers = ["שחקן", "קבוצה", "הורה", "טלפון", "היעדרות אחרונה"],
         rowsData = atRisk.map((x) => [
@@ -1597,7 +1666,7 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
                         "_blank",
                       ),
                     className:
-                      "w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 no-print",
+                      "w-11 h-11 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 no-print",
                     "aria-label": "שליחת הודעה בוואטסאפ",
                   },
                   e.createElement(te, { className: "w-4 h-4 text-white" }),
@@ -1612,15 +1681,21 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
                   ),
                   e.createElement(
                     "div",
-                    { className: "text-xs text-slate-400" },
+                    { className: "text-sm text-slate-600" },
                     x.player.parentName
                       ? `${groupName(x.player.groupId)} \xB7 ${x.player.parentName}`
                       : groupName(x.player.groupId),
                   ),
+                  e.createElement(
+                    "div",
+                    { className: "text-sm font-semibold text-red-700" },
+                    `${x.streak} אימונים ברצף בלי להגיע` +
+                      (x.beforePct !== null ? ` \xB7 לפני כן הגיע/ה ל-${x.beforePct}%` : ""),
+                  ),
                 ),
                 e.createElement(
                   "div",
-                  { className: "text-xs text-red-500 shrink-0" },
+                  { className: "text-sm text-red-700 shrink-0" },
                   x.lastDate ? formatHeDate(x.lastDate) : "",
                 ),
               ),
@@ -1817,28 +1892,53 @@ function ReportQuota({ players, groups, attendance }) {
   );
 }
 function ReportsScreen({ groups, users, players, attendance, cancellations, readOnly: RO }) {
+  // 27.9: שש לשוניות בשורה גלולה — ארבע מהן הסתתרו מחוץ למסך. עכשיו שתי קבוצות של שלוש.
   let [tab, setTab] = b("matrix"),
-    tabs = [
-      { key: "matrix", label: "נוכחות חודשית" },
-      { key: "player", label: "דוח שחקן" },
-      { key: "fillrate", label: "מילוי מאמנים" },
-      { key: "risk", label: "בסיכון נשירה" },
-      { key: "compare", label: "השוואת קבוצות" },
-      { key: "quota", label: "מכסת אימונים" },
-    ];
+    sets = {
+      groups: { label: "קבוצות", tabs: [
+        { key: "matrix", label: "נוכחות חודשית" },
+        { key: "compare", label: "השוואת קבוצות" },
+        { key: "fillrate", label: "מילוי מאמנים" },
+      ] },
+      players: { label: "שחקנים", tabs: [
+        { key: "player", label: "דוח שחקן" },
+        { key: "risk", label: "בסיכון נשירה" },
+        { key: "quota", label: "מכסת אימונים" },
+      ] },
+    },
+    setKey = sets.players.tabs.some((t) => t.key === tab) ? "players" : "groups",
+    tabs = sets[setKey].tabs;
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
     e.createElement(
       "div",
-      { className: "flex gap-1.5 overflow-x-auto no-print pb-1" },
+      { className: "grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl no-print", role: "tablist" },
+      Object.entries(sets).map(([k, st]) =>
+        e.createElement(
+          "button",
+          {
+            key: k,
+            role: "tab",
+            "aria-selected": setKey === k,
+            onClick: () => setKey !== k && setTab(st.tabs[0].key),
+            className: `rounded-lg text-sm font-bold ${setKey === k ? "bg-white text-blue-950 shadow-sm" : "text-slate-600"}`,
+          },
+          st.label,
+        ),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "grid grid-cols-3 gap-1.5 no-print" },
       tabs.map((t) =>
         e.createElement(
           "button",
           {
             key: t.key,
             onClick: () => setTab(t.key),
-            className: `shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${tab === t.key ? "bg-blue-900 text-white" : "bg-white border border-slate-200 text-slate-600"}`,
+            "aria-pressed": tab === t.key,
+            className: `px-1 rounded-lg text-sm font-semibold leading-tight ${tab === t.key ? "bg-blue-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`,
           },
           t.label,
         ),
