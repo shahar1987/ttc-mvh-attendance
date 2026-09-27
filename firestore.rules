@@ -81,8 +81,12 @@ service cloud.firestore {
     }
 
     // הורה מקושר לכרטיס שחקן דרך מסמך ב-links שמזהה אותו: uid_playerId.
+    // דורש פרופיל ולא רק התחברות: חשבון שנפתח ישירות מול Firebase Auth
+    // ואין לו מסמך users אינו מופיע בשום מסך ניהול, ולכן גם לא ייקרא
+    // לנתוני ילד. יצירת הפרופיל קודמת ליצירת הקישור בהרשמה, כך שהזרימה
+    // התקינה לא נפגעת.
     function isLinkedToPlayer(playerId) {
-      return isSignedIn()
+      return hasProfile()
         && playerId is string && playerId != ''
         && exists(/databases/$(database)/documents/links/$(request.auth.uid + '_' + playerId));
     }
@@ -91,12 +95,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/invites/$(token));
     }
 
-    // הזמנה שאפשר להסתמך עליה: קיימת, לא בוטלה ולא פג תוקפה.
-    // expiresAtMs נכתב על ידי createInvite; הזמנה ישנה בלי השדה לא תיפסל.
+    // הזמנה שאפשר להסתמך עליה: קיימת, לא בוטלה, לא פג תוקפה — וגם
+    // לא מומשה עוד. בלי בדיקת usedAt הקישור נשאר מפתח עובד גם אחרי
+    // שההורה נרשם, וכל מי שהקישור הועבר אליו בוואטסאפ יכול לפתוח חשבון
+    // ולהתקשר לילד. expiresAtMs נכתב על ידי createInvite; הזמנה ישנה
+    // בלי השדה לא תיפסל.
     function inviteLive(token) {
       return token is string && token.size() > 0
         && inviteDoc(token) != null
         && inviteDoc(token).data.get('revoked', false) == false
+        && inviteDoc(token).data.get('usedAt', null) == null
         && inviteDoc(token).data.get('expiresAtMs', 99999999999999) > request.time.toMillis();
     }
 
@@ -218,9 +226,22 @@ service cloud.firestore {
     // ---------- יומן פעולות ----------
     // כל משתמש מחובר יכול לכתוב רישום, רק מנהל קורא.
     // אסור לערוך או למחוק — יומן שאפשר לשנות חסר ערך.
+    // השדות והאורכים מוגבלים: בלי זה כל מחובר — כולל הורה — יכול לכתוב
+    // מסמכים במגה-בייט שאי אפשר למחוק (update/delete אסורים), ולשרוף
+    // אחסון ומכסה בתוכנית החינמית.
     match /auditLog/{id} {
       allow create: if hasProfile()
-        && request.resource.data.get('who', '') == request.auth.uid;
+        && request.resource.data.get('who', '') == request.auth.uid
+        && request.resource.data.keys().hasOnly(['who', 'action', 'target', 'detail', 'at'])
+        && request.resource.data.keys().hasAll(['who', 'action', 'at'])
+        && request.resource.data.action is string
+        && request.resource.data.action.size() <= 60
+        && request.resource.data.get('target', '') is string
+        && request.resource.data.get('target', '').size() <= 200
+        && request.resource.data.get('detail', '') is string
+        && request.resource.data.get('detail', '').size() <= 300
+        && request.resource.data.at is string
+        && request.resource.data.at.size() <= 40;
       allow read: if isAdmin();
       allow update, delete: if false;
     }
@@ -235,7 +256,7 @@ service cloud.firestore {
       // מזהה המסמך חייב להיות uid_playerId של המבקש, והשחקן חייב להופיע
       // ברשימת playerIds של הזמנה חיה.
       allow create: if hasPerm('access')
-        || (isSignedIn()
+        || (hasProfile()
             && request.resource.data.get('uid', '') == request.auth.uid
             && linkId == request.auth.uid + '_' + request.resource.data.get('playerId', '')
             && inviteLive(request.resource.data.get('inviteToken', ''))
@@ -253,9 +274,13 @@ service cloud.firestore {
       allow list: if hasPerm('access');
       allow create, delete: if hasPerm('access');
       // בסוף ההרשמה המוזמן מסמן את ההזמנה כמומשה, ולא נוגע בשום שדה אחר.
+      // הסימון אפשרי פעם אחת בלבד: הזמנה שכבר מומשה לא ניתנת לסימון מחדש,
+      // אחרת כל מחובר יכול לדרוס את usedByUid ולמחוק את עקבות המימוש —
+      // או לסמן הזמנה של הורה אחר ולחסום ממנו את ההרשמה.
       allow update: if hasPerm('access')
         || (isSignedIn()
             && resource.data.get('revoked', false) == false
+            && resource.data.get('usedAt', null) == null
             && request.resource.data.diff(resource.data)
                  .affectedKeys().hasOnly(['usedAt', 'usedByUid'])
             && request.resource.data.get('usedByUid', '') == request.auth.uid);
