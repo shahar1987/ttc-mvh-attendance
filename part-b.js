@@ -1419,7 +1419,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             ),
             e.createElement(
               "div",
-              { className: "flex-1 text-right" },
+              { className: "flex-1 min-w-0 text-right break-words" },
               e.createElement(
                 "div",
                 { className: "text-sm font-medium text-blue-950" },
@@ -2226,39 +2226,55 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             { className: "text-xs text-amber-700" },
             "עדיין לא בוצע עדכון אוטומטי מהקובץ בדרייב (רץ פעם בשבוע). אפשר לסמן שחקנים ידנית כאן בינתיים.",
           ),
-      sync?.unmatchedNames?.length
+      // 27.9: פרטי הסנכרון (שמות לא מזוהים, ספירת הבקרה, שינויים מול הקובץ הקודם) עברו
+      // לשורה מקופלת. אזהרות אמיתיות — פער בספירה, קובץ חלקי — נשארות גלויות.
+      sync &&
+      (sync.unmatchedNames?.length ||
+        sync.reconciliation ||
+        (sync.fileDiff && !sync.fileDiff.isFirstRun))
         ? e.createElement(
-            "p",
-            { className: "text-xs text-amber-700 leading-relaxed" },
-            "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
+            "details",
+            { className: "text-sm text-amber-800" },
+            e.createElement(
+              "summary",
+              { className: "cursor-pointer font-semibold min-h-[44px] flex items-center" },
+              "פרטי הסנכרון",
+            ),
+            sync.unmatchedNames?.length
+              ? e.createElement(
+                  "p",
+                  { className: "leading-relaxed mt-1" },
+                  "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
+                )
+              : null,
+            sync.reconciliation
+              ? e.createElement(
+                  "p",
+                  { className: "leading-relaxed mt-1" },
+                  `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
+                )
+              : null,
+            sync.fileDiff && !sync.fileDiff.isFirstRun
+              ? e.createElement(
+                  "p",
+                  { className: "mt-1" },
+                  `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות/קבוצה`,
+                )
+              : null,
           )
         : null,
-      sync?.reconciliation
+      sync?.reconciliation && !sync.reconciliation.fileBalanced
         ? e.createElement(
             "p",
-            {
-              className: sync.reconciliation.fileBalanced
-                ? "text-xs text-amber-700 leading-relaxed"
-                : "text-xs text-red-700 font-semibold leading-relaxed",
-            },
-            `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
-            sync.reconciliation.fileBalanced
-              ? ""
-              : " — יש פער בין הקובץ לספירה, כדאי לבדוק לפני שמסיקים מסקנות",
+            { className: "text-sm text-red-700 font-semibold leading-relaxed" },
+            "יש פער בין הקובץ לספירה — כדאי לבדוק את פרטי הסנכרון לפני שמסיקים מסקנות",
           )
         : null,
       sync?.reconciliation?.lowCoverage
         ? e.createElement(
             "p",
-            { className: "text-xs text-red-700 font-semibold leading-relaxed" },
+            { className: "text-sm text-red-700 font-semibold leading-relaxed" },
             "בקובץ הרבה פחות שורות ממספר השחקנים הפעילים — ייתכן שזה קובץ חלקי. אל תסיק שכולם לא משלמים.",
-          )
-        : null,
-      sync?.fileDiff && !sync.fileDiff.isFirstRun
-        ? e.createElement(
-            "p",
-            { className: "text-xs text-amber-700" },
-            `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות/קבוצה`,
           )
         : null,
     ),
@@ -2963,7 +2979,8 @@ function re({
     [x, h] = b({}),
     [u, f] = b(RO ? !1 : !o),
     [g, r] = b(!1),
-    [y, N] = b("");
+    [y, N] = b(""),
+    [savedNote, setSavedNote] = b("");
   let daySig = l
       .filter((v) => v.groupId === t.id && v.date === m)
       .map((v) => v.playerId + ":" + v.status)
@@ -2975,6 +2992,8 @@ function re({
     // עריכה מקומי). נשמרים רק אלה כדי שמאמן שני שפותח את אותה קבוצה/תאריך לא
     // ידרוס בשמירה שלו שחקנים שהוא עצמו לא נגע בהם (ראו פונקציית A למטה).
     touchedRef = e.useRef(new Set()),
+    // שחקנים שסומנו "הגיע" אוטומטית בפתיחת היום ועוד לא נגעו בהם
+    autoRef = e.useRef(new Set()),
     isDirty = () => dirtyRef.current === dayKey,
     confirmLeave = () =>
       !isDirty() ||
@@ -2997,12 +3016,14 @@ function re({
       // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
       // עשר הקשות. השחקנים נכנסים ל-touched כדי שהשמירה תכתוב אותם.
       prefill = !o && !RO;
+    autoRef.current = new Set();
     (n.forEach((w) => {
       let k = l.find(
         (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
       );
       p[w.id] = k ? k.status : prefill ? "Present" : null;
       prefill && touchedRef.current.add(w.id);
+      !k && prefill && autoRef.current.add(w.id);
     }),
       h(p),
       f(RO ? !1 : !o));
@@ -3013,13 +3034,19 @@ function re({
       try {
         navigator.vibrate && navigator.vibrate(10);
       } catch (e2) {}
+      // 27.9: כולם נפתחים כ"הגיע". מאמן שלוחץ "הגיע" על ילד שנכנס לאולם
+      // מאשר אותו — אסור שהלחיצה תבטל את הסימון, כי ריק בשמירה = מחיקת הרישום.
+      // לחיצה שנייה על סימון שהמאמן עצמו בחר עדיין מנקה אותו, כמו קודם.
+      let auto = autoRef.current.has(p);
+      autoRef.current.delete(p);
       ((dirtyRef.current = dayKey),
         touchedRef.current.add(p),
-        h((k) => ({ ...k, [p]: k[p] === w ? null : w })));
+        h((k) => ({ ...k, [p]: k[p] === w ? (auto ? w : null) : w })));
     },
     d = (p) => {
       if (!u) return;
       let w = {};
+      autoRef.current.clear();
       (n.forEach((k) => {
         w[k.id] = p;
         touchedRef.current.add(k.id);
@@ -3036,7 +3063,7 @@ function re({
         // בקבוצה. אחרת מאמן ששומר שני, בזמן שהמסך שלו לא התעדכן מהמאמן
         // הראשון (ראו isDirty למעלה), היה דורס בשקט את הסימונים של הראשון
         // לכל שחקן שהוא עצמו לא סימן.
-        (Array.from(touchedRef.current).forEach((pid) => {
+        Array.from(touchedRef.current).forEach((pid) => {
           let w = n.find((p2) => p2.id === pid);
           if (!w) return;
           let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
@@ -3062,12 +3089,28 @@ function re({
             ((rec.msgSentAt = prev.msgSentAt),
             (rec.msgSentBy = prev.msgSentBy || "")),
             p.set(k, rec));
-        }),
-          await p.commit(),
-          (dirtyRef.current = null),
+        });
+        // 27.9: commit() נפתר רק כשהשרת מאשר. בוויפי של אולם שמחובר אבל לא מעביר
+        // כלום, הכפתור נשאר על "שומר…" לנצח, אף שהרישום כבר שמור במכשיר ויישלח
+        // לבד. אחרי 6 שניות מספרים למאמן את האמת: נשמר במכשיר. אם השרת ידחה
+        // אחר כך, הוא יראה זאת.
+        let committed = p.commit(),
+          srv = committed.then(() => "server");
+        srv.catch(() => {});
+        let how = await Promise.race([
+          srv,
+          new Promise((res) => setTimeout(() => res("local"), 6000)),
+        ]);
+        how === "local"
+          ? (setSavedNote("נשמר במכשיר · יישלח לשרת כשהרשת תחזור"),
+            committed.catch((err) =>
+              N("השמירה לשרת נכשלה: " + err.message + " — צריך לפתוח את היום ולשמור שוב."),
+            ))
+          : setSavedNote("");
+        (dirtyRef.current = null),
           touchedRef.current.clear(),
           h(saved),
-          f(!1));
+          f(!1);
       } catch (p) {
         N(
           "השמירה נכשלה: " +
@@ -3089,7 +3132,7 @@ function re({
               ((dirtyRef.current = null), touchedRef.current.clear(), i());
           },
           className:
-            "flex items-center gap-1.5 text-sm text-slate-500 self-start",
+            "flex items-center gap-1.5 text-sm text-slate-600 self-start min-h-[44px]",
         },
         e.createElement(je, { className: "w-4 h-4" }),
         "חזרה לרשימת הקבוצות",
@@ -3141,7 +3184,7 @@ function re({
             {
               onClick: () => setShowDatePicker(!0),
               className:
-                "flex items-center gap-1.5 text-xs font-semibold text-blue-900",
+                "flex items-center gap-1.5 text-sm font-semibold text-blue-900 min-h-[44px]",
             },
             e.createElement(ge, { className: "w-3.5 h-3.5" }),
             "עדכון נוכחות ליום שלא מולא",
@@ -3304,7 +3347,7 @@ function re({
           {
             onClick: () => d("Absent"),
             className:
-              "bg-white border border-red-200 text-red-600 rounded-xl py-2.5 text-sm font-medium",
+              "bg-white border border-red-200 text-red-600 rounded-xl py-2.5 min-h-[48px] text-sm font-medium",
           },
           "סמן את כולם כלא הגיעו",
         ),
@@ -3313,7 +3356,7 @@ function re({
           {
             onClick: () => d("Present"),
             className:
-              "bg-white border border-emerald-200 text-emerald-700 rounded-xl py-2.5 text-sm font-medium",
+              "bg-white border border-emerald-200 text-emerald-700 rounded-xl py-2.5 min-h-[48px] text-sm font-medium",
           },
           "סמן את כולם כהגיעו",
         ),
@@ -3374,7 +3417,9 @@ function re({
                 }),
               )
             : null,
-          EP && !RO
+          // 27.9: בזמן סימון הנוכחות עיפרון וארכיון בכל שורה הכפילו את גובה הרשימה.
+          // בזמן הסימון לוחצים על השם כדי לערוך; אחרי השמירה הם חוזרים לשורה.
+          EP && !RO && !u
             ? e.createElement(
                 "button",
                 {
@@ -3387,7 +3432,7 @@ function re({
                 e.createElement($e, { className: "w-4 h-4" }),
               )
             : null,
-          c
+          c && !u
             ? e.createElement(
                 "button",
                 {
@@ -3398,7 +3443,7 @@ function re({
                     ) && c(p.id);
                   },
                   className:
-                    "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-300 shrink-0",
+                    "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 shrink-0",
                   "aria-label": "העברה לארכיון",
                 },
                 e.createElement(Ae, { className: "w-4 h-4" }),
@@ -3422,23 +3467,35 @@ function re({
           e.createElement(
             "div",
             { className: "flex items-center gap-2" },
+            EP && !RO && u
+              ? e.createElement(
+                  "button",
+                  {
+                    onClick: () => EP(p),
+                    className:
+                      "flex-1 min-h-[44px] text-right text-base font-medium text-blue-950 break-words",
+                    "aria-label": `${p.name} · עריכת פרטי שחקן`,
+                  },
+                  p.name,
+                )
+              : e.createElement(
+                  "div",
+                  {
+                    className:
+                      "flex-1 text-right text-base font-medium text-blue-950 break-words",
+                  },
+                  p.name,
+                ),
             e.createElement(
               "div",
-              {
-                className:
-                  "flex-1 text-right text-sm font-medium text-blue-950 break-words",
-              },
-              p.name,
-            ),
-            e.createElement(
-              "div",
-              { className: "flex gap-1.5 shrink-0" },
+              { className: "flex gap-3 shrink-0" },
               e.createElement(
                 "button",
                 {
                   onClick: () => C(p.id, "Present"),
                   disabled: !u,
-                  className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
+                  "aria-pressed": w === "Present",
+                  className: `min-w-[44px] min-h-[48px] px-3.5 rounded-lg text-base font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-300"} ${u ? "active:scale-95" : ""}`,
                 },
                 "הגיע",
               ),
@@ -3447,7 +3504,8 @@ function re({
                 {
                   onClick: () => C(p.id, "Absent"),
                   disabled: !u,
-                  className: `min-w-[44px] min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-400 border-slate-200"} ${u ? "active:scale-95" : "opacity-70"}`,
+                  "aria-pressed": w === "Absent",
+                  className: `min-w-[44px] min-h-[48px] px-3.5 rounded-lg text-base font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-600 border-slate-300"} ${u ? "active:scale-95" : ""}`,
                 },
                 "לא הגיע",
               ),
@@ -3501,7 +3559,9 @@ function re({
         ),
       ),
     y &&
-      e.createElement("p", { className: "text-xs text-red-600 text-right" }, y),
+      e.createElement("p", { className: "text-sm text-red-700 text-right" }, y),
+    savedNote &&
+      e.createElement("p", { className: "text-sm text-emerald-800 text-right font-semibold" }, savedNote),
     u &&
       unmarked > 0 &&
       n.length > 0 &&
@@ -3654,26 +3714,11 @@ function mt({
       : e.createElement(
           "div",
           { className: "px-4 pt-4 pb-6 flex flex-col gap-3" },
-          e.createElement(MissingDaysCard, {
-            items: myMissing,
-            actionLabel: "מילוי עכשיו",
-            onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
-          }),
-          !RO &&
-          e.createElement(AlertsCard, {
-            alerts: myAlerts,
-            onWhatsapp: WA,
-            onEdit: EP,
-          }),
-          !RO &&
-          e.createElement(AbsenceMsgCard, {
-            items: myPending,
-            onWhatsapp: WA,
-            currentUserId: t.id,
-          }),
+          // 27.9: בתחילת אימון המאמן בא לסמן נוכחות — הקבוצות קודם, המשימות אחריהן
+          // (אותו כלל כמו בתוך קבוצה: "לא לפני המשימה העיקרית").
           e.createElement(
             "p",
-            { className: "text-xs text-slate-500 px-1" },
+            { className: "text-sm text-slate-600 px-1" },
             "בחר קבוצה כדי למלא נוכחות",
           ),
           g.map((r) => {
@@ -3718,7 +3763,7 @@ function mt({
                 ),
                 e.createElement(
                   "div",
-                  { className: "text-xs text-slate-400 truncate" },
+                  { className: "text-sm text-slate-500 truncate" },
                   q(r),
                   " \xB7 ",
                   C,
@@ -3726,6 +3771,23 @@ function mt({
                 ),
               ),
             );
+          }),
+          e.createElement(MissingDaysCard, {
+            items: myMissing,
+            actionLabel: "מילוי עכשיו",
+            onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
+          }),
+          !RO &&
+          e.createElement(AlertsCard, {
+            alerts: myAlerts,
+            onWhatsapp: WA,
+            onEdit: EP,
+          }),
+          !RO &&
+          e.createElement(AbsenceMsgCard, {
+            items: myPending,
+            onWhatsapp: WA,
+            currentUserId: t.id,
           }),
         );
 }

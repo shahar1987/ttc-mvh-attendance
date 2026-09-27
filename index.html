@@ -23,7 +23,11 @@
     /* גופן עברי אחד לכל המכשירים; אם Google Fonts לא נטען — נופלים לגופן המערכת */
     body { font-family: "Assistant", system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
     /* סימון פוקוס למי שמנווט במקלדת (טאבלט עם מקלדת, קורא מסך) */
-    :focus-visible { outline: 2px solid #2E7D6B; outline-offset: 2px; }
+    :focus-visible { outline: 3px solid #2E7D6B; outline-offset: 2px; box-shadow: 0 0 0 5px #fff; }
+    /* 27.9: ברירת המחדל של Tailwind לטקסט מציין-מקום היא 2.5:1 — כמעט בלתי קריא */
+    ::placeholder { color: #64748b; opacity: 1; }
+    /* שדות בחירה, תאריך וטקסט: לפחות 44px לאצבע (בדוחות ובהרשאות הם ירדו ל-30-40px) */
+    select, input[type="date"], input[type="text"], input[type="search"], input[type="tel"], input[type="email"], input[type="number"], input:not([type]) { min-height: 44px; }
     /* מי שביקש במערכת ההפעלה פחות תנועה — בלי אנימציות */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -33,8 +37,13 @@
 <body>
   <div id="root"></div>
   <div id="boot-error" style="display:none;padding:24px;text-align:center;font-size:14px;color:#b91c1c;direction:rtl"></div>
-  <div id="update-banner" style="display:none;position:fixed;inset-inline:0;bottom:0;padding:10px 16px;background:#1B2A41;color:#fff;font-size:13px;text-align:center;direction:rtl;z-index:9999;cursor:pointer">
-    גרסה חדשה זמינה — לחצו לרענון
+  <!-- 27.9: הבאנר ישב בתחתית, על חצי מכפתור "שמירת נוכחות", וכל נגיעה בו רעננה את הדף —
+       כלומר לחיצה על השמירה יכלה למחוק סימונים שטרם נשמרו. עכשיו הוא למעלה, ורק הכפתור מרענן. -->
+  <div id="update-banner" role="status" style="display:none;position:fixed;inset-inline:0;top:0;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;background:#1B2A41;color:#fff;font-size:15px;direction:rtl;z-index:9999">
+    <span style="display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:28rem;margin:0 auto">
+      <span>יש גרסה חדשה של האפליקציה</span>
+      <button id="update-go" style="min-height:44px;padding:0 16px;border:none;border-radius:10px;background:#fff;color:#1B2A41;font:inherit;font-weight:700">רענון</button>
+    </span>
   </div>
   <script type="module">
     function showError(msg) {
@@ -57,11 +66,13 @@
       // טאבלט של מועדון שנשאר פתוח ימים), הקוד שכבר רץ בזיכרון נשאר ישן עד
       // רענון. במקום להשאיר את זה תקוע בלי שהמאמן ישים לב, מציגים באנר קטן
       // שמזמין לרענן — לא מרעננים אוטומטית כדי לא לאבד סימוני נוכחות שטרם נשמרו.
+      // בביקור הראשון במכשיר clients.claim() מחליף שליטה בלי שום גרסה חדשה — לא להציג אז
+      var hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.addEventListener('controllerchange', function () {
-        var el = document.getElementById('update-banner');
-        el.style.display = 'block';
-        el.addEventListener('click', function () { window.location.reload(); });
+        if (!hadController) { hadController = true; return; }
+        document.getElementById('update-banner').style.display = 'block';
       });
+      document.getElementById('update-go').addEventListener('click', function () { window.location.reload(); });
     }
   </script>
 </body>

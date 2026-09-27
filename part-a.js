@@ -493,11 +493,16 @@ async function undoCancellation(c) {
   await Ee(S(P, "cancellations", c.id));
 }
 function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose }) {
-  let [reason, setReason] = b(CANCEL_REASONS[0]),
+  // 27.9: אין סיבה ברירת מחדל — אישור מהיר רשם "מזג אוויר" גם כשזו לא הייתה הסיבה
+  let [reason, setReason] = b(""),
     [note, setNote] = b(""),
     [saving, setSaving] = b(!1),
     [err, setErr] = b(""),
     submit = async () => {
+      if (!reason) {
+        setErr("נא לבחור את סיבת הביטול");
+        return;
+      }
       if (reason === "אחר" && !note.trim()) {
         setErr("נא לפרט את סיבת הביטול");
         return;
@@ -619,7 +624,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
       e.createElement(
         "button",
         {
-          disabled: saving,
+          disabled: saving || !reason,
           onClick: submit,
           className:
             "mt-1 bg-red-500 disabled:opacity-60 text-white font-semibold rounded-xl py-3.5 min-h-[44px] flex items-center justify-center gap-2",
@@ -1904,7 +1909,7 @@ function Re({ player: t, onOpenWhatsapp: s, dates: DS }) {
       {
         onClick: () => s(t),
         className:
-          "w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center active:scale-95 transition-transform",
+          "w-11 h-11 rounded-full bg-emerald-500 flex items-center justify-center active:scale-95 transition-transform",
         "aria-label":
           "שליחת הודעת וואטסאפ להורה",
       },
@@ -2155,31 +2160,7 @@ function st({
           dashErr,
         ),
       ),
-    e.createElement(MissingDaysCard, {
-      items: pastMissing,
-      users: t,
-      showCoach: !0,
-      actionLabel: "פתיחה",
-      onAction: RO
-        ? null
-        : (o2) =>
-            onOpenGroupDate
-              ? onOpenGroupDate(o2.group.id, o2.date)
-              : onOpenGroup(o2.group.id),
-    }),
-    !RO &&
-      e.createElement(AlertsCard, {
-        alerts,
-        onWhatsapp: WA,
-        onEdit: EP,
-      }),
-    !RO &&
-      e.createElement(AbsenceMsgCard, {
-        items: pendingMsgs,
-        onWhatsapp: WA,
-        currentUserId: c,
-      }),
-    e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
+    // 27.9: המספרים של הערב קודם, רשימות הפעולה אחריהם
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-3" },
@@ -2211,6 +2192,31 @@ function st({
         accent: "bg-emerald-500",
       }),
     ),
+    e.createElement(MissingDaysCard, {
+      items: pastMissing,
+      users: t,
+      showCoach: !0,
+      actionLabel: "פתיחה",
+      onAction: RO
+        ? null
+        : (o2) =>
+            onOpenGroupDate
+              ? onOpenGroupDate(o2.group.id, o2.date)
+              : onOpenGroup(o2.group.id),
+    }),
+    !RO &&
+      e.createElement(AlertsCard, {
+        alerts,
+        onWhatsapp: WA,
+        onEdit: EP,
+      }),
+    !RO &&
+      e.createElement(AbsenceMsgCard, {
+        items: pendingMsgs,
+        onWhatsapp: WA,
+        currentUserId: c,
+      }),
+    e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
     !RO &&
     e.createElement(
       "div",
@@ -2731,7 +2737,7 @@ function AlertsCard({
             ),
             e.createElement(
               "div",
-              { className: "text-xs text-slate-500 truncate" },
+              { className: "text-sm text-slate-600 break-words" },
               o.group ? o.group.name : "ללא קבוצה",
               " \xB7 נעדר ב-",
               formatHeDate(o.dates[1]),
@@ -2809,7 +2815,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
             ),
             e.createElement(
               "div",
-              { className: "text-xs text-slate-500 truncate" },
+              { className: "text-sm text-slate-600 break-words" },
               n.record.date === E()
                 ? "היום"
                 : Ke(n.record.date),
