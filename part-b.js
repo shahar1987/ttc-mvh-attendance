@@ -3872,7 +3872,7 @@ function Q() {
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid, staffMode),
-    { data: rawAttendance, loading: aLoading, error: aError } = L("attendance", coachGroupIds, t?.uid, staffMode),
+    { data: rawAttendance, loading: aLoading, error: aError } = L("attendance", coachGroupIds, t?.uid, staffMode, coachGroupIds ? undefined : ["date", ">=", ATT_HISTORY_FROM]),
     { data: cancellations, loading: xLoading } = L("cancellations", coachGroupIds, t?.uid, staffMode),
     n = excludeCancelled(rawAttendance, cancellations),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
