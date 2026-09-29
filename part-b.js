@@ -2953,6 +2953,125 @@ function dt({
     ),
   );
 }
+// "אחרי האימון": נתוני הקבוצה מתחת לרשימת הנוכחות. קריאה בלבד — לא כותב כלום.
+// גרף נוכחות שבועי ל-8 שבועות, ולכל שחקן רצועה של 8 האימונים האחרונים
+// (מלא = הגיע, ריבוע ריק = לא הגיע, אפור = אין רישום), החלשים קודם.
+function GroupInsights({ group: g, players: roster, attendance: all }) {
+  let recs = all.filter((r) => r.groupId === g.id);
+  if (!roster.length || !recs.length) return null;
+  let todayMs = new Date(E() + "T00:00:00").getTime(),
+    weekOf = (d) => Math.floor((todayMs - new Date(d + "T00:00:00").getTime()) / 864e5 / 7),
+    weeks = Array.from({ length: 8 }, (_, w) => {
+      let wr = recs.filter((r) => weekOf(r.date) === w),
+        pr = wr.filter((r) => r.status === "Present").length;
+      return { w, pct: wr.length ? Math.round((pr / wr.length) * 100) : null };
+    }),
+    dates = Array.from(new Set(recs.map((r) => r.date))).sort().reverse().slice(0, 8),
+    rows = roster
+      .map((p) => {
+        let cells = dates.map((d) => {
+            let r = recs.find((x) => x.date === d && x.playerId === p.id);
+            return { d, st: r ? r.status : null };
+          }),
+          marked = cells.filter((c) => c.st),
+          pct = marked.length
+            ? Math.round((marked.filter((c) => c.st === "Present").length / marked.length) * 100)
+            : null;
+        return { p, cells, pct };
+      })
+      .sort((x, y) => (x.pct ?? 101) - (y.pct ?? 101)),
+    shortDate = (d) => d.slice(8, 10) + "." + d.slice(5, 7),
+    latest = weeks.find((w) => w.pct !== null);
+  return e.createElement(
+    "section",
+    { className: "bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-4 text-right" },
+    e.createElement(
+      "div",
+      null,
+      e.createElement("h2", { className: "font-bold text-blue-950" }, "נתוני הקבוצה"),
+      latest &&
+        e.createElement(
+          "p",
+          { className: "text-sm text-slate-600 mt-0.5" },
+          latest.w === 0 ? "השבוע " : "בשבוע האחרון שהיו בו אימונים ",
+          e.createElement("span", { className: "font-bold text-blue-950" }, latest.pct + "%"),
+          " נוכחות",
+        ),
+    ),
+    e.createElement(
+      "div",
+      { "aria-label": "נוכחות שבועית ב-8 השבועות האחרונים", role: "img" },
+      e.createElement(
+        "div",
+        { className: "h-24 flex items-end gap-1.5 border-b border-slate-300" },
+        weeks.map((w) =>
+          e.createElement(
+            "div",
+            {
+              key: w.w,
+              className: "flex-1 h-full flex flex-col justify-end items-center",
+              title: (w.w === 0 ? "השבוע" : `לפני ${w.w} שבועות`) + ": " + (w.pct === null ? "אין אימונים" : w.pct + "%"),
+            },
+            w === latest &&
+              e.createElement("span", { className: "text-xs font-semibold text-slate-700 mb-0.5" }, w.pct + "%"),
+            w.pct === null
+              ? e.createElement("span", { className: "text-xs text-slate-400 mb-1" }, "–")
+              : e.createElement("div", {
+                  className: `w-full max-w-[28px] rounded-t ${w === latest ? "bg-emerald-600" : "bg-emerald-300"}`,
+                  style: { height: Math.max(w.pct, 3) + "%" },
+                }),
+          ),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex justify-between text-xs text-slate-500 mt-1" },
+        e.createElement("span", null, "השבוע"),
+        e.createElement("span", null, "לפני 8 שבועות"),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "flex flex-col gap-1" },
+      e.createElement(
+        "div",
+        { className: "flex items-center justify-between text-xs text-slate-500 pb-1" },
+        e.createElement("span", null, `${dates.length} האימונים האחרונים, החדש מימין`),
+        e.createElement(
+          "span",
+          { className: "flex items-center gap-2" },
+          e.createElement("span", { className: "inline-block w-3 h-3 rounded-sm bg-emerald-600" }),
+          "הגיע",
+          e.createElement("span", { className: "inline-block w-3 h-3 rounded-sm border-2 border-red-600 bg-white" }),
+          "לא הגיע",
+        ),
+      ),
+      rows.map(({ p, cells, pct }) =>
+        e.createElement(
+          "div",
+          { key: p.id, className: "flex items-center gap-2 min-h-[36px] border-t border-slate-100" },
+          e.createElement("div", { className: "flex-1 min-w-0 truncate text-sm text-blue-950" }, p.name),
+          e.createElement(
+            "div",
+            { className: "flex gap-0.5 shrink-0" },
+            cells.map((c) =>
+              e.createElement("span", {
+                key: c.d,
+                title: shortDate(c.d) + " · " + (c.st === "Present" ? "הגיע" : c.st === "Absent" ? "לא הגיע" : "אין רישום"),
+                className: `w-4 h-4 rounded-sm ${c.st === "Present" ? "bg-emerald-600" : c.st === "Absent" ? "border-2 border-red-600 bg-white" : "bg-slate-200"}`,
+              }),
+            ),
+          ),
+          e.createElement(
+            "div",
+            { className: `w-11 text-left text-sm tabular-nums shrink-0 ${pct !== null && pct < 60 ? "font-bold text-red-700" : "text-slate-700"}` },
+            pct === null ? "–" : pct + "%",
+          ),
+        ),
+      ),
+    ),
+  );
+}
 function re({
   group: t,
   profile: s,
@@ -3597,6 +3716,7 @@ function re({
         { className: "text-xs text-amber-700 text-right leading-relaxed" },
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
+    e.createElement(GroupInsights, { group: t, players: n, attendance: l }),
     !RO &&
     e.createElement(
       "div",
