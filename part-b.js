@@ -2969,7 +2969,11 @@ function re({
   initialNonce: IN,
   readOnly: RO,
 }) {
-  let n = a.filter((p) => p.groupId === t.id && p.isActive && !p.deleted),
+  // רשימת השחקנים לפי א"ב — המאמן מוצא את מי שחסר בלי לחפש. הסדר משפיע רק
+  // על התצוגה; השמירה עובדת לפי מזהה שחקן.
+  let n = a
+      .filter((p) => p.groupId === t.id && p.isActive && !p.deleted)
+      .sort((x, y) => (x.name || "").localeCompare(y.name || "", "he")),
     today = E(),
     minDate = "2026-09-07",
     [selDate, setSelDate] = b(ID || today),
