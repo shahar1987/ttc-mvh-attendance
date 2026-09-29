@@ -946,8 +946,9 @@ function EditUserModal({ user: t, onClose: s }) {
   );
 }
 // בקשת ניהול חשבון. מבוצעת בענן על ידי GitHub Actions, כדי שלא יעברו פרטים אישיים דרך GitHub.
-async function requestAccountTask(type, user, byId) {
+async function requestAccountTask(type, user, byId, extra) {
   await V(M(P, "adminTasks"), {
+    ...extra,
     type: type,
     uid: user.id,
     name: user.name || "",
@@ -978,9 +979,17 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
         )
       )
         return;
+      let extra;
+      if (type === "set-password") {
+        let pw = window.prompt(`סיסמה חדשה ל-"${u.name}" (לפחות 6 תווים):`);
+        if (pw == null) return;
+        if (pw.length < 6) return i("הסיסמה צריכה לפחות 6 תווים.");
+        // הסיסמה נמחקת מהבקשה מיד אחרי שהכלי בענן מגדיר אותה
+        extra = { password: pw };
+      }
       (setTaskBusy(u.id), i(""));
       try {
-        await requestAccountTask(type, u, a);
+        await requestAccountTask(type, u, a, extra);
       } catch (err) {
         i("הבקשה נכשלה: " + (err.message || err));
       } finally {
@@ -1014,7 +1023,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       if (!task) return null;
       let label =
         task.status === "pending"
-          ? (task.type === "check" ? "בדיקת חשבון" : "איפוס גישה") + " — ממתין לביצוע (עד 15 דקות)"
+          ? ({ check: "בדיקת חשבון", "set-password": "החלפת סיסמה" }[task.type] || "איפוס גישה") + " — ממתין לביצוע (עד כמה שעות)"
           : task.result || "";
       return label
         ? e.createElement(
@@ -1041,6 +1050,17 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
           },
           "בדיקה",
         ),
+        !isAdminRole(u) &&
+          e.createElement(
+            "button",
+            {
+              onClick: () => runAccountTask("set-password", u),
+              disabled: taskBusy === u.id,
+              className:
+                "text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+            },
+            "סיסמה חדשה",
+          ),
         e.createElement(
           "button",
           {
