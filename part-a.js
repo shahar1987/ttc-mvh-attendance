@@ -2858,7 +2858,10 @@ function AlertsCard({
   );
 }
 function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
-  let [l, i] = b("");
+  // מציגים 3 ראשונים ו"הצג עוד" — רשימה ארוכה דחפה את רשימת הקבוצות אל מתחת למסך
+  let [l, i] = b(""),
+    [showAll, setShowAll] = b(!1),
+    SHOWN = 3;
   if (t.length === 0) return null;
   let c = async (n) => {
     i("");
@@ -2905,7 +2908,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
     e.createElement(
       "div",
       { className: "divide-y divide-slate-100" },
-      t.map((n) =>
+      (showAll ? t : t.slice(0, SHOWN)).map((n) =>
         e.createElement(
           "div",
           {
@@ -2956,6 +2959,18 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
         ),
       ),
     ),
+    t.length > SHOWN &&
+      e.createElement(
+        "button",
+        {
+          onClick: () => setShowAll((v) => !v),
+          className:
+            "w-full min-h-[44px] border-t border-slate-100 text-sm font-semibold text-sky-800 flex items-center justify-center gap-1",
+          "aria-expanded": showAll,
+        },
+        showAll ? "הצגת פחות" : `הצגת כל ה-${t.length}`,
+        e.createElement(showAll ? ke : we, { className: "w-4 h-4" }),
+      ),
   );
 }
 function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) {
