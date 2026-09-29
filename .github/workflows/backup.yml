@@ -9,8 +9,9 @@ name: Nightly backup
 #   FIREBASE_SERVICE_ACCOUNT — כבר קיים בריפו הזה (אותו אחד ש-Account
 #     tools משתמש בו, Firebase console → Project settings → Service
 #     accounts → Generate new private key)
-#   BACKUP_REPO_TOKEN — PAT מסוג fine-grained, הרשאת Contents: Read and
-#     write, מוגבל אך ורק לריפו ttc-mvh-backups
+#   BACKUP_DEPLOY_KEY — מפתח SSH פרטי. החלק הציבורי שלו מוגדר כ-Deploy key
+#     עם הרשאת כתיבה בריפו ttc-mvh-backups בלבד (Settings → Deploy keys
+#     שם). בלי תאריך תפוגה.
 on:
   schedule:
     - cron: "0 23 * * *"   # 02:00 שעון ישראל — אחרי שכל האימונים נרשמו
@@ -18,7 +19,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: nightly-backup
@@ -42,11 +42,11 @@ jobs:
       - name: Check that the secrets exist
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          BACKUP_DEPLOY_KEY: ${{ secrets.BACKUP_DEPLOY_KEY }}
         run: |
           MISSING=""
           [ -z "$FIREBASE_SERVICE_ACCOUNT" ]  && MISSING="$MISSING FIREBASE_SERVICE_ACCOUNT"
-          [ -z "$BACKUP_REPO_TOKEN" ] && MISSING="$MISSING BACKUP_REPO_TOKEN"
+          [ -z "$BACKUP_DEPLOY_KEY" ] && MISSING="$MISSING BACKUP_DEPLOY_KEY"
           if [ -n "$MISSING" ]; then
             echo "חסרים Secrets:$MISSING"
             echo "להוסיף ב: Settings > Secrets and variables > Actions"
@@ -71,11 +71,13 @@ jobs:
 
       - name: Push to the private backups repo
         env:
-          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          BACKUP_DEPLOY_KEY: ${{ secrets.BACKUP_DEPLOY_KEY }}
         run: |
           STAMP=$(TZ=Asia/Jerusalem date '+%Y-%m-%d %H:%M')
-          git clone --depth 1 \
-            "https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/shahar1987/ttc-mvh-backups.git" repo
+          umask 077
+          printf '%s\n' "$BACKUP_DEPLOY_KEY" > /tmp/deploy_key
+          export GIT_SSH_COMMAND="ssh -i /tmp/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone --depth 1 git@github.com:shahar1987/ttc-mvh-backups.git repo
 
           # קבצים קבועים שנדרסים — ההיסטוריה נשמרת ב-git
           cp backup-out/*.json repo/
@@ -91,13 +93,3 @@ jobs:
             git push
             echo "הגיבוי נדחף"
           fi
-
-      - name: Open an issue if the backup failed
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue create \
-            --title "❌ הגיבוי הלילי של נתוני הנוכחות נכשל" \
-            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }} || true
