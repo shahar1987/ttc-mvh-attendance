@@ -3043,17 +3043,6 @@ function re({
         touchedRef.current.add(p),
         h((k) => ({ ...k, [p]: k[p] === w ? (auto ? w : null) : w })));
     },
-    d = (p) => {
-      if (!u) return;
-      let w = {};
-      autoRef.current.clear();
-      (n.forEach((k) => {
-        w[k.id] = p;
-        touchedRef.current.add(k.id);
-      }),
-        (dirtyRef.current = dayKey),
-        h(w));
-    },
     A = async () => {
       (r(!0), N(""));
       try {
@@ -3267,6 +3256,23 @@ function re({
     "div",
     { className: "flex flex-col gap-4" },
     backBtn,
+    // 29.9: כיוון "רק מי שחסר" — כולם נפתחים כהגיעו, והמסך שואל שאלה אחת
+    u &&
+      n.length > 0 &&
+      e.createElement(
+        "div",
+        { className: "px-1 text-right" },
+        e.createElement(
+          "h2",
+          { className: "text-2xl font-bold text-blue-950 leading-tight" },
+          isPast ? `מי לא הגיע ב־${Ke(m)}?` : "מי לא הגיע היום?",
+        ),
+        e.createElement(
+          "p",
+          { className: "text-sm text-slate-600 mt-1" },
+          "נגעו רק במי שחסר. כל השאר נרשמים כהגיעו.",
+        ),
+      ),
     e.createElement(
       "div",
       { className: "bg-white rounded-xl border border-slate-200 p-4" },
@@ -3337,35 +3343,10 @@ function re({
             attendance: l,
           }),
       }),
-    u &&
-      n.length > 0 &&
-      e.createElement(
-        "div",
-        { className: "grid grid-cols-2 gap-2" },
-        e.createElement(
-          "button",
-          {
-            onClick: () => d("Absent"),
-            className:
-              "bg-white border border-red-200 text-red-600 rounded-xl py-2.5 min-h-[48px] text-sm font-medium",
-          },
-          "סמן את כולם כלא הגיעו",
-        ),
-        e.createElement(
-          "button",
-          {
-            onClick: () => d("Present"),
-            className:
-              "bg-white border border-emerald-200 text-emerald-700 rounded-xl py-2.5 min-h-[48px] text-sm font-medium",
-          },
-          "סמן את כולם כהגיעו",
-        ),
-      ),
     e.createElement(
       "div",
       {
-        className:
-          "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
+        className: "flex flex-col gap-1.5",
       },
       n.map((p) => {
         let w = x[p.id] || null,
@@ -3461,55 +3442,59 @@ function re({
               )
             : null,
         ].filter(Boolean);
+        let absent = w === "Absent";
+        // 29.9: כל השורה היא כפתור אחד — נגיעה מסמנת "לא הגיע", נגיעה נוספת מחזירה ל"הגיע".
+        // מטרה של 56px לכל הרוחב, במקום שני כפתורים צמודים שקל לפספס ביד רועדת.
         return e.createElement(
           "div",
-          { key: p.id, className: "px-3 py-3 flex flex-col gap-2" },
+          {
+            key: p.id,
+            className: `rounded-2xl px-2 py-1 flex flex-col gap-1 ${absent ? "bg-red-50" : "bg-blue-50"}`,
+          },
           e.createElement(
             "div",
-            { className: "flex items-center gap-2" },
+            { className: "flex items-center gap-1" },
+            e.createElement(
+              "button",
+              {
+                onClick: () => C(p.id, absent ? "Present" : "Absent"),
+                disabled: !u,
+                "aria-pressed": absent,
+                className: `flex-1 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
+              },
+              e.createElement(
+                "span",
+                {
+                  "aria-hidden": "true",
+                  className: `w-7 h-7 rounded-full border-2 grid place-items-center shrink-0 text-sm font-bold ${absent ? "bg-red-500 border-red-500 text-white" : "bg-white border-slate-300"}`,
+                },
+                absent ? "✕" : "",
+              ),
+              e.createElement(
+                "span",
+                {
+                  className: `flex-1 text-lg font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
+                },
+                p.name,
+              ),
+              absent
+                ? e.createElement("span", { className: "text-sm font-bold text-red-700 shrink-0" }, "לא הגיע")
+                : !w
+                  ? e.createElement("span", { className: "text-sm font-semibold text-amber-700 shrink-0" }, "לא סומן")
+                  : null,
+            ),
             EP && !RO && u
               ? e.createElement(
                   "button",
                   {
                     onClick: () => EP(p),
                     className:
-                      "flex-1 min-h-[44px] text-right text-base font-medium text-blue-950 break-words",
+                      "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 shrink-0",
                     "aria-label": `${p.name} · עריכת פרטי שחקן`,
                   },
-                  p.name,
+                  e.createElement($e, { className: "w-4 h-4" }),
                 )
-              : e.createElement(
-                  "div",
-                  {
-                    className:
-                      "flex-1 text-right text-base font-medium text-blue-950 break-words",
-                  },
-                  p.name,
-                ),
-            e.createElement(
-              "div",
-              { className: "flex gap-3 shrink-0" },
-              e.createElement(
-                "button",
-                {
-                  onClick: () => C(p.id, "Present"),
-                  disabled: !u,
-                  "aria-pressed": w === "Present",
-                  className: `min-w-[44px] min-h-[48px] px-3.5 rounded-lg text-base font-semibold border transition-colors ${w === "Present" ? "bg-emerald-500 text-white border-emerald-500" : "bg-white text-slate-600 border-slate-300"} ${u ? "active:scale-95" : ""}`,
-                },
-                "הגיע",
-              ),
-              e.createElement(
-                "button",
-                {
-                  onClick: () => C(p.id, "Absent"),
-                  disabled: !u,
-                  "aria-pressed": w === "Absent",
-                  className: `min-w-[44px] min-h-[48px] px-3.5 rounded-lg text-base font-semibold border transition-colors ${w === "Absent" ? "bg-red-500 text-white border-red-500" : "bg-white text-slate-600 border-slate-300"} ${u ? "active:scale-95" : ""}`,
-                },
-                "לא הגיע",
-              ),
-            ),
+              : null,
           ),
           // השורה התחתונה נבנית רק אם יש בה משהו — אחרת נוצר רווח ריק מתחת לשם
           secondary.length > 0 &&
@@ -3584,11 +3569,13 @@ function re({
               onClick: A,
               disabled: g || n.length === 0,
               className:
-                "w-full bg-emerald-500 disabled:opacity-60 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
+                "w-full bg-blue-600 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
             },
             g
               ? "שומר…"
-              : `שמירת נוכחות · ${I} הגיעו, ${n.length - I - unmarked} לא`,
+              : I === n.length
+                ? "כולם הגיעו · שמירה"
+                : `שמירה · ${I} הגיעו, ${n.length - I - unmarked} חסרים`,
           )
         : e.createElement(
             "button",
@@ -3726,6 +3713,28 @@ function mt({
               cx = fc(r),
               N = ee(r),
               C = a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length;
+            // 29.9: האימון של היום שעוד לא מולא — כרטיס גדול עם כפתור אחד, השאר רשימה רגילה
+            if (N && !y && !cx)
+              return e.createElement(
+                "button",
+                {
+                  key: r.id,
+                  onClick: () => onSelectGroup(r.id),
+                  className:
+                    "rounded-2xl bg-blue-50 px-5 py-5 flex flex-col gap-1 text-right active:scale-[0.99] transition-transform",
+                },
+                e.createElement("span", { className: "text-sm text-slate-600" }, "האימון של היום"),
+                e.createElement("span", { className: "text-xl font-bold text-blue-950" }, r.name),
+                e.createElement("span", { className: "text-sm text-slate-600" }, q(r), " \xB7 ", C, " שחקנים"),
+                e.createElement(
+                  "span",
+                  {
+                    className:
+                      "mt-3 min-h-[56px] rounded-xl bg-blue-600 text-white text-lg font-bold flex items-center justify-center",
+                  },
+                  "מילוי נוכחות",
+                ),
+              );
             return e.createElement(
               "button",
               {
