@@ -2046,7 +2046,11 @@ function tt() {
         await Ue(D, loginIdToEmail(t), a);
       } catch (x) {
         c(
-          et[x.code] ||
+          // מספר טלפון עובד רק להורים ושחקנים; מאמנים וצופים רשומים עם אימייל
+          (!t.includes("@") && /credential|user-not-found|wrong-password/.test(x.code || "")
+            ? "לא נמצא חשבון עם המספר והסיסמה האלה. מאמנים וצופים נכנסים עם כתובת האימייל שלהם, לא עם מספר הטלפון."
+            : "") ||
+            et[x.code] ||
             "שגיאה בהתחברות, נסה שוב",
         );
       } finally {
