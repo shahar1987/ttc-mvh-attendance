@@ -2165,6 +2165,29 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       }))
       .filter((x) => x.players.length > 0),
     totalPaid = paidByGroup.reduce((n, x) => n + x.players.length, 0),
+    // ילד שמתאמן ביותר מקבוצה אחת רשום כשחקן נפרד בכל קבוצה. מזהים אותו לפי שם זהה
+    // + טלפון הורה זהה (בלי טלפון תקין לא מאחדים — שני ילדים באותו שם הם לא אותו ילד),
+    // ומסכמים כמה אימונים בשבוע הוא מתאמן בכל הקבוצות יחד. קריאה בלבד.
+    multiGroup = (() => {
+      let by = {};
+      t.filter((p) => p.isActive && !p.deleted && isValidPhone(p.parentPhone || "")).forEach((p) => {
+        let k = normalizeHeName(p.name) + "|" + normalizePhone(p.parentPhone);
+        (by[k] = by[k] || []).push(p);
+      });
+      return Object.values(by)
+        .filter((ps) => new Set(ps.map((p) => p.groupId)).size > 1)
+        .map((ps) => {
+          let items = ps.map((p) => {
+            let g = s.find((x) => x.id === p.groupId),
+              n =
+                (Array.isArray(p.trainingDays) && p.trainingDays.length) ||
+                (g && Array.isArray(g.days) ? g.days.length : 0);
+            return { p, g, n };
+          });
+          return { name: ps[0].name, items, total: items.reduce((a, x) => a + x.n, 0) };
+        })
+        .sort((a, c) => c.total - a.total);
+    })(),
     // למה בדיוק השחקן הזה מסומן כלא משלם — בלי זה אי אפשר להבדיל בין
     // "באמת לא נרשם" לבין "נרשם, אבל השם בקובץ כתוב אחרת"
     reasonText = (id) => {
@@ -2591,6 +2614,43 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                 ),
               ),
             ),
+      ),
+    multiGroup.length > 0 &&
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-2 bg-white border border-slate-200 rounded-xl p-3" },
+        e.createElement(
+          "p",
+          { className: "text-sm font-bold text-blue-950" },
+          `ילדים שמתאמנים ביותר מקבוצה אחת (${multiGroup.length})`,
+        ),
+        e.createElement(
+          "p",
+          { className: "text-xs text-slate-500 leading-relaxed" },
+          'זוהו לפי שם זהה וטלפון הורה זהה. המספר הוא כמה אימונים בשבוע הילד מתאמן בכל הקבוצות יחד — להשוואה מול מה שנרשם אליו במתנ"ס.',
+        ),
+        multiGroup.map((c) =>
+          e.createElement(
+            "div",
+            { key: c.items.map((x) => x.p.id).join("-"), className: "border-t border-slate-100 pt-2 flex flex-col gap-0.5" },
+            e.createElement(
+              "div",
+              { className: "flex items-center justify-between gap-2 text-sm" },
+              e.createElement("span", { className: "font-semibold text-blue-950" }, c.name),
+              e.createElement("span", { className: "font-bold text-blue-950 shrink-0" }, `${c.total} אימונים בשבוע`),
+            ),
+            c.items.map((x) =>
+              e.createElement(
+                "p",
+                { key: x.p.id, className: "text-xs text-slate-600" },
+                `${x.g ? x.g.name : "קבוצה לא ידועה"} \xB7 ${x.n} בשבוע`,
+                x.p.notPaying
+                  ? e.createElement("span", { className: "font-semibold text-red-700" }, " \xB7 לא משלם")
+                  : null,
+              ),
+            ),
+          ),
+        ),
       ),
     !RO &&
       e.createElement(
