@@ -4135,24 +4135,8 @@ function Q() {
           e.createElement(
             "div",
             { className: "text-sm font-bold leading-tight truncate" },
-            {
-              dashboard: "דשבורד",
-              groups:
-                "ניהול קבוצות",
-              phonebook:
-                "ספר טלפונים",
-              payments: "מי לא משלם",
-              permissions:
-                "ניהול הרשאות",
-              access:
-                "גישת הורים",
-              portal:
-                "פורטל המועדון",
-              import: "ייבוא שחקנים",
-              reports: "דוחות",
-              attendance:
-                "מילוי נוכחות",
-            }[m] || X,
+            // הכותרת נגזרת מאותה רשימת תפריט (STAFF_MENU_ITEMS) — מקור אמת אחד לשמות המסכים
+            STAFF_MENU_ITEMS.find((it) => it.key === m)?.label || X,
           ),
           e.createElement(
             "div",
