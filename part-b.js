@@ -2775,7 +2775,25 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                           className: "w-4 h-4 text-emerald-600",
                         }),
                       )),
-                !RO &&
+                // אחרי שיחה שבה התשלום הוסדר: לחיצה אחת מורידה את השחקן מהרשימה.
+                // נשמר כסימון ידני, ולכן הסנכרון מהקובץ לא יחזיר אותו.
+                !RO && x.notPaying &&
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () =>
+                        window.confirm(`לסמן ש"${x.name}" הסדיר את התשלום? הוא יוסר מהרשימה.`) &&
+                        O(S(P, "players", x.id), {
+                          notPaying: !1,
+                          notPayingSource: "manual",
+                          paymentSettledAt: new Date().toISOString(),
+                        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err))),
+                      className:
+                        "min-h-[44px] rounded-full bg-emerald-500 text-white text-sm font-semibold px-3 active:scale-95 transition-transform",
+                    },
+                    "הוסדר ✓",
+                  ),
+                !RO && !x.notPaying &&
                   e.createElement(
                     "button",
                     {
