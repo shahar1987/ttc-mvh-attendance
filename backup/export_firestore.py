@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 from google.cloud import firestore
 
 # האוספים שאי אפשר לשחזר אם יאבדו
-COLLECTIONS = ["attendance", "cancellations", "players"]
+COLLECTIONS = ["attendance", "cancellations", "players", "tournaments"]  # tournaments — מערכת "תן לי שולחן"
 
 
 def serialise(value):

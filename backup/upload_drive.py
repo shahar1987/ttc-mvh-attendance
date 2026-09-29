@@ -49,10 +49,10 @@ def main():
         r.raise_for_status()
         print(f"{name}: עודכן בדרייב")
 
+    # קובץ שעוד לא נוצר בדרייב לא מפיל את הגיבוי — הוא עדיין נשמר ב-GitHub.
     if missing:
-        print("חסרים בתיקייה בדרייב (צריך ליצור אותם שם פעם אחת):",
+        print("אזהרה: לא בדרייב עדיין (צריך ליצור אותם בתיקייה פעם אחת):",
               ", ".join(missing), file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
