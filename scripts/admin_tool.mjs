@@ -8,6 +8,8 @@
 //   check         — בודק אם קיים חשבון התחברות ומתי היתה התחברות אחרונה
 //   reset-access  — מוחק חשבון התחברות, פרופיל וקישורים, כדי שאפשר יהיה
 //                   לשלוח הזמנה חדשה והאדם יבחר סיסמה מחדש
+//   set-password  — מגדיר סיסמה חדשה למשתמש צוות (לא מנהל). הסיסמה נמחקת
+//                   מהבקשה בסוף הטיפול, גם אם נכשל.
 //   restore       — מחזיר לרשימה משתמש צוות שנמחק ממנה. חשבון ההתחברות שלו
 //                   נשאר, ולכן אי אפשר ליצור אותו מחדש מהאפליקציה בלי הסיסמה
 //                   שלו. הכלי מאתר את החשבון לפי האימייל, מגדיר את הסיסמה
@@ -71,6 +73,19 @@ async function main() {
       }
 
       if (!uid) throw new Error("missing uid");
+
+      if (type === "set-password") {
+        let status;
+        try {
+          const res = await setPassword(auth, db, uid, String(task.password || ""));
+          status = res[0];
+          await finish(...res);
+        } finally {
+          await taskDoc.ref.update({ password: admin.firestore.FieldValue.delete() });
+        }
+        status === "done" ? done++ : failed++;
+        continue;
+      }
 
       let user = null;
       try {
@@ -140,6 +155,16 @@ async function main() {
 
 // תפקידים שמותר להחזיר דרך התור. מנהל מוגדר רק ידנית, כמו ב-reset-access.
 const RESTORE_ROLES = ["Coach", "Viewer"];
+
+async function setPassword(auth, db, uid, password) {
+  if (password.length < 6) return ["failed", "הסיסמה קצרה מ-6 תווים."];
+  const snap = await db.collection("users").doc(uid).get();
+  if (!snap.exists) return ["failed", "המשתמש לא נמצא ברשימה."];
+  if (String(snap.data().role || "").toLowerCase() === "admin")
+    return ["failed", "סיסמה של מנהל מחליפים דרך \"שכחתי סיסמה\" במסך הכניסה."];
+  await auth.updateUser(uid, { password });
+  return ["done", "הסיסמה הוחלפה. אפשר להיכנס עם הסיסמה החדשה."];
+}
 
 async function restoreProfile(auth, db, task) {
   const email = String(task.email || "").trim().toLowerCase();
