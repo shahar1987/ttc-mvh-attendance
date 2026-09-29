@@ -29,6 +29,8 @@ import {
   Trophy as TrophyIcon,
   Settings as SettingsIcon,
   RefreshCw as RefreshIcon,
+  TrendingDown as TrendDownIcon,
+  Minus as MinusIcon,
 } from "lucide-react";
 import {
   collection as M,
@@ -1093,11 +1095,11 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
       v === null ? "text-slate-500" : v >= 75 ? "text-emerald-700" : v >= 50 ? "text-amber-700" : "text-red-700",
     trendCell = (t) =>
       t === "up"
-        ? e.createElement("span", { className: "text-emerald-700", "aria-label": "מגמת שיפור" }, "↑")
+        ? e.createElement(he, { className: "w-4 h-4 mx-auto text-emerald-700", "aria-label": "מגמת שיפור" })
         : t === "down"
-          ? e.createElement("span", { className: "text-red-700", "aria-label": "מגמת ירידה" }, "↓")
+          ? e.createElement(TrendDownIcon, { className: "w-4 h-4 mx-auto text-red-700", "aria-label": "מגמת ירידה" })
           : t === "flat"
-            ? e.createElement("span", { className: "text-slate-500", "aria-label": "יציב" }, "→")
+            ? e.createElement(MinusIcon, { className: "w-4 h-4 mx-auto text-slate-500", "aria-label": "יציב" })
             : e.createElement("span", { className: "text-slate-400" }, "–"),
     exportCsv = () => {
       let headers = ["שחקן", ...dates.map(formatHeDate), "אחוז נוכחות"],
@@ -1223,7 +1225,11 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                             key: d,
                             className: `border border-slate-200 text-center py-1 ${st === "Present" ? "bg-emerald-50 text-emerald-700" : st === "Absent" ? "bg-red-50 text-red-600" : "text-slate-300"}`,
                           },
-                          st === "Present" ? "✓" : st === "Absent" ? "✗" : "–",
+                          st === "Present"
+                            ? e.createElement(Z, { className: "w-4 h-4 mx-auto", "aria-label": "הגיע" })
+                            : st === "Absent"
+                              ? e.createElement(T, { className: "w-4 h-4 mx-auto", "aria-label": "לא הגיע" })
+                              : "–",
                         )
                       );
                     }),
