@@ -1054,6 +1054,9 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
         rec.groupId === groupId && rec.date >= startDate && rec.date <= endDate,
     ),
     dates = Array.from(new Set(groupAttendance.map((rec) => rec.date))).sort(),
+    // בטבלה האימון האחרון מוצג ראשון (ליד השם), כדי שלא יהיה צריך לגלול הצידה
+    // כדי לראות מה היה היום. החישובים וה-CSV נשארים בסדר כרונולוגי.
+    shownDates = dates.slice().reverse(),
     groupPlayers = players
       .filter(
         (p) =>
@@ -1191,7 +1194,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                     { className: "border border-slate-200 px-1.5 py-1.5 bg-slate-100 whitespace-nowrap" },
                     "מגמה",
                   ),
-                  dates.map((d) =>
+                  shownDates.map((d) =>
                     e.createElement(
                       "th",
                       {
@@ -1210,7 +1213,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                 groupPlayers.map((p) => {
                   let presentCount = 0,
                     totalCount = 0,
-                    cells = dates.map((d) => {
+                    cells = shownDates.map((d) => {
                       let st = cellStatus(p.id, d);
                       return (
                         st && (totalCount++, st === "Present" && presentCount++),
@@ -2944,10 +2947,11 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
             {
               onClick: () => c(n),
               className:
-                "min-w-[44px] min-h-[44px] rounded-full bg-slate-100 flex items-center justify-center shrink-0",
+                "min-w-[44px] min-h-[44px] px-3 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1 shrink-0",
               "aria-label": "סימון כטופל",
             },
             e.createElement(Z, { className: "w-4 h-4 text-slate-500" }),
+            "טופל",
           ),
         ),
       ),
