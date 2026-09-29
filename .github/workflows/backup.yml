@@ -1,6 +1,6 @@
 name: Nightly backup
 
-# מייצא מדי לילה את attendance, cancellations ו-players מ-Firestore
+# מייצא מדי לילה את attendance, cancellations, players ו-tournaments מ-Firestore
 # (backup/export_firestore.py) ודוחף אותם ל-shahar1987/ttc-mvh-backups
 # הפרטי — לא לריפו הזה, כי הוא ציבורי והנתונים כוללים שמות ילדים,
 # טלפוני הורים ושיוך לקבוצות (כולל פרקינסון). ראו README שם.
