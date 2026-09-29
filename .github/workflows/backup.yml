@@ -93,3 +93,9 @@ jobs:
             git push
             echo "הגיבוי נדחף"
           fi
+
+      # עותק נוסף בגוגל דרייב של שולה — ראו backup/upload_drive.py
+      - name: Copy to Google Drive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+        run: python backup/upload_drive.py backup-out
