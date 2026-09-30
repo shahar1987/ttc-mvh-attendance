@@ -8,6 +8,10 @@ import { analyze, addDays, israelToday } from "./lib/analysis.mjs";
 import { ask } from "./lib/claude.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.log("skipped: ANTHROPIC_API_KEY not set yet (see the setup guide)");
+  process.exit(0);
+}
 const db = firestore();
 const today = israelToday();
 const [players, groups, attendance] = await Promise.all([
