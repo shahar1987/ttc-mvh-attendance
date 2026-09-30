@@ -1,0 +1,12 @@
+{
+  "name": "ttc-agents",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.129.0",
+    "firebase-admin": "12.7.0"
+  }
+}

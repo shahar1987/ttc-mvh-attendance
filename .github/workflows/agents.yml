@@ -1,0 +1,115 @@
+name: Agents
+
+# הסוכנים המתוזמנים (agents/). הבוט שמדבר עם שולה בוואטסאפ רץ בנפרד ב-Cloudflare
+# (worker/, ו-agents-setup.yml מעלה אותו).
+#
+#   🔎 scan        — כל בוקר ב-08:00 (שעון קיץ; 07:00 בחורף): דוח נוכחות לשולה
+#   🐞 bugcheck    — כל לילה ב-03:30: האתר החי, תקינות הנתונים, תהליכים שנכשלו
+#   💡 ideas       — ראשון ב-09:00: 3 רעיונות לשבוע
+#   🛡️ supervisor  — כל שעה: שכולם רצו, שהבוט עונה, שלא דלף מידע
+#   כל 10 דקות: בודק אם שולה ביקשה מהבוט "תריץ עכשיו"
+#
+# פרטיות: הריפו ציבורי והיומנים גלויים — הסוכנים מדפיסים רק מספרים. השמות והטלפונים
+# נשמרים ב-Firestore באוסף agentReports, שחוקי Firestore חוסמים מהאפליקציה.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+    - cron: "30 0 * * *"
+    - cron: "0 6 * * 0"
+    - cron: "17 * * * *"
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: "איזה סוכן להריץ"
+        type: choice
+        options: [scan, bugcheck, ideas, supervisor]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: agents-${{ github.event.schedule || inputs.agent }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+      WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+      OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: agents
+        run: npm install --no-audit --no-fund
+
+      - name: Check for requests from the WhatsApp bot
+        id: poll
+        if: github.event.schedule == '*/10 * * * *'
+        working-directory: agents
+        run: node requests.mjs
+
+      - name: Decide which agents run
+        id: pick
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 5 * * *")    RUN=scan ;;
+            "30 0 * * *")   RUN=bugcheck ;;
+            "0 6 * * 0")    RUN=ideas ;;
+            "17 * * * *")   RUN=supervisor ;;
+            "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
+            *)              RUN="${{ inputs.agent }}" ;;
+          esac
+          echo "run=,$RUN," >> "$GITHUB_OUTPUT"
+          echo "running: ${RUN:-nothing}"
+
+      - name: 🔎 Daily attendance scan
+        if: contains(steps.pick.outputs.run, ',scan,')
+        working-directory: agents
+        run: node scan.mjs
+
+      - name: Install a browser for the bug check
+        if: contains(steps.pick.outputs.run, ',bugcheck,')
+        working-directory: agents
+        run: |
+          npm install --no-save playwright@1.47.0 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: 🐞 Bug check
+        if: contains(steps.pick.outputs.run, ',bugcheck,')
+        working-directory: agents
+        run: node bugcheck.mjs
+
+      - name: 💡 Weekly ideas
+        if: contains(steps.pick.outputs.run, ',ideas,')
+        working-directory: agents
+        run: node ideas.mjs
+
+      - name: 🛡️ Supervisor
+        if: contains(steps.pick.outputs.run, ',supervisor,')
+        working-directory: agents
+        run: node supervisor.mjs
+
+      # לא פותחים issue על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות issues ביום
+      - name: Open an issue if an agent failed
+        if: failure() && github.event.schedule != '*/10 * * * *'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "❌ סוכן נכשל: ${{ steps.pick.outputs.run }}" \
+            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }} || true
