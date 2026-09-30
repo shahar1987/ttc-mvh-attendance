@@ -1,0 +1,115 @@
+name: Agents setup
+
+# מעלה את בוט הוואטסאפ (worker/) ל-Cloudflare ומחבר אותו ל-Meta (agents/setup.mjs).
+# רץ לבד בכל שינוי בבוט, ואפשר להריץ ידנית מהלשונית Actions.
+# הסודות הנדרשים מפורטים ב"מדריך ההקמה" (Settings → Secrets and variables → Actions).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - "agents/lib/**"
+      - "agents/templates.mjs"
+      - "agents/setup.mjs"
+      - ".github/workflows/agents-setup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agents-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+      WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+      WHATSAPP_WABA_ID: ${{ secrets.WHATSAPP_WABA_ID }}
+      META_APP_ID: ${{ secrets.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # עדיף להיכשל מיד עם רשימה ברורה של מה חסר
+      # בדחיפה רגילה לפני שההקמה הושלמה מדלגים בשקט; בהרצה ידנית נכשלים עם רשימה ברורה
+      - name: Check that the secrets exist
+        id: check
+        run: |
+          MISSING=""
+          for k in FIREBASE_SERVICE_ACCOUNT WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_WABA_ID META_APP_ID META_APP_SECRET OWNER_PHONE ANTHROPIC_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            [ -z "${!k}" ] && MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "חסרים Secrets:$MISSING"
+            echo "להוסיף ב: Settings > Secrets and variables > Actions (ראו מדריך ההקמה)"
+            [ "${{ github.event_name }}" = "workflow_dispatch" ] && exit 1
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "כל ה-Secrets קיימים"
+
+      - name: Install dependencies
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          (cd worker && npm install --no-audit --no-fund)
+          (cd agents && npm install --no-audit --no-fund)
+
+      # חשבון Cloudflare חדש צריך תת-דומיין workers.dev לפני הפריסה הראשונה
+      - name: Make sure the account has a workers.dev subdomain
+        if: steps.check.outputs.ready == 'true'
+        id: sub
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          SUB=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" | jq -r '.result.subdomain // empty')
+          if [ -z "$SUB" ]; then
+            SUB="ttc-mvh-$(openssl rand -hex 3)"
+            curl -s -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+              -d "{\"subdomain\":\"$SUB\"}" "$API" | jq -r '.success'
+          fi
+          echo "url=https://ttc-agents-bot.$SUB.workers.dev" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the bot to Cloudflare
+        if: steps.check.outputs.ready == 'true'
+        working-directory: worker
+        run: npx wrangler deploy
+
+      - name: Give the bot its secrets
+        if: steps.check.outputs.ready == 'true'
+        working-directory: worker
+        run: |
+          umask 077
+          VERIFY=$(node -e 'console.log(require("crypto").createHmac("sha256", process.env.META_APP_SECRET).update("webhook").digest("hex"))')
+          jq -n \
+            --arg a "$WHATSAPP_TOKEN" --arg b "$WHATSAPP_PHONE_ID" --arg c "$OWNER_PHONE" \
+            --arg d "$META_APP_SECRET" --arg e "$VERIFY" --arg f "$ANTHROPIC_API_KEY" --arg g "$FIREBASE_SERVICE_ACCOUNT" \
+            '{WHATSAPP_TOKEN:$a, WHATSAPP_PHONE_ID:$b, OWNER_PHONE:$c, META_APP_SECRET:$d, WEBHOOK_VERIFY_TOKEN:$e, ANTHROPIC_API_KEY:$f, FIREBASE_SERVICE_ACCOUNT:$g}' \
+            > /tmp/secrets.json
+          npx wrangler secret bulk /tmp/secrets.json
+          rm /tmp/secrets.json
+
+      - name: Check the bot is alive
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          sleep 5
+          curl -sf "${{ steps.sub.outputs.url }}/health"
+
+      - name: Connect WhatsApp and submit message templates
+        if: steps.check.outputs.ready == 'true'
+        working-directory: agents
+        env:
+          WORKER_URL: ${{ steps.sub.outputs.url }}
+        run: node setup.mjs
