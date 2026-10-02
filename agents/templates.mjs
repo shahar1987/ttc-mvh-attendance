@@ -40,6 +40,12 @@ export const TEMPLATES = {
     body: `היי {{1}}, תזכורת ידידותית למלא נוכחות עבור קבוצת {{2}} להיום.\nתודה!\n${SIGNATURE}`,
     example: ["דני", "מתחילים"],
   },
+  // הודעה שהבעלים הכתיב לשולה (worker/src/messages.js). {{1}}=הנוסח, בשורה אחת
+  club_message: {
+    category: "UTILITY",
+    body: `הודעה מ${CLUB}:\n{{1}}\n${SIGNATURE}`,
+    example: ["האימון מחר מתחיל ב-18:00 במקום 17:30"],
+  },
   // לשולה: דוח הבוקר כשחלון 24 השעות סגור. {{1}}=סיכום בשורה אחת
   agent_daily_report: {
     category: "UTILITY",
