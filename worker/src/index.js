@@ -1,40 +1,63 @@
-// 🤖 הסוכן הראשי — הבוט ששולה מדברת איתו בוואטסאפ.
+// 🤖 שולה — העוזרת האישית בוואטסאפ, וגם "המפקד" של מערכת הנוכחות.
 //
-// Meta שולחת כל הודעה שמגיעה למספר המועדון ל-POST /webhook. הבוט:
+// Meta שולחת כל הודעה שמגיעה למספר ל-POST /webhook. הבוט:
 //   1. מוודא שההודעה באמת מ-Meta (חתימה עם App Secret)
-//   2. עונה רק למספר של שולה (OWNER_PHONE). כל מספר אחר — מתעלם. זו הנעילה.
-//   3. מעביר ל-Claude עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
-import Anthropic from "@anthropic-ai/sdk";
+//   2. עונה רק למספר של הבעלים (OWNER_PHONE). כל מספר אחר — מתעלם. זו הנעילה.
+//   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
-import { waConfig, sendText } from "../../agents/lib/whatsapp.mjs";
+import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
+import { waConfig, sendText, typing, downloadMedia } from "../../agents/lib/whatsapp.mjs";
 
-const MODEL = "claude-opus-5-5";
-const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "ANTHROPIC_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
+const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
+const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
+const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
+const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
+let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
 
-const SYSTEM = `אתה "המפקד" — הסוכן הראשי של מערכת הנוכחות של מועדון טניס שולחן מבואות החרמון.
-אתה מדבר בוואטסאפ עם מנהלת המועדון בלבד. מתחתיך ארבעה סוכנים:
-🔎 הסורק היומי (כל בוקר: מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה)
-🐞 בודק הבאגים (כל לילה: האתר, הנתונים, תהליכים שנכשלו)
-💡 סוכן הרעיונות (פעם בשבוע)
-🛡️ המפקח (כל שעה: שכולם עובדים ושלא דלף מידע)
+const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
+את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
+עוזרת בכל דבר: שאלות, ניסוח הודעות ופוסטים, תכנון, רעיונות, חשיבה על החלטות. אם משהו לא ברור — שאלה אחת קצרה.
 
-איך לענות:
-- עברית, קצר, בסגנון וואטסאפ. בלי כותרות markdown; *כוכבית* להדגשה מותרת. עד 12 שורות.
-- קודם התשובה, אחר כך פרט אם צריך. כשמציגים רשימה — עם המספרים מהדוח.
+מערכת הנוכחות של המועדון — יש לך כלים אמיתיים (tools):
 - נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים.
+- מתחתייך ארבעה סוכנים אוטומטיים: 🔎 הסורק היומי (מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה), 🐞 בודק הבאגים, 💡 רעיונות, 🛡️ המפקח.
+- סימון נוכחות: לפני שכותבים, לוודא קבוצה + תאריך + שמות, ולהציג מה עומד להישמר. אם שם שחקן לא חד-משמעי — לשאול.
+- הודעות להורים ולשחקנים: שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן"). לפני אישור — להראות את הרשימה והנוסח ולשאול. אחרי שליחה — לדווח בדיוק למי נשלח ולמי לא.
+- משהו שאין לו כלי (למשל לשנות קוד באפליקציה) — לומר שזה דורש עבודה על הקוד ושזה יעבור ל-Claude בפרויקט.
 
-הודעות להורים ולשחקנים:
-- שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן").
-- אם היא מבקשת לשלוח בלי שראתה את הרשימה — קודם להראות את הרשימה ואת נוסח ההודעה ולשאול.
-- אחרי שליחה — לדווח בדיוק למי נשלח ולמי לא.
+פרסום המועדון — את מנסחת טיוטות בלבד, הוא מאשר ומתזמן בעצמו:
+- קהל: הציבור המקומי בגליל העליון, בעיקר הורים לילדים. נימה חמה, ברורה, בלי סופרלטיבים ריקים.
+- כל פוסט מסתיים בשורת קרדיט: "בשיתוף מתנ"ס אזורי מבואות החרמון והמועצה האזורית מבואות החרמון" (רק שני אלה בשורה הזאת).
+- אימונים: אולם שאר ישוב — מתחילים א' וה' 16:30-17:30, מתקדמים א', ב', ה' 17:30-19:00, נבחרת/סגל א' וה' 19:00-21:00. רמת כורזים — מתחילים/מתקדמים ב' וד' 16:30-18:00, בוגרים ב' וד' 18:00-20:00. קיבוץ דפנה — מבוגרים וסטודנטים ב' וה' 19:30-21:00. קבוצת פינג פונג פרקינסון פועלת במועדון.
+- להציע תמיד 2 גרסאות קצרות שונות באופי (לא רק ניסוח שונה), ולשאול אם רוצה עוד.
 
-אם מבקשים משהו שאין לך כלי בשבילו (למשל לשנות קוד באפליקציה) — לומר שזה דורש עבודה על הקוד ושזה יעבור ל-Claude בפרויקט.`;
+מייל ויומן (Gmail ו-Google Calendar של הבעלים):
+- לקרוא, לחפש ולסכם מיילים — מותר. לענות על מייל = ליצור *טיוטה* בלבד (draft_email); אף פעם לא שולחים מייל. לומר לו שהטיוטה מחכה בג'ימייל.
+- יומן: לקרוא חופשי. להוסיף אירוע רק אחרי שהצגת כותרת, תאריך ושעות והוא ענה "כן".
+- אם כלי מחזיר שהמייל לא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+
+מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
+
+תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
+הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
+
+// השמות מה-worker הידני הקודם (בדשבורד) — כדי שהסודות שכבר שמורים שם ימשיכו לעבוד בלי להגדיר מחדש
+const ALIASES = { WHATSAPP_TOKEN: "WA_TOKEN", WHATSAPP_PHONE_ID: "WA_PHONE_ID", OWNER_PHONE: "ALLOWED_FROM", WEBHOOK_VERIFY_TOKEN: "VERIFY_TOKEN" };
+const withAliases = (env) => ({ ...env, ...Object.fromEntries(Object.entries(ALIASES).filter(([k, old]) => !env[k] && env[old]).map(([k, old]) => [k, env[old]])) });
 
 export default {
-  async fetch(req, env, ctx) {
+  // 🕵️ מפקח השיחות — פעם ביום (wrangler.toml → triggers)
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(review(withAliases(env)));
+  },
+
+  async fetch(req, rawEnv, ctx) {
+    const env = withAliases(rawEnv);
     const url = new URL(req.url);
-    if (url.pathname === "/health") {
+    ORIGIN = url.origin;
+    if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
+    if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
     }
@@ -89,24 +112,57 @@ async function handle(m, env) {
   await store.merge("agentReports/bot", { seenIds: [...(bot.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now });
 
   try {
-    const text = m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "";
+    await typing(wa, m.id).catch(() => {});
+    let text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.image?.caption || "").trim();
+    let media = null;
+    if (m.type === "audio") {
+      text = await transcribe(env, await downloadMedia(wa, m.audio.id));
+      if (!text) return void (await sendText(wa, m.from, "לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
+      text = `🎤 ${text}`;
+    } else if (m.type === "image") {
+      media = await downloadMedia(wa, m.image.id);
+      text = `📷 [תמונה] ${text || "מה דעתך?"}`;
+    }
     if (!text) {
-      await sendText(wa, m.from, "כרגע אני מבין רק הודעות טקסט 🙂");
+      await sendText(wa, m.from, "כרגע אני מבינה טקסט, הודעות קוליות ותמונות 🙂");
       return;
     }
-    const { answer, userTurn } = await think(env, store, wa, bot, text);
-    await sendText(wa, m.from, answer);
+    if (["איפוס", "התחלה חדשה", "reset"].includes(text)) {
+      await store.merge("agentReports/bot", { history: [] });
+      await sendText(wa, m.from, "איפסתי את השיחה. מתחילים מחדש 🙂");
+      return;
+    }
+    const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}));
+    for (let i = 0; i < answer.length; i += CHUNK) await sendText(wa, m.from, answer.slice(i, i + CHUNK));
     const history = [...(bot.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: new Date().toISOString() }];
-    await store.merge("agentReports/bot", { history: history.slice(-16) });
+    const log = [...(bot.log || []), { at: now, user: text, shula: answer }].slice(-LOG_KEEP);
+    await store.merge("agentReports/bot", { history: history.slice(-16), log });
   } catch (e) {
     await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } });
-    await sendText(wa, m.from, `משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nהמפקח יראה את זה ויתריע אם זה חוזר.`).catch(() => {});
+    await sendText(wa, m.from, `משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
   }
 }
 
-async function think(env, store, wa, bot, text) {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const tools = makeTools({ env, store, wa, lastOwnerText: text });
+// הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+
+async function gemini(env, body) {
+  let lastErr;
+  for (const model of [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))]) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) return (await r.json())?.candidates?.[0]?.content?.parts || [];
+    lastErr = new Error(`${model}: ${r.status}`);
+    if (r.status === 401 || r.status === 403) break; // מפתח לא תקין — אין טעם לנסות מודל אחר
+  }
+  throw lastErr;
+}
+
+async function think(env, store, wa, bot, text, media, stillTyping) {
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -114,38 +170,80 @@ async function think(env, store, wa, bot, text) {
     .filter(([, o]) => o && o.at > (bot.lastOwnerMsgAt || "") && Date.now() - new Date(o.at).getTime() < 3 * 24 * 3600 * 1000)
     .map(([agent, o]) => `[${o.at.slice(0, 16)} הודעה שנשלחה ממך (${agent})]\n${o.text}`)
     .join("\n\n");
-  const history = (bot.history || []).map((h) => ({ role: h.role, content: h.text }));
-  const userTurn = outbox ? `${outbox}\n\n---\nההודעה החדשה של המנהלת:\n${text}` : text;
-  const messages = [...history, { role: "user", content: userTurn }];
+  const userTurn = outbox ? `${outbox}\n\n---\nההודעה החדשה:\n${text}` : text;
+  const contents = [
+    ...(bot.history || []).map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
+    { role: "user", parts: [{ text: userTurn }, ...(media ? [{ inlineData: media }] : [])] },
+  ];
+  const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 
   for (let turn = 0; turn < 6; turn++) {
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "low" },
-      system: `${SYSTEM}\n\nהיום: ${new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" })}`,
-      tools: TOOL_DEFS,
-      messages,
+    if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
+    const parts = await gemini(env, {
+      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday})` }] },
+      contents,
+      tools: [{ functionDeclarations: FUNCTION_DECLS }],
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.6 },
     });
-    if (res.stop_reason === "refusal") return { answer: "לא יכול לעזור עם זה.", userTurn };
-    const uses = res.content.filter((b) => b.type === "tool_use");
-    if (res.stop_reason !== "tool_use" || !uses.length) {
-      return { answer: res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || "👍", userTurn };
+    const calls = parts.filter((p) => p.functionCall);
+    if (!calls.length) {
+      return { answer: parts.map((p) => p.text || "").join("").trim() || "👍", userTurn };
     }
-    messages.push({ role: "assistant", content: res.content });
+    contents.push({ role: "model", parts });
     const results = await Promise.all(
-      uses.map(async (u) => {
+      calls.map(async ({ functionCall: { name, args } }) => {
+        let result;
         try {
-          const fn = tools[u.name];
+          const fn = tools[name];
           if (!fn) throw new Error("unknown tool");
-          return { type: "tool_result", tool_use_id: u.id, content: String(await fn(u.input || {})) };
+          result = String(await fn(args || {}));
         } catch (e) {
-          return { type: "tool_result", tool_use_id: u.id, content: `שגיאה: ${e.message}`, is_error: true };
+          result = `שגיאה: ${e.message}`;
         }
+        return { functionResponse: { name, response: { result } } };
       }),
     );
-    messages.push({ role: "user", content: results });
+    contents.push({ role: "user", parts: results });
   }
   return { answer: "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn };
+}
+
+// הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
+async function transcribe(env, audio) {
+  const parts = await gemini(env, {
+    contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
+    generationConfig: { maxOutputTokens: 1500, temperature: 0 },
+  });
+  return parts.map((p) => p.text || "").join("").trim();
+}
+
+// 🕵️ מפקח השיחות: עובר על השיחות של היממה האחרונה ובודק ששולה סגרה כל בקשה עד הסוף ובדיוק כמו שביקשו.
+// שולח הודעה רק כשיש משהו פתוח. השיחה עם הבעלים פתוחה (הוא כתב ב-24 השעות האחרונות), אז מותר טקסט חופשי.
+const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפנייך השיחות של היממה האחרונה בין הבעלים לשולה.
+בדקי כל בקשה של הבעלים: האם שולה ביצעה אותה עד הסוף ובדיוק כמו שביקש? חפשי: משימה שנשארה באמצע, הבטחה ("אבדוק", "אחזור אלייך") בלי המשך, תשובה שלא עונה על השאלה, פעולה שנכשלה בלי שדווח, טיוטה שלא תאמה את הבקשה.
+אם הכל נסגר — החזירי בדיוק: OK
+אחרת — רשימה ממוספרת קצרה בעברית, שורה לכל בעיה: מה ביקש, מה חסר, ומה להציע עכשיו. בלי הקדמות.`;
+
+export async function review(env) {
+  const store = db(env);
+  const bot = (await store.get("agentReports/bot")) || {};
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const day = (bot.log || []).filter((e) => e.at > since);
+  if (!day.length) return "no conversations";
+  const transcript = day.map((e) => `[${e.at.slice(11, 16)}] הבעלים: ${e.user}\nשולה: ${e.shula}`).join("\n\n");
+  const parts = await gemini(env, {
+    systemInstruction: { parts: [{ text: REVIEW }] },
+    contents: [{ role: "user", parts: [{ text: transcript }] }],
+    generationConfig: { maxOutputTokens: 1000, temperature: 0.2 },
+  });
+  const verdict = parts.map((p) => p.text || "").join("").trim();
+  const at = new Date().toISOString();
+  await store.merge("agentReports/bot", { lastReview: { at, verdict } });
+  if (!verdict || /^OK\.?$/i.test(verdict)) return "ok";
+  const text = `🕵️ *המפקח על שולה* — דברים שנשארו פתוחים היום:\n${verdict}\n\nאפשר לענות כאן ושולה תמשיך מהם.`;
+  await sendText(waConfig(env), String(env.OWNER_PHONE).replace(/\D/g, ""), text);
+  // נכנס ל-outbox כדי ששולה תראה את הרשימה כשהוא עונה (ראו think)
+  await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), review: { at, text } } });
+  return "sent";
 }

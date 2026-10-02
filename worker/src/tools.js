@@ -60,6 +60,47 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: "list_groups",
+    description: "כל הקבוצות במועדון עם מספר השחקנים הפעילים בכל אחת. להשתמש כדי לזהות קבוצה לפי שם לפני סימון או קריאת נוכחות.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "get_attendance",
+    description: "הנוכחות של קבוצה בתאריך מסוים: מי סומן נוכח, מי נעדר, ומי עוד לא סומן. date בפורמט YYYY-MM-DD (ברירת מחדל: היום).",
+    input_schema: {
+      type: "object",
+      properties: { group: { type: "string", description: "שם הקבוצה או חלק ממנו" }, date: { type: "string" } },
+      required: ["group"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "mark_attendance",
+    description:
+      "מסמן נוכחות/היעדרות לשחקנים בקבוצה בתאריך — בדיוק כמו שמאמן מסמן באפליקציה. date בפורמט YYYY-MM-DD (ברירת מחדל: היום). שחקן שלא מופיע ברשימה לא משתנה. לפני ההפעלה לוודא עם שולה את הקבוצה, התאריך והשמות.",
+    input_schema: {
+      type: "object",
+      properties: {
+        group: { type: "string", description: "שם הקבוצה או חלק ממנו" },
+        date: { type: "string" },
+        present: { type: "array", items: { type: "string" }, description: "שמות (או חלקי שמות) של מי שהגיע" },
+        absent: { type: "array", items: { type: "string" }, description: "שמות (או חלקי שמות) של מי שנעדר" },
+      },
+      required: ["group"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_weather",
+    description: "תחזית מזג אוויר (Open-Meteo, חינמי) למקום לפי שם, בעברית או באנגלית. מחזיר את המצב עכשיו ותחזית יומית. days = 1-7 (ברירת מחדל 3).",
+    input_schema: {
+      type: "object",
+      properties: { place: { type: "string", description: "עיר/יישוב, למשל 'שאר ישוב' או 'Berlin'" }, days: { type: "integer" } },
+      required: ["place"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "run_agent_now",
     description: "מבקש להריץ סוכן עכשיו במקום לחכות לזמן הקבוע. התוצאה מגיעה בוואטסאפ תוך כ-10-15 דקות.",
     input_schema: {
@@ -184,6 +225,77 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
       return `סומנו כמטופלים: ${chosen.map(({ n, item }) => `${n}. ${item.playerName}`).join(", ")}`;
     },
 
+    async list_groups() {
+      const [players, groups] = await Promise.all([store.list("players"), store.list("groups")]);
+      return JSON.stringify(groups.map((g) => ({ name: g.name, players: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted).length })));
+    },
+
+    async get_attendance({ group, date }) {
+      const d = validDate(date);
+      const { g, roster } = await findGroup(store, group);
+      if (!g) return roster; // הודעת שגיאה
+      const recs = (await store.where("attendance", "groupId", g.id)).filter((a) => a.date === d);
+      const status = new Map(recs.map((a) => [a.playerId, a.status]));
+      const by = (s) => roster.filter((p) => status.get(p.id) === s).map((p) => p.name);
+      return JSON.stringify({
+        group: g.name,
+        date: d,
+        present: by("Present"),
+        absent: by("Absent"),
+        unmarked: roster.filter((p) => !status.has(p.id)).map((p) => p.name),
+      });
+    },
+
+    async mark_attendance({ group, date, present = [], absent = [] }) {
+      const d = validDate(date);
+      const { g, roster } = await findGroup(store, group);
+      if (!g) return roster;
+      const saved = [];
+      const problems = [];
+      for (const [names, status] of [
+        [present, "Present"],
+        [absent, "Absent"],
+      ]) {
+        for (const q of names) {
+          const hits = roster.filter((p) => (p.name || "").includes(String(q).trim()));
+          if (hits.length !== 1) {
+            problems.push(`${q}: ${hits.length ? "כמה שחקנים מתאימים — " + hits.map((p) => p.name).join(", ") : "לא נמצא בקבוצה"}`);
+            continue;
+          }
+          const p = hits[0];
+          // אותו חוזה שמירה של האפליקציה: מזהה ${date}_${groupId}_${playerId}, סטטוס Present/Absent
+          await store.merge(`attendance/${d}_${g.id}_${p.id}`, {
+            date: d,
+            groupId: g.id,
+            playerId: p.id,
+            status,
+            markedBy: "shula-whatsapp",
+            updatedAt: new Date().toISOString(),
+          });
+          saved.push(`${p.name}: ${status === "Present" ? "נוכח" : "נעדר"}`);
+        }
+      }
+      return [`${g.name} ${d}`, ...saved, ...(problems.length ? ["לא נשמרו:", ...problems] : [])].join("\n");
+    },
+
+    async get_weather({ place, days = 3 }) {
+      const geo = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({ name: place, count: "1", language: "he" })}`)).json();
+      const g = geo.results?.[0];
+      if (!g) return `לא מצאתי מקום בשם "${place}". לנסות שם של עיר קרובה או באנגלית.`;
+      const q = new URLSearchParams({
+        latitude: g.latitude, longitude: g.longitude, timezone: "auto", forecast_days: String(Math.min(Math.max(days, 1), 7)),
+        current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation",
+        daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+      });
+      const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?${q}`)).json();
+      if (!w.daily) throw new Error(`Open-Meteo: ${w.reason || "no data"}`);
+      return JSON.stringify({
+        place: [g.name, g.admin1, g.country].filter(Boolean).join(", "),
+        now: { temp: w.current?.temperature_2m, feels: w.current?.apparent_temperature, sky: WEATHER[w.current?.weather_code] ?? w.current?.weather_code, windKmh: w.current?.wind_speed_10m },
+        days: w.daily.time.map((d, i) => ({ date: d, sky: WEATHER[w.daily.weather_code[i]] ?? w.daily.weather_code[i], min: w.daily.temperature_2m_min[i], max: w.daily.temperature_2m_max[i], rainChance: w.daily.precipitation_probability_max[i], windKmh: w.daily.wind_speed_10m_max[i] })),
+      });
+    },
+
     async run_agent_now({ agent }) {
       if (!AGENTS.includes(agent)) return "סוכן לא מוכר.";
       const bot = (await store.get("agentReports/bot")) || {};
@@ -191,6 +303,26 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
       return `ביקשתי להריץ את ${agent}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
     },
   };
+}
+
+// קודי WMO של Open-Meteo
+const WEATHER = { 0: "בהיר", 1: "בהיר ברובו", 2: "מעונן חלקית", 3: "מעונן", 45: "ערפל", 48: "ערפל", 51: "טפטוף", 53: "טפטוף", 55: "טפטוף חזק", 61: "גשם קל", 63: "גשם", 65: "גשם חזק", 71: "שלג קל", 73: "שלג", 75: "שלג כבד", 80: "ממטרים", 81: "ממטרים", 82: "ממטרים חזקים", 95: "סופת רעמים", 96: "סופת רעמים עם ברד", 99: "סופת רעמים עם ברד" };
+
+export function validDate(date) {
+  const d = String(date || "").trim() || israelToday();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d + "T00:00:00Z"))) throw new Error(`תאריך לא תקין: ${d} (צריך YYYY-MM-DD)`);
+  return d;
+}
+
+// קבוצה אחת לפי שם (או חלק ממנו) + השחקנים הפעילים שלה. מחזיר הודעת שגיאה במקום roster אם אין התאמה יחידה.
+export async function findGroup(store, group, groups, players) {
+  const q = String(group || "").trim();
+  [groups, players] = await Promise.all([groups || store.list("groups"), players || store.list("players")]);
+  const hits = groups.filter((g) => (g.name || "").includes(q));
+  if (!q || hits.length !== 1)
+    return { g: null, roster: hits.length ? `כמה קבוצות מתאימות: ${hits.map((g) => g.name).join(", ")}` : `לא נמצאה קבוצה "${q}". הקבוצות: ${groups.map((g) => g.name).join(", ")}` };
+  const g = hits[0];
+  return { g, roster: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted) };
 }
 
 // אותו רישום שהאפליקציה עושה כשמאמן שולח הודעה או לוחץ "טופל" (markAbsenceMsgSent / markAlertHandled
