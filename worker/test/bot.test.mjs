@@ -307,4 +307,6 @@ const tres = await ensureTemplates({ ...env, WHATSAPP_WABA_ID: "w1" });
 assert.ok(templatesPosted.includes("club_message") && templatesPosted.includes("coach_attendance_reminder") && !templatesPosted.includes("agent_alert"));
 assert.match(tres.join(), /club_message: PENDING/);
 
+assert.match(await (await worker.fetch(new Request("https://x/privacy"), env, {})).text(), /מדיניות פרטיות/);
+
 console.log("all bot tests passed");

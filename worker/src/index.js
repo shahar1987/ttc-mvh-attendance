@@ -64,6 +64,12 @@ export default {
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
+    // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
+    if (url.pathname === "/privacy")
+      return new Response(
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>שולה — פרטיות</title><body dir="rtl" style="font:18px/1.6 system-ui;max-width:640px;margin:auto;padding:24px"><h1>שולה — מדיניות פרטיות</h1><p>שולה היא עוזרת אישית פרטית בוואטסאפ של בעל המועדון בלבד. היא עונה רק למספר אחד.</p><p>הגישה לחשבון הגוגל (מייל, יומן, דרייב, משימות) משמשת רק כדי לענות לבקשות של בעל החשבון: קריאה, חיפוש, טיוטות ומשימות. שולה לא שולחת מיילים, לא מוחקת ולא משתפת קבצים. אירוע ביומן נוסף רק אחרי אישור מפורש.</p><p>המידע לא נמכר ולא מועבר לאף אחד. אסימון הגישה נשמר במסד נתונים פרטי של המועדון, ואפשר לבטל אותו בכל רגע ב-<a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p></body>`,
+        { headers: { "content-type": "text/html; charset=utf-8" } },
+      );
     if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
