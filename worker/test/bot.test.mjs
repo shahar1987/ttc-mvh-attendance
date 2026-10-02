@@ -182,7 +182,7 @@ assert.ok(link, notConnected);
 assert.equal((await worker.fetch(new Request("https://x/google/start?k=wrong"), env, {})).status, 403);
 const start = await worker.fetch(new Request(link), env, {});
 assert.equal(start.status, 302);
-assert.match(start.headers.get("location"), /gmail\.readonly.*calendar\.events/);
+assert.match(start.headers.get("location"), /scope=[^&]*calendar\.events[^&]*tasks/);
 const k = new URL(link).searchParams.get("k");
 assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=bad`), env, {})).status, 403);
 assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=${k}`), env, {})).status, 200);
@@ -210,7 +210,7 @@ assert.equal(found[0].type, "spreadsheet");
 assert.ok(decodeURIComponent(google.at(-1).url.replace(/\+/g, " ")).includes("name contains 'תשלומים  or x'"), "גרש בחיפוש לא שובר את השאילתה");
 assert.match(await callTool("מה כתוב בה?", { name: "read_drive_file", args: { id: "f1" } }), /תשלומים\nשורה,ערך/);
 assert.match(await callTool("ומה בפלאייר?", { name: "read_drive_file", args: { id: "f2" } }), /https:\/\/d\/f2/);
-assert.match(start.headers.get("location"), /drive\.readonly/);
+assert.doesNotMatch(start.headers.get("location"), /drive/, "דרייב עובר דרך קלוד");
 
 // 8ג. גוגל משימות (במקום קיפ)
 assert.deepEqual(JSON.parse(await callTool("מה המשימות שלי?", { name: "list_tasks", args: {} })), [{ title: "להזמין כדורים", notes: "", due: "2026-10-05" }]);
@@ -345,3 +345,12 @@ assert.match(fires[0].url, /routines\/trig_x\/fire$/);
 assert.equal(fires[0].auth, "Bearer sk-ant-oat01-abc");
 
 console.log("all bot tests passed");
+
+// ההגנה המתקדמת בחשבון חוסמת מייל/דרייב: לא מבקשים את ההרשאות, ו-Gemini לא רואה את הכלים (הולכים ל-ask_claude)
+{
+  const { GOOGLE_TOOL_DEFS, DIRECT } = await import("../src/google.js");
+  assert.deepEqual(GOOGLE_TOOL_DEFS.filter((t) => DIRECT.test(t.name)).map((t) => t.name).sort(), ["add_task", "create_event", "list_events", "list_tasks"]);
+  const start = (await worker.fetch(new Request(link), env, {})).headers.get("location");
+  assert.ok(!/gmail|drive/.test(start), start);
+}
+console.log("calendar-only ok");
