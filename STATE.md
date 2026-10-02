@@ -5,6 +5,13 @@
 תבנית:
 
 ```
+## [פתוח] 2026-10-02 — שולה עוברת לבוט הזה: גישה לנוכחות + טיוטות פרסום
+סוג: פיצ'ר + 🔒 נגיעה בנתונים (mark_attendance כותב ל-attendance באותו חוזה של האפליקציה)
+מסלול: ענף shula-gemini ← PR ← אישור שלום ← Secrets ← שחרור
+- בונה: worker עובר מ-Claude ל-Gemini (חינמי) ונקרא shula-whatsapp (מחליף את ה-worker הידני באותה כתובת). כלים חדשים: list_groups, get_attendance, mark_attendance. ידע על המועדון לניסוח טיוטות פוסטים (ניסוח בלבד, בלי תזמון).
+- בודק: worker/test/bot.test.mjs — מקצה לקצה עם Firestore/Gemini/WhatsApp מדומים.
+- שלום: לאשר PR; להוסיף Secrets (FIREBASE_SERVICE_ACCOUNT חדש, GEMINI_API_KEY במקום ANTHROPIC_API_KEY, ושאר ה-WhatsApp/Meta/Cloudflare).
+
 ## [פתוח] <תאריך> — <הבקשה במשפט>
 סוג: באג / פיצ'ר / שינוי קטן / נתונים
 מסלול: ...

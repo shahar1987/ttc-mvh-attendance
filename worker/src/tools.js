@@ -60,6 +60,37 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: "list_groups",
+    description: "כל הקבוצות במועדון עם מספר השחקנים הפעילים בכל אחת. להשתמש כדי לזהות קבוצה לפי שם לפני סימון או קריאת נוכחות.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "get_attendance",
+    description: "הנוכחות של קבוצה בתאריך מסוים: מי סומן נוכח, מי נעדר, ומי עוד לא סומן. date בפורמט YYYY-MM-DD (ברירת מחדל: היום).",
+    input_schema: {
+      type: "object",
+      properties: { group: { type: "string", description: "שם הקבוצה או חלק ממנו" }, date: { type: "string" } },
+      required: ["group"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "mark_attendance",
+    description:
+      "מסמן נוכחות/היעדרות לשחקנים בקבוצה בתאריך — בדיוק כמו שמאמן מסמן באפליקציה. date בפורמט YYYY-MM-DD (ברירת מחדל: היום). שחקן שלא מופיע ברשימה לא משתנה. לפני ההפעלה לוודא עם שולה את הקבוצה, התאריך והשמות.",
+    input_schema: {
+      type: "object",
+      properties: {
+        group: { type: "string", description: "שם הקבוצה או חלק ממנו" },
+        date: { type: "string" },
+        present: { type: "array", items: { type: "string" }, description: "שמות (או חלקי שמות) של מי שהגיע" },
+        absent: { type: "array", items: { type: "string" }, description: "שמות (או חלקי שמות) של מי שנעדר" },
+      },
+      required: ["group"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "run_agent_now",
     description: "מבקש להריץ סוכן עכשיו במקום לחכות לזמן הקבוע. התוצאה מגיעה בוואטסאפ תוך כ-10-15 דקות.",
     input_schema: {
@@ -184,6 +215,59 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
       return `סומנו כמטופלים: ${chosen.map(({ n, item }) => `${n}. ${item.playerName}`).join(", ")}`;
     },
 
+    async list_groups() {
+      const [players, groups] = await Promise.all([store.list("players"), store.list("groups")]);
+      return JSON.stringify(groups.map((g) => ({ name: g.name, players: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted).length })));
+    },
+
+    async get_attendance({ group, date }) {
+      const d = validDate(date);
+      const { g, roster } = await findGroup(store, group);
+      if (!g) return roster; // הודעת שגיאה
+      const recs = (await store.where("attendance", "groupId", g.id)).filter((a) => a.date === d);
+      const status = new Map(recs.map((a) => [a.playerId, a.status]));
+      const by = (s) => roster.filter((p) => status.get(p.id) === s).map((p) => p.name);
+      return JSON.stringify({
+        group: g.name,
+        date: d,
+        present: by("Present"),
+        absent: by("Absent"),
+        unmarked: roster.filter((p) => !status.has(p.id)).map((p) => p.name),
+      });
+    },
+
+    async mark_attendance({ group, date, present = [], absent = [] }) {
+      const d = validDate(date);
+      const { g, roster } = await findGroup(store, group);
+      if (!g) return roster;
+      const saved = [];
+      const problems = [];
+      for (const [names, status] of [
+        [present, "Present"],
+        [absent, "Absent"],
+      ]) {
+        for (const q of names) {
+          const hits = roster.filter((p) => (p.name || "").includes(String(q).trim()));
+          if (hits.length !== 1) {
+            problems.push(`${q}: ${hits.length ? "כמה שחקנים מתאימים — " + hits.map((p) => p.name).join(", ") : "לא נמצא בקבוצה"}`);
+            continue;
+          }
+          const p = hits[0];
+          // אותו חוזה שמירה של האפליקציה: מזהה ${date}_${groupId}_${playerId}, סטטוס Present/Absent
+          await store.merge(`attendance/${d}_${g.id}_${p.id}`, {
+            date: d,
+            groupId: g.id,
+            playerId: p.id,
+            status,
+            markedBy: "shula-whatsapp",
+            updatedAt: new Date().toISOString(),
+          });
+          saved.push(`${p.name}: ${status === "Present" ? "נוכח" : "נעדר"}`);
+        }
+      }
+      return [`${g.name} ${d}`, ...saved, ...(problems.length ? ["לא נשמרו:", ...problems] : [])].join("\n");
+    },
+
     async run_agent_now({ agent }) {
       if (!AGENTS.includes(agent)) return "סוכן לא מוכר.";
       const bot = (await store.get("agentReports/bot")) || {};
@@ -191,6 +275,23 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
       return `ביקשתי להריץ את ${agent}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
     },
   };
+}
+
+export function validDate(date) {
+  const d = String(date || "").trim() || israelToday();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d + "T00:00:00Z"))) throw new Error(`תאריך לא תקין: ${d} (צריך YYYY-MM-DD)`);
+  return d;
+}
+
+// קבוצה אחת לפי שם (או חלק ממנו) + השחקנים הפעילים שלה. מחזיר הודעת שגיאה במקום roster אם אין התאמה יחידה.
+export async function findGroup(store, group, groups, players) {
+  const q = String(group || "").trim();
+  [groups, players] = await Promise.all([groups || store.list("groups"), players || store.list("players")]);
+  const hits = groups.filter((g) => (g.name || "").includes(q));
+  if (!q || hits.length !== 1)
+    return { g: null, roster: hits.length ? `כמה קבוצות מתאימות: ${hits.map((g) => g.name).join(", ")}` : `לא נמצאה קבוצה "${q}". הקבוצות: ${groups.map((g) => g.name).join(", ")}` };
+  const g = hits[0];
+  return { g, roster: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted) };
 }
 
 // אותו רישום שהאפליקציה עושה כשמאמן שולח הודעה או לוחץ "טופל" (markAbsenceMsgSent / markAlertHandled

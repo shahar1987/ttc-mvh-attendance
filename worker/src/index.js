@@ -1,40 +1,38 @@
-// 🤖 הסוכן הראשי — הבוט ששולה מדברת איתו בוואטסאפ.
+// 🤖 שולה — העוזרת האישית בוואטסאפ, וגם "המפקד" של מערכת הנוכחות.
 //
-// Meta שולחת כל הודעה שמגיעה למספר המועדון ל-POST /webhook. הבוט:
+// Meta שולחת כל הודעה שמגיעה למספר ל-POST /webhook. הבוט:
 //   1. מוודא שההודעה באמת מ-Meta (חתימה עם App Secret)
-//   2. עונה רק למספר של שולה (OWNER_PHONE). כל מספר אחר — מתעלם. זו הנעילה.
-//   3. מעביר ל-Claude עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
-import Anthropic from "@anthropic-ai/sdk";
+//   2. עונה רק למספר של הבעלים (OWNER_PHONE). כל מספר אחר — מתעלם. זו הנעילה.
+//   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { waConfig, sendText } from "../../agents/lib/whatsapp.mjs";
 
-const MODEL = "claude-opus-5-5";
-const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "ANTHROPIC_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
+const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
+const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
+const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
 
-const SYSTEM = `אתה "המפקד" — הסוכן הראשי של מערכת הנוכחות של מועדון טניס שולחן מבואות החרמון.
-אתה מדבר בוואטסאפ עם מנהלת המועדון בלבד. מתחתיך ארבעה סוכנים:
-🔎 הסורק היומי (כל בוקר: מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה)
-🐞 בודק הבאגים (כל לילה: האתר, הנתונים, תהליכים שנכשלו)
-💡 סוכן הרעיונות (פעם בשבוע)
-🛡️ המפקח (כל שעה: שכולם עובדים ושלא דלף מידע)
+const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
+את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
+עוזרת בכל דבר: שאלות, ניסוח הודעות ופוסטים, תכנון, רעיונות, חשיבה על החלטות. אם משהו לא ברור — שאלה אחת קצרה.
 
-איך לענות:
-- עברית, קצר, בסגנון וואטסאפ. בלי כותרות markdown; *כוכבית* להדגשה מותרת. עד 12 שורות.
-- קודם התשובה, אחר כך פרט אם צריך. כשמציגים רשימה — עם המספרים מהדוח.
+מערכת הנוכחות של המועדון — יש לך כלים אמיתיים (tools):
 - נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים.
+- מתחתייך ארבעה סוכנים אוטומטיים: 🔎 הסורק היומי (מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה), 🐞 בודק הבאגים, 💡 רעיונות, 🛡️ המפקח.
+- סימון נוכחות: לפני שכותבים, לוודא קבוצה + תאריך + שמות, ולהציג מה עומד להישמר. אם שם שחקן לא חד-משמעי — לשאול.
+- הודעות להורים ולשחקנים: שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן"). לפני אישור — להראות את הרשימה והנוסח ולשאול. אחרי שליחה — לדווח בדיוק למי נשלח ולמי לא.
+- משהו שאין לו כלי (למשל לשנות קוד באפליקציה) — לומר שזה דורש עבודה על הקוד ושזה יעבור ל-Claude בפרויקט.
 
-הודעות להורים ולשחקנים:
-- שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן").
-- אם היא מבקשת לשלוח בלי שראתה את הרשימה — קודם להראות את הרשימה ואת נוסח ההודעה ולשאול.
-- אחרי שליחה — לדווח בדיוק למי נשלח ולמי לא.
-
-אם מבקשים משהו שאין לך כלי בשבילו (למשל לשנות קוד באפליקציה) — לומר שזה דורש עבודה על הקוד ושזה יעבור ל-Claude בפרויקט.`;
+פרסום המועדון — את מנסחת טיוטות בלבד, הוא מאשר ומתזמן בעצמו:
+- קהל: הציבור המקומי בגליל העליון, בעיקר הורים לילדים. נימה חמה, ברורה, בלי סופרלטיבים ריקים.
+- כל פוסט מסתיים בשורת קרדיט: "בשיתוף מתנ"ס אזורי מבואות החרמון והמועצה האזורית מבואות החרמון" (רק שני אלה בשורה הזאת).
+- אימונים: אולם שאר ישוב — מתחילים א' וה' 16:30-17:30, מתקדמים א', ב', ה' 17:30-19:00, נבחרת/סגל א' וה' 19:00-21:00. רמת כורזים — מתחילים/מתקדמים ב' וד' 16:30-18:00, בוגרים ב' וד' 18:00-20:00. קיבוץ דפנה — מבוגרים וסטודנטים ב' וה' 19:30-21:00. קבוצת פינג פונג פרקינסון פועלת במועדון.
+- להציע תמיד 2 גרסאות קצרות שונות באופי (לא רק ניסוח שונה), ולשאול אם רוצה עוד.`;
 
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
-    if (url.pathname === "/health") {
+    if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
     }
@@ -89,23 +87,45 @@ async function handle(m, env) {
   await store.merge("agentReports/bot", { seenIds: [...(bot.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now });
 
   try {
-    const text = m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "";
+    const text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "").trim();
     if (!text) {
-      await sendText(wa, m.from, "כרגע אני מבין רק הודעות טקסט 🙂");
+      await sendText(wa, m.from, "כרגע אני מבינה רק הודעות טקסט 🙂");
+      return;
+    }
+    if (["איפוס", "התחלה חדשה", "reset"].includes(text)) {
+      await store.merge("agentReports/bot", { history: [] });
+      await sendText(wa, m.from, "איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
     const { answer, userTurn } = await think(env, store, wa, bot, text);
-    await sendText(wa, m.from, answer);
+    for (let i = 0; i < answer.length; i += CHUNK) await sendText(wa, m.from, answer.slice(i, i + CHUNK));
     const history = [...(bot.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: new Date().toISOString() }];
     await store.merge("agentReports/bot", { history: history.slice(-16) });
   } catch (e) {
     await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } });
-    await sendText(wa, m.from, `משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nהמפקח יראה את זה ויתריע אם זה חוזר.`).catch(() => {});
+    await sendText(wa, m.from, `משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
   }
 }
 
+// הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
+const FUNCTION_DECLS = TOOL_DEFS.map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+
+async function gemini(env, body) {
+  let lastErr;
+  for (const model of [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))]) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) return (await r.json())?.candidates?.[0]?.content?.parts || [];
+    lastErr = new Error(`${model}: ${r.status}`);
+    if (r.status === 401 || r.status === 403) break; // מפתח לא תקין — אין טעם לנסות מודל אחר
+  }
+  throw lastErr;
+}
+
 async function think(env, store, wa, bot, text) {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const tools = makeTools({ env, store, wa, lastOwnerText: text });
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
@@ -114,38 +134,40 @@ async function think(env, store, wa, bot, text) {
     .filter(([, o]) => o && o.at > (bot.lastOwnerMsgAt || "") && Date.now() - new Date(o.at).getTime() < 3 * 24 * 3600 * 1000)
     .map(([agent, o]) => `[${o.at.slice(0, 16)} הודעה שנשלחה ממך (${agent})]\n${o.text}`)
     .join("\n\n");
-  const history = (bot.history || []).map((h) => ({ role: h.role, content: h.text }));
-  const userTurn = outbox ? `${outbox}\n\n---\nההודעה החדשה של המנהלת:\n${text}` : text;
-  const messages = [...history, { role: "user", content: userTurn }];
+  const userTurn = outbox ? `${outbox}\n\n---\nההודעה החדשה:\n${text}` : text;
+  const contents = [
+    ...(bot.history || []).map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
+    { role: "user", parts: [{ text: userTurn }] },
+  ];
+  const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 
   for (let turn = 0; turn < 6; turn++) {
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "low" },
-      system: `${SYSTEM}\n\nהיום: ${new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" })}`,
-      tools: TOOL_DEFS,
-      messages,
+    const parts = await gemini(env, {
+      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday})` }] },
+      contents,
+      tools: [{ functionDeclarations: FUNCTION_DECLS }],
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.6 },
     });
-    if (res.stop_reason === "refusal") return { answer: "לא יכול לעזור עם זה.", userTurn };
-    const uses = res.content.filter((b) => b.type === "tool_use");
-    if (res.stop_reason !== "tool_use" || !uses.length) {
-      return { answer: res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || "👍", userTurn };
+    const calls = parts.filter((p) => p.functionCall);
+    if (!calls.length) {
+      return { answer: parts.map((p) => p.text || "").join("").trim() || "👍", userTurn };
     }
-    messages.push({ role: "assistant", content: res.content });
+    contents.push({ role: "model", parts });
     const results = await Promise.all(
-      uses.map(async (u) => {
+      calls.map(async ({ functionCall: { name, args } }) => {
+        let result;
         try {
-          const fn = tools[u.name];
+          const fn = tools[name];
           if (!fn) throw new Error("unknown tool");
-          return { type: "tool_result", tool_use_id: u.id, content: String(await fn(u.input || {})) };
+          result = String(await fn(args || {}));
         } catch (e) {
-          return { type: "tool_result", tool_use_id: u.id, content: `שגיאה: ${e.message}`, is_error: true };
+          result = `שגיאה: ${e.message}`;
         }
+        return { functionResponse: { name, response: { result } } };
       }),
     );
-    messages.push({ role: "user", content: results });
+    contents.push({ role: "user", parts: results });
   }
   return { answer: "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn };
 }
