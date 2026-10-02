@@ -33,6 +33,8 @@ globalThis.fetch = async (url, init = {}) => {
     geminiCalls.push(JSON.parse(init.body));
     return json({ candidates: [{ content: { parts: geminiQueue.shift() } }] });
   }
+  if (url.includes("graph.facebook.com/v24.0/media")) return json({ url: "https://lookaside/" + url.split("/").pop(), mime_type: url.endsWith("aud") ? "audio/ogg; codecs=opus" : "image/jpeg" });
+  if (url.startsWith("https://lookaside/")) return new Response(new Uint8Array([1, 2, 3]));
   if (url.includes("graph.facebook.com")) {
     sent.push(JSON.parse(init.body));
     return json({ messages: [{ id: "w" }] });
@@ -52,9 +54,10 @@ globalThis.fetch = async (url, init = {}) => {
   return docs.has(path) ? json(out(path, docs.get(path))) : new Response("", { status: 404 });
 };
 
-const worker = (await import("../src/index.js")).default;
-const webhook = async (text, from = env.OWNER_PHONE, id = "m" + Math.random()) => {
-  const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id, from, type: "text", text: { body: text } }] } }] }] });
+const { default: worker, review } = await import("../src/index.js");
+const texts = () => sent.filter((b) => b.type === "text").map((b) => b.text.body);
+const webhook = async (text, from = env.OWNER_PHONE, id = "m" + Math.random(), msg = { type: "text", text: { body: text } }) => {
+  const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id, from, ...msg }] } }] }] });
   const sig = "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(raw).digest("hex");
   const waits = [];
   const res = await worker.fetch(new Request("https://x/webhook", { method: "POST", body: raw, headers: { "x-hub-signature-256": sig } }), env, { waitUntil: (p) => waits.push(p) });
@@ -75,7 +78,8 @@ assert.equal(docs.has("attendance/2026-10-01_g1_p1"), false, "שם עמום לא
 const toolResult = geminiCalls[1].contents.at(-1).parts[0].functionResponse.response.result;
 assert.match(toolResult, /נועה לוי: נוכח/);
 assert.match(toolResult, /כמה שחקנים מתאימים/);
-assert.equal(sent.at(-1).text.body, "סימנתי את נועה כנוכחת. 'דני' מתאים לשני שחקנים.");
+assert.equal(texts().at(-1), "סימנתי את נועה כנוכחת. 'דני' מתאים לשני שחקנים.");
+assert.ok(sent.some((b) => b.status === "read" && b.typing_indicator?.type === "text"), "חיווי מקלידה");
 assert.equal(geminiCalls[0].tools[0].functionDeclarations.some((d) => "additionalProperties" in d.parameters), false);
 
 // 2. קריאת נוכחות + היסטוריה נשמרת ונשלחת בפעם הבאה
@@ -93,5 +97,29 @@ assert.equal(sent.length, before);
 // 4. חתימה לא תקינה
 const bad = await worker.fetch(new Request("https://x/webhook", { method: "POST", body: "{}", headers: { "x-hub-signature-256": "sha256=00" } }), env, { waitUntil() {} });
 assert.equal(bad.status, 401);
+
+// 5. הודעה קולית: תמלול ואז תשובה רגילה
+geminiQueue.push([{ text: "מי הגיע היום?" }], [{ text: "תשובה לקול" }]);
+await webhook("", env.OWNER_PHONE, "a1", { type: "audio", audio: { id: "media/aud" } });
+const tr = geminiCalls.at(-2).contents[0].parts[1].inlineData;
+assert.deepEqual(tr, { mimeType: "audio/ogg", data: "AQID" });
+assert.equal(geminiCalls.at(-1).contents.at(-1).parts[0].text, "🎤 מי הגיע היום?");
+assert.equal(texts().at(-1), "תשובה לקול");
+
+// 6. תמונה עם כיתוב — Gemini מקבל את התמונה עצמה
+geminiQueue.push([{ text: "הלוגו קטן מדי" }]);
+await webhook("", env.OWNER_PHONE, "i1", { type: "image", image: { id: "media/img", caption: "מה דעתך על הפלאייר?" } });
+const last = geminiCalls.at(-1).contents.at(-1).parts;
+assert.equal(last[0].text, "📷 [תמונה] מה דעתך על הפלאייר?");
+assert.equal(last[1].inlineData.mimeType, "image/jpeg");
+
+// 7. המפקח: OK = שקט, בעיה = הודעה לבעלים + נכנס ל-outbox
+geminiQueue.push([{ text: "OK" }]);
+assert.equal(await review(env), "ok");
+geminiQueue.push([{ text: "1. ביקש פלאייר — שולה לא החזירה טיוטה" }]);
+assert.equal(await review(env), "sent");
+assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה טיוטה/);
+assert.match(docs.get("agentReports/bot").outbox.review.text, /לא החזירה טיוטה/);
+assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה\]/);
 
 console.log("all bot tests passed");
