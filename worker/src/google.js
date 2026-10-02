@@ -1,10 +1,10 @@
 // 📧📅 המייל והיומן של הבעלים (Gmail + Google Calendar), דרך OAuth של חשבון הגוגל שלו.
 // חיבור חד-פעמי: שולה שולחת לו קישור /google/start, הוא מאשר בגוגל, וה-refresh token נשמר
 // ב-agentReports/google (האוסף חסום לאפליקציה בחוקי Firestore).
-// מה מותר: לקרוא מיילים, ליצור *טיוטות* (לא שולחים מייל אף פעם), לקרוא יומן, ולהוסיף אירוע רק אחרי אישור מפורש.
+// מה מותר: לחפש ולקרוא קבצים בדרייב (קריאה בלבד), לקרוא מיילים, ליצור *טיוטות* (לא שולחים מייל אף פעם), לקרוא יומן, ולהוסיף אירוע רק אחרי אישור מפורש.
 import { APPROVAL } from "./tools.js";
 
-const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/calendar.events"];
+const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/drive.readonly"];
 const TZ = "Asia/Jerusalem";
 let cached = { token: "", exp: 0 };
 
@@ -90,6 +90,16 @@ export const GOOGLE_TOOL_DEFS = [
     },
   },
   {
+    name: "search_drive",
+    description: "חיפוש קבצים בגוגל דרייב של הבעלים לפי מילים בשם או בתוכן. מחזיר מזהה, שם, סוג, תאריך עדכון וקישור.",
+    input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
+  },
+  {
+    name: "read_drive_file",
+    description: "התוכן של קובץ מהדרייב לפי מזהה מ-search_drive: מסמך גוגל כטקסט, גיליון כ-CSV, קובץ טקסט כמו שהוא. לקבצים אחרים (PDF, תמונה) מחזיר קישור.",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
+  },
+  {
     name: "list_events",
     description: "האירועים ביומן הראשי בין שני תאריכים (YYYY-MM-DD, כולל). ברירת מחדל: היום עד עוד 7 ימים.",
     input_schema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } }, additionalProperties: false },
@@ -117,6 +127,12 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
     return j;
   };
   const G = "https://gmail.googleapis.com/gmail/v1/users/me";
+  const D = "https://www.googleapis.com/drive/v3/files";
+  const raw = async (url) => {
+    const r = await fetch(url, { headers: { authorization: `Bearer ${await accessToken(env, store)}` } });
+    if (!r.ok) throw new Error(`Google ${r.status}`);
+    return (await r.text()).slice(0, 8000);
+  };
   const C = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
   return {
@@ -149,6 +165,21 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
       ].join("\r\n");
       await api(`${G}/drafts`, { method: "POST", body: JSON.stringify({ message: { raw: b64url(raw).replace(/=+$/, ""), ...(orig ? { threadId: orig.threadId } : {}) } }) });
       return `נשמרה טיוטה ל-${to} ("${subject}"). היא מחכה בתיקיית הטיוטות בג'ימייל — לא נשלחה.`;
+    },
+
+    async search_drive({ query }) {
+      const q = String(query).replace(/['\\]/g, " ");
+      const j = await api(`${D}?${new URLSearchParams({ q: `(name contains '${q}' or fullText contains '${q}') and trashed = false`, pageSize: "10", orderBy: "modifiedTime desc", fields: "files(id,name,mimeType,modifiedTime,webViewLink)" })}`);
+      if (!j.files?.length) return "לא נמצאו קבצים.";
+      return JSON.stringify(j.files.map((f) => ({ id: f.id, name: f.name, type: f.mimeType.split(/[./]/).pop(), modified: f.modifiedTime?.slice(0, 10), link: f.webViewLink })));
+    },
+
+    async read_drive_file({ id }) {
+      const f = await api(`${D}/${id}?fields=name,mimeType,webViewLink`);
+      const as = { "application/vnd.google-apps.document": "text/plain", "application/vnd.google-apps.spreadsheet": "text/csv", "application/vnd.google-apps.presentation": "text/plain" }[f.mimeType];
+      if (as) return `${f.name}\n${await raw(`${D}/${id}/export?mimeType=${encodeURIComponent(as)}`)}`;
+      if (f.mimeType.startsWith("text/") || f.mimeType === "application/json") return `${f.name}\n${await raw(`${D}/${id}?alt=media`)}`;
+      return `את הקובץ "${f.name}" (${f.mimeType}) אי אפשר לקרוא כטקסט. קישור: ${f.webViewLink}`;
     },
 
     async list_events({ from, to } = {}) {

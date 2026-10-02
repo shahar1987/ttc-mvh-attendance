@@ -39,6 +39,13 @@ globalThis.fetch = async (url, init = {}) => {
     if (url.includes("/messages/e1")) return json({ id: "e1", threadId: "t1", snippet: "שלום", labelIds: ["UNREAD"], payload: { headers: [{ name: "From", value: "matnas@x" }, { name: "Subject", value: "טורניר" }, { name: "Message-ID", value: "<m1@x>" }], mimeType: "text/plain", body: { data: Buffer.from("גוף המייל").toString("base64url") } } });
     return json({ id: "d1" });
   }
+  if (url.startsWith("https://www.googleapis.com/drive")) {
+    google.push({ url, method: init.method || "GET" });
+    if (url.includes("/export?")) return new Response("שורה,ערך\nא,1");
+    if (url.includes("/files/f1?")) return json({ name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", webViewLink: "https://d/f1" });
+    if (url.includes("/files/f2?")) return json({ name: "פלאייר.pdf", mimeType: "application/pdf", webViewLink: "https://d/f2" });
+    return json({ files: [{ id: "f1", name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", modifiedTime: "2026-10-01T10:00:00Z", webViewLink: "https://d/f1" }] });
+  }
   if (url.startsWith("https://www.googleapis.com/calendar")) {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
@@ -169,6 +176,14 @@ const ev = { name: "create_event", args: { title: "פגישה", start: "2026-10-
 assert.match(await callTool("תקבעי פגישה מחר ב-10", ev), /לא נוסף/);
 assert.match(await callTool("כן", ev), /נוסף ליומן: פגישה/);
 assert.equal(google.at(-1).body.start.dateTime, "2026-10-05T10:00:00");
+
+// 8ב. דרייב: חיפוש, גיליון כ-CSV, PDF כקישור בלבד
+const found = JSON.parse(await callTool("איפה טבלת התשלומים?", { name: "search_drive", args: { query: "תשלומים' or x" } }));
+assert.equal(found[0].type, "spreadsheet");
+assert.ok(decodeURIComponent(google.at(-1).url.replace(/\+/g, " ")).includes("name contains 'תשלומים  or x'"), "גרש בחיפוש לא שובר את השאילתה");
+assert.match(await callTool("מה כתוב בה?", { name: "read_drive_file", args: { id: "f1" } }), /תשלומים\nשורה,ערך/);
+assert.match(await callTool("ומה בפלאייר?", { name: "read_drive_file", args: { id: "f2" } }), /https:\/\/d\/f2/);
+assert.match(start.headers.get("location"), /drive\.readonly/);
 
 // 9. מזג אוויר
 const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
