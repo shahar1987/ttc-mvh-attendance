@@ -27,6 +27,7 @@ const geminiQueue = [];
 const google = [];
 const geminiCalls = [];
 const sent = [];
+const social = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
@@ -57,6 +58,12 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     return json({ candidates: [{ content: { parts: geminiQueue.shift() } }] });
+  }
+  if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
+  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
+    social.push({ url, body: JSON.parse(init.body) });
+    return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1" });
   }
   if (url.includes("graph.facebook.com/v24.0/media")) return json({ url: "https://lookaside/" + url.split("/").pop(), mime_type: url.endsWith("aud") ? "audio/ogg; codecs=opus" : "image/jpeg" });
   if (url.startsWith("https://lookaside/")) return new Response(new Uint8Array([1, 2, 3]));
@@ -135,7 +142,7 @@ assert.equal(texts().at(-1), "תשובה לקול");
 geminiQueue.push([{ text: "הלוגו קטן מדי" }]);
 await webhook("", env.OWNER_PHONE, "i1", { type: "image", image: { id: "media/img", caption: "מה דעתך על הפלאייר?" } });
 const last = geminiCalls.at(-1).contents.at(-1).parts;
-assert.equal(last[0].text, "📷 [תמונה] מה דעתך על הפלאייר?");
+assert.equal(last[0].text, "📷 [תמונה id=media/img] מה דעתך על הפלאייר?");
 assert.equal(last[1].inlineData.mimeType, "image/jpeg");
 
 // 7. המפקח: OK = שקט, בעיה = הודעה לבעלים + נכנס ל-outbox
@@ -145,7 +152,7 @@ geminiQueue.push([{ text: "1. ביקש פלאייר — שולה לא החזיר
 assert.equal(await review(env), "sent");
 assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה טיוטה/);
 assert.match(docs.get("agentReports/bot").outbox.review.text, /לא החזירה טיוטה/);
-assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה\]/);
+assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה id=/);
 
 // 8. מייל ויומן: לפני חיבור — קישור; אחרי חיבור — קריאה, טיוטה (לא שליחה), אירוע רק באישור
 const callTool = async (msg, call) => {
@@ -235,5 +242,22 @@ assert.deepEqual(tpl[0].template.components[0].parameters.map((p) => p.text), ["
 assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+
+// 12. פרסום לפייסבוק ולאינסטגרם: רק אחרי "כן", ותמונה מהוואטסאפ עוברת דרך /meta/media
+const notMeta = await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
+const metaLink = notMeta.match(/https:\/\/x\/meta\/start\?k=\w+/)?.[0];
+assert.ok(metaLink, "בלי חיבור — שולחים קישור");
+const mk = new URL(metaLink).searchParams.get("k");
+assert.notEqual(mk, k, "מפתח נפרד מגוגל");
+assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
+assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
+assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
+assert.equal(docs.get("agentReports/social").pages[0].token, "ptok");
+assert.match(await callTool("תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } }), /לא פורסם/);
+assert.equal(social.length, 0);
+assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
+assert.equal(social[0].body.url, `https://x/meta/media/777?k=${mk}`);
+assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
+assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
 
 console.log("all bot tests passed");

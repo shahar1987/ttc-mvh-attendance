@@ -8,9 +8,9 @@ const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.g
 const TZ = "Asia/Jerusalem";
 let cached = { token: "", exp: 0 };
 
-export async function connectKey(env) {
+export async function connectKey(env, label = "google") {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.META_APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("google")));
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(label)));
   return [...mac.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 export const connectLink = async (env, origin) => `${origin}/google/start?k=${await connectKey(env)}`;

@@ -7,6 +7,7 @@
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
+import { META_TOOL_DEFS, makeMetaTools, metaRoute } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
 
@@ -41,6 +42,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
+פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את הנוסח (כולל תיוג השותפים כמו בטיוטות השיווק), איזו תמונה ובאיזו פלטפורמה, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
 // השמות מה-worker הידני הקודם (בדשבורד) — כדי שהסודות שכבר שמורים שם ימשיכו לעבוד בלי להגדיר מחדש
@@ -59,6 +61,7 @@ export default {
     const url = new URL(req.url);
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
+    if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
     if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
@@ -123,7 +126,7 @@ async function handle(m, env) {
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
       media = await downloadMedia(wa, m.image.id);
-      text = `📷 [תמונה] ${text || "מה דעתך?"}`;
+      text = `📷 [תמונה id=${m.image.id}] ${text || "מה דעתך?"}`;
     }
     if (!text) {
       await sendText(wa, m.from, "כרגע אני מבינה טקסט, הודעות קוליות ותמונות 🙂");
@@ -146,7 +149,7 @@ async function handle(m, env) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
@@ -164,7 +167,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
