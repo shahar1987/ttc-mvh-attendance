@@ -133,7 +133,8 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
     if (!token) throw new Error(`המייל והיומן עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await connectLink(env, origin)}`);
     const r = await fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(`Google ${r.status}: ${j.error?.message || ""}`);
+    // 403 = חסרה הרשאה (למשל דרייב/משימות שנוספו אחרי החיבור) — צריך לחבר מחדש
+    if (!r.ok) throw new Error(`Google ${r.status}: ${j.error?.message || ""}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(env, origin)}` : ""}`);
     return j;
   };
   const G = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -141,7 +142,7 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
   const T = "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks";
   const raw = async (url) => {
     const r = await fetch(url, { headers: { authorization: `Bearer ${await accessToken(env, store)}` } });
-    if (!r.ok) throw new Error(`Google ${r.status}`);
+    if (!r.ok) throw new Error(`Google ${r.status}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(env, origin)}` : ""}`);
     return (await r.text()).slice(0, 8000);
   };
   const C = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
