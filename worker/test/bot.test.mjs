@@ -9,6 +9,7 @@ const SA = { project_id: "p", client_email: "x@p", private_key: privateKey.expor
 const env = {
   WHATSAPP_TOKEN: "t", WHATSAPP_PHONE_ID: "123", OWNER_PHONE: "972500000000", META_APP_SECRET: "s",
   WEBHOOK_VERIFY_TOKEN: "v", GEMINI_API_KEY: "g", FIREBASE_SERVICE_ACCOUNT: JSON.stringify(SA),
+  GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "cs",
 };
 
 // Firestore בזיכרון
@@ -23,12 +24,23 @@ put("attendance/2026-10-01_g1_p2", { date: "2026-10-01", groupId: "g1", playerId
 const out = (path, o) => ({ name: `projects/p/databases/(default)/documents/${path}`, fields: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, toValue(v)])) });
 
 const geminiQueue = [];
+const google = [];
 const geminiCalls = [];
 const sent = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
-  if (url.startsWith("https://oauth2")) return json({ access_token: "a", expires_in: 3600 });
+  if (url.startsWith("https://oauth2")) return json({ access_token: "a", expires_in: 3600, ...(String(init.body).includes("authorization_code") ? { refresh_token: "r" } : {}) });
+  if (url.startsWith("https://gmail.googleapis.com")) {
+    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
+    if (url.includes("/messages?")) return json({ messages: [{ id: "e1" }] });
+    if (url.includes("/messages/e1")) return json({ id: "e1", threadId: "t1", snippet: "שלום", labelIds: ["UNREAD"], payload: { headers: [{ name: "From", value: "matnas@x" }, { name: "Subject", value: "טורניר" }, { name: "Message-ID", value: "<m1@x>" }], mimeType: "text/plain", body: { data: Buffer.from("גוף המייל").toString("base64url") } } });
+    return json({ id: "d1" });
+  }
+  if (url.startsWith("https://www.googleapis.com/calendar")) {
+    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
+    return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
+  }
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     return json({ candidates: [{ content: { parts: geminiQueue.shift() } }] });
@@ -121,5 +133,39 @@ assert.equal(await review(env), "sent");
 assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה טיוטה/);
 assert.match(docs.get("agentReports/bot").outbox.review.text, /לא החזירה טיוטה/);
 assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה\]/);
+
+// 8. מייל ויומן: לפני חיבור — קישור; אחרי חיבור — קריאה, טיוטה (לא שליחה), אירוע רק באישור
+const callTool = async (msg, call) => {
+  geminiQueue.push([{ functionCall: call }], [{ text: "ok" }]);
+  await webhook(msg);
+  return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
+};
+const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
+const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
+assert.ok(link, notConnected);
+assert.equal((await worker.fetch(new Request("https://x/google/start?k=wrong"), env, {})).status, 403);
+const start = await worker.fetch(new Request(link), env, {});
+assert.equal(start.status, 302);
+assert.match(start.headers.get("location"), /gmail\.readonly.*calendar\.events/);
+const k = new URL(link).searchParams.get("k");
+assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=bad`), env, {})).status, 403);
+assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=${k}`), env, {})).status, 200);
+assert.equal(docs.get("agentReports/google").refreshToken, "r");
+
+assert.match(await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } }), /טורניר/);
+assert.match(await callTool("מה כתוב בו?", { name: "read_email", args: { id: "e1" } }), /גוף המייל/);
+assert.match(await callTool("תנסחי תשובה", { name: "draft_email", args: { to: "matnas@x", subject: "תודה", body: "נגיע", reply_to_id: "e1" } }), /טיוטה/);
+const draft = google.find((g) => g.url.endsWith("/drafts"));
+assert.equal(draft.body.message.threadId, "t1");
+const raw = Buffer.from(draft.body.message.raw, "base64url").toString();
+assert.match(raw, /In-Reply-To: <m1@x>/);
+assert.ok(raw.includes(Buffer.from("נגיע").toString("base64")));
+assert.equal(google.some((g) => g.url.includes("/send")), false, "אף פעם לא שולחים מייל");
+
+assert.match(await callTool("מה יש לי השבוע?", { name: "list_events", args: {} }), /אימון/);
+const ev = { name: "create_event", args: { title: "פגישה", start: "2026-10-05T10:00", end: "2026-10-05T11:00" } };
+assert.match(await callTool("תקבעי פגישה מחר ב-10", ev), /לא נוסף/);
+assert.match(await callTool("כן", ev), /נוסף ליומן: פגישה/);
+assert.equal(google.at(-1).body.start.dateTime, "2026-10-05T10:00:00");
 
 console.log("all bot tests passed");

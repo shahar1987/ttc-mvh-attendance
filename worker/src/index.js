@@ -6,12 +6,14 @@
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
+import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
 import { waConfig, sendText, typing, downloadMedia } from "../../agents/lib/whatsapp.mjs";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
 const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
 const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
+let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
 
 const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
 את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
@@ -30,6 +32,11 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 - אימונים: אולם שאר ישוב — מתחילים א' וה' 16:30-17:30, מתקדמים א', ב', ה' 17:30-19:00, נבחרת/סגל א' וה' 19:00-21:00. רמת כורזים — מתחילים/מתקדמים ב' וד' 16:30-18:00, בוגרים ב' וד' 18:00-20:00. קיבוץ דפנה — מבוגרים וסטודנטים ב' וה' 19:30-21:00. קבוצת פינג פונג פרקינסון פועלת במועדון.
 - להציע תמיד 2 גרסאות קצרות שונות באופי (לא רק ניסוח שונה), ולשאול אם רוצה עוד.
 
+מייל ויומן (Gmail ו-Google Calendar של הבעלים):
+- לקרוא, לחפש ולסכם מיילים — מותר. לענות על מייל = ליצור *טיוטה* בלבד (draft_email); אף פעם לא שולחים מייל. לומר לו שהטיוטה מחכה בג'ימייל.
+- יומן: לקרוא חופשי. להוסיף אירוע רק אחרי שהצגת כותרת, תאריך ושעות והוא ענה "כן".
+- אם כלי מחזיר שהמייל לא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
@@ -41,6 +48,8 @@ export default {
 
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
+    ORIGIN = url.origin;
+    if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
@@ -128,7 +137,7 @@ async function handle(m, env) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = TOOL_DEFS.map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
@@ -146,7 +155,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping) {
-  const tools = makeTools({ env, store, wa, lastOwnerText: text });
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
