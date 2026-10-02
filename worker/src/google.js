@@ -4,7 +4,10 @@
 // מה מותר: לחפש ולקרוא קבצים בדרייב (קריאה בלבד), לקרוא מיילים, ליצור *טיוטות* (לא שולחים מייל אף פעם), לקרוא יומן, ולהוסיף אירוע רק אחרי אישור מפורש.
 import { APPROVAL } from "./tools.js";
 
-const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/tasks"];
+// רק יומן ומשימות: לחשבון של הבעלים יש "הגנה מתקדמת" של גוגל, שחוסמת גישה של אפליקציה לא מאומתת למייל ולדרייב
+// (policy_enforced). מייל ודרייב עוברים לקלוד (ask_claude), שהחיבור שלו מאושר.
+const SCOPES = ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/tasks"];
+export const DIRECT = /^(list_events|create_event|list_tasks|add_task)$/;
 const TZ = "Asia/Jerusalem";
 let cached = { token: "", exp: 0 };
 
@@ -63,7 +66,7 @@ export async function oauthRoute(req, env, store) {
   if (!j.refresh_token) return html(`החיבור נכשל: ${j.error_description || j.error || "אין refresh token"}. אפשר לנסות שוב מהקישור.`, 400);
   await store.merge("agentReports/google", { refreshToken: j.refresh_token, connectedAt: new Date().toISOString() });
   cached = { token: "", exp: 0 };
-  return html("✅ שולה מחוברת לגוגל: מייל, יומן, דרייב ומשימות. אפשר לחזור לוואטסאפ.");
+  return html("✅ שולה מחוברת ליומן ולמשימות של גוגל. מייל ודרייב עוברים דרך קלוד. אפשר לחזור לוואטסאפ.");
 }
 const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
