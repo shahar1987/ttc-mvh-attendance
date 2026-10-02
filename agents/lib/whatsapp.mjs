@@ -55,3 +55,18 @@ export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templat
   await sendTemplate(cfg, cfg.owner, template, [templateParam]);
   return "template";
 }
+
+// "נקרא" + "מקלידה…" על ההודעה שהתקבלה. החיווי נעלם כשנשלחת תשובה או אחרי 25 שניות.
+export function typing(cfg, messageId) {
+  return post(cfg, { status: "read", message_id: messageId, typing_indicator: { type: "text" } });
+}
+
+// מוריד קובץ שנשלח לבוט (הקלטה, תמונה) ומחזיר אותו כ-base64 לשליחה ל-Gemini
+export async function downloadMedia(cfg, mediaId) {
+  const auth = { Authorization: `Bearer ${cfg.token}` };
+  const meta = await (await fetch(`${GRAPH}/${mediaId}`, { headers: auth })).json();
+  if (!meta.url) throw new Error(`WhatsApp media: ${meta.error?.message || "no url"}`);
+  const res = await fetch(meta.url, { headers: auth });
+  if (!res.ok) throw new Error(`WhatsApp media download ${res.status}`);
+  return { mimeType: (meta.mime_type || "").split(";")[0], data: Buffer.from(await res.arrayBuffer()).toString("base64") };
+}
