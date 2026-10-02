@@ -1,7 +1,7 @@
 // הכלים שהסוכן הראשי (Claude) יכול להפעיל. כל גישה לנתונים עוברת כאן —
 // Claude לא נוגע ב-Firestore או בוואטסאפ ישירות.
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
-import { sendTemplate } from "../../agents/lib/whatsapp.mjs";
+import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { dropoutRisk, playerHistory, israelToday, isValidPhone } from "../../agents/lib/analysis.mjs";
 
 const AGENTS = ["scan", "bugcheck", "ideas", "supervisor"];
@@ -208,19 +208,14 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
           results.push(`${n}. ${item.playerName}: אין טלפון תקין — לא נשלח`);
           continue;
         }
-        try {
-          const t = absenceTemplate(item);
-          await sendTemplate(wa, item.phone, t.name, t.params);
-          await markHandled(store, item, true);
-          done.add(item.key);
-          sentTo.add(item.playerId);
-          results.push(`${n}. ${item.playerName}: נשלח ✓`);
-        } catch (e) {
-          results.push(`${n}. ${item.playerName}: נכשל (${e.message})`);
-        }
+        const t = absenceTemplate(item);
+        await markHandled(store, item, true);
+        done.add(item.key);
+        sentTo.add(item.playerId);
+        results.push(`${n}. ${item.playerName}: ${waLink(item.phone, renderTemplate(t.name, t.params))}`);
       }
       await store.merge("agentReports/latest", { handledKeys: [...done] });
-      return results.join("\n") || "אין מה לשלוח — כל הרשימה כבר טופלה.";
+      return results.length ? `ללחוץ על כל קישור ואז "שלח" — ההודעה יוצאת מהמספר שלך:\n${results.join("\n")}` : "אין מה לשלוח — כל הרשימה כבר טופלה.";
     },
 
     async skip_messages({ numbers }) {

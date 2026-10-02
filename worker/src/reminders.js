@@ -1,9 +1,9 @@
 // ⏰ תזכורת למאמנים שלא מילאו נוכחות — רץ כל רבע שעה (wrangler.toml → triggers).
 // קבוצה שהתאמנה היום (groups.days), שהאימון שלה נגמר לפני חצי שעה לפחות, ואין לה אף רשומת נוכחות להיום:
-// כל המאמנים שלה מקבלים את התבנית coach_attendance_reminder (אותו נוסח כמו כפתור התזכורת באפליקציה).
-// מאמן בלי טלפון, או שליחה שנכשלה (תבנית לא אושרה / מספר הבדיקה של Meta) — נכנס לסיכום לבעלים.
+// הבעלים מקבל קישור לכל מאמן שלה, עם נוסח coach_attendance_reminder מוכן, ושולח מהמספר שלו בלחיצה.
 import { israelToday, normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
-import { sendTemplate, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { waLink, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { renderTemplate } from "../../agents/templates.mjs";
 
 const GRACE_MIN = 30;
 
@@ -36,18 +36,14 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
         lines.push(`• ${g.name} — ${c.name}: אין טלפון שמור`);
         continue;
       }
-      try {
-        await sendTemplate(wa, normalizePhone(c.phone), "coach_attendance_reminder", [c.name, g.name]);
-        lines.push(`• ${g.name} — ${c.name}: נשלחה תזכורת ✓`);
-      } catch (e) {
-        lines.push(`• ${g.name} — ${c.name}: השליחה נכשלה (${e.message})`);
-      }
+      lines.push(`• ${g.name} — ${c.name}: ${waLink(normalizePhone(c.phone), renderTemplate("coach_attendance_reminder", [c.name, g.name]))}`);
     }
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
-  await store.merge("agentReports/bot", { coachReminders: { date: today, groups: [...done, ...groups.map((g) => g.id)] } });
-  if (!lines.length) return "all marked";
-  const text = `⏰ *נוכחות שלא מולאה היום*\n${lines.join("\n")}`;
-  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} תזכורות נוכחות למאמנים היום` });
+  const text = lines.length ? `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}` : "";
+  // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
+  await store.merge("agentReports/bot", { coachReminders: { date: today, groups: [...done, ...groups.map((g) => g.id)] }, ...(text && { outbox: { ...(bot.outbox || {}), reminders: { at: now.toISOString(), text } } }) });
+  if (!text) return "all marked";
+  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
   return text;
 }

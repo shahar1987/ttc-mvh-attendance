@@ -70,3 +70,6 @@ export async function downloadMedia(cfg, mediaId) {
   if (!res.ok) throw new Error(`WhatsApp media download ${res.status}`);
   return { mimeType: (meta.mime_type || "").split(";")[0], data: Buffer.from(await res.arrayBuffer()).toString("base64") };
 }
+
+// קישור שפותח את הוואטסאפ של הבעלים עם הטקסט מוכן לנמען — ההודעה יוצאת מהמספר שלו, בלחיצה שלו
+export const waLink = (phone, text) => `https://wa.me/${String(phone).replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;

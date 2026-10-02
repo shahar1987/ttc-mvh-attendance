@@ -27,7 +27,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 - נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים.
 - מתחתייך ארבעה סוכנים אוטומטיים: 🔎 הסורק היומי (מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה), 🐞 בודק הבאגים, 💡 רעיונות, 🛡️ המפקח.
 - סימון נוכחות: לפני שכותבים, לוודא קבוצה + תאריך + שמות, ולהציג מה עומד להישמר. אם שם שחקן לא חד-משמעי — לשאול.
-- הודעות להורים ולשחקנים: שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן"). לפני אישור — להראות את הרשימה והנוסח ולשאול. אחרי שליחה — לדווח בדיוק למי נשלח ולמי לא.
+- הודעות להורים ולשחקנים: שולחים רק אחרי אישור מפורש בהודעה האחרונה ("שלח הכל", "שלח 1,3", "כן"). לפני אישור — להראות את הרשימה והנוסח ולשאול. אחרי האישור הכלי מחזיר קישור לכל הורה — להעביר לבעלים את כל הקישורים כמו שהם. הוא לוחץ ושולח מהמספר שלו.
 - משהו שאין לו כלי (למשל לשנות קוד באפליקציה) — לומר שזה דורש עבודה על הקוד ושזה יעבור ל-Claude בפרויקט.
 
 פרסום המועדון — את מנסחת טיוטות בלבד, הוא מאשר ומתזמן בעצמו:
@@ -46,7 +46,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את הנוסח (כולל תיוג השותפים כמו בטיוטות השיווק), איזו תמונה ובאיזו פלטפורמה, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
 בקשות לקלוד (ask_claude): כשכלי גוגל מחזיר שגוגל לא מחובר, או כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים שהתשובה תגיע עד שעה בוואטסאפ.
-הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — קודם preview_recipients, ואז להציג לו את הנוסח המדויק, מי יקבל ומתי, ולשאול "לשלוח?". שולחים רק אחרי "שלח"/"כן" בהודעה הבאה שלו. אין שליחה לקבוצות וואטסאפ — כל אחד מקבל בנפרד. ההודעה יוצאת עם פתיח וחתימה של המועדון.
+הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message מיד ולהעביר לו את הקישורים שחזרו, כל אחד בשורה. ההודעות יוצאות מהמספר שלו כשהוא לוחץ "שלח" בכל קישור, אז לא צריך לבקש ממנו "כן" לפני. לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
 // השמות מה-worker הידני הקודם (בדשבורד) — כדי שהסודות שכבר שמורים שם ימשיכו לעבוד בלי להגדיר מחדש
@@ -178,7 +178,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }), ...makeInboxTools({ store }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ store }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -252,10 +252,12 @@ async function daily(env) {
 async function everyQuarter(env) {
   const store = db(env);
   const wa = waConfig(env);
-  const lines = await sendDue(store, wa);
+  const lines = await sendDue(store);
   if (lines.length) {
     const bot = (await store.get("agentReports/bot")) || {};
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `✉️ *הודעות מתוזמנות יצאו*\n${lines.join("\n")}`, template: "agent_alert", templateParam: `יצאו ${lines.length} הודעות מתוזמנות` });
+    const text = `✉️ *הגיע הזמן לשלוח* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}`;
+    await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), scheduled: { at: new Date().toISOString(), text } } });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `הגיע הזמן של ${lines.length} הודעות מתוזמנות. אפשר להשיב כדי לקבל את הקישורים` });
   }
   return remindCoaches(env, store, wa);
 }
