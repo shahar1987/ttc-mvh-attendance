@@ -66,14 +66,14 @@ export const INBOX_TOOL_DEFS = [
   },
 ];
 
-export function makeInboxTools({ env, store }) {
+export function makeInboxTools({ env, store, origin }) {
   return {
     async ask_claude({ request }) {
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
       await store.merge("agentReports/bot", { inbox: [...(bot.inbox || []), { id, at: new Date().toISOString(), request, status: "open" }].slice(-30) });
       if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
-      return "נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה.";
+      return `נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה. כדי שכל בקשה תגיע לקלוד מיד — לשלוח לבעלים את הקישור הזה (חיבור חד-פעמי): ${origin}/claude/start?k=${await connectKey(env)}`;
     },
   };
 }
