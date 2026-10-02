@@ -8,8 +8,10 @@ import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute } from "./meta.js";
-import { waConfig, sendText, typing, downloadMedia } from "../../agents/lib/whatsapp.mjs";
+import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute } from "./inbox.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
@@ -43,6 +45,8 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את הנוסח (כולל תיוג השותפים כמו בטיוטות השיווק), איזו תמונה ובאיזו פלטפורמה, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+בקשות לקלוד (ask_claude): כשכלי גוגל מחזיר שגוגל לא מחובר, או כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים שהתשובה תגיע עד שעה בוואטסאפ.
+הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — קודם preview_recipients, ואז להציג לו את הנוסח המדויק, מי יקבל ומתי, ולשאול "לשלוח?". שולחים רק אחרי "שלח"/"כן" בהודעה הבאה שלו. אין שליחה לקבוצות וואטסאפ — כל אחד מקבל בנפרד. ההודעה יוצאת עם פתיח וחתימה של המועדון.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
 // השמות מה-worker הידני הקודם (בדשבורד) — כדי שהסודות שכבר שמורים שם ימשיכו לעבוד בלי להגדיר מחדש
@@ -53,7 +57,7 @@ export default {
   // wrangler.toml → triggers: 🕵️ מפקח השיחות פעם ביום, ⏰ תזכורת נוכחות למאמנים כל שעה
   async scheduled(event, rawEnv, ctx) {
     const env = withAliases(rawEnv);
-    ctx.waitUntil(event.cron === "0 17 * * *" ? review(env) : remindCoaches(env, db(env), waConfig(env)));
+    ctx.waitUntil(event.cron === "0 17 * * *" ? daily(env) : everyQuarter(env));
   },
 
   async fetch(req, rawEnv, ctx) {
@@ -62,6 +66,13 @@ export default {
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
+    if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
+    // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
+    if (url.pathname === "/privacy")
+      return new Response(
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>שולה — פרטיות</title><body dir="rtl" style="font:18px/1.6 system-ui;max-width:640px;margin:auto;padding:24px"><h1>שולה — מדיניות פרטיות</h1><p>שולה היא עוזרת אישית פרטית בוואטסאפ של בעל המועדון בלבד. היא עונה רק למספר אחד.</p><p>הגישה לחשבון הגוגל (מייל, יומן, דרייב, משימות) משמשת רק כדי לענות לבקשות של בעל החשבון: קריאה, חיפוש, טיוטות ומשימות. שולה לא שולחת מיילים, לא מוחקת ולא משתפת קבצים. אירוע ביומן נוסף רק אחרי אישור מפורש.</p><p>המידע לא נמכר ולא מועבר לאף אחד. אסימון הגישה נשמר במסד נתונים פרטי של המועדון, ואפשר לבטל אותו בכל רגע ב-<a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p></body>`,
+        { headers: { "content-type": "text/html; charset=utf-8" } },
+      );
     if (url.pathname === "/health" || url.pathname === "/") {
       const missing = REQUIRED.filter((k) => !env[k]);
       return Response.json({ ok: missing.length === 0, missing });
@@ -137,7 +148,7 @@ async function handle(m, env) {
       await sendText(wa, m.from, "איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
-    const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}));
+    const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
     for (let i = 0; i < answer.length; i += CHUNK) await sendText(wa, m.from, answer.slice(i, i + CHUNK));
     const history = [...(bot.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: new Date().toISOString() }];
     const log = [...(bot.log || []), { at: now, user: text, shula: answer }].slice(-LOG_KEEP);
@@ -149,7 +160,7 @@ async function handle(m, env) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
@@ -166,8 +177,8 @@ async function gemini(env, body) {
   throw lastErr;
 }
 
-async function think(env, store, wa, bot, text, media, stillTyping) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN }) };
+async function think(env, store, wa, bot, text, media, stillTyping, turn) {
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }), ...makeInboxTools({ store }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -229,6 +240,25 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 בדקי כל בקשה של הבעלים: האם שולה ביצעה אותה עד הסוף ובדיוק כמו שביקש? חפשי: משימה שנשארה באמצע, הבטחה ("אבדוק", "אחזור אלייך") בלי המשך, תשובה שלא עונה על השאלה, פעולה שנכשלה בלי שדווח, טיוטה שלא תאמה את הבקשה.
 אם הכל נסגר — החזירי בדיוק: OK
 אחרת — רשימה ממוספרת קצרה בעברית, שורה לכל בעיה: מה ביקש, מה חסר, ומה להציע עכשיו. בלי הקדמות.`;
+
+// פעם ביום: המפקח, ובדיקה שכל תבניות הוואטסאפ הוגשו ל-Meta
+async function daily(env) {
+  const t = await ensureTemplates(env).catch((e) => [`error: ${e.message}`]);
+  if (t.length) await db(env).merge("agentReports/bot", { templates: { at: new Date().toISOString(), result: t } });
+  return review(env);
+}
+
+// כל רבע שעה: הודעות מתוזמנות שהגיע זמנן + תזכורות נוכחות למאמנים
+async function everyQuarter(env) {
+  const store = db(env);
+  const wa = waConfig(env);
+  const lines = await sendDue(store, wa);
+  if (lines.length) {
+    const bot = (await store.get("agentReports/bot")) || {};
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `✉️ *הודעות מתוזמנות יצאו*\n${lines.join("\n")}`, template: "agent_alert", templateParam: `יצאו ${lines.length} הודעות מתוזמנות` });
+  }
+  return remindCoaches(env, store, wa);
+}
 
 export async function review(env) {
   const store = db(env);

@@ -2,7 +2,7 @@
 // חיבור חד-פעמי: שולה שולחת לבעלים קישור /meta/start, הוא מאשר בפייסבוק, וטוקני הדפים נשמרים
 // ב-agentReports/social (האוסף חסום לאפליקציה בחוקי Firestore). טוקן דף שמגיע מטוקן משתמש ארוך לא פג.
 // מה מותר: לפרסם רק אחרי "כן" מפורש בהודעה האחרונה, על טקסט ותמונה שהוצגו לו. אין מחיקה ואין עריכה.
-import { APPROVAL } from "./tools.js";
+import { confirmed } from "./tools.js";
 import { connectKey } from "./google.js";
 import { waConfig, downloadMedia } from "../../agents/lib/whatsapp.mjs";
 
@@ -53,7 +53,7 @@ export const META_TOOL_DEFS = [
   },
 ];
 
-export function makeMetaTools({ env, store, lastOwnerText, origin }) {
+export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
   const post = async (path, body) => {
     const r = await fetch(`${GRAPH}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json();
@@ -64,7 +64,8 @@ export function makeMetaTools({ env, store, lastOwnerText, origin }) {
     async publish_post({ platform, text, image }) {
       const page = (await store.get("agentReports/social"))?.pages?.[0];
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(env, origin)}`;
-      if (!APPROVAL.test(lastOwnerText)) return "לא פורסם: הבעלים עוד לא אישר. להציג לו את הנוסח המדויק, התמונה והפלטפורמה ולשאול.";
+      if (!(await confirmed(store, "post", { platform, text, image }, lastOwnerText, turn)))
+        return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח, התמונה והפלטפורמה ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const img = image && (/^https?:\/\//.test(image) ? image : await mediaUrl(env, origin, image.replace(/\D/g, "")));
       const done = [];
       if (platform !== "instagram") {

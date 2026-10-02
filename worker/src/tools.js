@@ -9,6 +9,17 @@ const MAX_SEND = 40;
 // הודעות להורים יוצאות רק כששולה אישרה במילים שלה, בהודעה האחרונה שכתבה
 export const APPROVAL = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
 
+// אישור בשני שלבים לפעולה שיוצאת החוצה: הקריאה הראשונה שומרת טיוטה ולא עושה כלום. רק אם הבעלים ענה "כן"
+// בהודעה *אחרת* (לא באותה הודעה שבה ביקש — "תשלחי למאמנים..." מכיל "תשלחי") ועם אותם פרטים בדיוק — מאשרים.
+export async function confirmed(store, kind, payload, ownerText, turn) {
+  const bot = (await store.get("agentReports/bot")) || {};
+  const key = JSON.stringify(payload);
+  const p = bot.pending?.[kind];
+  const ok = APPROVAL.test(ownerText) && p?.key === key && p.turn !== turn;
+  await store.merge("agentReports/bot", { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn } } });
+  return ok;
+}
+
 export const TOOL_DEFS = [
   {
     name: "get_daily_report",
