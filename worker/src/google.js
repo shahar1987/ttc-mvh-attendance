@@ -13,9 +13,25 @@ export async function connectKey(env, label = "google") {
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(label)));
   return [...mac.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-// בלי GOOGLE_CLIENT_ID הקישור מוביל ל-"OAuth client was not found" — עדיף להגיד מה חסר
-export const connectLink = async (env, origin) =>
-  env.GOOGLE_CLIENT_ID ? `${origin}/google/start?k=${await connectKey(env)}` : "(גוגל לא מחובר ישירות לשולה — להעביר את הבקשה לקלוד עם ask_claude, שיש לו את חיבורי הגוגל של הבעלים)";
+export const connectLink = async (env, origin) => `${origin}/google/start?k=${await connectKey(env)}`;
+
+// מפתח ה-OAuth: מ-Cloudflare אם הוגדר שם, אחרת ממה שהבעלים הדביק בדף /google/start (נשמר ב-agentReports/google)
+async function client(env, store) {
+  if (env.GOOGLE_CLIENT_ID) return { id: env.GOOGLE_CLIENT_ID, secret: env.GOOGLE_CLIENT_SECRET };
+  const g = (await store.get("agentReports/google")) || {};
+  return { id: g.clientId || "", secret: g.clientSecret || "" };
+}
+
+// הדף שהבעלים רואה כשעוד אין מפתח: איך ליצור אותו בגוגל, ושני שדות להדבקה
+const setupPage = (redirect) =>
+  html(`<h2>חיבור שולה לגוגל</h2><ol style="line-height:1.7">
+<li>לפתוח את <a href="https://console.cloud.google.com/auth/clients/create?project=ttcmh-2a752" target="_blank">יצירת מפתח בגוגל</a>.</li>
+<li>Application type: <b>Web application</b>.</li>
+<li>תחת Authorized redirect URIs ללחוץ <b>Add URI</b> ולהדביק:<br><code style="user-select:all;word-break:break-all">${redirect}</code></li>
+<li>ללחוץ <b>Create</b>, ולהעתיק לכאן את שני הערכים שמופיעים:</li></ol>
+<form method="post"><input name="id" placeholder="Client ID" required style="width:100%;font:16px system-ui;padding:8px;margin:6px 0" dir="ltr">
+<input name="secret" placeholder="Client secret" required style="width:100%;font:16px system-ui;padding:8px;margin:6px 0" dir="ltr">
+<button style="font:18px system-ui;padding:10px 20px">המשך לאישור בגוגל</button></form>`);
 
 // /google/start ו-/google/callback. רק מי שמחזיק את המפתח (נשלח רק לבעלים בוואטסאפ) יכול לחבר חשבון.
 export async function oauthRoute(req, env, store) {
@@ -24,20 +40,30 @@ export async function oauthRoute(req, env, store) {
   const redirect = `${url.origin}/google/callback`;
   if (url.pathname === "/google/start") {
     if (url.searchParams.get("k") !== key) return new Response("forbidden", { status: 403 });
-    const q = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirect, response_type: "code", scope: SCOPES.join(" "), access_type: "offline", prompt: "consent", state: key });
+    if (req.method === "POST") {
+      const f = await req.formData();
+      const id = String(f.get("id") || "").trim();
+      const secret = String(f.get("secret") || "").trim();
+      if (!id.endsWith(".apps.googleusercontent.com") || !secret) return html("ה-Client ID צריך להסתיים ב-.apps.googleusercontent.com. לחזור אחורה ולהדביק שוב.", 400);
+      await store.merge("agentReports/google", { clientId: id, clientSecret: secret });
+    }
+    const c = await client(env, store);
+    if (!c.id) return setupPage(redirect);
+    const q = new URLSearchParams({ client_id: c.id, redirect_uri: redirect, response_type: "code", scope: SCOPES.join(" "), access_type: "offline", prompt: "consent", state: key });
     return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
   }
   if (url.searchParams.get("state") !== key) return new Response("forbidden", { status: 403 });
+  const c = await client(env, store);
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ code: url.searchParams.get("code") || "", client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: redirect, grant_type: "authorization_code" }),
+    body: new URLSearchParams({ code: url.searchParams.get("code") || "", client_id: c.id, client_secret: c.secret, redirect_uri: redirect, grant_type: "authorization_code" }),
   });
   const j = await r.json();
   if (!j.refresh_token) return html(`החיבור נכשל: ${j.error_description || j.error || "אין refresh token"}. אפשר לנסות שוב מהקישור.`, 400);
   await store.merge("agentReports/google", { refreshToken: j.refresh_token, connectedAt: new Date().toISOString() });
   cached = { token: "", exp: 0 };
-  return html("✅ שולה מחוברת למייל וליומן. אפשר לחזור לוואטסאפ.");
+  return html("✅ שולה מחוברת לגוגל: מייל, יומן, דרייב ומשימות. אפשר לחזור לוואטסאפ.");
 }
 const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
@@ -45,10 +71,11 @@ async function accessToken(env, store) {
   if (cached.token && cached.exp > Date.now() + 60000) return cached.token;
   const g = await store.get("agentReports/google");
   if (!g?.refreshToken) return null;
+  const c = await client(env, store);
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ refresh_token: g.refreshToken, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: "refresh_token" }),
+    body: new URLSearchParams({ refresh_token: g.refreshToken, client_id: c.id, client_secret: c.secret, grant_type: "refresh_token" }),
   });
   const j = await r.json();
   if (!j.access_token) throw new Error(`Google: ${j.error_description || j.error} — צריך לחבר מחדש`);
