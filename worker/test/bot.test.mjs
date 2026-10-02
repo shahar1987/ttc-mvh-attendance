@@ -31,6 +31,8 @@ globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
   if (url.startsWith("https://oauth2")) return json({ access_token: "a", expires_in: 3600, ...(String(init.body).includes("authorization_code") ? { refresh_token: "r" } : {}) });
+  if (url.startsWith("https://geocoding-api.open-meteo.com")) return json(url.includes("xyzxyz") ? {} : { results: [{ name: "שאר ישוב", country: "ישראל", latitude: 33.2, longitude: 35.6 }] });
+  if (url.startsWith("https://api.open-meteo.com")) return json({ current: { temperature_2m: 24, apparent_temperature: 25, weather_code: 1, wind_speed_10m: 10 }, daily: { time: ["2026-10-03"], weather_code: [61], temperature_2m_min: [15], temperature_2m_max: [26], precipitation_probability_max: [70], wind_speed_10m_max: [20] } });
   if (url.startsWith("https://gmail.googleapis.com")) {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     if (url.includes("/messages?")) return json({ messages: [{ id: "e1" }] });
@@ -167,5 +169,11 @@ const ev = { name: "create_event", args: { title: "פגישה", start: "2026-10-
 assert.match(await callTool("תקבעי פגישה מחר ב-10", ev), /לא נוסף/);
 assert.match(await callTool("כן", ev), /נוסף ליומן: פגישה/);
 assert.equal(google.at(-1).body.start.dateTime, "2026-10-05T10:00:00");
+
+// 9. מזג אוויר
+const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
+assert.equal(wx.now.sky, "בהיר ברובו");
+assert.deepEqual(wx.days[0], { date: "2026-10-03", sky: "גשם קל", min: 15, max: 26, rainChance: 70, windKmh: 20 });
+assert.match(await callTool("מזג אוויר?", { name: "get_weather", args: { place: "xyzxyz" } }), /לא מצאתי/);
 
 console.log("all bot tests passed");
