@@ -166,8 +166,15 @@ const callTool = async (msg, call) => {
   await webhook(msg);
   return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
 };
+// בלי מפתח ב-Cloudflare: אותו קישור פותח דף שבו הבעלים מדביק את המפתח, ומשם ממשיכים לגוגל
 delete env.GOOGLE_CLIENT_ID;
-assert.match(await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } }), /ask_claude/);
+const setupLink = (await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } })).match(/https:\/\/x\/google\/start\?k=\w+/)[0];
+assert.match(await (await worker.fetch(new Request(setupLink), env, {})).text(), /https:\/\/x\/google\/callback[\s\S]*Client secret/);
+const badKey = await worker.fetch(new Request(setupLink, { method: "POST", body: new URLSearchParams({ id: "oops", secret: "s" }) }), env, {});
+assert.equal(badKey.status, 400);
+const go = await worker.fetch(new Request(setupLink, { method: "POST", body: new URLSearchParams({ id: "abc.apps.googleusercontent.com", secret: "sec" }) }), env, {});
+assert.match(go.headers.get("location"), /accounts\.google\.com.*client_id=abc\.apps\.googleusercontent\.com/);
+assert.equal(docs.get("agentReports/google").clientSecret, "sec");
 env.GOOGLE_CLIENT_ID = "cid";
 const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
 const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
