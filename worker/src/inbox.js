@@ -3,6 +3,39 @@
 // ב-GET /inbox, עונה ב-POST /inbox, והתשובה נשלחת לבעלים בוואטסאפ.
 // המפתח עצמו שמור רק ברוטינה; כאן (ריפו ציבורי) רק ה-SHA-256 שלו.
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { connectKey } from "./google.js";
+
+// ⚡ הפעלה מיידית: כשנכנסת בקשה, ה-worker מפעיל את המשימה הקבועה של קלוד דרך ה-API (במקום לחכות לריצה השעתית).
+// מפתח ה-API של המשימה נוצר בממשק של קלוד והבעלים מדביק אותו פעם אחת בדף /claude/start (נשמר ב-agentReports/claude).
+async function fireRoutine(env, store, id) {
+  const tok = env.ROUTINE_TOKEN || ((await store.get("agentReports/claude")) || {}).token;
+  if (!tok || !env.ROUTINE_ID) return false;
+  const r = await fetch(`https://api.anthropic.com/v1/claude_code/routines/${env.ROUTINE_ID}/fire`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${tok}`, "anthropic-beta": "experimental-cc-routine-2026-04-01", "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ text: `new inbox request ${id}` }),
+  }).catch(() => null);
+  return !!r?.ok;
+}
+
+const page = (body, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${body}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+
+// /claude/start — דף חד-פעמי להדבקת מפתח המשימה. אותו מפתח קישור כמו /google/start (נשלח רק לבעלים).
+export async function claudeRoute(req, env, store) {
+  const url = new URL(req.url);
+  if (url.searchParams.get("k") !== (await connectKey(env))) return new Response("forbidden", { status: 403 });
+  if (req.method === "POST") {
+    const tok = String((await req.formData()).get("token") || "").trim();
+    if (!tok.startsWith("sk-ant-")) return page("המפתח צריך להתחיל ב-sk-ant-. לחזור אחורה ולהדביק שוב.", 400);
+    await store.merge("agentReports/claude", { token: tok, at: new Date().toISOString() });
+    return page("✅ נשמר. מעכשיו כל בקשת מייל/יומן/דרייב מגיעה לקלוד מיד.");
+  }
+  return page(`<h2>חיבור מהיר של שולה לקלוד</h2><ol style="line-height:1.7">
+<li>לפתוח את <a href="https://claude.ai/code/routines/${env.ROUTINE_ID}" target="_blank">המשימה של שולה בקלוד</a> ← עריכה.</li>
+<li>Add another trigger ← <b>API</b> ← <b>Generate token</b>.</li>
+<li>להעתיק את המפתח (מתחיל ב-sk-ant-) ולהדביק כאן:</li></ol>
+<form method="post"><input name="token" required dir="ltr" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"><button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`);
+}
 
 const sha256 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -28,17 +61,18 @@ export const INBOX_TOOL_DEFS = [
   {
     name: "ask_claude",
     description:
-      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב) ויכולות נוספות. קלוד עונה עד שעה, והתשובה מגיעה לבעלים בוואטסאפ. להשתמש כשצריך מייל/יומן/דרייב וכלי הגוגל של שולה לא מחוברים, או למשימה שאין לשולה כלי בשבילה. request = הבקשה המלאה במילים של הבעלים, עם כל הפרטים.",
+      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב) ויכולות נוספות. קלוד עונה תוך דקות, והתשובה מגיעה לבעלים בוואטסאפ. להשתמש כשצריך מייל/יומן/דרייב וכלי הגוגל של שולה לא מחוברים, או למשימה שאין לשולה כלי בשבילה. request = הבקשה המלאה במילים של הבעלים, עם כל הפרטים.",
     input_schema: { type: "object", properties: { request: { type: "string" } }, required: ["request"], additionalProperties: false },
   },
 ];
 
-export function makeInboxTools({ store }) {
+export function makeInboxTools({ env, store }) {
   return {
     async ask_claude({ request }) {
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
       await store.merge("agentReports/bot", { inbox: [...(bot.inbox || []), { id, at: new Date().toISOString(), request, status: "open" }].slice(-30) });
+      if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
       return "נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה.";
     },
   };

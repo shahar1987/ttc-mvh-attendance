@@ -326,4 +326,22 @@ assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה �
 assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
 
+// 15. הפעלה מיידית של קלוד: הדבקת מפתח בדף /claude/start, ואז ask_claude מפעיל את המשימה מיד
+const fires = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init = {}) => {
+  if (String(url).startsWith("https://api.anthropic.com/v1/claude_code/routines/")) { fires.push({ url: String(url), auth: init.headers.authorization }); return new Response("{}"); }
+  return realFetch(url, init);
+};
+env.ROUTINE_ID = "trig_x";
+const ck = setupLink.split("k=")[1];
+assert.equal((await worker.fetch(new Request("https://x/claude/start?k=wrong"), env, {})).status, 403);
+assert.match(await (await worker.fetch(new Request(`https://x/claude/start?k=${ck}`), env, {})).text(), /Generate token/);
+assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "bad" }) }), env, {})).status, 400);
+assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "sk-ant-oat01-abc" }) }), env, {})).status, 200);
+assert.match(await callTool("מה במייל?", { name: "ask_claude", args: { request: "מה במייל" } }), /כבר עובד/);
+assert.equal(fires.length, 1);
+assert.match(fires[0].url, /routines\/trig_x\/fire$/);
+assert.equal(fires[0].auth, "Bearer sk-ant-oat01-abc");
+
 console.log("all bot tests passed");

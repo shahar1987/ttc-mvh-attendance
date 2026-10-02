@@ -10,7 +10,7 @@ import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute } from "./inbox.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
@@ -39,13 +39,13 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מייל, יומן, דרייב ומשימות (Gmail, Google Calendar, Google Drive ו-Google Tasks של הבעלים — דרייב לקריאה בלבד, אי אפשר למחוק או לשתף משם. גוגל קיפ לא זמין לחשבון פרטי, אז פתקים ותזכורות נשמרים ב-Google Tasks):
 - לקרוא, לחפש ולסכם מיילים — מותר. לענות על מייל = ליצור *טיוטה* בלבד (draft_email); אף פעם לא שולחים מייל. לומר לו שהטיוטה מחכה בג'ימייל.
 - יומן: לקרוא חופשי. להוסיף אירוע רק אחרי שהצגת כותרת, תאריך ושעות והוא ענה "כן".
-- אם כלי מחזיר שהמייל לא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+- אם כלי גוגל מחזיר שגוגל לא מחובר — לא לשלוח קישור חיבור (גוגל חוסם את החיבור הישיר בגלל ההגנה המתקדמת בחשבון). במקום זה להעביר מיד את הבקשה ל-ask_claude עם כל הפרטים.
 
 מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את הנוסח (כולל תיוג השותפים כמו בטיוטות השיווק), איזו תמונה ובאיזו פלטפורמה, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
-בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים שהתשובה תגיע עד שעה בוואטסאפ. כשכלי גוגל מחזיר שגוגל לא מחובר — לשלוח לבעלים את קישור החיבור שהכלי החזיר (בדף יש הוראות של דקה), ובינתיים אפשר גם ask_claude.
+בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה). כל בקשה על מייל, יומן או דרייב כשגוגל לא מחובר — ישר ל-ask_claude.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message מיד ולהעביר לו את הקישורים שחזרו, כל אחד בשורה. ההודעות יוצאות מהמספר שלו כשהוא לוחץ "שלח" בכל קישור, אז לא צריך לבקש ממנו "כן" לפני. לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
@@ -66,6 +66,7 @@ export default {
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
+    if (url.pathname === "/claude/start") return claudeRoute(req, env, db(env));
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
@@ -178,7 +179,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ store }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ env, store }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
