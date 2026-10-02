@@ -27,6 +27,7 @@ const geminiQueue = [];
 const google = [];
 const geminiCalls = [];
 const sent = [];
+const social = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
@@ -46,6 +47,10 @@ globalThis.fetch = async (url, init = {}) => {
     if (url.includes("/files/f2?")) return json({ name: "פלאייר.pdf", mimeType: "application/pdf", webViewLink: "https://d/f2" });
     return json({ files: [{ id: "f1", name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", modifiedTime: "2026-10-01T10:00:00Z", webViewLink: "https://d/f1" }] });
   }
+  if (url.startsWith("https://tasks.googleapis.com")) {
+    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
+    return init.method === "POST" ? json({ title: JSON.parse(init.body).title }) : json({ items: [{ title: "להזמין כדורים", due: "2026-10-05T00:00:00.000Z" }] });
+  }
   if (url.startsWith("https://www.googleapis.com/calendar")) {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
@@ -53,6 +58,12 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     return json({ candidates: [{ content: { parts: geminiQueue.shift() } }] });
+  }
+  if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
+  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
+    social.push({ url, body: JSON.parse(init.body) });
+    return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1" });
   }
   if (url.includes("graph.facebook.com/v24.0/media")) return json({ url: "https://lookaside/" + url.split("/").pop(), mime_type: url.endsWith("aud") ? "audio/ogg; codecs=opus" : "image/jpeg" });
   if (url.startsWith("https://lookaside/")) return new Response(new Uint8Array([1, 2, 3]));
@@ -131,7 +142,7 @@ assert.equal(texts().at(-1), "תשובה לקול");
 geminiQueue.push([{ text: "הלוגו קטן מדי" }]);
 await webhook("", env.OWNER_PHONE, "i1", { type: "image", image: { id: "media/img", caption: "מה דעתך על הפלאייר?" } });
 const last = geminiCalls.at(-1).contents.at(-1).parts;
-assert.equal(last[0].text, "📷 [תמונה] מה דעתך על הפלאייר?");
+assert.equal(last[0].text, "📷 [תמונה id=media/img] מה דעתך על הפלאייר?");
 assert.equal(last[1].inlineData.mimeType, "image/jpeg");
 
 // 7. המפקח: OK = שקט, בעיה = הודעה לבעלים + נכנס ל-outbox
@@ -141,7 +152,7 @@ geminiQueue.push([{ text: "1. ביקש פלאייר — שולה לא החזיר
 assert.equal(await review(env), "sent");
 assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה טיוטה/);
 assert.match(docs.get("agentReports/bot").outbox.review.text, /לא החזירה טיוטה/);
-assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה\]/);
+assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה id=/);
 
 // 8. מייל ויומן: לפני חיבור — קישור; אחרי חיבור — קריאה, טיוטה (לא שליחה), אירוע רק באישור
 const callTool = async (msg, call) => {
@@ -185,6 +196,12 @@ assert.match(await callTool("מה כתוב בה?", { name: "read_drive_file", ar
 assert.match(await callTool("ומה בפלאייר?", { name: "read_drive_file", args: { id: "f2" } }), /https:\/\/d\/f2/);
 assert.match(start.headers.get("location"), /drive\.readonly/);
 
+// 8ג. גוגל משימות (במקום קיפ)
+assert.deepEqual(JSON.parse(await callTool("מה המשימות שלי?", { name: "list_tasks", args: {} })), [{ title: "להזמין כדורים", notes: "", due: "2026-10-05" }]);
+assert.match(await callTool("תזכירי לי לקנות רשתות", { name: "add_task", args: { title: "לקנות רשתות", due: "2026-10-06" } }), /נוספה משימה: לקנות רשתות/);
+assert.equal(google.at(-1).body.due, "2026-10-06T00:00:00.000Z");
+assert.match(start.headers.get("location"), /auth%2Ftasks|auth\/tasks/);
+
 // 9. מזג אוויר
 const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
 assert.equal(wx.now.sky, "בהיר ברובו");
@@ -203,5 +220,44 @@ const waits = [];
 await worker.fetch(new Request("https://x/webhook", { method: "POST", body: rawOld, headers: { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(rawOld).digest("hex") } }), oldEnv, { waitUntil: (p) => waits.push(p) });
 await Promise.all(waits);
 assert.equal(texts().at(-1), "שלום מהשמות הישנים");
+
+// 11. תזכורת נוכחות למאמנים: יום ראשון 18:00 בישראל, האימון נגמר ב-17:00
+const { remindCoaches } = await import("../src/reminders.js");
+const { db } = await import("../src/firestore.js");
+const { waConfig } = await import("../../agents/lib/whatsapp.mjs");
+put("groups/g3", { name: "נוער", days: [0], endTime: "17:00", coachIds: ["u1", "u2"] });
+put("groups/g5", { name: "בוגרים", days: [0], endTime: "17:00", coachId: "u1" });
+put("groups/g6", { name: "ערב", days: [0], endTime: "19:30", coachId: "u1" });
+put("users/u1", { name: "יוסי", phone: "050-1234567" });
+put("users/u2", { name: "רון" });
+for (const [p, g] of [["p4", "g3"], ["p5", "g5"], ["p6", "g6"]]) put(`players/${p}`, { name: p, groupId: g, isActive: true });
+put("attendance/2026-10-04_g5_p5", { date: "2026-10-04", groupId: "g5", playerId: "p5", status: "Present" });
+const sunday = new Date("2026-10-04T15:00:00Z");
+const n0 = sent.length;
+const rem = await remindCoaches(env, db(env), waConfig(env), sunday);
+const tpl = sent.slice(n0).filter((b) => b.type === "template");
+assert.equal(tpl.length, 1, "רק המאמן של נוער (בוגרים מילאו, ערב עוד לא נגמר)");
+assert.equal(tpl[0].to, "972501234567");
+assert.deepEqual(tpl[0].template.components[0].parameters.map((p) => p.text), ["יוסי", "נוער"]);
+assert.match(rem, /נוער — רון: אין טלפון שמור/);
+assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
+assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+
+// 12. פרסום לפייסבוק ולאינסטגרם: רק אחרי "כן", ותמונה מהוואטסאפ עוברת דרך /meta/media
+const notMeta = await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
+const metaLink = notMeta.match(/https:\/\/x\/meta\/start\?k=\w+/)?.[0];
+assert.ok(metaLink, "בלי חיבור — שולחים קישור");
+const mk = new URL(metaLink).searchParams.get("k");
+assert.notEqual(mk, k, "מפתח נפרד מגוגל");
+assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
+assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
+assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
+assert.equal(docs.get("agentReports/social").pages[0].token, "ptok");
+assert.match(await callTool("תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } }), /לא פורסם/);
+assert.equal(social.length, 0);
+assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
+assert.equal(social[0].body.url, `https://x/meta/media/777?k=${mk}`);
+assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
+assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
 
 console.log("all bot tests passed");
