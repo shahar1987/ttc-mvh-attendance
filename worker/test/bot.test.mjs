@@ -160,68 +160,12 @@ assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה �
 assert.match(docs.get("agentReports/bot").outbox.review.text, /לא החזירה טיוטה/);
 assert.match(geminiCalls.at(-1).contents[0].parts[0].text, /הבעלים: 📷 \[תמונה id=/);
 
-// 8. מייל ויומן: לפני חיבור — קישור; אחרי חיבור — קריאה, טיוטה (לא שליחה), אירוע רק באישור
+// 8. גוגל: ההגנה המתקדמת חוסמת חיבור ישיר — שולה לא רואה כלי גוגל, הכל עובר ל-ask_claude
 const callTool = async (msg, call) => {
   geminiQueue.push([{ functionCall: call }], [{ text: "ok" }]);
   await webhook(msg);
   return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
 };
-// בלי מפתח ב-Cloudflare: אותו קישור פותח דף שבו הבעלים מדביק את המפתח, ומשם ממשיכים לגוגל
-delete env.GOOGLE_CLIENT_ID;
-const setupLink = (await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } })).match(/https:\/\/x\/google\/start\?k=\w+/)[0];
-assert.match(await (await worker.fetch(new Request(setupLink), env, {})).text(), /https:\/\/x\/google\/callback[\s\S]*Client secret/);
-const badKey = await worker.fetch(new Request(setupLink, { method: "POST", body: new URLSearchParams({ id: "oops", secret: "s" }) }), env, {});
-assert.equal(badKey.status, 400);
-const go = await worker.fetch(new Request(setupLink, { method: "POST", body: new URLSearchParams({ id: "abc.apps.googleusercontent.com", secret: "sec" }) }), env, {});
-assert.match(go.headers.get("location"), /accounts\.google\.com.*client_id=abc\.apps\.googleusercontent\.com/);
-assert.equal(docs.get("agentReports/google").clientSecret, "sec");
-env.GOOGLE_CLIENT_ID = "cid";
-const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
-const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
-assert.ok(link, notConnected);
-assert.equal((await worker.fetch(new Request("https://x/google/start?k=wrong"), env, {})).status, 403);
-const start = await worker.fetch(new Request(link), env, {});
-assert.equal(start.status, 302);
-assert.match(start.headers.get("location"), /scope=[^&]*calendar\.events[^&]*tasks/);
-const k = new URL(link).searchParams.get("k");
-assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=bad`), env, {})).status, 403);
-assert.equal((await worker.fetch(new Request(`https://x/google/callback?code=c&state=${k}`), env, {})).status, 200);
-assert.equal(docs.get("agentReports/google").refreshToken, "r");
-
-assert.match(await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } }), /טורניר/);
-assert.match(await callTool("מה כתוב בו?", { name: "read_email", args: { id: "e1" } }), /גוף המייל/);
-assert.match(await callTool("תנסחי תשובה", { name: "draft_email", args: { to: "matnas@x", subject: "תודה", body: "נגיע", reply_to_id: "e1" } }), /טיוטה/);
-const draft = google.find((g) => g.url.endsWith("/drafts"));
-assert.equal(draft.body.message.threadId, "t1");
-const raw = Buffer.from(draft.body.message.raw, "base64url").toString();
-assert.match(raw, /In-Reply-To: <m1@x>/);
-assert.ok(raw.includes(Buffer.from("נגיע").toString("base64")));
-assert.equal(google.some((g) => g.url.includes("/send")), false, "אף פעם לא שולחים מייל");
-
-assert.match(await callTool("מה יש לי השבוע?", { name: "list_events", args: {} }), /אימון/);
-const ev = { name: "create_event", args: { title: "פגישה", start: "2026-10-05T10:00", end: "2026-10-05T11:00" } };
-assert.match(await callTool("תקבעי פגישה מחר ב-10", ev), /לא נוסף/);
-assert.match(await callTool("כן", ev), /נוסף ליומן: פגישה/);
-assert.equal(google.at(-1).body.start.dateTime, "2026-10-05T10:00:00");
-
-// 8ב. דרייב: חיפוש, גיליון כ-CSV, PDF כקישור בלבד
-const found = JSON.parse(await callTool("איפה טבלת התשלומים?", { name: "search_drive", args: { query: "תשלומים' or x" } }));
-assert.equal(found[0].type, "spreadsheet");
-assert.ok(decodeURIComponent(google.at(-1).url.replace(/\+/g, " ")).includes("name contains 'תשלומים  or x'"), "גרש בחיפוש לא שובר את השאילתה");
-assert.match(await callTool("מה כתוב בה?", { name: "read_drive_file", args: { id: "f1" } }), /תשלומים\nשורה,ערך/);
-assert.match(await callTool("ומה בפלאייר?", { name: "read_drive_file", args: { id: "f2" } }), /https:\/\/d\/f2/);
-assert.doesNotMatch(start.headers.get("location"), /drive/, "דרייב עובר דרך קלוד");
-
-// 8ג. גוגל משימות (במקום קיפ)
-assert.deepEqual(JSON.parse(await callTool("מה המשימות שלי?", { name: "list_tasks", args: {} })), [{ title: "להזמין כדורים", notes: "", due: "2026-10-05" }]);
-assert.match(await callTool("תזכירי לי לקנות רשתות", { name: "add_task", args: { title: "לקנות רשתות", due: "2026-10-06" } }), /נוספה משימה: לקנות רשתות/);
-assert.equal(google.at(-1).body.due, "2026-10-06T00:00:00.000Z");
-assert.match(start.headers.get("location"), /auth%2Ftasks|auth\/tasks/);
-
-globalThis.tasks403 = true;
-assert.match(await callTool("מה המשימות?", { name: "list_tasks", args: {} }), /insufficient scopes — לשלוח לבעלים את הקישור לחיבור מחדש: https:\/\/x\/google\/start/);
-globalThis.tasks403 = false;
-
 // 9. מזג אוויר
 const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
 assert.equal(wx.now.sky, "בהיר ברובו");
@@ -270,7 +214,7 @@ const notMeta = await callTool("תחברי את פייסבוק", { name: "publis
 const metaLink = notMeta.match(/https:\/\/x\/meta\/start\?k=\w+/)?.[0];
 assert.ok(metaLink, "בלי חיבור — שולחים קישור");
 const mk = new URL(metaLink).searchParams.get("k");
-assert.notEqual(mk, k, "מפתח נפרד מגוגל");
+assert.notEqual(mk, await (await import("../src/google.js")).connectKey(env), "מפתח נפרד מגוגל");
 assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
@@ -334,7 +278,8 @@ globalThis.fetch = async (url, init = {}) => {
   return realFetch(url, init);
 };
 env.ROUTINE_ID = "trig_x";
-const ck = setupLink.split("k=")[1];
+const ck = (await callTool("מה ביומן?", { name: "ask_claude", args: { request: "מה ביומן" } })).match(/https:\/\/x\/claude\/start\?k=(\w+)/)[1];
+assert.equal(fires.length, 0, "בלי מפתח — לא מפעילים, שולחים קישור חיבור");
 assert.equal((await worker.fetch(new Request("https://x/claude/start?k=wrong"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/claude/start?k=${ck}`), env, {})).text(), /Generate token/);
 assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "bad" }) }), env, {})).status, 400);
@@ -345,12 +290,10 @@ assert.match(fires[0].url, /routines\/trig_x\/fire$/);
 assert.equal(fires[0].auth, "Bearer sk-ant-oat01-abc");
 
 console.log("all bot tests passed");
-
-// ההגנה המתקדמת בחשבון חוסמת מייל/דרייב: לא מבקשים את ההרשאות, ו-Gemini לא רואה את הכלים (הולכים ל-ask_claude)
 {
-  const { GOOGLE_TOOL_DEFS, DIRECT } = await import("../src/google.js");
-  assert.deepEqual(GOOGLE_TOOL_DEFS.filter((t) => DIRECT.test(t.name)).map((t) => t.name).sort(), ["add_task", "create_event", "list_events", "list_tasks"]);
-  const start = (await worker.fetch(new Request(link), env, {})).headers.get("location");
-  assert.ok(!/gmail|drive/.test(start), start);
+  const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
+  assert.ok(decls.includes("ask_claude"));
+  for (const n of ["search_email", "list_events", "create_event", "list_tasks", "add_task", "search_drive"]) assert.ok(!decls.includes(n), n);
+  assert.ok(!/קישור החיבור/.test(geminiCalls.at(-1).systemInstruction.parts[0].text));
 }
-console.log("calendar-only ok");
+console.log("google-via-claude ok");
