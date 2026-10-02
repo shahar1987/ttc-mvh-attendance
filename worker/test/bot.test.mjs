@@ -166,6 +166,9 @@ const callTool = async (msg, call) => {
   await webhook(msg);
   return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
 };
+delete env.GOOGLE_CLIENT_ID;
+assert.match(await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } }), /חסרים הסודות GOOGLE_CLIENT_ID/);
+env.GOOGLE_CLIENT_ID = "cid";
 const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
 const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
 assert.ok(link, notConnected);
