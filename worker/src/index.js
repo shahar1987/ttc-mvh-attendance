@@ -6,7 +6,7 @@
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
-import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
+import { GOOGLE_TOOL_DEFS, DIRECT, makeGoogleTools, oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
@@ -37,9 +37,9 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 - להציע תמיד 2 גרסאות קצרות שונות באופי (לא רק ניסוח שונה), ולשאול אם רוצה עוד.
 
 מייל, יומן, דרייב ומשימות (Gmail, Google Calendar, Google Drive ו-Google Tasks של הבעלים — דרייב לקריאה בלבד, אי אפשר למחוק או לשתף משם. גוגל קיפ לא זמין לחשבון פרטי, אז פתקים ותזכורות נשמרים ב-Google Tasks):
-- לקרוא, לחפש ולסכם מיילים — מותר. לענות על מייל = ליצור *טיוטה* בלבד (draft_email); אף פעם לא שולחים מייל. לומר לו שהטיוטה מחכה בג'ימייל.
+- מייל ודרייב: אין לך כלים ישירים (ההגנה המתקדמת בחשבון חוסמת). כל בקשה על מייל או דרייב — ישר ל-ask_claude עם כל הפרטים. קלוד יוצר רק *טיוטות* מייל, אף פעם לא שולח.
 - יומן: לקרוא חופשי. להוסיף אירוע רק אחרי שהצגת כותרת, תאריך ושעות והוא ענה "כן".
-- אם כלי גוגל מחזיר שגוגל לא מחובר — לא לשלוח קישור חיבור (גוגל חוסם את החיבור הישיר בגלל ההגנה המתקדמת בחשבון). במקום זה להעביר מיד את הבקשה ל-ask_claude עם כל הפרטים.
+- אם כלי יומן/משימות מחזיר שגוגל לא מחובר — לשלוח לבעלים את קישור החיבור שהכלי החזיר (הפרטים כבר שמורים, נשאר רק לאשר בגוגל), ובינתיים להעביר את הבקשה ל-ask_claude.
 
 מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
 
@@ -161,7 +161,7 @@ async function handle(m, env) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS.filter((t) => DIRECT.test(t.name)), ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
