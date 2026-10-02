@@ -48,6 +48,7 @@ globalThis.fetch = async (url, init = {}) => {
     return json({ files: [{ id: "f1", name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", modifiedTime: "2026-10-01T10:00:00Z", webViewLink: "https://d/f1" }] });
   }
   if (url.startsWith("https://tasks.googleapis.com")) {
+    if (globalThis.tasks403) return json({ error: { message: "insufficient scopes" } }, 403);
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ title: JSON.parse(init.body).title }) : json({ items: [{ title: "להזמין כדורים", due: "2026-10-05T00:00:00.000Z" }] });
   }
@@ -202,6 +203,10 @@ assert.match(await callTool("תזכירי לי לקנות רשתות", { name: "
 assert.equal(google.at(-1).body.due, "2026-10-06T00:00:00.000Z");
 assert.match(start.headers.get("location"), /auth%2Ftasks|auth\/tasks/);
 
+globalThis.tasks403 = true;
+assert.match(await callTool("מה המשימות?", { name: "list_tasks", args: {} }), /insufficient scopes — לשלוח לבעלים את הקישור לחיבור מחדש: https:\/\/x\/google\/start/);
+globalThis.tasks403 = false;
+
 // 9. מזג אוויר
 const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
 assert.equal(wx.now.sky, "בהיר ברובו");
@@ -244,7 +249,7 @@ assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
 
 // 12. פרסום לפייסבוק ולאינסטגרם: רק אחרי "כן", ותמונה מהוואטסאפ עוברת דרך /meta/media
-const notMeta = await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
+const notMeta = await callTool("תחברי את פייסבוק", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
 const metaLink = notMeta.match(/https:\/\/x\/meta\/start\?k=\w+/)?.[0];
 assert.ok(metaLink, "בלי חיבור — שולחים קישור");
 const mk = new URL(metaLink).searchParams.get("k");
