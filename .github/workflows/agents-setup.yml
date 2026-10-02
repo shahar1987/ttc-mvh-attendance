@@ -52,7 +52,9 @@ jobs:
         id: check
         run: |
           MISSING=""
-          for k in FIREBASE_SERVICE_ACCOUNT WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_WABA_ID META_APP_ID META_APP_SECRET OWNER_PHONE GEMINI_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+          # רק שני אלה חובה. הטוקן של וואטסאפ, ה-App Secret, מפתח Gemini והמספר כבר שמורים
+          # ב-worker הקיים בקלאודפלייר (נשמרים בין פריסות), ומה שמוגדר כאן רק מחליף אותם.
+          for k in FIREBASE_SERVICE_ACCOUNT CLOUDFLARE_API_TOKEN; do
             [ -z "${!k}" ] && MISSING="$MISSING $k"
           done
           if [ -n "$MISSING" ]; then
@@ -95,7 +97,8 @@ jobs:
         working-directory: worker
         run: |
           umask 077
-          VERIFY=$(node -e 'console.log(require("crypto").createHmac("sha256", process.env.META_APP_SECRET).update("webhook").digest("hex"))')
+          VERIFY=""
+          [ -n "$META_APP_SECRET" ] && VERIFY=$(node -e 'console.log(require("crypto").createHmac("sha256", process.env.META_APP_SECRET).update("webhook").digest("hex"))')
           jq -n \
             --arg a "$WHATSAPP_TOKEN" --arg b "$WHATSAPP_PHONE_ID" --arg c "$OWNER_PHONE" \
             --arg d "$META_APP_SECRET" --arg e "$VERIFY" --arg f "$GEMINI_API_KEY" --arg g "$FIREBASE_SERVICE_ACCOUNT" \
@@ -111,8 +114,9 @@ jobs:
           sleep 5
           curl -sf "${{ steps.sub.outputs.url }}/health"
 
+      # רק כשכל הסודות של Meta הוגדרו גם כאן; אחרת ה-webhook הקיים (שכבר מחובר לאותה כתובת) נשאר כמו שהוא
       - name: Connect WhatsApp and submit message templates
-        if: steps.check.outputs.ready == 'true'
+        if: steps.check.outputs.ready == 'true' && env.WHATSAPP_TOKEN != '' && env.WHATSAPP_PHONE_ID != '' && env.META_APP_SECRET != ''
         working-directory: agents
         env:
           WORKER_URL: ${{ steps.sub.outputs.url }}

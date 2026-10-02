@@ -42,13 +42,18 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
+// השמות מה-worker הידני הקודם (בדשבורד) — כדי שהסודות שכבר שמורים שם ימשיכו לעבוד בלי להגדיר מחדש
+const ALIASES = { WHATSAPP_TOKEN: "WA_TOKEN", WHATSAPP_PHONE_ID: "WA_PHONE_ID", OWNER_PHONE: "ALLOWED_FROM", WEBHOOK_VERIFY_TOKEN: "VERIFY_TOKEN" };
+const withAliases = (env) => ({ ...env, ...Object.fromEntries(Object.entries(ALIASES).filter(([k, old]) => !env[k] && env[old]).map(([k, old]) => [k, env[old]])) });
+
 export default {
   // 🕵️ מפקח השיחות — פעם ביום (wrangler.toml → triggers)
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(review(env));
+    ctx.waitUntil(review(withAliases(env)));
   },
 
-  async fetch(req, env, ctx) {
+  async fetch(req, rawEnv, ctx) {
+    const env = withAliases(rawEnv);
     const url = new URL(req.url);
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));

@@ -176,4 +176,17 @@ assert.equal(wx.now.sky, "בהיר ברובו");
 assert.deepEqual(wx.days[0], { date: "2026-10-03", sky: "גשם קל", min: 15, max: 26, rainChance: 70, windKmh: 20 });
 assert.match(await callTool("מזג אוויר?", { name: "get_weather", args: { place: "xyzxyz" } }), /לא מצאתי/);
 
+// 10. השמות הישנים מה-worker הידני עובדים
+const oldEnv = { ...env, WA_TOKEN: env.WHATSAPP_TOKEN, WA_PHONE_ID: "999", ALLOWED_FROM: env.OWNER_PHONE, VERIFY_TOKEN: "old" };
+for (const k of ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "WEBHOOK_VERIFY_TOKEN"]) delete oldEnv[k];
+const health = await (await worker.fetch(new Request("https://x/health"), oldEnv, {})).json();
+assert.deepEqual(health, { ok: true, missing: [] });
+assert.equal(await (await worker.fetch(new Request("https://x/webhook?hub.mode=subscribe&hub.verify_token=old&hub.challenge=42"), oldEnv, {})).text(), "42");
+geminiQueue.push([{ text: "שלום מהשמות הישנים" }]);
+const rawOld = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "old1", from: env.OWNER_PHONE, type: "text", text: { body: "היי" } }] } }] }] });
+const waits = [];
+await worker.fetch(new Request("https://x/webhook", { method: "POST", body: rawOld, headers: { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(rawOld).digest("hex") } }), oldEnv, { waitUntil: (p) => waits.push(p) });
+await Promise.all(waits);
+assert.equal(texts().at(-1), "שלום מהשמות הישנים");
+
 console.log("all bot tests passed");

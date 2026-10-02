@@ -6,6 +6,8 @@ main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+# משתנים שהוגדרו בדשבורד (ALLOWED_FROM, WA_PHONE_ID) נשארים בפריסה — לא כותבים כאן מספר טלפון, הריפו ציבורי
+keep_vars = true
 
 # 🕵️ מפקח השיחות — כל יום ב-17:00 UTC (20:00 בקיץ בישראל)
 [triggers]
