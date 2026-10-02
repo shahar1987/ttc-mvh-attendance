@@ -28,6 +28,7 @@ const google = [];
 const geminiCalls = [];
 const sent = [];
 const social = [];
+const templatesPosted = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
@@ -59,6 +60,10 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     return json({ candidates: [{ content: { parts: geminiQueue.shift() } }] });
+  }
+  if (url.includes("/message_templates")) {
+    if (init.method === "POST") { templatesPosted.push(JSON.parse(init.body).name); return json({ status: "PENDING" }); }
+    return json({ data: [{ name: "agent_alert", language: "he" }] });
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
   if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
@@ -161,6 +166,9 @@ const callTool = async (msg, call) => {
   await webhook(msg);
   return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
 };
+delete env.GOOGLE_CLIENT_ID;
+assert.match(await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } }), /ask_claude/);
+env.GOOGLE_CLIENT_ID = "cid";
 const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
 const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
 assert.ok(link, notConnected);
@@ -258,11 +266,61 @@ assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("l
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
 assert.equal(docs.get("agentReports/social").pages[0].token, "ptok");
-assert.match(await callTool("תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } }), /לא פורסם/);
+assert.match(await callTool("כן תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /עוד לא פורסם/, "כן בתוך הבקשה עצמה לא מפרסם");
 assert.equal(social.length, 0);
 assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
 assert.equal(social[0].body.url, `https://x/meta/media/777?k=${mk}`);
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
+
+// 13. הודעות בשם המועדון: מאמנים לפי תפקיד, שם, מתוזמן, ביטול
+put("users/u1", { role: "coach" });
+put("users/u3", { name: "מנהלת", role: "admin", phone: "0527654321" });
+const prev = JSON.parse(await callTool("תשלחי למאמנים", { name: "preview_recipients", args: { to: ["מאמנים", "דני"] } }));
+assert.deepEqual(prev.recipients, ["יוסי (…4567)", "מנהלת (…4321)"]);
+assert.match(prev.problems.join(), /"דני" מתאים לכמה/);
+const n0m = sent.length;
+assert.match(await callTool("תשלחי למאמנים ישיבה מחר", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } }), /עוד לא נשלח/, "\"תשלחי\" בבקשה עצמה הוא לא אישור");
+assert.equal(sent.slice(n0m).filter((b) => b.type === "template").length, 0);
+assert.match(await callTool("כן", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה אחרת" } }), /עוד לא נשלח/, "אישור על נוסח אחר לא שולח");
+await callTool("תשלחי", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } });
+const n1 = sent.length;
+assert.match(await callTool("שלח", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } }), /נשלח: יוסי ✓ · מנהלת ✓/);
+const m1 = sent.slice(n1).filter((b) => b.type === "template");
+assert.deepEqual(m1.map((b) => [b.to, b.template.name, b.template.components[0].parameters[0].text]), [["972501234567", "club_message", "ישיבה מחר · ב-20:00"], ["972527654321", "club_message", "ישיבה מחר · ב-20:00"]]);
+assert.match(await callTool("כן", { name: "send_message", args: { to: ["נועה"], text: "תזכורת", at: "2099-01-01T18:00" } }), /לא נשלח: אין נמענים.*אין טלפון/);
+put("players/p2", { parentPhone: "0541112222" });
+await callTool("תתזמני", { name: "send_message", args: { to: ["נועה", "מנהלת"], text: "תזכורת", at: "2099-01-01T18:00" } });
+const sch = await callTool("כן", { name: "send_message", args: { to: ["נועה", "מנהלת"], text: "תזכורת", at: "2099-01-01T18:00" } });
+const sid = sch.match(/מזהה (\w+)/)[1];
+assert.equal(docs.get("agentReports/bot").scheduled[0].due, "2099-01-01T16:00:00.000Z", "18:00 בחורף בישראל = 16:00 UTC");
+await callTool("ועוד אחת", { name: "send_message", args: { to: ["מנהלת"], text: "שנייה", at: "2099-01-02T18:00" } });
+await callTool("כן", { name: "send_message", args: { to: ["מנהלת"], text: "שנייה", at: "2099-01-02T18:00" } });
+assert.match(await callTool("תבטלי", { name: "scheduled_messages", args: { cancel: sid } }), /בוטלה/);
+assert.equal(JSON.parse(await callTool("מה מתוזמן?", { name: "scheduled_messages", args: {} })).length, 1);
+const { sendDue, ensureTemplates } = await import("../src/messages.js");
+const n2 = sent.length;
+assert.deepEqual(await sendDue(db(env), waConfig(env), new Date("2099-01-02T17:00:00Z")), ["• 2099-01-02 18:00: מנהלת ✓"]);
+assert.equal(sent.slice(n2).filter((b) => b.type === "template").length, 1);
+assert.equal(docs.get("agentReports/bot").scheduled.length, 0, "לא נשלח פעמיים");
+const tres = await ensureTemplates({ ...env, WHATSAPP_WABA_ID: "w1" });
+assert.ok(templatesPosted.includes("club_message") && templatesPosted.includes("coach_attendance_reminder") && !templatesPosted.includes("agent_alert"));
+assert.match(tres.join(), /club_message: PENDING/);
+
+assert.match(await (await worker.fetch(new Request("https://x/privacy"), env, {})).text(), /מדיניות פרטיות/);
+
+// 14. תיבת בקשות לקלוד
+const { createHash } = await import("node:crypto");
+const ienv = { ...env, INBOX_KEY_SHA256: createHash("sha256").update("sekret").digest("hex") };
+assert.match(await callTool("מה יש לי ביומן מחר?", { name: "ask_claude", args: { request: "מה יש ביומן מחר" } }), /נרשם/);
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad"), ienv, {})).status, 403);
+const open1 = await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json();
+assert.equal(open1.at(-1).request, "מה יש ביומן מחר");
+const n3 = sent.length;
+const ans = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "אימון ב-17:00" }) }), ienv, {});
+assert.equal(ans.status, 200);
+assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה מקלוד.*אימון ב-17:00/s);
+assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
 
 console.log("all bot tests passed");

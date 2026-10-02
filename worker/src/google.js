@@ -13,7 +13,9 @@ export async function connectKey(env, label = "google") {
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(label)));
   return [...mac.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-export const connectLink = async (env, origin) => `${origin}/google/start?k=${await connectKey(env)}`;
+// בלי GOOGLE_CLIENT_ID הקישור מוביל ל-"OAuth client was not found" — עדיף להגיד מה חסר
+export const connectLink = async (env, origin) =>
+  env.GOOGLE_CLIENT_ID ? `${origin}/google/start?k=${await connectKey(env)}` : "(גוגל לא מחובר ישירות לשולה — להעביר את הבקשה לקלוד עם ask_claude, שיש לו את חיבורי הגוגל של הבעלים)";
 
 // /google/start ו-/google/callback. רק מי שמחזיק את המפתח (נשלח רק לבעלים בוואטסאפ) יכול לחבר חשבון.
 export async function oauthRoute(req, env, store) {
