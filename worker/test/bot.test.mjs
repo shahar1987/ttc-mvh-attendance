@@ -167,7 +167,7 @@ const callTool = async (msg, call) => {
   return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
 };
 delete env.GOOGLE_CLIENT_ID;
-assert.match(await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } }), /חסרים הסודות GOOGLE_CLIENT_ID/);
+assert.match(await callTool("יש מיילים?", { name: "search_email", args: { query: "is:unread" } }), /ask_claude/);
 env.GOOGLE_CLIENT_ID = "cid";
 const notConnected = await callTool("יש מיילים חדשים?", { name: "search_email", args: { query: "is:unread" } });
 const link = notConnected.match(/https:\/\/x\/google\/start\?k=\w+/)?.[0];
@@ -308,5 +308,19 @@ assert.ok(templatesPosted.includes("club_message") && templatesPosted.includes("
 assert.match(tres.join(), /club_message: PENDING/);
 
 assert.match(await (await worker.fetch(new Request("https://x/privacy"), env, {})).text(), /מדיניות פרטיות/);
+
+// 14. תיבת בקשות לקלוד
+const { createHash } = await import("node:crypto");
+const ienv = { ...env, INBOX_KEY_SHA256: createHash("sha256").update("sekret").digest("hex") };
+assert.match(await callTool("מה יש לי ביומן מחר?", { name: "ask_claude", args: { request: "מה יש ביומן מחר" } }), /נרשם/);
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad"), ienv, {})).status, 403);
+const open1 = await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json();
+assert.equal(open1.at(-1).request, "מה יש ביומן מחר");
+const n3 = sent.length;
+const ans = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "אימון ב-17:00" }) }), ienv, {});
+assert.equal(ans.status, 200);
+assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה מקלוד.*אימון ב-17:00/s);
+assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
 
 console.log("all bot tests passed");

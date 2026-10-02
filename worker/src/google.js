@@ -15,7 +15,7 @@ export async function connectKey(env, label = "google") {
 }
 // בלי GOOGLE_CLIENT_ID הקישור מוביל ל-"OAuth client was not found" — עדיף להגיד מה חסר
 export const connectLink = async (env, origin) =>
-  env.GOOGLE_CLIENT_ID ? `${origin}/google/start?k=${await connectKey(env)}` : "(עוד אין קישור: חסרים הסודות GOOGLE_CLIENT_ID ו-GOOGLE_CLIENT_SECRET — לפי המדריך secrets-guide.md, החלק של גוגל)";
+  env.GOOGLE_CLIENT_ID ? `${origin}/google/start?k=${await connectKey(env)}` : "(גוגל לא מחובר ישירות לשולה — להעביר את הבקשה לקלוד עם ask_claude, שיש לו את חיבורי הגוגל של הבעלים)";
 
 // /google/start ו-/google/callback. רק מי שמחזיק את המפתח (נשלח רק לבעלים בוואטסאפ) יכול לחבר חשבון.
 export async function oauthRoute(req, env, store) {

@@ -10,6 +10,7 @@ import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
@@ -44,6 +45,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את הנוסח (כולל תיוג השותפים כמו בטיוטות השיווק), איזו תמונה ובאיזו פלטפורמה, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+בקשות לקלוד (ask_claude): כשכלי גוגל מחזיר שגוגל לא מחובר, או כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים שהתשובה תגיע עד שעה בוואטסאפ.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — קודם preview_recipients, ואז להציג לו את הנוסח המדויק, מי יקבל ומתי, ולשאול "לשלוח?". שולחים רק אחרי "שלח"/"כן" בהודעה הבאה שלו. אין שליחה לקבוצות וואטסאפ — כל אחד מקבל בנפרד. ההודעה יוצאת עם פתיח וחתימה של המועדון.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.`;
 
@@ -64,6 +66,7 @@ export default {
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
+    if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
       return new Response(
@@ -157,7 +160,7 @@ async function handle(m, env) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...GOOGLE_TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
@@ -175,7 +178,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeGoogleTools({ env, store, lastOwnerText: text, origin: ORIGIN }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }), ...makeInboxTools({ store }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
