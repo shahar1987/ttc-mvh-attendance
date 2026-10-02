@@ -4,7 +4,7 @@
 // מה מותר: לחפש ולקרוא קבצים בדרייב (קריאה בלבד), לקרוא מיילים, ליצור *טיוטות* (לא שולחים מייל אף פעם), לקרוא יומן, ולהוסיף אירוע רק אחרי אישור מפורש.
 import { APPROVAL } from "./tools.js";
 
-const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/drive.readonly"];
+const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose", "https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/tasks"];
 const TZ = "Asia/Jerusalem";
 let cached = { token: "", exp: 0 };
 
@@ -100,6 +100,16 @@ export const GOOGLE_TOOL_DEFS = [
     input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false },
   },
   {
+    name: "list_tasks",
+    description: "המשימות הפתוחות ברשימת המשימות הראשית של הבעלים (Google Tasks — זה מה שיש במקום גוגל קיפ, שאין לו גישה לחשבון פרטי).",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "add_task",
+    description: "מוסיף משימה/תזכורת/פתק לרשימת המשימות של הבעלים ב-Google Tasks. due = YYYY-MM-DD (לא חובה).",
+    input_schema: { type: "object", properties: { title: { type: "string" }, notes: { type: "string" }, due: { type: "string" } }, required: ["title"], additionalProperties: false },
+  },
+  {
     name: "list_events",
     description: "האירועים ביומן הראשי בין שני תאריכים (YYYY-MM-DD, כולל). ברירת מחדל: היום עד עוד 7 ימים.",
     input_schema: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } }, additionalProperties: false },
@@ -128,6 +138,7 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
   };
   const G = "https://gmail.googleapis.com/gmail/v1/users/me";
   const D = "https://www.googleapis.com/drive/v3/files";
+  const T = "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks";
   const raw = async (url) => {
     const r = await fetch(url, { headers: { authorization: `Bearer ${await accessToken(env, store)}` } });
     if (!r.ok) throw new Error(`Google ${r.status}`);
@@ -180,6 +191,17 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
       if (as) return `${f.name}\n${await raw(`${D}/${id}/export?mimeType=${encodeURIComponent(as)}`)}`;
       if (f.mimeType.startsWith("text/") || f.mimeType === "application/json") return `${f.name}\n${await raw(`${D}/${id}?alt=media`)}`;
       return `את הקובץ "${f.name}" (${f.mimeType}) אי אפשר לקרוא כטקסט. קישור: ${f.webViewLink}`;
+    },
+
+    async list_tasks() {
+      const j = await api(`${T}?showCompleted=false&maxResults=50`);
+      if (!j.items?.length) return "אין משימות פתוחות.";
+      return JSON.stringify(j.items.map((t) => ({ title: t.title, notes: t.notes || "", due: t.due?.slice(0, 10) || "" })));
+    },
+
+    async add_task({ title, notes, due }) {
+      const t = await api(T, { method: "POST", body: JSON.stringify({ title, notes, due: /^\d{4}-\d{2}-\d{2}$/.test(due || "") ? `${due}T00:00:00.000Z` : undefined }) });
+      return `נוספה משימה: ${t.title}${due ? ` (עד ${due})` : ""}.`;
     },
 
     async list_events({ from, to } = {}) {

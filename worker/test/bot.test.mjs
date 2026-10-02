@@ -46,6 +46,10 @@ globalThis.fetch = async (url, init = {}) => {
     if (url.includes("/files/f2?")) return json({ name: "פלאייר.pdf", mimeType: "application/pdf", webViewLink: "https://d/f2" });
     return json({ files: [{ id: "f1", name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", modifiedTime: "2026-10-01T10:00:00Z", webViewLink: "https://d/f1" }] });
   }
+  if (url.startsWith("https://tasks.googleapis.com")) {
+    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
+    return init.method === "POST" ? json({ title: JSON.parse(init.body).title }) : json({ items: [{ title: "להזמין כדורים", due: "2026-10-05T00:00:00.000Z" }] });
+  }
   if (url.startsWith("https://www.googleapis.com/calendar")) {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
@@ -185,6 +189,12 @@ assert.match(await callTool("מה כתוב בה?", { name: "read_drive_file", ar
 assert.match(await callTool("ומה בפלאייר?", { name: "read_drive_file", args: { id: "f2" } }), /https:\/\/d\/f2/);
 assert.match(start.headers.get("location"), /drive\.readonly/);
 
+// 8ג. גוגל משימות (במקום קיפ)
+assert.deepEqual(JSON.parse(await callTool("מה המשימות שלי?", { name: "list_tasks", args: {} })), [{ title: "להזמין כדורים", notes: "", due: "2026-10-05" }]);
+assert.match(await callTool("תזכירי לי לקנות רשתות", { name: "add_task", args: { title: "לקנות רשתות", due: "2026-10-06" } }), /נוספה משימה: לקנות רשתות/);
+assert.equal(google.at(-1).body.due, "2026-10-06T00:00:00.000Z");
+assert.match(start.headers.get("location"), /auth%2Ftasks|auth\/tasks/);
+
 // 9. מזג אוויר
 const wx = JSON.parse(await callTool("מה מזג האוויר?", { name: "get_weather", args: { place: "שאר ישוב" } }));
 assert.equal(wx.now.sky, "בהיר ברובו");
@@ -203,5 +213,27 @@ const waits = [];
 await worker.fetch(new Request("https://x/webhook", { method: "POST", body: rawOld, headers: { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(rawOld).digest("hex") } }), oldEnv, { waitUntil: (p) => waits.push(p) });
 await Promise.all(waits);
 assert.equal(texts().at(-1), "שלום מהשמות הישנים");
+
+// 11. תזכורת נוכחות למאמנים: יום ראשון 18:00 בישראל, האימון נגמר ב-17:00
+const { remindCoaches } = await import("../src/reminders.js");
+const { db } = await import("../src/firestore.js");
+const { waConfig } = await import("../../agents/lib/whatsapp.mjs");
+put("groups/g3", { name: "נוער", days: [0], endTime: "17:00", coachIds: ["u1", "u2"] });
+put("groups/g5", { name: "בוגרים", days: [0], endTime: "17:00", coachId: "u1" });
+put("groups/g6", { name: "ערב", days: [0], endTime: "19:30", coachId: "u1" });
+put("users/u1", { name: "יוסי", phone: "050-1234567" });
+put("users/u2", { name: "רון" });
+for (const [p, g] of [["p4", "g3"], ["p5", "g5"], ["p6", "g6"]]) put(`players/${p}`, { name: p, groupId: g, isActive: true });
+put("attendance/2026-10-04_g5_p5", { date: "2026-10-04", groupId: "g5", playerId: "p5", status: "Present" });
+const sunday = new Date("2026-10-04T15:00:00Z");
+const n0 = sent.length;
+const rem = await remindCoaches(env, db(env), waConfig(env), sunday);
+const tpl = sent.slice(n0).filter((b) => b.type === "template");
+assert.equal(tpl.length, 1, "רק המאמן של נוער (בוגרים מילאו, ערב עוד לא נגמר)");
+assert.equal(tpl[0].to, "972501234567");
+assert.deepEqual(tpl[0].template.components[0].parameters.map((p) => p.text), ["יוסי", "נוער"]);
+assert.match(rem, /נוער — רון: אין טלפון שמור/);
+assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
+assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
 
 console.log("all bot tests passed");

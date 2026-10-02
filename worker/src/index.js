@@ -8,6 +8,7 @@ import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { GOOGLE_TOOL_DEFS, makeGoogleTools, oauthRoute } from "./google.js";
 import { waConfig, sendText, typing, downloadMedia } from "../../agents/lib/whatsapp.mjs";
+import { remindCoaches } from "./reminders.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
@@ -32,7 +33,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 - אימונים: אולם שאר ישוב — מתחילים א' וה' 16:30-17:30, מתקדמים א', ב', ה' 17:30-19:00, נבחרת/סגל א' וה' 19:00-21:00. רמת כורזים — מתחילים/מתקדמים ב' וד' 16:30-18:00, בוגרים ב' וד' 18:00-20:00. קיבוץ דפנה — מבוגרים וסטודנטים ב' וה' 19:30-21:00. קבוצת פינג פונג פרקינסון פועלת במועדון.
 - להציע תמיד 2 גרסאות קצרות שונות באופי (לא רק ניסוח שונה), ולשאול אם רוצה עוד.
 
-מייל, יומן ודרייב (Gmail, Google Calendar ו-Google Drive של הבעלים — דרייב לקריאה בלבד, אי אפשר למחוק או לשתף משם):
+מייל, יומן, דרייב ומשימות (Gmail, Google Calendar, Google Drive ו-Google Tasks של הבעלים — דרייב לקריאה בלבד, אי אפשר למחוק או לשתף משם. גוגל קיפ לא זמין לחשבון פרטי, אז פתקים ותזכורות נשמרים ב-Google Tasks):
 - לקרוא, לחפש ולסכם מיילים — מותר. לענות על מייל = ליצור *טיוטה* בלבד (draft_email); אף פעם לא שולחים מייל. לומר לו שהטיוטה מחכה בג'ימייל.
 - יומן: לקרוא חופשי. להוסיף אירוע רק אחרי שהצגת כותרת, תאריך ושעות והוא ענה "כן".
 - אם כלי מחזיר שהמייל לא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
@@ -47,9 +48,10 @@ const ALIASES = { WHATSAPP_TOKEN: "WA_TOKEN", WHATSAPP_PHONE_ID: "WA_PHONE_ID", 
 const withAliases = (env) => ({ ...env, ...Object.fromEntries(Object.entries(ALIASES).filter(([k, old]) => !env[k] && env[old]).map(([k, old]) => [k, env[old]])) });
 
 export default {
-  // 🕵️ מפקח השיחות — פעם ביום (wrangler.toml → triggers)
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(review(withAliases(env)));
+  // wrangler.toml → triggers: 🕵️ מפקח השיחות פעם ביום, ⏰ תזכורת נוכחות למאמנים כל שעה
+  async scheduled(event, rawEnv, ctx) {
+    const env = withAliases(rawEnv);
+    ctx.waitUntil(event.cron === "0 17 * * *" ? review(env) : remindCoaches(env, db(env), waConfig(env)));
   },
 
   async fetch(req, rawEnv, ctx) {
