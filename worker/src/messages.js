@@ -1,8 +1,7 @@
 // ✉️ הודעות שהבעלים מכתיב לשולה — לאנשים לפי שם, לכל המאמנים, או למספר — עכשיו או בשעה שנקבעה.
-// יוצא רק אחרי "שלח"/"כן" על הנוסח והנמענים שהוצגו לו. מתוזמנות נשמרות ב-agentReports/bot.scheduled
-// ויוצאות מה-cron (wrangler.toml). וואטסאפ מרשה לעסק לפתוח שיחה רק בתבנית מאושרת — club_message.
-import { confirmed } from "./tools.js";
-import { sendTemplate } from "../../agents/lib/whatsapp.mjs";
+// ההודעות יוצאות מהמספר של הבעלים: שולה מחזירה לו קישור wa.me לכל נמען, והוא לוחץ "שלח" — הלחיצה היא האישור.
+// מתוזמנות נשמרות ב-agentReports/bot.scheduled, ובשעה שנקבעה הקישורים מגיעים אליו מה-cron (wrangler.toml).
+import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 
@@ -39,18 +38,7 @@ async function resolve(store, to) {
   return { recipients, problems };
 }
 
-async function deliver(wa, recipients, text) {
-  const lines = [];
-  for (const r of recipients) {
-    try {
-      await sendTemplate(wa, r.phone, "club_message", [text]);
-      lines.push(`${r.name} ✓`);
-    } catch (e) {
-      lines.push(`${r.name}: נכשל (${e.message})`);
-    }
-  }
-  return lines.join(" · ");
-}
+const deliver = (recipients, text) => recipients.map((r) => `${r.name}: ${waLink(r.phone, text)}`).join("\n");
 
 // שעון ישראל → ISO UTC. "2026-10-05T18:00" (מניחים +03:00 בקיץ / +02:00 בחורף לפי Intl)
 function israelToUtc(local) {
@@ -63,7 +51,7 @@ export const MESSAGE_TOOL_DEFS = [
   {
     name: "send_message",
     description:
-      "שולח הודעת וואטסאפ בשם המועדון. to = רשימה של שמות (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). מותר רק אחרי שהבעלים ענה 'שלח'/'כן' על הנוסח המדויק, הנמענים והשעה שהצגת לו. אי אפשר לשלוח לקבוצת וואטסאפ — שולחים לכל אחד בנפרד.",
+      "מכין הודעת וואטסאפ שהבעלים שולח מהמספר שלו: מחזיר קישור לכל נמען, שפותח את הוואטסאפ שלו עם הטקסט מוכן. to = רשימה של שמות (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). בשעה שנקבעה הקישורים יגיעו לבעלים. את הקישורים להעביר לו כמו שהם, כל אחד בשורה. לקבוצת וואטסאפ אין קישור — להציע לו להעתיק את הנוסח לקבוצה.",
     input_schema: {
       type: "object",
       properties: { to: { type: "array", items: { type: "string" } }, text: { type: "string" }, at: { type: "string" } },
@@ -83,7 +71,7 @@ export const MESSAGE_TOOL_DEFS = [
   },
 ];
 
-export function makeMessageTools({ store, wa, lastOwnerText, turn }) {
+export function makeMessageTools({ store }) {
   return {
     async preview_recipients({ to }) {
       const { recipients, problems } = await resolve(store, to);
@@ -93,8 +81,6 @@ export function makeMessageTools({ store, wa, lastOwnerText, turn }) {
     async send_message({ to, text, at }) {
       const { recipients, problems } = await resolve(store, to);
       if (!recipients.length) return `לא נשלח: אין נמענים. ${problems.join("; ")}`;
-      if (!(await confirmed(store, "message", { to, text, at }, lastOwnerText, turn)))
-        return `עוד לא נשלח. להציג לבעלים בדיוק: הנוסח, הנמענים (${recipients.map((r) => r.name).join(", ")}) והשעה, ולשאול "לשלוח?". אחרי "כן" — לקרוא שוב עם אותם פרטים בדיוק.`;
       const note = problems.length ? ` (דילגתי: ${problems.join("; ")})` : "";
       if (at && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) {
         const due = israelToUtc(at);
@@ -105,7 +91,7 @@ export function makeMessageTools({ store, wa, lastOwnerText, turn }) {
           return `תוזמן ל-${at.replace("T", " ")} (מזהה ${id}) ל: ${recipients.map((r) => r.name).join(", ")}${note}`;
         }
       }
-      return `נשלח: ${await deliver(wa, recipients, text)}${note}`;
+      return `ללחוץ על כל קישור ואז "שלח":\n${deliver(recipients, text)}${note}`;
     },
 
     async scheduled_messages({ cancel } = {}) {
@@ -121,14 +107,14 @@ export function makeMessageTools({ store, wa, lastOwnerText, turn }) {
   };
 }
 
-// מה-cron: שולח את מה שהגיע זמנו ומדווח לבעלים
-export async function sendDue(store, wa, now = new Date()) {
+// מה-cron: מחזיר את הקישורים של מה שהגיע זמנו (index.js מעביר אותם לבעלים)
+export async function sendDue(store, now = new Date()) {
   const bot = (await store.get("agentReports/bot")) || {};
   const due = (bot.scheduled || []).filter((m) => m.due <= now.toISOString());
   if (!due.length) return [];
   await store.merge("agentReports/bot", { scheduled: (bot.scheduled || []).filter((m) => m.due > now.toISOString()) });
   const lines = [];
-  for (const m of due) lines.push(`• ${m.at.replace("T", " ")}: ${await deliver(wa, m.recipients, m.text)}`);
+  for (const m of due) lines.push(`• ${m.at.replace("T", " ")}:\n${deliver(m.recipients, m.text)}`);
   return lines;
 }
 
