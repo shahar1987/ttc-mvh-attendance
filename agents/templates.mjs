@@ -34,6 +34,12 @@ export const TEMPLATES = {
     body: `שלום {{1}}, שמנו לב שלא הגעת לשני האימונים האחרונים.\nהכל בסדר? נשמח לדעת אם צריך משהו.\n${SIGNATURE}`,
     example: ["דני"],
   },
+  // למאמן שלא מילא נוכחות (worker/src/reminders.js). {{1}}=שם המאמן, {{2}}=שם הקבוצה
+  coach_attendance_reminder: {
+    category: "UTILITY",
+    body: `היי {{1}}, תזכורת ידידותית למלא נוכחות עבור קבוצת {{2}} להיום.\nתודה!\n${SIGNATURE}`,
+    example: ["דני", "מתחילים"],
+  },
   // לשולה: דוח הבוקר כשחלון 24 השעות סגור. {{1}}=סיכום בשורה אחת
   agent_daily_report: {
     category: "UTILITY",
