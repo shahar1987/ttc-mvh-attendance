@@ -43,7 +43,7 @@ export const META_TOOL_DEFS = [
   {
     name: "publish_post",
     description:
-      "מפרסם פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. מותר רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה והפלטפורמה שהצגת לו. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. אינסטגרם חייב תמונה.",
+      "מפרסם פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה והפלטפורמה שהצגת לו. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. אינסטגרם חייב תמונה.",
     input_schema: {
       type: "object",
       properties: { platform: { type: "string", enum: ["facebook", "instagram", "both"] }, text: { type: "string" }, image: { type: "string" } },
@@ -62,9 +62,9 @@ export function makeMetaTools({ env, store, lastOwnerText, origin }) {
   };
   return {
     async publish_post({ platform, text, image }) {
-      if (!APPROVAL.test(lastOwnerText)) return "לא פורסם: הבעלים עוד לא אישר. להציג לו את הנוסח המדויק, התמונה והפלטפורמה ולשאול.";
       const page = (await store.get("agentReports/social"))?.pages?.[0];
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(env, origin)}`;
+      if (!APPROVAL.test(lastOwnerText)) return "לא פורסם: הבעלים עוד לא אישר. להציג לו את הנוסח המדויק, התמונה והפלטפורמה ולשאול.";
       const img = image && (/^https?:\/\//.test(image) ? image : await mediaUrl(env, origin, image.replace(/\D/g, "")));
       const done = [];
       if (platform !== "instagram") {
