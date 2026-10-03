@@ -175,6 +175,9 @@ async function gemini(env, body) {
   throw lastErr;
 }
 
+// ponytail: היוריסטיקה על נוסח התשובה; אם שולה תמציא ניסוחים אחרים — להוסיף כאן
+const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
+
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ env, store, origin: ORIGIN }) };
 
@@ -192,6 +195,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 
+  let askedClaude = false, nudged = false;
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
@@ -202,8 +206,17 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
     });
     const calls = parts.filter((p) => p.functionCall);
     if (!calls.length) {
-      return { answer: parts.map((p) => p.text || "").join("").trim() || "👍", userTurn };
+      const answer = parts.map((p) => p.text || "").join("").trim() || "👍";
+      // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — אומרים שנכשל
+      if (CLAIMS_HANDOFF.test(answer) && !askedClaude) {
+        if (nudged) return { answer: "לא הצלחתי להעביר את זה לקלוד. אפשר לנסות שוב?", userTurn };
+        nudged = true;
+        contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-ask_claude, אז שום דבר לא הועבר לקלוד. אם התכוונת להעביר — קרא/י עכשיו ל-ask_claude עם הבקשה המלאה. אחרת ענה/י בלי לטעון שהעברת." }] });
+        continue;
+      }
+      return { answer, userTurn };
     }
+    if (calls.some((c) => c.functionCall.name === "ask_claude")) askedClaude = true;
     contents.push({ role: "model", parts });
     const results = await Promise.all(
       calls.map(async ({ functionCall: { name, args } }) => {
