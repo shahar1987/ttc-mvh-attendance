@@ -207,9 +207,9 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
     const calls = parts.filter((p) => p.functionCall);
     if (!calls.length) {
       const answer = parts.map((p) => p.text || "").join("").trim() || "👍";
-      // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — אומרים שנכשל
+      // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — מעבירים בעצמנו
       if (CLAIMS_HANDOFF.test(answer) && !askedClaude) {
-        if (nudged) return { answer: "לא הצלחתי להעביר את זה לקלוד. אפשר לנסות שוב?", userTurn };
+        if (nudged) return { answer: String(await tools.ask_claude({ request: media ? `${text} (צורפה תמונה)` : text })), userTurn };
         nudged = true;
         contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-ask_claude, אז שום דבר לא הועבר לקלוד. אם התכוונת להעביר — קרא/י עכשיו ל-ask_claude עם הבקשה המלאה. אחרת ענה/י בלי לטעון שהעברת." }] });
         continue;
