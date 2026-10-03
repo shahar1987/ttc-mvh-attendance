@@ -288,8 +288,10 @@ globalThis.fetch = async (url, init = {}) => {
   return realFetch(url, init);
 };
 env.ROUTINE_ID = "trig_x";
+delete docs.get("agentReports/bot").claudeLinkAt; // הקישור כבר נשלח בבדיקה 14
 const ck = (await callTool("מה ביומן?", { name: "ask_claude", args: { request: "מה ביומן" } })).match(/https:\/\/x\/claude\/start\?k=(\w+)/)[1];
 assert.equal(fires.length, 0, "בלי מפתח — לא מפעילים, שולחים קישור חיבור");
+assert.doesNotMatch(await callTool("ומה במייל?", { name: "ask_claude", args: { request: "מה במייל" } }), /claude\/start/, "הקישור נשלח לכל היותר פעם ביום");
 assert.equal((await worker.fetch(new Request("https://x/claude/start?k=wrong"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/claude/start?k=${ck}`), env, {})).text(), /Generate token/);
 assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "bad" }) }), env, {})).status, 400);

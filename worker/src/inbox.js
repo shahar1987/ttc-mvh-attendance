@@ -74,7 +74,11 @@ export function makeInboxTools({ env, store, origin }) {
       const id = Math.random().toString(36).slice(2, 8);
       await store.merge("agentReports/bot", { inbox: [...(bot.inbox || []), { id, at: new Date().toISOString(), request, status: "open" }].slice(-30) });
       if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
-      return `נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה. כדי שכל בקשה תגיע לקלוד מיד — לשלוח לבעלים את הקישור הזה (חיבור חד-פעמי): ${origin}/claude/start?k=${await issueKey(store, "claude")}`;
+      const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה.";
+      // קישור ההפעלה המיידית נשלח לכל היותר פעם ביום, כדי לא לנדנד בכל בקשה
+      if (Date.now() - new Date(bot.claudeLinkAt || 0).getTime() < 24 * 3600 * 1000) return base;
+      await store.merge("agentReports/bot", { claudeLinkAt: new Date().toISOString() });
+      return `${base} להוסיף פעם אחת, במילים האלה בדיוק: "אם תרצה שהתשובות יגיעו מיד במקום עד שעה, יש צעד חד-פעמי (לא קשור לגוגל): לפתוח את הקישור, להדביק שם את מפתח ה-API של המשימה בקלוד וללחוץ שמירה" ואת הקישור: ${origin}/claude/start?k=${await issueKey(store, "claude")}`;
     },
   };
 }
