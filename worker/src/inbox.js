@@ -3,7 +3,7 @@
 // ב-GET /inbox, עונה ב-POST /inbox, והתשובה נשלחת לבעלים בוואטסאפ.
 // המפתח עצמו שמור רק ברוטינה; כאן (ריפו ציבורי) רק ה-SHA-256 שלו.
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { connectKey } from "./google.js";
+import { issueKey, checkKey, dropKey } from "./google.js";
 
 // ⚡ הפעלה מיידית: כשנכנסת בקשה, ה-worker מפעיל את המשימה הקבועה של קלוד דרך ה-API (במקום לחכות לריצה השעתית).
 // מפתח ה-API של המשימה נוצר בממשק של קלוד והבעלים מדביק אותו פעם אחת בדף /claude/start (נשמר ב-agentReports/claude).
@@ -20,14 +20,15 @@ async function fireRoutine(env, store, id) {
 
 const page = (body, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${body}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
-// /claude/start — דף חד-פעמי להדבקת מפתח המשימה. אותו מפתח קישור כמו /google/start (נשלח רק לבעלים).
+// /claude/start — דף חד-פעמי להדבקת מפתח המשימה. מפתח קישור משלו, פג אחרי 30 דקות ונמחק אחרי שמירה.
 export async function claudeRoute(req, env, store) {
   const url = new URL(req.url);
-  if (url.searchParams.get("k") !== (await connectKey(env))) return new Response("forbidden", { status: 403 });
+  if (!(await checkKey(store, "claude", url.searchParams.get("k")))) return new Response("forbidden", { status: 403 });
   if (req.method === "POST") {
     const tok = String((await req.formData()).get("token") || "").trim();
     if (!tok.startsWith("sk-ant-")) return page("המפתח צריך להתחיל ב-sk-ant-. לחזור אחורה ולהדביק שוב.", 400);
     await store.merge("agentReports/claude", { token: tok, at: new Date().toISOString() });
+    await dropKey(store, "claude");
     return page("✅ נשמר. מעכשיו כל בקשת מייל/יומן/דרייב מגיעה לקלוד מיד.");
   }
   return page(`<h2>חיבור מהיר של שולה לקלוד</h2><ol style="line-height:1.7">
@@ -73,7 +74,7 @@ export function makeInboxTools({ env, store, origin }) {
       const id = Math.random().toString(36).slice(2, 8);
       await store.merge("agentReports/bot", { inbox: [...(bot.inbox || []), { id, at: new Date().toISOString(), request, status: "open" }].slice(-30) });
       if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
-      return `נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה. כדי שכל בקשה תגיע לקלוד מיד — לשלוח לבעלים את הקישור הזה (חיבור חד-פעמי): ${origin}/claude/start?k=${await connectKey(env)}`;
+      return `נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה. כדי שכל בקשה תגיע לקלוד מיד — לשלוח לבעלים את הקישור הזה (חיבור חד-פעמי): ${origin}/claude/start?k=${await issueKey(store, "claude")}`;
     },
   };
 }

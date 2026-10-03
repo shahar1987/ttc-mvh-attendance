@@ -176,7 +176,7 @@ async function gemini(env, body) {
 }
 
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ env, store, origin: ORIGIN }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ env, store, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
