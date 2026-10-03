@@ -279,6 +279,12 @@ assert.equal(ans.status, 200);
 assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה מקלוד.*אימון ב-17:00/s);
 assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
+const n4 = sent.length;
+const push = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ notify: "בוקר טוב\n1. לשלם גז" }) }), ienv, {});
+assert.equal(push.status, 200);
+assert.equal(sent.slice(n4).filter((b) => b.to === "972500000000").length, 1, "הודעה יזומה יוצאת רק לבעלים");
+assert.match(docs.get("agentReports/bot").outbox.claude.text, /לשלם גז/);
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad", { method: "POST", body: JSON.stringify({ notify: "x" }) }), ienv, {})).status, 403);
 
 // 15. הפעלה מיידית של קלוד: הדבקת מפתח בדף /claude/start, ואז ask_claude מפעיל את המשימה מיד
 const fires = [];
