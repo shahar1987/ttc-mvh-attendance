@@ -46,7 +46,14 @@ export async function inboxRoute(req, env, store, wa) {
   const bot = (await store.get("agentReports/bot")) || {};
   const inbox = bot.inbox || [];
   if (req.method === "GET") return Response.json(inbox.filter((x) => x.status === "open"));
-  const { id, answer } = await req.json();
+  const { id, answer, notify } = await req.json();
+  // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
+  if (notify && !id) {
+    const text = String(notify).slice(0, 3500);
+    await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), claude: { at: new Date().toISOString(), text } } });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
+    return Response.json({ ok: true });
+  }
   const item = inbox.find((x) => x.id === id && x.status === "open");
   if (!item || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
