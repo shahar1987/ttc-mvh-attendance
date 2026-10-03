@@ -3,27 +3,28 @@
 // ב-agentReports/social (האוסף חסום לאפליקציה בחוקי Firestore). טוקן דף שמגיע מטוקן משתמש ארוך לא פג.
 // מה מותר: לפרסם רק אחרי "כן" מפורש בהודעה האחרונה, על טקסט ותמונה שהוצגו לו. אין מחיקה ואין עריכה.
 import { confirmed } from "./tools.js";
-import { connectKey } from "./google.js";
+import { sign, issueKey, checkKey, dropKey } from "./google.js";
 import { waConfig, downloadMedia } from "../../agents/lib/whatsapp.mjs";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
-const metaKey = (env) => connectKey(env, "meta");
-export const metaLink = async (env, origin) => `${origin}/meta/start?k=${await metaKey(env)}`;
-const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?k=${await metaKey(env)}`;
+export const metaLink = async (store, origin) => `${origin}/meta/start?k=${await issueKey(store, "meta")}`;
+const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?t=${await sign(env, `media:${id}`)}`;
 
 // /meta/start, /meta/callback, /meta/media/<id של תמונה מהוואטסאפ> (כדי שאינסטגרם תוכל להוריד אותה)
 export async function metaRoute(req, env, store) {
   const url = new URL(req.url);
-  const key = await metaKey(env);
-  if (url.searchParams.get(url.pathname === "/meta/callback" ? "state" : "k") !== key) return new Response("forbidden", { status: 403 });
+  if (url.pathname.startsWith("/meta/media/")) {
+    const id = url.pathname.split("/").pop();
+    if (url.searchParams.get("t") !== (await sign(env, `media:${id}`))) return new Response("forbidden", { status: 403 });
+    const m = await downloadMedia(waConfig(env), id);
+    return new Response(Buffer.from(m.data, "base64"), { headers: { "content-type": m.mimeType } });
+  }
+  const key = url.searchParams.get(url.pathname === "/meta/callback" ? "state" : "k");
+  if (!(await checkKey(store, "meta", key))) return new Response("forbidden", { status: 403 });
   const redirect = `${url.origin}/meta/callback`;
   if (url.pathname === "/meta/start") {
     return Response.redirect(`https://www.facebook.com/v24.0/dialog/oauth?${new URLSearchParams({ client_id: env.META_APP_ID, redirect_uri: redirect, scope: SCOPES, state: key })}`, 302);
-  }
-  if (url.pathname.startsWith("/meta/media/")) {
-    const m = await downloadMedia(waConfig(env), url.pathname.split("/").pop());
-    return new Response(Buffer.from(m.data, "base64"), { headers: { "content-type": m.mimeType } });
   }
   const get = async (path, q) => (await fetch(`${GRAPH}/${path}?${new URLSearchParams(q)}`)).json();
   const app = { client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET };
@@ -35,6 +36,7 @@ export async function metaRoute(req, env, store) {
     pages: pages.data.map((p) => ({ id: p.id, name: p.name, token: p.access_token, ig: p.instagram_business_account?.id || "", igName: p.instagram_business_account?.username || "" })),
     connectedAt: new Date().toISOString(),
   });
+  await dropKey(store, "meta");
   return html(`✅ שולה מחוברת ל: ${pages.data.map((p) => p.name + (p.instagram_business_account ? ` + אינסטגרם @${p.instagram_business_account.username}` : "")).join(", ")}. אפשר לחזור לוואטסאפ.`);
 }
 const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
@@ -63,7 +65,7 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
   return {
     async publish_post({ platform, text, image }) {
       const page = (await store.get("agentReports/social"))?.pages?.[0];
-      if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(env, origin)}`;
+      if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(store, origin)}`;
       if (!(await confirmed(store, "post", { platform, text, image }, lastOwnerText, turn)))
         return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח, התמונה והפלטפורמה ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const img = image && (/^https?:\/\//.test(image) ? image : await mediaUrl(env, origin, image.replace(/\D/g, "")));
