@@ -67,13 +67,21 @@ export const INBOX_TOOL_DEFS = [
   {
     name: "ask_claude",
     description:
-      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב) וסקילים: מחקר, מסמכים/אקסל/מצגות/PDF, תמונות וסרטונים, עיצוב אתרים, SEO, שכתוב טקסט, שינוי באפליקציית הנוכחות. קלוד עונה תוך דקות, והתשובה (טקסט או קישור לקובץ) מגיעה לבעלים בוואטסאפ. request = הבקשה המלאה במילים של הבעלים: מה, בשביל מי, פורמט, מקור נתונים, דגשים.",
+      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב) וסקילים: מחקר, מסמכים/אקסל/מצגות/PDF, תמונות וסרטונים, עיצוב אתרים, SEO, שכתוב טקסט, שינוי באפליקציית הנוכחות. התשובה (טקסט או קישור לקובץ) מגיעה לבעלים בוואטסאפ; כמה זמן זה ייקח — רק מה שהכלי מחזיר, לא להבטיח פחות. request = הבקשה המלאה במילים של הבעלים: מה, בשביל מי, פורמט, מקור נתונים, דגשים.",
     input_schema: { type: "object", properties: { request: { type: "string" } }, required: ["request"], additionalProperties: false },
+  },
+  {
+    name: "claude_link",
+    description: "קישור חד-פעמי לדף שבו הבעלים מדביק את מפתח ההפעלה המיידית של קלוד (כדי שתשובות יגיעו תוך דקות במקום עד שעה). רק כשהבעלים מבקש את הקישור או שואל למה התשובות מקלוד איטיות. להעביר את הקישור כמו שהוא.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
 ];
 
 export function makeInboxTools({ env, store, origin }) {
   return {
+    async claude_link() {
+      return `${origin}/claude/start?k=${await issueKey(store, "claude")} (תקף 30 דקות. בדף: המשימה של שולה בקלוד ← עריכה ← Add another trigger ← API ← Generate token ← להדביק ← שמירה)`;
+    },
     async ask_claude({ request }) {
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
