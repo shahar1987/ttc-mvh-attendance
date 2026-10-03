@@ -47,10 +47,11 @@ export async function inboxRoute(req, env, store, wa) {
   const inbox = bot.inbox || [];
   if (req.method === "GET") return Response.json(inbox.filter((x) => x.status === "open"));
   const { id, answer, notify } = await req.json();
-  // 📣 הודעה יזומה מקלוד (למשל משימת הקמפיין היומית). נכנסת ל-outbox כדי ששולה תבין תשובה עליה.
-  if (notify) {
-    await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), claude_daily: { at: new Date().toISOString(), text: notify } } });
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📣 *מקלוד*\n\n${notify}`, template: "agent_alert", templateParam: "יש הודעה חדשה מקלוד, כתוב לשולה כדי לראות אותה" });
+  // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
+  if (notify && !id) {
+    const text = String(notify).slice(0, 3500);
+    await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), claude: { at: new Date().toISOString(), text } } });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
     return Response.json({ ok: true });
   }
   const item = inbox.find((x) => x.id === id && x.status === "open");

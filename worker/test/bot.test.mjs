@@ -280,9 +280,10 @@ assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה �
 assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
 const n4 = sent.length;
-assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ notify: "היום לצלם באימון" }) }), ienv, {})).status, 200);
-assert.match(sent.slice(n4).map((b) => b.text?.body || "").join(), /מקלוד.*היום לצלם באימון/s, "הודעה יזומה מקלוד");
-assert.equal(docs.get("agentReports/bot").outbox.claude_daily.text, "היום לצלם באימון");
+const push = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ notify: "בוקר טוב\n1. לשלם גז" }) }), ienv, {});
+assert.equal(push.status, 200);
+assert.equal(sent.slice(n4).filter((b) => b.to === "972500000000").length, 1, "הודעה יזומה יוצאת רק לבעלים");
+assert.match(docs.get("agentReports/bot").outbox.claude.text, /לשלם גז/);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad", { method: "POST", body: JSON.stringify({ notify: "x" }) }), ienv, {})).status, 403);
 
 // 15. הפעלה מיידית של קלוד: הדבקת מפתח בדף /claude/start, ואז ask_claude מפעיל את המשימה מיד
