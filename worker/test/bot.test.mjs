@@ -286,6 +286,20 @@ assert.equal(sent.slice(n4).filter((b) => b.to === "972500000000").length, 1, "�
 assert.match(docs.get("agentReports/bot").outbox.claude.text, /לשלם גז/);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad", { method: "POST", body: JSON.stringify({ notify: "x" }) }), ienv, {})).status, 403);
 
+// 14ב. "העברתי לקלוד" בלי לקרוא לכלי — תזכורת פעם אחת, ואם שוב לא — המערכת מעבירה בעצמה. עם הכלי — עובר כרגיל.
+geminiQueue.push([{ text: "העברתי את זה לקלוד, הוא יחזור אליך." }], [{ text: "בסדר, העברתי לקלוד." }]);
+const openBefore = ((docs.get("agentReports/bot") || {}).inbox || []).length;
+await webhook("🎤 תכיני לי תמונה לקמפיין עם הלוגואים");
+assert.match(geminiCalls.at(-1).contents.at(-1).parts[0].text, /לא קראת ל-ask_claude/);
+assert.match(texts().at(-1), /נרשם|נשלח לקלוד/);
+const inbox14 = (docs.get("agentReports/bot") || {}).inbox || [];
+assert.equal(inbox14.length, openBefore + 1, "הבקשה נרשמה בתיבה למרות שג'מיני לא קרא לכלי");
+assert.equal(inbox14.at(-1).request, "🎤 תכיני לי תמונה לקמפיין עם הלוגואים");
+geminiQueue.push([{ text: "רגע, מעבירה לקלוד." }], [{ functionCall: { name: "ask_claude", args: { request: "תמונה לקמפיין עם הלוגואים" } } }], [{ text: "העברתי לקלוד, הוא יענה בוואטסאפ." }]);
+await webhook("נסי שוב");
+assert.equal(((docs.get("agentReports/bot") || {}).inbox || []).length, openBefore + 2);
+assert.match(texts().at(-1), /העברתי לקלוד/);
+
 // 15. הפעלה מיידית של קלוד: הדבקת מפתח בדף /claude/start, ואז ask_claude מפעיל את המשימה מיד
 const fires = [];
 const realFetch = globalThis.fetch;
