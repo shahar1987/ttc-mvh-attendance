@@ -234,7 +234,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
     );
     contents.push({ role: "user", parts: results });
   }
-  return { answer: "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn };
+  return { answer: askedClaude ? "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ." : "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn };
 }
 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).

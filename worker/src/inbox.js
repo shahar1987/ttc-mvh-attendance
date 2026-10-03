@@ -1,5 +1,5 @@
 // 📮 תיבת בקשות לקלוד: מה ששולה לא יכולה לעשות בעצמה (מייל, יומן, דרייב דרך חיבורי הגוגל של הבעלים בקלוד,
-// או כל משימה אחרת) נרשם ב-agentReports/bot.inbox. רוטינה של קלוד (פעם בשעה) מושכת את הבקשות הפתוחות
+// או כל משימה אחרת) נרשם כמסמך agentReports/ask_<id>. רוטינה של קלוד (פעם בשעה) מושכת את הבקשות הפתוחות
 // ב-GET /inbox, עונה ב-POST /inbox, והתשובה נשלחת לבעלים בוואטסאפ.
 // המפתח עצמו שמור רק ברוטינה; כאן (ריפו ציבורי) רק ה-SHA-256 שלו.
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
@@ -44,8 +44,8 @@ export async function inboxRoute(req, env, store, wa) {
   const url = new URL(req.url);
   if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
   const bot = (await store.get("agentReports/bot")) || {};
-  const inbox = bot.inbox || [];
-  if (req.method === "GET") return Response.json(inbox.filter((x) => x.status === "open"));
+  // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
+  if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
   const { id, answer, notify } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
@@ -54,13 +54,11 @@ export async function inboxRoute(req, env, store, wa) {
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
     return Response.json({ ok: true });
   }
-  const item = inbox.find((x) => x.id === id && x.status === "open");
-  if (!item || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
+  const item = id && (await store.get(`agentReports/ask_${id}`));
+  if (!item || item.inboxStatus !== "open" || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
-  await store.merge("agentReports/bot", {
-    inbox: inbox.map((x) => (x === item ? { ...x, status: "done", answer, doneAt: at } : x)).slice(-30),
-    outbox: { ...(bot.outbox || {}), claude: { at, text: `על "${item.request}": ${answer}` } },
-  });
+  await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
+  await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), claude: { at, text: `על "${item.request}": ${answer}` } } });
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`, template: "agent_alert", templateParam: "יש תשובה מקלוד לבקשה שלך" });
   return Response.json({ ok: true });
 }
@@ -79,7 +77,7 @@ export function makeInboxTools({ env, store, origin }) {
     async ask_claude({ request }) {
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
-      await store.merge("agentReports/bot", { inbox: [...(bot.inbox || []), { id, at: new Date().toISOString(), request, status: "open" }].slice(-30) });
+      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open" });
       if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
       const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה.";
       // קישור ההפעלה המיידית נשלח לכל היותר פעם ביום, כדי לא לנדנד בכל בקשה
