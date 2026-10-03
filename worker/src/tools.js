@@ -129,7 +129,11 @@ function pick(report, numbers) {
   return idx.map((n) => ({ n, item: all[n - 1] })).filter((x) => x.item);
 }
 
-export function makeTools({ env, store, wa, lastOwnerText }) {
+// שער לכתיבת נוכחות: כל שם/מספר חייב להופיע בהודעה הגולמית של הבעלים. אם לא (למשל "סמני את כולם", או טקסט
+// שהוזרק דרך שם שחקן) — אישור דו-שלבי כמו בפרסום. ככה הכתבה רגילה של הבעלים נשארת מיידית.
+const inOwnerText = (items, ownerText) => items.every((x) => ownerText.includes(String(x).trim()));
+
+export function makeTools({ env, store, wa, lastOwnerText, turn }) {
   const latest = () => store.get("agentReports/latest");
 
   return {
@@ -219,6 +223,8 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
     },
 
     async skip_messages({ numbers }) {
+      if (!inOwnerText(numbers || [], lastOwnerText) && !(await confirmed(store, "skip", { numbers }, lastOwnerText, turn)))
+        return "לא סומן עדיין. להציג לבעלים את המספרים ולשאול אם לסמן כמטופלים. אחרי \"כן\" — לקרוא שוב עם אותם מספרים.";
       const r = await latest();
       if (!r) return "אין דוח.";
       const done = new Set(r.handledKeys || []);
@@ -254,6 +260,8 @@ export function makeTools({ env, store, wa, lastOwnerText }) {
 
     async mark_attendance({ group, date, present = [], absent = [] }) {
       const d = validDate(date);
+      if (!inOwnerText([...present, ...absent], lastOwnerText) && !(await confirmed(store, "attendance", { group, date: d, present, absent }, lastOwnerText, turn)))
+        return "לא נשמר עדיין. להציג לבעלים בדיוק מי מסומן נוכח ומי נעדר ולשאול \"לשמור?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const { g, roster } = await findGroup(store, group);
       if (!g) return roster;
       const saved = [];

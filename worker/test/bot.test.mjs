@@ -127,6 +127,15 @@ const att = JSON.parse(geminiCalls.at(-1).contents.at(-1).parts[0].functionRespo
 assert.deepEqual(att, { group: "מתחילים שאר ישוב", date: "2026-10-01", present: ["נועה לוי"], absent: [], unmarked: ["דני כהן", "דני לוי"] });
 assert.equal(geminiCalls.at(-2).contents.length, 3, "שתי הודעות היסטוריה + החדשה");
 
+// 1ב. שמות שלא הופיעו בהודעה של הבעלים (למשל הזרקה דרך שם שחקן) — לא נשמרים בלי "כן" נפרד
+geminiQueue.push([{ functionCall: { name: "mark_attendance", args: { group: "מתחילים", date: "2026-10-02", present: ["נועה"], absent: [] } } }], [{ text: "ok" }]);
+await webhook("מה המצב בקבוצה?");
+assert.equal(docs.has("attendance/2026-10-02_g1_p2"), false, "שם שלא בהודעה — לא נשמר");
+assert.match(geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result, /לא נשמר עדיין/);
+geminiQueue.push([{ functionCall: { name: "mark_attendance", args: { group: "מתחילים", date: "2026-10-02", present: ["נועה"], absent: [] } } }], [{ text: "ok" }]);
+await webhook("כן");
+assert.equal(docs.get("attendance/2026-10-02_g1_p2").status, "Present", "אחרי כן נפרד — נשמר");
+
 // 3. מספר זר — מתעלמים
 const before = sent.length;
 await webhook("היי", "972511111111");
@@ -214,7 +223,7 @@ const notMeta = await callTool("תחברי את פייסבוק", { name: "publis
 const metaLink = notMeta.match(/https:\/\/x\/meta\/start\?k=\w+/)?.[0];
 assert.ok(metaLink, "בלי חיבור — שולחים קישור");
 const mk = new URL(metaLink).searchParams.get("k");
-assert.notEqual(mk, await (await import("../src/google.js")).connectKey(env), "מפתח נפרד מגוגל");
+assert.equal((await worker.fetch(new Request("https://x/meta/media/777?t=nope"), env, {})).status, 403, "תמונה בלי חתימה — חסום");
 assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
@@ -222,7 +231,8 @@ assert.equal(docs.get("agentReports/social").pages[0].token, "ptok");
 assert.match(await callTool("כן תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /עוד לא פורסם/, "כן בתוך הבקשה עצמה לא מפרסם");
 assert.equal(social.length, 0);
 assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
-assert.equal(social[0].body.url, `https://x/meta/media/777?k=${mk}`);
+assert.match(social[0].body.url, /^https:\/\/x\/meta\/media\/777\?t=\w+$/);
+assert.equal((await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).status, 403, "מפתח חיבור חד-פעמי: אחרי שימוש — חסום");
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
 
@@ -278,12 +288,15 @@ globalThis.fetch = async (url, init = {}) => {
   return realFetch(url, init);
 };
 env.ROUTINE_ID = "trig_x";
+delete docs.get("agentReports/bot").claudeLinkAt; // הקישור כבר נשלח בבדיקה 14
 const ck = (await callTool("מה ביומן?", { name: "ask_claude", args: { request: "מה ביומן" } })).match(/https:\/\/x\/claude\/start\?k=(\w+)/)[1];
 assert.equal(fires.length, 0, "בלי מפתח — לא מפעילים, שולחים קישור חיבור");
+assert.doesNotMatch(await callTool("ומה במייל?", { name: "ask_claude", args: { request: "מה במייל" } }), /claude\/start/, "הקישור נשלח לכל היותר פעם ביום");
 assert.equal((await worker.fetch(new Request("https://x/claude/start?k=wrong"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/claude/start?k=${ck}`), env, {})).text(), /Generate token/);
 assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "bad" }) }), env, {})).status, 400);
 assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`, { method: "POST", body: new URLSearchParams({ token: "sk-ant-oat01-abc" }) }), env, {})).status, 200);
+assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${ck}`), env, {})).status, 403, "מפתח נמחק אחרי שמירה");
 assert.match(await callTool("מה במייל?", { name: "ask_claude", args: { request: "מה במייל" } }), /כבר עובד/);
 assert.equal(fires.length, 1);
 assert.match(fires[0].url, /routines\/trig_x\/fire$/);

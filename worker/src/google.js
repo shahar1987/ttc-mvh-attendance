@@ -11,12 +11,30 @@ export const DIRECT = /^(list_events|create_event|list_tasks|add_task)$/;
 const TZ = "Asia/Jerusalem";
 let cached = { token: "", exp: 0 };
 
-export async function connectKey(env, label = "google") {
+// חתימה קבועה לכתובת של תמונה אחת (/meta/media/<id>): מאפשרת למשוך רק את התמונה הזו, לא לחבר כלום
+export async function sign(env, label) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.META_APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(label)));
   return [...mac.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-export const connectLink = async (env, origin) => `${origin}/google/start?k=${await connectKey(env)}`;
+// מפתחות החיבור (גוגל/מטא/קלוד): אקראיים, נשמרים ב-agentReports/bot.keys, פגים אחרי 30 דקות ונמחקים אחרי שימוש מוצלח.
+// ככה קישור ישן בוואטסאפ או בהיסטוריה לא שווה כלום.
+const KEY_TTL = 30 * 60 * 1000;
+export async function issueKey(store, label) {
+  const bot = (await store.get("agentReports/bot")) || {};
+  const key = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  await store.merge("agentReports/bot", { keys: { ...(bot.keys || {}), [label]: { key, exp: Date.now() + KEY_TTL } } });
+  return key;
+}
+export async function checkKey(store, label, k) {
+  const e = ((await store.get("agentReports/bot")) || {}).keys?.[label];
+  return !!k && !!e && e.key === k && e.exp > Date.now();
+}
+export async function dropKey(store, label) {
+  const bot = (await store.get("agentReports/bot")) || {};
+  await store.merge("agentReports/bot", { keys: { ...(bot.keys || {}), [label]: null } });
+}
+export const connectLink = async (store, origin) => `${origin}/google/start?k=${await issueKey(store, "google")}`;
 
 // מפתח ה-OAuth: מ-Cloudflare אם הוגדר שם, אחרת ממה שהבעלים הדביק בדף /google/start (נשמר ב-agentReports/google)
 async function client(env, store) {
@@ -39,10 +57,10 @@ const setupPage = (redirect) =>
 // /google/start ו-/google/callback. רק מי שמחזיק את המפתח (נשלח רק לבעלים בוואטסאפ) יכול לחבר חשבון.
 export async function oauthRoute(req, env, store) {
   const url = new URL(req.url);
-  const key = await connectKey(env);
+  const key = url.searchParams.get(url.pathname === "/google/callback" ? "state" : "k");
+  if (!(await checkKey(store, "google", key))) return new Response("forbidden", { status: 403 });
   const redirect = `${url.origin}/google/callback`;
   if (url.pathname === "/google/start") {
-    if (url.searchParams.get("k") !== key) return new Response("forbidden", { status: 403 });
     if (req.method === "POST") {
       const f = await req.formData();
       const id = String(f.get("id") || "").trim();
@@ -55,7 +73,6 @@ export async function oauthRoute(req, env, store) {
     const q = new URLSearchParams({ client_id: c.id, redirect_uri: redirect, response_type: "code", scope: SCOPES.join(" "), access_type: "offline", prompt: "consent", state: key });
     return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
   }
-  if (url.searchParams.get("state") !== key) return new Response("forbidden", { status: 403 });
   const c = await client(env, store);
   const r = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -65,6 +82,7 @@ export async function oauthRoute(req, env, store) {
   const j = await r.json();
   if (!j.refresh_token) return html(`החיבור נכשל: ${j.error_description || j.error || "אין refresh token"}. אפשר לנסות שוב מהקישור.`, 400);
   await store.merge("agentReports/google", { refreshToken: j.refresh_token, connectedAt: new Date().toISOString() });
+  await dropKey(store, "google");
   cached = { token: "", exp: 0 };
   return html("✅ שולה מחוברת ליומן ולמשימות של גוגל. מייל ודרייב עוברים דרך קלוד. אפשר לחזור לוואטסאפ.");
 }
@@ -162,11 +180,11 @@ export const GOOGLE_TOOL_DEFS = [
 export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
   const api = async (url, init = {}) => {
     const token = await accessToken(env, store);
-    if (!token) throw new Error(`המייל והיומן עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await connectLink(env, origin)}`);
+    if (!token) throw new Error(`המייל והיומן עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await connectLink(store, origin)}`);
     const r = await fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } });
     const j = await r.json().catch(() => ({}));
     // 403 = חסרה הרשאה (למשל דרייב/משימות שנוספו אחרי החיבור) — צריך לחבר מחדש
-    if (!r.ok) throw new Error(`Google ${r.status}: ${j.error?.message || ""}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(env, origin)}` : ""}`);
+    if (!r.ok) throw new Error(`Google ${r.status}: ${j.error?.message || ""}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(store, origin)}` : ""}`);
     return j;
   };
   const G = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -174,7 +192,7 @@ export function makeGoogleTools({ env, store, lastOwnerText, origin }) {
   const T = "https://tasks.googleapis.com/tasks/v1/lists/@default/tasks";
   const raw = async (url) => {
     const r = await fetch(url, { headers: { authorization: `Bearer ${await accessToken(env, store)}` } });
-    if (!r.ok) throw new Error(`Google ${r.status}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(env, origin)}` : ""}`);
+    if (!r.ok) throw new Error(`Google ${r.status}${r.status === 403 ? ` — לשלוח לבעלים את הקישור לחיבור מחדש: ${await connectLink(store, origin)}` : ""}`);
     return (await r.text()).slice(0, 8000);
   };
   const C = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
