@@ -301,6 +301,11 @@ await webhook("נסי שוב");
 assert.equal(openAsks().length, openBefore + 2);
 assert.match(texts().at(-1), /העברתי לקלוד/);
 
+// 14ג. קישור לחיבור המיידי לפי בקשה — מפתח חד-פעמי שעובד בדף
+const linkTxt = await callTool("תני לי קישור לחיבור המיידי לקלוד", { name: "claude_link", args: {} });
+const lk = linkTxt.match(/\/claude\/start\?k=([0-9a-f]+)/)[1];
+assert.equal((await worker.fetch(new Request(`https://x/claude/start?k=${lk}`), env, {})).status, 200);
+
 // 15. הפעלה מיידית של קלוד: הדבקת מפתח בדף /claude/start, ואז ask_claude מפעיל את המשימה מיד
 const fires = [];
 const realFetch = globalThis.fetch;
