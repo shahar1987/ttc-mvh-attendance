@@ -51,18 +51,19 @@ if (waReady) {
 }
 
 // 4. אבטחה: טלפונים או מפתחות חדשים בריפו הציבורי
-const grep = (re) => {
+const grep = (re, exclude = "") => {
   try {
-    return execSync(`git grep -n -I -E '${re}' -- . ':!.claude/'`, { encoding: "utf8", maxBuffer: 1 << 26, cwd: fileURLToPath(new URL("..", import.meta.url)) })
+    return execSync(`git grep -n -I -E '${re}' -- . ':!.claude/' ${exclude}`, { encoding: "utf8", maxBuffer: 1 << 26, cwd: fileURLToPath(new URL("..", import.meta.url)) })
       .split("\n")
       .filter(Boolean);
   } catch {
     return []; // git grep מחזיר 1 כשאין התאמות
   }
 };
-const PLACEHOLDER = /05[0-9]-?1234567|05000000|9725X/;
-const phones = grep("(^|[^0-9])(05[0-9]-?[0-9]{3}-?[0-9]{4}|9725[0-9]{8})([^0-9]|$)").filter((l) => !PLACEHOLDER.test(l));
-const secrets = grep("sk-ant-[A-Za-z0-9_-]{10}|EAA[A-Za-z0-9]{40}|-----BEGIN PRIVATE KEY-----");
+const PLACEHOLDER = /05[0-9]-?1234567|972501234567|05000000|9725X/;
+// קבצי בדיקה משתמשים במספרים מומצאים בלבד, ולכן לא נסרקים לטלפונים
+const phones = grep("(^|[^0-9])(05[0-9]-?[0-9]{3}-?[0-9]{4}|9725[0-9]{8})([^0-9]|$)", "':!*.test.mjs' ':!rules-tests/'").filter((l) => !PLACEHOLDER.test(l));
+const secrets = grep("sk-ant-[A-Za-z0-9_-]{10}|EAA[A-Za-z0-9]{40}|-----BEGIN PRIVATE KEY-{5}"); // {5} ולא חמישה מקפים — כדי שהשורה הזו לא תתפוס את עצמה
 const fingerprint = (lines) => lines.map((l) => createHash("sha256").update(l.replace(/^[^:]+:\d+:/, "")).digest("hex").slice(0, 16));
 const sec = (await reports.doc("security").get()).data();
 const phoneFp = fingerprint(phones);
