@@ -283,6 +283,9 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 
 // פעם ביום: המפקח, ובדיקה שכל תבניות הוואטסאפ הוגשו ל-Meta
 async function daily(env) {
+  // Cloudflare מריץ לפעמים את אותו cron פעמיים — לא שולחים שני דוחות מפקח
+  const last = ((await db(env).get("agentReports/bot")) || {}).lastReview?.at;
+  if (last && Date.now() - new Date(last).getTime() < 3600 * 1000) return "already reviewed";
   const t = await ensureTemplates(env).catch((e) => [`error: ${e.message}`]);
   if (t.length) await db(env).merge("agentReports/bot", { templates: { at: new Date().toISOString(), result: t } });
   return review(env);
@@ -308,7 +311,7 @@ export async function review(env) {
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const day = (bot.log || []).filter((e) => e.at > since);
   if (!day.length) return "no conversations";
-  const transcript = day.map((e) => `[${e.at.slice(11, 16)}] הבעלים: ${e.user}\nשולה: ${e.shula}`).join("\n\n");
+  const transcript = day.map((e) => `[${new Date(e.at).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" })}] הבעלים: ${e.user}\nשולה: ${e.shula}`).join("\n\n");
   const parts = await gemini(env, {
     systemInstruction: { parts: [{ text: REVIEW }] },
     contents: [{ role: "user", parts: [{ text: transcript }] }],
