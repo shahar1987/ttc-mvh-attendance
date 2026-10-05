@@ -9,16 +9,30 @@
 //   * index.html (navigations)                 -> serve the cached copy immediately,
 //     refresh it in the background. A new deploy is picked up on the next launch.
 //   * everything else (tttm.json, manifest)    -> network-first, cache fallback.
-const CACHE = 'ttc-shell-__BUILD_VERSION__';
-const SHELL = ['./', './index.html', './manifest.json', './logo.png', './icon-192.png', './icon-512.png'];
+const VERSION = '__BUILD_VERSION__';
+const CACHE = 'ttc-shell-' + VERSION;
+// בפיתוח מקומי (sw.js בלי הזרקת גרסה) אין קבצים עם ?v= — לא מנסים לשמור אותם
+const BUILT = !VERSION.startsWith('__');
+// הליבה: בלי אחד מהם האפליקציה לא נפתחת בלי רשת. app.js ו-tailwind.css נטענים
+// מ-index.html עם ?v=<גרסה> (deploy.yml), ולכן חייבים להישמר בדיוק בכתובת הזו —
+// אחרת, אחרי פרסום, הפתיחה הראשונה בלי רשת נכשלת (המטמון הישן כבר נמחק).
+const CORE = ['./', './index.html'].concat(
+  BUILT ? ['./app.js?v=' + VERSION, './tailwind.css?v=' + VERSION] : []
+);
+// השאר: נחמד שיהיה. כישלון של אחד מהם לא מפיל את ההתקנה.
+const EXTRA = ['./manifest.json', './logo.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    // addAll נכשל כולו אם קובץ אחד נופל ברשת חלשה, ואז הגרסה החדשה לא מותקנת בכלל
-    caches
-      .open(CACHE)
-      .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u))))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then((c) =>
+      // addAll נכשל כולו אם קובץ ליבה נופל — ואז ההתקנה נכשלת וה-service worker
+      // הקודם (עם המטמון השלם שלו) נשאר בשליטה. עדיף על גרסה חדשה בלי app.js.
+      c
+        .addAll(CORE.map((u) => new Request(u, { cache: 'reload' })))
+        .then(() => Promise.allSettled(EXTRA.map((u) => c.add(u))))
+        // התקנה שנכשלה לא משאירה מטמון ריק מאחור
+        .catch((err) => caches.delete(CACHE).then(() => Promise.reject(err)))
+    ).then(() => self.skipWaiting())
   );
 });
 
