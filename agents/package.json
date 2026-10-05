@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.129.0",
-    "firebase-admin": "12.7.0"
+    "firebase-admin": "13.10.0"
   }
 }
