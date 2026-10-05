@@ -58,8 +58,12 @@ export async function inboxRoute(req, env, store, wa) {
   if (!item || item.inboxStatus !== "open" || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
   await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
-  await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), claude: { at, text: `על "${item.request}": ${answer}` } } });
-  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`, template: "agent_alert", templateParam: "יש תשובה מקלוד לבקשה שלך" });
+  const text = `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`;
+  // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה)
+  const log = [...(bot.log || []), { at, user: `[תשובה מקלוד הגיעה לבעלים בוואטסאפ, בקשה ${id}]`, shula: text }].slice(-80);
+  const history = [...(bot.history || []), { role: "user", text: `[מערכת] קלוד ענה על "${item.request}"`, at }, { role: "assistant", text, at }].slice(-16);
+  await store.merge("agentReports/bot", { log, history });
+  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "יש תשובה מקלוד לבקשה שלך" });
   return Response.json({ ok: true });
 }
 

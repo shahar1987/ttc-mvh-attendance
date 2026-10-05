@@ -278,6 +278,8 @@ const ans = await worker.fetch(new Request("https://x/inbox?k=sekret", { method:
 assert.equal(ans.status, 200);
 assert.match(sent.slice(n3).map((b) => b.text?.body || "").join(), /תשובה מקלוד.*אימון ב-17:00/s);
 assert.equal((await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json()).length, 0);
+assert.match(docs.get("agentReports/bot").log.at(-1).shula, /תשובה מקלוד.*אימון ב-17:00/s, "המפקח רואה שהתשובה הגיעה");
+assert.match(docs.get("agentReports/bot").history.at(-1).text, /אימון ב-17:00/, "שולה רואה את התשובה בהיסטוריה");
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "שוב" }) }), ienv, {})).status, 404, "לא עונים פעמיים");
 const n4 = sent.length;
 const push = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ notify: "בוקר טוב\n1. לשלם גז" }) }), ienv, {});
