@@ -54,6 +54,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
+        id: install
         working-directory: agents
         run: npm ci --no-audit --no-fund
 
@@ -78,11 +79,13 @@ jobs:
           echo "running: ${RUN:-nothing}"
 
       - name: 🔎 Daily attendance scan
+        id: scan
         if: contains(steps.pick.outputs.run, ',scan,')
         working-directory: agents
         run: node scan.mjs
 
       - name: Install a browser for the bug check
+        id: browser
         if: contains(steps.pick.outputs.run, ',bugcheck,')
         working-directory: agents
         run: |
@@ -90,6 +93,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: 🐞 Bug check
+        id: bugcheck
         if: contains(steps.pick.outputs.run, ',bugcheck,')
         working-directory: agents
         env:
@@ -97,17 +101,20 @@ jobs:
         run: node bugcheck.mjs
 
       - name: 💡 Weekly ideas
+        id: ideas
         if: contains(steps.pick.outputs.run, ',ideas,')
         working-directory: agents
         run: node ideas.mjs
 
       # !cancelled(): רץ גם אם סוכן הרעיונות שלפניו נכשל (למשל חסר לו מפתח) — הם לא תלויים זה בזה
       - name: 📣 Weekly post drafts
+        id: content
         if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',content,') }}
         working-directory: agents
         run: node content.mjs
 
       - name: 🛡️ Supervisor
+        id: supervisor
         if: contains(steps.pick.outputs.run, ',supervisor,')
         working-directory: agents
         run: node supervisor.mjs
@@ -119,6 +126,8 @@ jobs:
         working-directory: agents
         env:
           ALERT_KEY: agents
+          # לכל שלב יש id, כדי ש-alert.mjs ידלג כשהסוכן שנכשל כבר הודיע בעצמו על מפתח חסר
+          STEPS: ${{ toJSON(steps) }}
           ALERT_TEXT: "❌ סוכן נכשל (${{ steps.pick.outputs.run }}). פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: |
           [ -d node_modules ] || npm ci --no-audit --no-fund

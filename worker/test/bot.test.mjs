@@ -93,6 +93,22 @@ globalThis.fetch = async (url, init = {}) => {
     const col = q.from[0].collectionId, f = q.where.fieldFilter;
     return json([...docs].filter(([k, d]) => k.startsWith(col + "/") && d[f.field.fieldPath] === fromValue(f.value)).map(([k, d]) => ({ document: out(k, d) })));
   }
+  if (path === ":commit") {
+    // כתיבה מותנית (mergeIf): התנאי בגוף. ל-beforePatch מעבירים "currentDocument" + שמות השדות, כמו ב-PATCH
+    const w = JSON.parse(init.body).writes[0];
+    const p = w.update.name.split("/documents/")[1];
+    const mask = w.updateMask.fieldPaths.map((k) => k.replace(/`/g, ""));
+    if (globalThis.beforePatch) await globalThis.beforePatch(p, `commit?currentDocument&${mask.join("&")}`);
+    if (globalThis.firestoreDown) return json({ error: { message: "down" } }, 503);
+    const cd = w.currentDocument || {};
+    if (cd.updateTime && cd.updateTime !== times.get(p)) return json({ error: { status: "FAILED_PRECONDITION", message: "stale" } }, 400);
+    if (cd.exists === false && docs.has(p)) return json({ error: { status: "ALREADY_EXISTS", message: "exists" } }, 409);
+    patches.push({ path: p, keys: mask });
+    put(p, Object.fromEntries(Object.entries(w.update.fields || {}).map(([k, v]) => [k, fromValue(v)])));
+    const d = docs.get(p);
+    for (const k of mask) if (!(k in (w.update.fields || {}))) delete d[k];
+    return json({ writeResults: [{ updateTime: times.get(p) }] });
+  }
   if (init.method === "PATCH") {
     if (globalThis.beforePatch) await globalThis.beforePatch(path, url);
     if (globalThis.firestoreDown) return json({ error: { message: "down" } }, 503);
@@ -511,10 +527,27 @@ const sunday2 = new Date("2026-10-11T15:00:00Z");
 globalThis.waFail = true;
 await assert.rejects(remindCoaches(env, store, waConfig(env), sunday2), /boom/);
 globalThis.waFail = false;
-assert.notEqual(bot().coachReminders.date, "2026-10-11", "לא סומן כטופל");
+assert.ok(!(bot().coachReminders.date === "2026-10-11" && bot().coachReminders.groups.includes("g3")), "לא סומן כטופל (הסימון בוטל)");
 assert.match(await remindCoaches(env, store, waConfig(env), sunday2), /נוכחות שלא מולאה/);
 assert.equal(bot().coachReminders.date, "2026-10-11");
 assert.equal(await remindCoaches(env, store, waConfig(env), sunday2), "nothing due");
+assert.ok(bot().coachReminders.lastSentAt.g3, "זמן שליחה לכל קבוצה");
+// הסימון נכשל (Firestore למטה) — לא שולחים בכלל, ולכן אין שליחות חוזרות כל רבע שעה
+const sunday3 = new Date("2026-10-18T15:00:00Z");
+const n4c = sent.length;
+globalThis.firestoreDown = true;
+globalThis.beforePatch = null;
+await assert.rejects(remindCoaches(env, store, waConfig(env), sunday3));
+globalThis.firestoreDown = false;
+assert.equal(sent.length, n4c, "בלי סימון — בלי שליחה");
+// השליחה נכשלה וגם ביטול הסימון נכשל — לא שולחים שוב באותו יום
+globalThis.waFail = true;
+let crWrites = 0;
+globalThis.beforePatch = (path, u) => { if (path === "agentReports/bot" && u.includes("coachReminders") && ++crWrites === 2) { globalThis.beforePatch = null; globalThis.firestoreDown = true; } };
+await assert.rejects(remindCoaches(env, store, waConfig(env), sunday3), /ביטול הסימון נכשל/);
+globalThis.waFail = false; globalThis.firestoreDown = false; globalThis.beforePatch = null;
+assert.equal(await remindCoaches(env, store, waConfig(env), sunday3), "nothing due", "אין סערת שליחות");
+assert.equal(sent.length, n4c);
 
 // 5. פוסט מתוזמן: שתי ריצות cron במקביל — מתפרסם פעם אחת. פוסט שנתקע באמצע — לא מתפרסם שוב.
 put("agentReports/social", { queue: [{ id: "pp1", platform: "facebook", text: "פוסט", igText: "פוסט", img: "", at: "2000-01-01T10:00", due: "2000-01-01T08:00:00.000Z" }, { id: "pp2", platform: "facebook", text: "תקוע", igText: "", img: "", at: "2000-01-01T09:00", due: "2000-01-01T07:00:00.000Z", status: "publishing", claimedAt: "2000-01-01T07:00:00.000Z" }] });
@@ -632,6 +665,10 @@ assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
 assert.deepEqual(bot().outboxQueue.map((x) => x.id), ["o7"], "הפריט שנוסף בינתיים נשאר בתור");
 assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
 assert.equal(texts().at(-1), "נוסף בינתיים");
+// key — המפתח ב-outbox (כמו שהסוכן עצמו כותב), ברירת מחדל from
+put("agentReports/bot", { outboxQueue: [{ id: "o8", from: "scan", key: "scan_late", at: "2026-10-05T05:00:00.000Z", text: "עם מפתח" }] });
+assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
+assert.equal(bot().outbox.scan_late.text, "עם מפתח");
 // סוכן שכתב בטעות מערך לשדה outbox — מטופל כמו התור, ו-outbox חוזר להיות מפה
 put("agentReports/bot", { outbox: [{ id: "o3", from: "ideas", at: "2026-10-05T06:00:00.000Z", text: "💡 רעיון" }] });
 assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");

@@ -90,4 +90,5 @@ if (key !== (sup.key || "")) {
     await tellOwner(db, { agent: "supervisor", text: "✅ המפקח: כל הסוכנים חזרו לעבוד כרגיל.", templateParam: "כל הסוכנים חזרו לעבוד כרגיל" });
   }
 }
-await heartbeat(db, "supervisor", { key, problems, day: israelToday() });
+// cronErrorAt — כדי שבריצה הבאה אפשר יהיה לזהות שגיאת cron חוזרת (lib/schedule.mjs)
+await heartbeat(db, "supervisor", { key, problems, day: israelToday(), cronErrorAt: bot.lastCronError?.at || null });

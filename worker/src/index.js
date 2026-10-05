@@ -355,7 +355,7 @@ async function tell(store, wa, key, text, templateParam) {
 const summary = (lines) => lines.join(" ").replace(/https?:\S+/g, "").replace(/\s+/g, " ").slice(0, 400);
 
 // 📬 הודעות מהסוכנים ב-GitHub Actions (אין להם סודות וואטסאפ): הם כותבים ל-agentReports/bot.outboxQueue
-// ({id, at, from, text, template?, templateParam?} — template כמו בשליחה הישירה של הסוכנים, ברירת מחדל agent_alert),
+// ({id, at, from, key?, text, template?, templateParam?} — key = המפתח ב-outbox להקשר (ברירת מחדל from); template כמו בשליחה הישירה של הסוכנים, ברירת מחדל agent_alert),
 // וה-worker שולח לבעלים ומוציא מהתור רק את מה שנשלח.
 export async function deliverOutbox(env, store, wa) {
   // אם סוכן כתב בטעות מערך ל-outbox (שהוא מפה) — מעבירים את הפריטים לתור ומחזירים את outbox למפה ריקה
@@ -392,7 +392,7 @@ export async function deliverOutbox(env, store, wa) {
   );
   if (done.length)
     await store.update("agentReports/bot", (cur) => ({
-      outbox: { ...outboxMap(cur.outbox), ...Object.fromEntries(done.map((x) => [x.from || "agent", { at: new Date().toISOString(), text: x.text, how: x.how || "text" }])) },
+      outbox: { ...outboxMap(cur.outbox), ...Object.fromEntries(done.map((x) => [x.key || x.from || "agent", { at: new Date().toISOString(), text: x.text, how: x.how || "text" }])) },
     }));
   if (errors.length) throw new Error(`outbox: ${errors.join(" · ")}`);
   return `outbox: ${done.length}`;

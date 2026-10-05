@@ -31,3 +31,12 @@ export async function heartbeat(db, agent, extra = {}) {
     .doc("health")
     .set({ [agent]: { at: new Date().toISOString(), ...extra } }, { merge: true });
 }
+
+// סוכן שלא רץ כי חסר לו מפתח: נרשם בנפרד מ-at (שנשאר זמן הריצה המוצלחת האחרונה), כדי שהמפקח
+// וההתראה של ה-workflow ידעו שהסוכן כבר הודיע לבעלים בעצמו ולא ישלחו הודעה נוספת.
+export async function reportMissingKey(db, agent, missingKey) {
+  await db
+    .collection("agentReports")
+    .doc("health")
+    .set({ [agent]: { missingKey, missingKeyAt: new Date().toISOString() } }, { merge: true });
+}

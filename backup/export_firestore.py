@@ -77,6 +77,9 @@ def serialise(value):
         return [serialise(v) for v in value]
     if hasattr(value, "isoformat"):
         return value.isoformat()
+    # הפניה למסמך אחר — נשמרת כנתיב ("players/abc"), לא כ-repr של האובייקט
+    if type(value).__name__ in ("DocumentReference", "AsyncDocumentReference") and hasattr(value, "path"):
+        return value.path
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
