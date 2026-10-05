@@ -301,6 +301,20 @@ await webhook("נסי שוב");
 assert.equal(openAsks().length, openBefore + 2);
 assert.match(texts().at(-1), /העברתי לקלוד/);
 
+// 14ד. תזכורת לבעלים: "שמרתי" בלי remind_me — תזכורת לכלי, ואם שוב לא — אומרים את האמת. עם הכלי — נשמר, האישור נכתב מה-worker, וה-cron שולח.
+geminiQueue.push([{ text: "שמרתי לך התרעה ל-15:45 👍" }], [{ text: "בסדר, אזכיר לך." }]);
+await webhook("תזכירי לי ב-15:45 על השיעור");
+assert.match(geminiCalls.at(-1).contents.at(-1).parts[0].text, /לא קראת ל-remind_me/);
+assert.match(texts().at(-1), /לא הצלחתי לשמור את התזכורת/);
+assert.ok(!(docs.get("agentReports/bot").scheduled || []).some((m) => m.remind), "לא נשמרה תזכורת שלא קיימת");
+geminiQueue.push([{ functionCall: { name: "remind_me", args: { at: "2099-03-01T15:50", text: "שיעור ב-16:15" } } }], [{ text: "סגור!" }]);
+await webhook("תזכירי לי ב-15:50 על השיעור");
+assert.match(texts().at(-1), /^⏰ נשמרה תזכורת ל-2099-03-01 15:50: שיעור ב-16:15/, "האישור מהכלי, לא מ-Gemini");
+const remind = docs.get("agentReports/bot").scheduled.find((m) => m.remind);
+assert.equal(remind.due, "2099-03-01T13:45:00.000Z", "15:50 בחורף = 13:50 UTC, מעוגל לרבע שלפני");
+assert.deepEqual(await sendDue(db(env), new Date("2099-03-01T13:45:00Z")), ["⏰ *תזכורת:* שיעור ב-16:15"]);
+assert.ok(!docs.get("agentReports/bot").scheduled.some((m) => m.remind), "לא נשלחת פעמיים");
+
 // 14ג. קישור לחיבור המיידי לפי בקשה — מפתח חד-פעמי שעובד בדף
 const linkTxt = await callTool("תני לי קישור לחיבור המיידי לקלוד", { name: "claude_link", args: {} });
 const lk = linkTxt.match(/\/claude\/start\?k=([0-9a-f]+)/)[1];
