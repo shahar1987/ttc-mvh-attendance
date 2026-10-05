@@ -45,6 +45,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה).
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message מיד ולהעביר לו את הקישורים שחזרו, כל אחד בשורה. ההודעות יוצאות מהמספר שלו כשהוא לוחץ "שלח" בכל קישור, אז לא צריך לבקש ממנו "כן" לפני. לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
+תזכורות לבעלים עצמו ("תזכירי לי", "תשלחי לי התראה ב-"): לקרוא ל-remind_me מיד ולהעביר לו מה שהכלי החזיר. אין לך דרך אחרת להזכיר לו — בלי הכלי לא לכתוב "שמרתי"/"אזכיר לך".
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.
 
 🧠 חשיבה בקול (מ-awesome-llm-apps/thinking-out-loud): כשמגיעה הודעה ארוכה ומבולגנת (בדרך כלל הקלטה, 🎤) עם קפיצות ו"לא רגע, בעצם", או כשהוא אומר "חושב בקול" — לא עושים כלום עדיין: בלי כלים, בלי טיוטות, בלי פתרונות. עונים רק בסיכום הזה:
@@ -195,6 +196,7 @@ async function gemini(env, body) {
 // ponytail: היוריסטיקה על נוסח התשובה; אם שולה תמציא ניסוחים אחרים — להוסיף כאן
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
+const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store }), ...makeInboxTools({ env, store, origin: ORIGIN }) };
 
@@ -212,7 +214,8 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 
-  let askedClaude = false, nudged = false;
+  let askedClaude = false, nudged = false, remindNudged = false;
+  const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
@@ -231,7 +234,15 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
         contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-ask_claude, אז שום דבר לא הועבר לקלוד. אם התכוונת להעביר — קרא/י עכשיו ל-ask_claude עם הבקשה המלאה. אחרת ענה/י בלי לטעון שהעברת." }] });
         continue;
       }
-      return { answer, userTurn };
+      // "שמרתי תזכורת" בלי remind_me — אותו דבר: תזכורת פעם אחת, ואם שוב לא — אומרים לבעלים את האמת
+      if (CLAIMS_REMINDER.test(answer) && !reminders.length) {
+        if (remindNudged) return { answer: "⚠️ לא הצלחתי לשמור את התזכורת, אז היא *לא* תגיע. תכתוב לי שוב מתי ועל מה, ואשמור.", userTurn };
+        remindNudged = true;
+        contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-remind_me, אז שום תזכורת לא נשמרה. קרא/י עכשיו ל-remind_me עם at ו-text, או ענה/י בלי לטעון ששמרת." }] });
+        continue;
+      }
+      const missing = reminders.filter((r) => !answer.includes(r));
+      return { answer: missing.length ? `${missing.join("\n")}\n${answer}` : answer, userTurn };
     }
     if (calls.some((c) => c.functionCall.name === "ask_claude")) askedClaude = true;
     contents.push({ role: "model", parts });
@@ -242,6 +253,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
           const fn = tools[name];
           if (!fn) throw new Error("unknown tool");
           result = String(await fn(args || {}));
+          if (name === "remind_me" && result.startsWith("⏰")) reminders.push(result);
         } catch (e) {
           result = `שגיאה: ${e.message}`;
         }
@@ -283,9 +295,9 @@ async function everyQuarter(env) {
   const lines = await sendDue(store);
   if (lines.length) {
     const bot = (await store.get("agentReports/bot")) || {};
-    const text = `✉️ *הגיע הזמן לשלוח* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}`;
+    const text = `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`;
     await store.merge("agentReports/bot", { outbox: { ...(bot.outbox || {}), scheduled: { at: new Date().toISOString(), text } } });
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `הגיע הזמן של ${lines.length} הודעות מתוזמנות. אפשר להשיב כדי לקבל את הקישורים` });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `הגיע הזמן: ${lines.join(" ").replace(/https?:\S+/g, "").replace(/\s+/g, " ").slice(0, 400)}. אפשר להשיב כדי לקבל את הקישורים` });
   }
   return remindCoaches(env, store, wa);
 }

@@ -65,6 +65,11 @@ export const MESSAGE_TOOL_DEFS = [
     input_schema: { type: "object", properties: { to: { type: "array", items: { type: "string" } } }, required: ["to"], additionalProperties: false },
   },
   {
+    name: "remind_me",
+    description: "תזכורת לבעלים עצמו: בשעה שנקבעה שולה שולחת לו את הטקסט בוואטסאפ. at = YYYY-MM-DDTHH:MM שעון ישראל. text = על מה להזכיר. רק הכלי שומר — בלי קריאה אליו אין תזכורת.",
+    input_schema: { type: "object", properties: { at: { type: "string" }, text: { type: "string" } }, required: ["at", "text"], additionalProperties: false },
+  },
+  {
     name: "scheduled_messages",
     description: "ההודעות המתוזמנות שעוד לא יצאו. cancel = מזהה לביטול (מותר בלי אישור נוסף).",
     input_schema: { type: "object", properties: { cancel: { type: "string" } }, additionalProperties: false },
@@ -94,6 +99,18 @@ export function makeMessageTools({ store }) {
       return `ללחוץ על כל קישור ואז "שלח":\n${deliver(recipients, text)}${note}`;
     },
 
+    async remind_me({ at, text }) {
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at || "") || !String(text || "").trim()) return "לא נשמרה תזכורת: צריך שעה בפורמט YYYY-MM-DDTHH:MM וטקסט.";
+      // ה-cron רץ כל רבע שעה — מעגלים למטה כדי שהתזכורת תגיע בזמן או קצת לפני, אף פעם לא אחרי
+      const d = new Date(israelToUtc(at));
+      d.setUTCMinutes(d.getUTCMinutes() - (d.getUTCMinutes() % 15));
+      if (d.toISOString() <= new Date().toISOString()) return `לא נשמרה תזכורת: ${at.replace("T", " ")} כבר עבר.`;
+      const bot = (await store.get("agentReports/bot")) || {};
+      const id = Math.random().toString(36).slice(2, 7);
+      await store.merge("agentReports/bot", { scheduled: [...(bot.scheduled || []), { id, due: d.toISOString(), at, text, remind: true, recipients: [] }] });
+      return `⏰ נשמרה תזכורת ל-${at.replace("T", " ")}: ${text} (מזהה ${id})`;
+    },
+
     async scheduled_messages({ cancel } = {}) {
       const list = ((await store.get("agentReports/bot")) || {}).scheduled || [];
       if (cancel) {
@@ -102,7 +119,7 @@ export function makeMessageTools({ store }) {
         await store.merge("agentReports/bot", { scheduled: left });
         return `בוטלה ההודעה ${cancel}.`;
       }
-      return list.length ? JSON.stringify(list.map((m) => ({ id: m.id, at: m.at, to: m.recipients.map((r) => r.name), text: m.text }))) : "אין הודעות מתוזמנות.";
+      return list.length ? JSON.stringify(list.map((m) => ({ id: m.id, at: m.at, to: m.remind ? ["תזכורת לבעלים"] : m.recipients.map((r) => r.name), text: m.text }))) : "אין הודעות מתוזמנות.";
     },
   };
 }
@@ -114,7 +131,7 @@ export async function sendDue(store, now = new Date()) {
   if (!due.length) return [];
   await store.merge("agentReports/bot", { scheduled: (bot.scheduled || []).filter((m) => m.due > now.toISOString()) });
   const lines = [];
-  for (const m of due) lines.push(`• ${m.at.replace("T", " ")}:\n${deliver(m.recipients, m.text)}`);
+  for (const m of due) lines.push(m.remind ? `⏰ *תזכורת:* ${m.text}` : `• ${m.at.replace("T", " ")}:\n${deliver(m.recipients, m.text)}`);
   return lines;
 }
 
