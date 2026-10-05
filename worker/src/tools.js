@@ -4,7 +4,7 @@ import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { dropoutRisk, playerHistory, israelToday, isValidPhone } from "../../agents/lib/analysis.mjs";
 
-const AGENTS = ["scan", "bugcheck", "ideas", "supervisor"];
+const AGENTS = ["scan", "bugcheck", "ideas", "supervisor", "content"];
 const MAX_SEND = 40;
 // הודעות להורים יוצאות רק כששולה אישרה במילים שלה, בהודעה האחרונה שכתבה
 export const APPROVAL = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
@@ -29,10 +29,10 @@ export const TOOL_DEFS = [
   },
   {
     name: "get_agent_results",
-    description: "התוצאות האחרונות של שאר הסוכנים: בודק הבאגים, הרעיונות השבועיים, ומצב המפקח (מתי כל סוכן רץ ומה הבעיות).",
+    description: "התוצאות האחרונות של שאר הסוכנים: בודק הבאגים, הרעיונות השבועיים, מצב המפקח (מתי כל סוכן רץ ומה הבעיות), וטיוטות הפרסום של השבוע (content, ממוספרות 1-3 עם נוסח פייסבוק, נוסח אינסטגרם ומועד).",
     input_schema: {
       type: "object",
-      properties: { agent: { type: "string", enum: ["bugcheck", "ideas", "supervisor"] } },
+      properties: { agent: { type: "string", enum: ["bugcheck", "ideas", "supervisor", "content"] } },
       required: ["agent"],
       additionalProperties: false,
     },
@@ -163,6 +163,10 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
 
     async get_agent_results({ agent }) {
       if (agent === "bugcheck") return JSON.stringify((await store.get("agentReports/bugs")) || "עוד לא רץ");
+      if (agent === "content") {
+        const c = await store.get("agentReports/content");
+        return c ? JSON.stringify({ date: c.date, drafts: (c.drafts || []).map((d, i) => ({ number: i + 1, ...d })) }) : "עוד לא רץ";
+      }
       if (agent === "ideas") {
         const i = await store.get("agentReports/ideas");
         return i ? JSON.stringify({ date: i.date, text: i.text }) : "עוד לא רץ";

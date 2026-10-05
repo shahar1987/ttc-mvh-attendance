@@ -6,6 +6,7 @@ name: Agents
 #   🔎 scan        — כל בוקר ב-08:00 (שעון קיץ; 07:00 בחורף): דוח נוכחות לשולה
 #   🐞 bugcheck    — כל לילה ב-03:30: האתר החי, תקינות הנתונים, תהליכים שנכשלו
 #   💡 ideas       — ראשון ב-09:00: 3 רעיונות לשבוע
+#   📣 content     — ראשון ב-09:00: 3 טיוטות פוסטים לשבוע (לאישור בוואטסאפ)
 #   🛡️ supervisor  — כל שעה: שכולם רצו, שהבוט עונה, שלא דלף מידע
 #   כל 10 דקות: בודק אם שולה ביקשה מהבוט "תריץ עכשיו"
 #
@@ -23,7 +24,7 @@ on:
       agent:
         description: "איזה סוכן להריץ"
         type: choice
-        options: [scan, bugcheck, ideas, supervisor]
+        options: [scan, bugcheck, ideas, supervisor, content]
 
 permissions:
   contents: read
@@ -44,6 +45,7 @@ jobs:
       WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
       OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +70,7 @@ jobs:
           case "${{ github.event.schedule }}" in
             "0 5 * * *")    RUN=scan ;;
             "30 0 * * *")   RUN=bugcheck ;;
-            "0 6 * * 0")    RUN=ideas ;;
+            "0 6 * * 0")    RUN=ideas,content ;;
             "17 * * * *")   RUN=supervisor ;;
             "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
             *)              RUN="${{ inputs.agent }}" ;;
@@ -97,6 +99,11 @@ jobs:
         if: contains(steps.pick.outputs.run, ',ideas,')
         working-directory: agents
         run: node ideas.mjs
+
+      - name: 📣 Weekly post drafts
+        if: contains(steps.pick.outputs.run, ',content,')
+        working-directory: agents
+        run: node content.mjs
 
       - name: 🛡️ Supervisor
         if: contains(steps.pick.outputs.run, ',supervisor,')

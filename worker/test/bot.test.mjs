@@ -236,6 +236,25 @@ assert.equal((await worker.fetch(new Request(`https://x/meta/callback?code=c&sta
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
 
+// 12ב. סוכן הפרסום: @ בפייסבוק נחסם, נוסח אינסטגרם נפרד, תזמון לתור ופרסום מה-cron
+const { publishDue, israelToUtc } = await import("../src/meta.js");
+assert.equal(israelToUtc("2026-10-11T17:00").toISOString(), "2026-10-11T14:00:00.000Z", "קיץ: UTC+3");
+assert.equal(israelToUtc("2026-12-01T17:00").toISOString(), "2026-12-01T15:00:00.000Z", "חורף: UTC+2");
+assert.match(await callTool("פרסם", { name: "publish_post", args: { platform: "both", text: "אימון @matnas.mvhr" } }), /@ נשאר טקסט מת/);
+assert.match(await callTool("פרסם", { name: "publish_post", args: { platform: "facebook", text: "אימון", at: "2026-10-07T17:00" } }), /7 באוקטובר/);
+const sched = { platform: "both", text: "אימון ראשון", instagram_text: "אימון ראשון @matnas.mvhr", image: "https://img/1.jpg", at: "2099-01-01T17:00" };
+assert.match(await callTool("פרסם 1", { name: "publish_post", args: sched }), /עוד לא פורסם/);
+const s0 = social.length;
+assert.match(await callTool("כן", { name: "publish_post", args: sched }), /מתוזמן ל-2099-01-01 17:00/);
+assert.equal(social.length, s0, "מתוזמן — לא מתפרסם עכשיו");
+assert.deepEqual(await publishDue(db(env), new Date("2098-12-31T00:00:00Z")), [], "לפני הזמן — כלום");
+const pub = await publishDue(db(env), new Date("2099-01-01T15:00:00Z"));
+assert.match(pub[0], /פייסבוק.*✓.*אינסטגרם.*✓/);
+assert.equal(social[s0].body.caption, "אימון ראשון", "פייסבוק בלי תיוגים");
+assert.equal(social[s0 + 1].body.caption, "אימון ראשון @matnas.mvhr", "אינסטגרם עם תיוגים");
+assert.equal(docs.get("agentReports/social").queue.length, 0, "יצא מהתור");
+assert.deepEqual(await publishDue(db(env), new Date("2099-01-02T00:00:00Z")), [], "לא מתפרסם פעמיים");
+
 // 13. הודעות בשם המועדון: מאמנים לפי תפקיד, שם, מתוזמן, ביטול
 put("users/u1", { role: "coach" });
 put("users/u3", { name: "מנהלת", role: "admin", phone: "0527654321" });
