@@ -24,8 +24,10 @@ permissions:
   contents: read
   issues: write
 
+# ריצה ממתינה אחת לכל קבוצה, וחדשה מחליפה ישנה — ולכן לסנכרון המלא (היומי/הידני) קבוצה
+# משלו, כדי שבדיקת ה-10 דקות לא תדרוס אותו כשהוא מחכה בתור.
 concurrency:
-  group: sync-payments
+  group: sync-payments-${{ github.event.schedule == '*/10 * * * *' && 'ondemand' || 'full' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,11 +35,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install firebase-admin@12.7.0 google-auth-library@11.0.2 xlsx@0.18.5 --no-audit --no-fund
@@ -50,7 +52,20 @@ jobs:
           SYNC_MODE: ${{ github.event.schedule == '*/10 * * * *' && 'ondemand' || 'full' }}
         run: node scripts/sync_payments.mjs
 
-      # לא פותחים issue על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות issues ביום
+      # התראה לשולה בוואטסאפ דרך התור של הבוט (agentReports/bot.outbox) — עובד גם כש-Issues כבויים
+      - name: Tell the owner on WhatsApp that the payment sync failed
+        if: failure() && github.event.schedule != '*/10 * * * *'
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ALERT_KEY: sync-payments
+          ALERT_TEXT: "❌ סנכרון קובץ התשלומים מהדרייב נכשל. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          npm ci --no-audit --no-fund
+          node alert.mjs
+
+      # לא מתריעים על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות התראות ביום.
+      # בלי "|| true": אם Issues כבויים בריפו השלב הזה ייכשל בגלוי
       - name: Open an issue if the sync failed
         if: failure() && github.event.schedule != '*/10 * * * *'
         env:
@@ -59,4 +74,4 @@ jobs:
           gh issue create \
             --title "❌ סנכרון קובץ התשלומים מהדרייב נכשל" \
             --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }} || true
+            --assignee ${{ github.repository_owner }}

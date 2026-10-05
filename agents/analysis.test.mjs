@@ -108,12 +108,30 @@ test("data checks find contract breaks, orphans and unfilled sessions", () => {
   assert.match(out.find((x) => x.id === "unfilled-attendance").text, /ילדים א \(1\)/);
 });
 
-test("a player with a pending repeat alert gets no extra single-absence item", () => {
+// כמו באפליקציה (pendingAbsenceMsgs): מדלגים רק על שני התאריכים שבהתראה, לא על כל ההיעדרויות של השחקן
+test("a player with a pending repeat alert: only the alert's two dates are folded into it", () => {
   const r = analyze({
     players: [P("a")],
     groups,
     attendance: [A("a", "2026-09-29", "Absent"), A("a", "2026-09-27", "Absent"), A("a", "2026-09-25", "Absent")],
     today,
   });
-  assert.deepEqual(r.pending.map((x) => x.kind), ["repeat"]);
+  assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), ["repeat:2026-09-29", "absence:2026-09-25"]);
+});
+
+test("absence item carries the record's group, never the player's current group", () => {
+  const r = analyze({
+    players: [P("a", { groupId: "g2" }), P("b")],
+    groups,
+    attendance: [A("a", "2026-09-29", "Absent", { groupId: "g1" }), A("b", "2026-09-29", "Absent", { groupId: undefined })],
+    today,
+  });
+  assert.equal(r.pending.length, 1, "a record without groupId is skipped");
+  assert.equal(r.pending[0].playerId, "a");
+  assert.equal(r.pending[0].groupId, "g1");
+});
+
+test("today's absence is pending (like the app)", () => {
+  const r = analyze({ players: [P("a")], groups, attendance: [A("a", today, "Absent")], today });
+  assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), [`absence:${today}`]);
 });
