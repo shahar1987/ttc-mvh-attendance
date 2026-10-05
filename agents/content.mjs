@@ -43,6 +43,14 @@ async function performance(page) {
   }));
 }
 
+// Gemini כשיש מפתח (חינמי); אחרת Claude עם המפתח שכבר קיים בריפו (אותו מפתח של סוכן הרעיונות)
+async function draftsJson(system, user) {
+  if (process.env.GEMINI_API_KEY) return gemini(system, user);
+  const { ask } = await import("./lib/claude.mjs");
+  const t = await ask(system + "\nהחזר JSON בלבד, בלי גדרות קוד.", user);
+  return JSON.parse(t.replace(/^```(json)?\s*|\s*```$/g, "").trim());
+}
+
 async function gemini(system, user) {
   let err;
   for (const model of ["gemini-flash-latest", "gemini-flash-lite-latest"]) {
@@ -75,7 +83,7 @@ const SYSTEM = `את כותבת התוכן של מועדון טניס שולחן
 async function main() {
   const { firestore, heartbeat } = await import("./lib/firebase.mjs");
   const { tellOwner } = await import("./lib/owner.mjs");
-  if (!process.env.GEMINI_API_KEY) return console.log("skipped: GEMINI_API_KEY not set");
+  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) return console.log("skipped: no GEMINI_API_KEY or ANTHROPIC_API_KEY");
   const db = firestore();
   const today = israelToday();
   const sunday = addDays(today, -new Date(today + "T00:00:00Z").getUTCDay());
@@ -88,7 +96,7 @@ async function main() {
   const user = `המועדים: ${JSON.stringify(slots.map((s) => `${s.date} ${s.time}`))}
 ביצועי הפוסטים האחרונים בדף: ${perf.length ? JSON.stringify(perf) : "אין נתונים (הדף עוד לא מחובר)"}
 הנושאים מהשבוע שעבר: ${(last.drafts || []).map((d) => d.topic).join(" | ") || "אין"}`;
-  const out = await gemini(SYSTEM, user);
+  const out = await draftsJson(SYSTEM, user);
   const drafts = slots.map((s, i) => ({ at: `${s.date}T${s.time}`, topic: out[i]?.topic || "", image: out[i]?.image || "", ...tidy(out[i]?.text, process.env.OWNER_PHONE) })).filter((d) => d.topic);
   if (!drafts.length) throw new Error("Gemini returned no drafts");
 
