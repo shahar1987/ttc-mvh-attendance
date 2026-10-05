@@ -66,7 +66,7 @@ globalThis.fetch = async (url, init = {}) => {
     return json({ data: [{ name: "agent_alert", language: "he" }] });
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
-  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok" }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
   if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
     social.push({ url, body: JSON.parse(init.body) });
     return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1" });
@@ -227,7 +227,7 @@ assert.equal((await worker.fetch(new Request("https://x/meta/media/777?t=nope"),
 assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
-assert.equal(docs.get("agentReports/social").pages[0].token, "ptok");
+assert.equal(docs.get("agentReports/social").pages.find((p) => p.ig).token, "ptok", "דף המועדון נשמר עם הטוקן שלו גם כשקורטדו ראשון ברשימה");
 assert.match(await callTool("כן תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /עוד לא פורסם/, "כן בתוך הבקשה עצמה לא מפרסם");
 assert.equal(social.length, 0);
 assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
