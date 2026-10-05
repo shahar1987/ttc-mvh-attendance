@@ -419,11 +419,11 @@ const tools = (text, turn = "t" + Math.random()) => ({ ...makeTools({ env, store
 const D2 = dayBefore(2), D3 = dayBefore(10);
 
 // 2+3. הודעות היעדרות: אישור דו-שלבי, קישורים בלי לסמן "נשלח", וסימון רק אחרי "שלחתי" — ורק על רשומה שעדיין Absent
-put("players/p1", { parentPhone: "0541113333" });
-put("players/p3", { parentPhone: "0541114444" });
+put("players/p1", { parentPhone: "0541111111" });
+put("players/p3", { parentPhone: "0540000033" });
 put(`attendance/${D2}_g1_p1`, { date: D2, groupId: "g1", playerId: "p1", status: "Absent" });
 const absItem = (p, name, date, phone) => ({ key: `absence:${date}:g1:${p}`, kind: "absence", date, groupId: "g1", playerId: p, playerName: name, groupName: "מתחילים", phone, whenText: "אתמול" });
-put("agentReports/latest", { date: TODAY, handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "972541113333"), absItem("p2", "נועה לוי", Y, "972541112222"), absItem("p3", "דני לוי", D2, "972541114444")] });
+put("agentReports/latest", { date: TODAY, handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "972541111111"), absItem("p2", "נועה לוי", Y, "972541112222"), absItem("p3", "דני לוי", D2, "972540000033")] });
 const r2a = await callTool("תשלחי הודעות להורים 1,2,3", { name: "send_absence_messages", args: { numbers: [1, 2, 3] } });
 assert.match(r2a, /עוד לא הוכנו קישורים/, "\"תשלחי\" בתוך הבקשה עצמה לא מאשר");
 assert.doesNotMatch(r2a, /wa\.me/);
