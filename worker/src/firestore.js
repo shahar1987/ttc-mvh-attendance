@@ -35,6 +35,9 @@ async function accessToken(sa) {
   return cached.token;
 }
 
+// ערך מיוחד ל-merge: מוחק את השדה (כמו deleteField באפליקציה) — השדה נכנס ל-updateMask בלי ערך
+export const DELETE = Symbol("delete");
+
 export function toValue(v) {
   if (v === null || v === undefined) return { nullValue: null };
   if (typeof v === "boolean") return { booleanValue: v };
@@ -59,6 +62,9 @@ export function fromValue(v) {
 const fromFields = (f = {}) => Object.fromEntries(Object.entries(f).map(([k, x]) => [k, fromValue(x)]));
 const docOut = (d) => ({ id: d.name.split("/").pop(), ...fromFields(d.fields) });
 
+const maskOf = (data) => Object.keys(data).map((k) => `updateMask.fieldPaths=${encodeURIComponent("`" + k + "`")}`).join("&");
+const bodyOf = (data) => JSON.stringify({ fields: Object.fromEntries(Object.entries(data).filter(([, v]) => v !== DELETE).map(([k, v]) => [k, toValue(v)])) });
+
 export function db(env) {
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const base = `https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents`;
@@ -77,15 +83,39 @@ export function db(env) {
       const j = await call(`${base}/${path}`);
       return j ? docOut(j) : null;
     },
-    // מיזוג: מעדכן רק את השדות שנשלחו (כמו setDoc עם merge באפליקציה)
+    // מיזוג: מעדכן רק את השדות שנשלחו (כמו setDoc עם merge באפליקציה). ערך DELETE מוחק את השדה.
     async merge(path, data) {
-      const mask = Object.keys(data)
-        .map((k) => `updateMask.fieldPaths=${encodeURIComponent("`" + k + "`")}`)
-        .join("&");
-      await call(`${base}/${path}?${mask}`, {
+      await call(`${base}/${path}?${maskOf(data)}`, { method: "PATCH", body: bodyOf(data) });
+    },
+    // כמו get, וגם updateTime — לכתיבה מותנית
+    async getDoc(path) {
+      const j = await call(`${base}/${path}`);
+      return j ? { data: docOut(j), updateTime: j.updateTime || null } : null;
+    },
+    // כתיבה מותנית: מצליחה רק אם המסמך לא השתנה מאז updateTime (או, כש-updateTime ריק, רק אם עוד לא קיים).
+    // מחזיר false כשמישהו אחר כתב בינתיים — ואז קוראים מחדש ומנסים שוב (ראו update).
+    async mergeIf(path, data, updateTime) {
+      const pre = updateTime ? `currentDocument.updateTime=${encodeURIComponent(updateTime)}` : "currentDocument.exists=false";
+      const res = await fetch(`${base}/${path}?${maskOf(data)}&${pre}`, {
         method: "PATCH",
-        body: JSON.stringify({ fields: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, toValue(v)])) }),
+        headers: { Authorization: `Bearer ${await accessToken(sa)}`, "Content-Type": "application/json" },
+        body: bodyOf(data),
       });
+      if (res.ok) return true;
+      const j = await res.json().catch(() => ({}));
+      if ([400, 404, 409].includes(res.status) && ["FAILED_PRECONDITION", "ALREADY_EXISTS", "NOT_FOUND", "ABORTED"].includes(j.error?.status)) return false;
+      throw new Error(`Firestore ${res.status}: ${j.error?.message || ""}`);
+    },
+    // קריאה-שינוי-כתיבה בלי לדרוס כתיבה מקבילה: fn(data הנוכחי, או {} אם אין) מחזיר את השדות לכתוב,
+    // או null כדי לא לכתוב כלום. אם מישהו כתב בינתיים — קוראים שוב ומריצים את fn מחדש.
+    async update(path, fn, tries = 6) {
+      for (let i = 0; i < tries; i++) {
+        const cur = await this.getDoc(path);
+        const patch = await fn(cur ? cur.data : {}, !!cur);
+        if (!patch) return null;
+        if (await this.mergeIf(path, patch, cur?.updateTime || null)) return patch;
+      }
+      throw new Error(`Firestore: ${path} השתנה שוב ושוב במקביל — לא נשמר`);
     },
     async list(collection) {
       const out = [];

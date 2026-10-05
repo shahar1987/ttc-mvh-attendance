@@ -4,6 +4,7 @@
 import { israelToday, normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { waLink, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { renderTemplate } from "../../agents/templates.mjs";
+import { outboxMap } from "./queue.js";
 
 const GRACE_MIN = 30;
 
@@ -41,9 +42,12 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
   const text = lines.length ? `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}` : "";
-  // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
-  await store.merge("agentReports/bot", { coachReminders: { date: today, groups: [...done, ...groups.map((g) => g.id)] }, ...(text && { outbox: { ...(bot.outbox || {}), reminders: { at: now.toISOString(), text } } }) });
-  if (!text) return "all marked";
-  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
-  return text;
+  if (text) {
+    // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
+    await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), reminders: { at: now.toISOString(), text } } }));
+    // אם השליחה נכשלת — זורק, והקבוצות לא מסומנות כ"טופלו", כך שהריצה הבאה (עוד רבע שעה) מנסה שוב
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
+  }
+  await store.update("agentReports/bot", (cur) => ({ coachReminders: { date: today, groups: [...new Set([...(cur.coachReminders?.date === today ? cur.coachReminders.groups || [] : []), ...groups.map((g) => g.id)])] } }));
+  return text || "all marked";
 }
