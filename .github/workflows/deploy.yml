@@ -21,13 +21,19 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
+      # סורק את כל הקבצים בריפו (git ls-files), לא רשימה ידנית — קובץ חדש לא יחמוק.
+      # מחוץ לסריקה: תמונות/גופנים/בינאריים (grep -I מדלג גם על כל בינארי אחר),
+      # קובצי lock (גיבובים ארוכים), ונתוני גופנים של סקיל צד-שלישי ב-.claude/skills/*/scripts/data
+      # (מדדי גופן מספריים, לא מידע אישי). מותרים: מספר הדוגמה 050-1234567 ומספרי בדיקה
+      # מזויפים בולטים (רצף 1234567/7654321/1111111/1112222 או אפסים).
       - name: Privacy guard - no real phone numbers in the source
         run: |
-          MATCHES=$(grep -rnoE '(\+?972[- ]?5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' \
-            part-a.js part-b.js index.html sw.js manifest.json README.md tttm.json 2>/dev/null \
-            | grep -vE '050-?1234567' || true)
+          MATCHES=$(git ls-files -z \
+            | grep -zvE '\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|otf|pyc)$|(^|/)package-lock\.json$|^\.claude/skills/[^/]+/scripts/data/' \
+            | xargs -0 -r grep -nIoE '(\+?972[- ]?5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' 2>/dev/null \
+            | grep -vE ':(\+?972|0)5[0-9]-?(1234567|7654321|1111111|1112222|0{5}[0-9]{2})$' || true)
           if [ -n "$MATCHES" ]; then
             echo "ERROR: phone-number-like values found in source files:"
             echo "$MATCHES"
@@ -36,9 +42,9 @@ jobs:
           fi
           echo "Privacy guard passed - no phone numbers in source."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install react@18.3.1 react-dom@18.3.1 lucide-react@0.383.0 firebase@10.12.2 esbuild@0.21.5 sharp@0.33.4 --no-audit --no-fund
@@ -49,7 +55,8 @@ jobs:
             cat part-a.js part-b.js > bundle.js
             echo "Reassembled bundle.js ($(stat -c%s bundle.js) bytes)"
           else
-            echo "Using bundle.js as-is ($(stat -c%s bundle.js) bytes)"
+            # bundle.js כבר לא נשמר בריפו (עותק ישן ומטעה) — בלי שני החלקים אין ממה לבנות
+            echo "ERROR: part-a.js / part-b.js missing" && exit 1
           fi
 
       - name: Bundle everything into one self-contained file
@@ -114,6 +121,8 @@ jobs:
           grep -q "app.js?v=$VERSION" site/index.html || (echo "ERROR: cache-busting failed" && exit 1)
           grep -q "tailwind.css?v=$VERSION" site/index.html || (echo "ERROR: tailwind cache-busting failed" && exit 1)
           ! grep -q '__BUILD_VERSION__' site/sw.js || (echo "ERROR: sw.js version placeholder not replaced" && exit 1)
+          # ה-service worker שומר מראש את app.js?v= ו-tailwind.css?v= של אותה גרסה בדיוק
+          grep -q "const VERSION = '$VERSION';" site/sw.js || (echo "ERROR: sw.js version not injected" && exit 1)
 
       - name: Verify the build
         run: |
@@ -153,7 +162,7 @@ jobs:
           sleep 4
           node smoke.mjs
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
@@ -170,12 +179,25 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       pages: write
       id-token: write
+      issues: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Open an issue if the deploy failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue create \
+            --title "❌ פרסום האפליקציה נכשל" \
+            --body "הבנייה עברה אבל הפרסום ל-GitHub Pages נכשל — האתר נשאר על הגרסה הקודמת. ריצה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }} || true
