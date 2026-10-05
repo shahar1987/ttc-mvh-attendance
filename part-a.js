@@ -364,18 +364,19 @@ async function markAbsenceMsgSent(date, groupId, playerId, userId) {
   O(S(P, "players", playerId), { alertHandledDate: date }).catch((err) =>
     console.warn("Alert handling not saved:", err),
   );
-  await De(
-    S(P, "attendance", `${date}_${groupId}_${playerId}`),
-    {
-      date,
-      groupId,
-      playerId,
-      status: "Absent",
-      msgSentAt: new Date().toISOString(),
-      msgSentBy: userId || "",
-    },
-    { merge: !0 },
-  );
+  // מעדכנים רק את סימון ההודעה. כתיבת status:"Absent" כאן דרסה תיקון של מאמן
+  // ל"הגיע" שנעשה בינתיים. רק אם הרישום לא קיים בכלל — יוצרים אותו כמו קודם.
+  let ref = S(P, "attendance", `${date}_${groupId}_${playerId}`),
+    stamp = { msgSentAt: new Date().toISOString(), msgSentBy: userId || "" };
+  try {
+    await O(ref, stamp);
+  } catch (err) {
+    // עדכון של מסמך חסר נכשל ב-not-found, ולמאמן לפעמים ב-permission-denied
+    // (הכלל בודק את המסמך הקיים). אם המסמך כן קיים ואין הרשאה, גם הכתיבה
+    // הזו תיחסם באותו כלל — כך שאין כאן עקיפה.
+    if (!err || (err.code !== "not-found" && err.code !== "permission-denied")) throw err;
+    await De(ref, { date, groupId, playerId, status: "Absent", ...stamp }, { merge: !0 });
+  }
 }
 function startOfWeekStr() {
   let d = new Date(),

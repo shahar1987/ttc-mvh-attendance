@@ -5,6 +5,7 @@
 import { confirmed } from "./tools.js";
 import { sign, issueKey, checkKey, dropKey } from "./google.js";
 import { waConfig, downloadMedia } from "../../agents/lib/whatsapp.mjs";
+import { israelToUtc } from "./time.js";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
@@ -64,12 +65,8 @@ export const META_TOOL_DEFS = [
 // הדף של המועדון: זה שמחובר לאינסטגרם (@ttcmhr). קורטדו מחובר גם — אסור לפרסם אליו.
 export const clubPage = (social) => { const ps = social?.pages || []; return ps.find((p) => p.ig) || ps[0]; };
 
-// "2026-10-11T17:00" בשעון ישראל → Date (UTC)
-export function israelToUtc(local) {
-  const d = new Date(`${local}:00Z`);
-  const off = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })) - new Date(d.toLocaleString("en-US", { timeZone: "UTC" }));
-  return new Date(d - off);
-}
+// "2026-10-11T17:00" בשעון ישראל → Date (UTC). פונקציה אחת משותפת (time.js), נשארת מיוצאת גם מכאן.
+export { israelToUtc };
 
 async function graphPost(path, body) {
   const r = await fetch(`${GRAPH}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -98,14 +95,29 @@ async function publishNow(page, { platform, text, igText, img }) {
 }
 
 // מה-cron של כל רבע שעה: מפרסם פוסטים מתוזמנים שהגיע זמנם. מחזיר שורות לדיווח לבעלים.
+// נגד פוסט כפול (Cloudflare מריץ לפעמים cron פעמיים, ו-publish_post יכול לכתוב לתור באותו רגע):
+// קודם "תופסים" את הפוסטים בכתיבה מותנית (status: publishing) — רק ריצה אחת מצליחה לתפוס כל פוסט.
+// פוסט שנתפס ולא הסתיים (ה-worker נפל באמצע) לא מתפרסם שוב — אחרי שעה יוצא מהתור עם דיווח לבדוק בדף.
+const qid = (q) => q.id || `${q.due}|${q.platform}|${String(q.text || "").slice(0, 40)}`;
 export async function publishDue(store, now = new Date()) {
-  const social = (await store.get("agentReports/social")) || {};
-  const due = (social.queue || []).filter((q) => q.due <= now.toISOString());
-  if (!due.length) return [];
-  // קודם מוציאים מהתור — Cloudflare מריץ לפעמים cron פעמיים, ופוסט כפול גרוע מפוסט שנכשל ומדווח
-  await store.merge("agentReports/social", { queue: social.queue.filter((q) => q.due > now.toISOString()) });
-  const out = [];
-  for (const q of due) out.push(`📣 ${q.at}: ${await publishNow(clubPage(social), q).catch((e) => `נכשל — ${e.message}`)}`);
+  const stamp = now.toISOString();
+  const stale = new Date(now.getTime() - 3600 * 1000).toISOString();
+  let claimed = [], stuck = [], page = null;
+  await store.update("agentReports/social", (social) => {
+    const queue = social.queue || [];
+    claimed = queue.filter((q) => q.due <= stamp && q.status !== "publishing");
+    stuck = queue.filter((q) => q.status === "publishing" && (q.claimedAt || "") < stale);
+    page = clubPage(social);
+    if (!claimed.length && !stuck.length) return null;
+    const mine = new Set(claimed.map(qid)), gone = new Set(stuck.map(qid));
+    // פוסט שנכשל לא חוזר לתור (פוסט כפול גרוע מפוסט שנכשל ומדווח) — כמו קודם
+    return { queue: queue.filter((q) => !gone.has(qid(q))).map((q) => (mine.has(qid(q)) ? { ...q, status: "publishing", claimedAt: stamp } : q)) };
+  });
+  const out = stuck.map((q) => `📣 ${q.at}: ⚠️ לא ידוע אם פורסם (הפרסום נקטע באמצע) — לבדוק בדף ולא לפרסם שוב בלי לבדוק`);
+  for (const q of claimed) {
+    out.push(`📣 ${q.at}: ${await publishNow(page, q).catch((e) => `נכשל — ${e.message}`)}`);
+    await store.update("agentReports/social", (social) => ({ queue: (social.queue || []).filter((x) => !(qid(x) === qid(q) && x.claimedAt === stamp)) }));
+  }
   return out;
 }
 
@@ -124,7 +136,9 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       const item = { platform, text, igText: instagram_text || text, img: img || "" };
       if (at && israelToUtc(at) > new Date(Date.now() + 10 * 60 * 1000)) {
         const due = israelToUtc(at).toISOString();
-        await store.merge("agentReports/social", { queue: [...(social.queue || []), { ...item, at, due }] });
+        const id = Math.random().toString(36).slice(2, 8);
+        // קוראים את התור מחדש רגע לפני הכתיבה (כתיבה מותנית) — כדי לא לדרוס פוסט שה-cron תפס או הוציא בינתיים
+        await store.update("agentReports/social", (cur) => ({ queue: [...(cur.queue || []), { ...item, at, due, id }] }));
         return `מתוזמן ל-${at.replace("T", " ")} (${platform === "both" ? "פייסבוק + אינסטגרם" : platform}). יתפרסם אוטומטית ואעדכן.`;
       }
       return `פורסם: ${await publishNow(page, item)}`;

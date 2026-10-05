@@ -3,6 +3,7 @@
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { dropoutRisk, playerHistory, israelToday, isValidPhone } from "../../agents/lib/analysis.mjs";
+import { DELETE } from "./firestore.js";
 
 const AGENTS = ["scan", "bugcheck", "ideas", "supervisor", "content"];
 const MAX_SEND = 40;
@@ -11,14 +12,21 @@ export const APPROVAL = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|
 
 // אישור בשני שלבים לפעולה שיוצאת החוצה: הקריאה הראשונה שומרת טיוטה ולא עושה כלום. רק אם הבעלים ענה "כן"
 // בהודעה *אחרת* (לא באותה הודעה שבה ביקש — "תשלחי למאמנים..." מכיל "תשלחי") ועם אותם פרטים בדיוק — מאשרים.
+// הכתיבה מותנית: שתי קריאות במקביל (Gemini מפעיל כמה כלים יחד) לא יכולות שתיהן "לצרוך" את אותו אישור.
 export async function confirmed(store, kind, payload, ownerText, turn) {
-  const bot = (await store.get("agentReports/bot")) || {};
   const key = JSON.stringify(payload);
-  const p = bot.pending?.[kind];
-  const ok = APPROVAL.test(ownerText) && p?.key === key && p.turn !== turn;
-  await store.merge("agentReports/bot", { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn } } });
+  let ok = false;
+  await store.update("agentReports/bot", (bot) => {
+    const p = bot.pending?.[kind];
+    ok = APPROVAL.test(ownerText || "") && p?.key === key && p.turn !== turn;
+    return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn } } };
+  });
   return ok;
 }
+
+// "שלחתי" מהבעלים — אחרי שלחץ על קישורי ההיעדרות
+export const SENT_CONFIRM = /(שלחתי|שלחנו|נשלחו|נשלח הכל)/;
+const NOT_SENT = /(לא|עוד לא|טרם)\s+(שלחתי|שלחנו|נשלחו|נשלח)/;
 
 export const TOOL_DEFS = [
   {
@@ -50,12 +58,22 @@ export const TOOL_DEFS = [
   {
     name: "send_absence_messages",
     description:
-      "שולח בוואטסאפ ממספר המועדון את הודעות ההיעדרות לפי המספרים בדוח היומי. מותר רק אחרי ששולה אישרה במפורש בהודעה האחרונה שלה (למשל 'שלח הכל' או 'שלח 1,3'). לפני אישור — להציג לה את הרשימה ולשאול.",
+      "מכין קישורי וואטסאפ (wa.me) להודעות ההיעדרות לפי המספרים בדוח היומי. ההודעות יוצאות מהמספר של הבעלים כשהוא לוחץ על כל קישור ואז \"שלח\" — הבוט לא שולח בעצמו. אישור בשני שלבים: הקריאה הראשונה רק שומרת את הבקשה ומחזירה \"עוד לא\"; להציג לבעלים את הרשימה ולשאול \"להכין קישורים?\", ורק אחרי \"כן\" בהודעה נפרדת — לקרוא שוב עם אותם מספרים בדיוק. ההיעדרויות מסומנות כמטופלות רק אחרי שהבעלים כותב \"שלחתי\" (confirm_absence_sent).",
     input_schema: {
       type: "object",
       properties: {
         numbers: { type: "array", items: { type: "integer" }, description: "המספרים מהדוח. ריק = כולם" },
       },
+      required: ["numbers"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "confirm_absence_sent",
+    description: "אחרי שהבעלים כתב \"שלחתי\" על קישורי ההיעדרות שהוכנו (send_absence_messages): מסמן אותן כנשלחו, כמו לחיצה על \"נשלח\" באפליקציה. numbers = המספרים שנשלחו בפועל; ריק = כל הקישורים שהוכנו. לא לקרוא בלי \"שלחתי\" מהבעלים.",
+    input_schema: {
+      type: "object",
+      properties: { numbers: { type: "array", items: { type: "integer" } } },
       required: ["numbers"],
       additionalProperties: false,
     },
@@ -131,7 +149,19 @@ function pick(report, numbers) {
 
 // שער לכתיבת נוכחות: כל שם/מספר חייב להופיע בהודעה הגולמית של הבעלים. אם לא (למשל "סמני את כולם", או טקסט
 // שהוזרק דרך שם שחקן) — אישור דו-שלבי כמו בפרסום. ככה הכתבה רגילה של הבעלים נשארת מיידית.
-const inOwnerText = (items, ownerText) => items.every((x) => ownerText.includes(String(x).trim()));
+// רשימה ריקה (= "כולם") אף פעם לא נחשבת כמופיעה בהודעה — תמיד אישור דו-שלבי.
+const inOwnerText = (items, ownerText) => items.length > 0 && items.every((x) => String(x).trim() && String(ownerText || "").includes(String(x).trim()));
+
+// התאריך הוזכר בהודעה של הבעלים: היום, אתמול/שלשום, או התאריך עצמו (2026-10-01 / 1.10 / 1/10)
+function dateInOwnerText(d, ownerText, today = israelToday()) {
+  const t = String(ownerText || "");
+  if (d === today) return true;
+  const back = (n) => new Date(Date.parse(today + "T12:00:00Z") - n * 864e5).toISOString().slice(0, 10);
+  if (/אתמול/.test(t) && d === back(1)) return true;
+  if (/שלשום/.test(t) && d === back(2)) return true;
+  const [, m, day] = d.split("-").map(Number);
+  return t.includes(d) || new RegExp(`(^|\\D)0?${day}[./]0?${m}(\\D|$)`).test(t);
+}
 
 export function makeTools({ env, store, wa, lastOwnerText, turn }) {
   const latest = () => store.get("agentReports/latest");
@@ -141,6 +171,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
       const r = await latest();
       if (!r) return "עוד אין דוח — הסורק היומי לא רץ עדיין.";
       const done = new Set(r.handledKeys || []);
+      const prepared = new Set((((await store.get("agentReports/bot")) || {}).absenceLinks?.items || []).map((x) => x.key));
       return JSON.stringify({
         date: r.date,
         yesterday: r.yesterday,
@@ -154,6 +185,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
             kind: x.kind === "repeat" ? "שתי היעדרויות ברצף" : `היעדרות ${x.whenText}`,
             hasPhone: !!x.phone,
             alreadyHandled: done.has(x.key),
+            ...(prepared.has(x.key) && !done.has(x.key) ? { linksPrepared: true } : {}),
             message: renderTemplate(t.name, t.params),
           };
         }),
@@ -198,32 +230,58 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
     },
 
     async send_absence_messages({ numbers }) {
-      // השער לא תלוי במה ש-Claude החליט: בלי מילת אישור בהודעה האחרונה של שולה — לא שולחים
-      if (!APPROVAL.test(lastOwnerText)) return "לא נשלח: שולה עוד לא אישרה בהודעה האחרונה. להציג את הרשימה ולשאול.";
+      // השער לא תלוי במה ש-Gemini החליט: אישור בשני שלבים, כמו בפרסום. "כן" באותה הודעה של הבקשה
+      // ("תשלחי להורים...") לא נחשב — רק "כן" בהודעה נפרדת, על אותם מספרים בדיוק.
+      const nums = (numbers || []).map(Number);
+      if (!(await confirmed(store, "absence", { numbers: nums }, lastOwnerText, turn)))
+        return "עוד לא הוכנו קישורים. להציג לבעלים את הרשימה (מספר, שם, נוסח) ולשאול \"להכין קישורים?\". אחרי \"כן\" בהודעה נפרדת — לקרוא שוב עם אותם מספרים בדיוק.";
       const r = await latest();
       if (!r) return "אין דוח.";
       const done = new Set(r.handledKeys || []);
-      const chosen = pick(r, numbers).filter(({ item }) => !done.has(item.key));
-      if (chosen.length > MAX_SEND) return `יותר מ-${MAX_SEND} הודעות בבת אחת — לבקש משולה לבחור מספרים.`;
+      const chosen = pick(r, nums).filter(({ item }) => !done.has(item.key));
+      if (chosen.length > MAX_SEND) return `יותר מ-${MAX_SEND} הודעות בבת אחת — לבקש מהבעלים לבחור מספרים.`;
       const results = [];
+      const prepared = [];
       const sentTo = new Set();
       for (const { n, item } of chosen) {
         if (sentTo.has(item.playerId)) {
-          results.push(`${n}. ${item.playerName}: כבר קיבל הודעה עכשיו — דילגתי`);
+          results.push(`${n}. ${item.playerName}: כבר יש קישור להורה הזה ברשימה — דילגתי`);
           continue;
         }
         if (!item.phone) {
-          results.push(`${n}. ${item.playerName}: אין טלפון תקין — לא נשלח`);
+          results.push(`${n}. ${item.playerName}: אין טלפון תקין — אין קישור`);
           continue;
         }
         const t = absenceTemplate(item);
-        await markHandled(store, item, true);
-        done.add(item.key);
         sentTo.add(item.playerId);
+        prepared.push({ n, key: item.key, kind: item.kind, date: item.date, groupId: item.groupId, playerId: item.playerId, playerName: item.playerName });
         results.push(`${n}. ${item.playerName}: ${waLink(item.phone, renderTemplate(t.name, t.params))}`);
       }
-      await store.merge("agentReports/latest", { handledKeys: [...done] });
-      return results.length ? `ללחוץ על כל קישור ואז "שלח" — ההודעה יוצאת מהמספר שלך:\n${results.join("\n")}` : "אין מה לשלוח — כל הרשימה כבר טופלה.";
+      // לא מסמנים "נשלח" כשרק מכינים קישור — הבעלים עוד לא לחץ. נשמר כ"קישורים הוכנו", ומסומן רק אחרי "שלחתי".
+      if (prepared.length)
+        await store.update("agentReports/bot", (bot) => {
+          const keep = (bot.absenceLinks?.date === r.date ? bot.absenceLinks.items || [] : []).filter((x) => !prepared.some((p) => p.key === x.key));
+          return { absenceLinks: { date: r.date, at: new Date().toISOString(), items: [...keep, ...prepared] } };
+        });
+      return results.length
+        ? `ללחוץ על כל קישור ואז "שלח" — ההודעה יוצאת מהמספר שלך. אחרי ששלחת — לכתוב לי "שלחתי" ואסמן אותן כנשלחו:\n${results.join("\n")}`
+        : "אין מה לשלוח — כל הרשימה כבר טופלה.";
+    },
+
+    async confirm_absence_sent({ numbers }) {
+      if (!SENT_CONFIRM.test(lastOwnerText || "") || NOT_SENT.test(lastOwnerText || ""))
+        return "לא סומן: הבעלים עוד לא כתב \"שלחתי\". לשאול אותו אם שלח את ההודעות.";
+      const bot = (await store.get("agentReports/bot")) || {};
+      const all = bot.absenceLinks?.items || [];
+      const want = (numbers || []).map(Number);
+      const chosen = want.length ? all.filter((x) => want.includes(x.n)) : all;
+      if (!chosen.length) return "אין קישורים שהוכנו וממתינים לאישור שליחה.";
+      const lines = [];
+      for (const item of chosen) lines.push(`${item.n}. ${item.playerName}: ${await markHandled(store, item, true)}`);
+      const keys = new Set(chosen.map((x) => x.key));
+      await store.update("agentReports/latest", (cur) => ({ handledKeys: [...new Set([...(cur.handledKeys || []), ...keys])] }));
+      await store.update("agentReports/bot", (cur) => ({ absenceLinks: { ...(cur.absenceLinks || {}), items: (cur.absenceLinks?.items || []).filter((x) => !keys.has(x.key)) } }));
+      return `סומנו כנשלחו:\n${lines.join("\n")}`;
     },
 
     async skip_messages({ numbers }) {
@@ -231,13 +289,9 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
         return "לא סומן עדיין. להציג לבעלים את המספרים ולשאול אם לסמן כמטופלים. אחרי \"כן\" — לקרוא שוב עם אותם מספרים.";
       const r = await latest();
       if (!r) return "אין דוח.";
-      const done = new Set(r.handledKeys || []);
       const chosen = pick(r, numbers);
-      for (const { item } of chosen) {
-        await markHandled(store, item, false);
-        done.add(item.key);
-      }
-      await store.merge("agentReports/latest", { handledKeys: [...done] });
+      for (const { item } of chosen) await markHandled(store, item, false);
+      await store.update("agentReports/latest", (cur) => ({ handledKeys: [...new Set([...(cur.handledKeys || []), ...chosen.map(({ item }) => item.key)])] }));
       return `סומנו כמטופלים: ${chosen.map(({ n, item }) => `${n}. ${item.playerName}`).join(", ")}`;
     },
 
@@ -264,8 +318,12 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
 
     async mark_attendance({ group, date, present = [], absent = [] }) {
       const d = validDate(date);
-      if (!inOwnerText([...present, ...absent], lastOwnerText) && !(await confirmed(store, "attendance", { group, date: d, present, absent }, lastOwnerText, turn)))
-        return "לא נשמר עדיין. להציג לבעלים בדיוק מי מסומן נוכח ומי נעדר ולשאול \"לשמור?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
+      const short = [...present, ...absent].filter((q) => String(q || "").trim().length < 2);
+      if (short.length) return `לא נשמר: שם קצר מדי (${short.map((q) => `"${q}"`).join(", ")}). צריך לפחות 2 אותיות מהשם.`;
+      // מיידי רק כשהכל כתוב בהודעה של הבעלים: השמות, הקבוצה, והתאריך (או שזה היום). אחרת — "כן" נפרד.
+      const direct = inOwnerText([...present, ...absent], lastOwnerText) && inOwnerText([group], lastOwnerText) && dateInOwnerText(d, lastOwnerText);
+      if (!direct && !(await confirmed(store, "attendance", { group, date: d, present, absent }, lastOwnerText, turn)))
+        return "לא נשמר עדיין. להציג לבעלים בדיוק את הקבוצה, התאריך, מי מסומן נוכח ומי נעדר ולשאול \"לשמור?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const { g, roster } = await findGroup(store, group);
       if (!g) return roster;
       const saved = [];
@@ -281,7 +339,8 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
             continue;
           }
           const p = hits[0];
-          // אותו חוזה שמירה של האפליקציה: מזהה ${date}_${groupId}_${playerId}, סטטוס Present/Absent
+          // אותו חוזה שמירה של האפליקציה: מזהה ${date}_${groupId}_${playerId}, סטטוס Present/Absent.
+          // כמו באפליקציה: נעדר שנשמר מחדש שומר את msgSentAt (merge), ונוכח נשמר בלי msgSentAt/msgSentBy.
           await store.merge(`attendance/${d}_${g.id}_${p.id}`, {
             date: d,
             groupId: g.id,
@@ -289,6 +348,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
             status,
             markedBy: "shula-whatsapp",
             updatedAt: new Date().toISOString(),
+            ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE } : {}),
           });
           saved.push(`${p.name}: ${status === "Present" ? "נוכח" : "נעדר"}`);
         }
@@ -328,7 +388,9 @@ const WEATHER = { 0: "בהיר", 1: "בהיר ברובו", 2: "מעונן חלק
 
 export function validDate(date) {
   const d = String(date || "").trim() || israelToday();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d + "T00:00:00Z"))) throw new Error(`תאריך לא תקין: ${d} (צריך YYYY-MM-DD)`);
+  // בדיקה הלוך-חזור: 2026-02-31 לא קיים (Date.parse היה מגלגל אותו ל-3 במרץ)
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + "T00:00:00Z") : null;
+  if (!t || Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== d) throw new Error(`תאריך לא תקין: ${d} (צריך YYYY-MM-DD)`);
   return d;
 }
 
@@ -345,19 +407,21 @@ export async function findGroup(store, group, groups, players) {
 
 // אותו רישום שהאפליקציה עושה כשמאמן שולח הודעה או לוחץ "טופל" (markAbsenceMsgSent / markAlertHandled
 // ב-part-a.js), כדי שהמאמנים לא יראו את אותה היעדרות כממתינה ואף הורה לא יקבל הודעה כפולה.
+// "נשלח" נכתב רק על רשומת היעדרות קיימת שעדיין Absent (קריאה וכתיבה מותנית): אם המאמן סימן בינתיים
+// "נוכח" או שהרשומה לא קיימת — לא נוגעים. לא כותבים status בכלל, רק msgSentAt/msgSentBy. מחזיר מה נעשה.
 async function markHandled(store, item, sent) {
+  if (sent && item.kind === "absence") {
+    let state = "missing";
+    await store.update(`attendance/${item.date}_${item.groupId}_${item.playerId}`, (a, exists) => {
+      state = !exists ? "missing" : a.status !== "Absent" ? "notAbsent" : "ok";
+      return state === "ok" ? { msgSentAt: new Date().toISOString(), msgSentBy: "whatsapp-agent" } : null;
+    });
+    if (state === "missing") return "הרשומה לא קיימת — לא סומן";
+    if (state === "notAbsent") return "סומן בינתיים כנוכח — לא סומן כנשלח";
+  }
   const p = await store.get(`players/${item.playerId}`);
   // רק מקדמים את התאריך — לא מחזירים אחורה סימון חדש יותר
   if (p && !(p.alertHandledDate && p.alertHandledDate >= item.date))
     await store.merge(`players/${item.playerId}`, { alertHandledDate: item.date });
-  if (sent && item.kind === "absence") {
-    await store.merge(`attendance/${item.date}_${item.groupId}_${item.playerId}`, {
-      date: item.date,
-      groupId: item.groupId,
-      playerId: item.playerId,
-      status: "Absent",
-      msgSentAt: new Date().toISOString(),
-      msgSentBy: "whatsapp-agent",
-    });
-  }
+  return sent ? "סומן כנשלח" : "סומן כמטופל";
 }

@@ -1,7 +1,7 @@
 name: Nightly backup
 
-# מייצא מדי לילה את attendance, cancellations, players ו-tournaments מ-Firestore
-# (backup/export_firestore.py) ודוחף אותם ל-shahar1987/ttc-mvh-backups
+# מייצא מדי לילה את כל האוספים מ-Firestore (ובהם attendance, cancellations, players,
+# tournaments; backup/export_firestore.py) ודוחף אותם ל-shahar1987/ttc-mvh-backups
 # הפרטי — לא לריפו הזה, כי הוא ציבורי והנתונים כוללים שמות ילדים,
 # טלפוני הורים ושיוך לקבוצות (כולל פרקינסון). ראו README שם.
 #
@@ -16,9 +16,15 @@ on:
   schedule:
     - cron: "0 23 * * *"   # 02:00 שעון ישראל — אחרי שכל האימונים נרשמו
   workflow_dispatch:      # מאפשר גם הרצה ידנית מהלשונית Actions
+    inputs:
+      allow_drop:
+        description: "לאשר ירידה של יותר מ-20% במספר המסמכים (רק אחרי מחיקה מכוונת)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: nightly-backup
@@ -29,13 +35,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - run: pip install google-cloud-firestore
+      # tzdata — לשעון ישראל (zoneinfo) גם אם חסר במערכת
+      - run: pip install google-cloud-firestore tzdata
 
       # בדיקה מוקדמת: עדיף להיכשל מיד עם הודעה ברורה
       # מאשר באמצע הריצה עם שגיאה מבלבלת.
@@ -61,23 +68,31 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
+      # משכפלים את ריפו הגיבויים לפני היצוא, כדי להשוות לסיכום של הלילה הקודם
+      - name: Clone the private backups repo
+        env:
+          BACKUP_DEPLOY_KEY: ${{ secrets.BACKUP_DEPLOY_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$BACKUP_DEPLOY_KEY" > /tmp/deploy_key
+          export GIT_SSH_COMMAND="ssh -i /tmp/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone --depth 1 git@github.com:shahar1987/ttc-mvh-backups.git repo
+
+      # נכשל (והגיבוי הקודם לא נדרס) אם אוסף גדול ירד ביותר מ-20% מאתמול
       - name: Export Firestore
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+          PREVIOUS_SUMMARY: repo/_summary.json
+          BACKUP_ALLOW_DROP: ${{ inputs.allow_drop && '1' || '' }}
         run: python backup/export_firestore.py backup-out
 
       - name: Show what was exported
         run: cat backup-out/_summary.json
 
       - name: Push to the private backups repo
-        env:
-          BACKUP_DEPLOY_KEY: ${{ secrets.BACKUP_DEPLOY_KEY }}
         run: |
           STAMP=$(TZ=Asia/Jerusalem date '+%Y-%m-%d %H:%M')
-          umask 077
-          printf '%s\n' "$BACKUP_DEPLOY_KEY" > /tmp/deploy_key
           export GIT_SSH_COMMAND="ssh -i /tmp/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-          git clone --depth 1 git@github.com:shahar1987/ttc-mvh-backups.git repo
 
           # קבצים קבועים שנדרסים — ההיסטוריה נשמרת ב-git
           cp backup-out/*.json repo/
@@ -99,3 +114,30 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: python backup/upload_drive.py backup-out
+
+      - uses: actions/setup-node@v5
+        if: failure()
+        with:
+          node-version: 22
+
+      # התראה לשולה בוואטסאפ דרך התור של הבוט (agentReports/bot.outbox) — עובד גם כש-Issues כבויים
+      - name: Tell the owner on WhatsApp that the backup failed
+        if: failure()
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ALERT_KEY: backup
+          ALERT_TEXT: "❌ הגיבוי הלילי נכשל. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          npm ci --no-audit --no-fund
+          node alert.mjs
+
+      - name: Open an issue if the backup failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "❌ הגיבוי הלילי נכשל" \
+            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee ${{ github.repository_owner }}

@@ -77,10 +77,24 @@ function historyIndex(attendance, today) {
   return out;
 }
 
-function lastTwoAbsences(hist) {
-  if (hist.length < 2) return null;
-  if (hist[0].status !== "Absent" || hist[1].status !== "Absent") return null;
-  return [hist[0].date, hist[1].date];
+// בדיוק כמו lastTwoAbsences ב-part-a.js: רשומה אחת לכל יום, נוכחות גוברת על היעדרות,
+// ורק היום עצמו לא נספר (תאריך עתידי כן נספר — כמו באפליקציה). שונה במכוון מ-historyIndex,
+// שמשמש את סכנת הנשירה ומדלג על כל מה שמהיום והלאה.
+function twoAbsenceIndex(attendance, today) {
+  const by = new Map();
+  for (const a of attendance) {
+    if (!a.playerId || !a.date || a.date === today) continue;
+    let m = by.get(a.playerId);
+    if (!m) by.set(a.playerId, (m = new Map()));
+    const prev = m.get(a.date);
+    if (!prev || prev.status !== "Present") m.set(a.date, a);
+  }
+  const out = new Map();
+  for (const [pid, m] of by) {
+    const recs = [...m.values()].sort((x, y) => y.date.localeCompare(x.date));
+    if (recs.length >= 2 && recs[0].status === "Absent" && recs[1].status === "Absent") out.set(pid, [recs[0].date, recs[1].date]);
+  }
+  return out;
 }
 
 function rate(recs) {
@@ -125,6 +139,7 @@ export function analyze({ players, groups, attendance, today }) {
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const playerById = new Map(players.map((p) => [p.id, p]));
   const hist = historyIndex(attendance, today);
+  const twoIdx = twoAbsenceIndex(attendance, today);
   const yesterday = addDays(today, -1);
 
   const item = (p, g, kind, date, extra = {}) => ({
@@ -133,7 +148,7 @@ export function analyze({ players, groups, attendance, today }) {
     date,
     playerId: p.id,
     playerName: (p.name || "").trim(),
-    groupId: g ? g.id : p.groupId || "",
+    groupId: extra.groupId ?? (g ? g.id : p.groupId || ""),
     groupName: g ? g.name || "" : "",
     adult: isAdultGroup(g),
     gender: playerGender(p),
@@ -147,27 +162,29 @@ export function analyze({ players, groups, attendance, today }) {
   const repeatDates = new Map();
   for (const p of players) {
     if (!active(p)) continue;
-    const dates = lastTwoAbsences(hist.get(p.id) || []);
+    const dates = twoIdx.get(p.id);
     if (!dates) continue;
     repeatDates.set(p.id, dates);
     if (p.alertHandledDate && p.alertHandledDate >= dates[0]) continue;
     repeat.push(item(p, groupById.get(p.groupId), "repeat", dates[0], { dates }));
   }
 
-  // היעדרות בודדת מהשבוע האחרון שלא נשלחה עליה הודעה (כמו pendingAbsenceMsgs)
+  // היעדרות בודדת מהשבוע האחרון שלא נשלחה עליה הודעה — בדיוק כמו pendingAbsenceMsgs:
+  // כולל היום עצמו, ומדלגים רק על שני התאריכים שכבר בהתראת "שתי היעדרויות".
   const from = addDays(today, -6);
   const single = [];
   for (const a of attendance) {
     if (a.status !== "Absent" || a.msgSentAt) continue;
-    if (!a.date || a.date >= today || a.date < from) continue;
+    if (!a.date || a.date > today || a.date < from) continue;
+    // הסימון "נשלחה הודעה" נכתב למסמך ${date}_${groupId}_${playerId} — בלי הקבוצה של הרשומה
+    // עצמה אסור לנחש (הקבוצה הנוכחית של השחקן עלולה לייצר מסמך נוכחות חדש ושגוי)
+    if (!a.groupId) continue;
     const p = playerById.get(a.playerId);
     if (!active(p)) continue;
     if (p.alertHandledDate && p.alertHandledDate >= a.date) continue;
     const two = repeatDates.get(p.id);
     if (two && two.includes(a.date)) continue;
-    // כבר ממתינה לו הודעת "שתי היעדרויות" — הודעה אחת להורה מספיקה
-    if (repeat.some((r) => r.playerId === p.id)) continue;
-    single.push(item(p, groupById.get(a.groupId), "absence", a.date));
+    single.push(item(p, groupById.get(a.groupId), "absence", a.date, { groupId: a.groupId }));
   }
 
   const atRisk = [];

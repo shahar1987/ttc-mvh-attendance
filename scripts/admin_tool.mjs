@@ -98,12 +98,11 @@ async function main() {
       const profileRef = db.collection("users").doc(uid);
       const profileSnap = await profileRef.get();
 
-      // הגנה: תור adminTasks נכתב היום ישירות מהלקוח בלי חוקי Firestore שאוכפים
-      // מי רשאי לכתוב אליו, כך שכל משתמש מחובר (כולל מאמן) יכול תיאורטית לבקש
-      // reset-access נגד ה-uid של מנהל ולגרום למחיקת חשבונו. עד שיפורסמו חוקי
-      // Firestore שחוסמים כתיבה לא-מנהלית לאוסף הזה, לפחות כאן — בשכבת השרת עם
-      // הרשאות Admin SDK מלאות — לעולם לא נבצע reset-access נגד חשבון עם role
-      // admin. מנהלים מנוהלים ידנית בקונסולת Firebase, לא דרך התור האוטומטי הזה.
+      // הגנה נוספת (הגנה לעומק): חוקי Firestore כבר מאפשרים כתיבה ל-adminTasks
+      // רק למנהל (firestore.rules, match /adminTasks), אבל גם כך — כאן, בשכבת השרת
+      // עם הרשאות Admin SDK מלאות — לעולם לא מבצעים reset-access נגד חשבון עם role
+      // admin, למקרה שהחוקים ישתנו או שבקשה תיכתב בטעות. מנהלים מנוהלים ידנית
+      // בקונסולת Firebase, לא דרך התור האוטומטי הזה.
       if (type === "reset-access" && profileSnap.exists && String(profileSnap.data().role || "").toLowerCase() === "admin") {
         await finish(
           "failed",

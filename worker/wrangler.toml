@@ -18,3 +18,7 @@ META_APP_ID = "2171414330077933" # מזהה האפליקציה של Meta, לא �
 WHATSAPP_WABA_ID = "2217359029663578" # מזהה חשבון הוואטסאפ העסקי, לא סוד
 ROUTINE_ID = "trig_013fJCvCCiZUvJiQbxji5whZ" # המשימה הקבועה של קלוד שמבצעת בקשות מייל/יומן — מזהה, לא סוד
 INBOX_KEY_SHA256 = "f570a9f435394e4c6d1beaf5f2febf72f2cc78bae83adedb14bc60e6e6759771" # רק ה-hash; המפתח עצמו שמור ברוטינה של קלוד
+
+# לוגים של ה-worker בדשבורד של Cloudflare (שגיאות cron ו-webhook) — חינמי
+[observability]
+enabled = true

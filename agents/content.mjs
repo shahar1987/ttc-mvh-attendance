@@ -81,10 +81,17 @@ const SYSTEM = `את כותבת התוכן של מועדון טניס שולחן
 החזירי JSON בלבד: מערך באורך מספר המועדים, לכל מועד {"topic": "...", "text": "...", "image": "איזו תמונה מתאימה (תמונה אמיתית מהאימון / פלייר מהתבנית / תמונת AI)"}.`;
 
 async function main() {
-  const { firestore, heartbeat } = await import("./lib/firebase.mjs");
+  const { firestore, heartbeat, reportMissingKey } = await import("./lib/firebase.mjs");
   const { tellOwner } = await import("./lib/owner.mjs");
-  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) return console.log("skipped: no GEMINI_API_KEY or ANTHROPIC_API_KEY");
   const db = firestore();
+  // Gemini או Claude — מספיק אחד מהם (ראו draftsJson). בלי אף אחד נכשלים בקול: ריצה אדומה + הודעה לשולה
+  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+    console.error("content did not run: no GEMINI_API_KEY or ANTHROPIC_API_KEY (Settings → Secrets and variables → Actions)");
+    await tellOwner(db, { agent: "content", text: "📣 סוכן הפרסום לא רץ: חסר מפתח (GEMINI_API_KEY או ANTHROPIC_API_KEY) ב-GitHub" }).catch((e) => console.error(e.message));
+    await reportMissingKey(db, "content", "GEMINI_API_KEY|ANTHROPIC_API_KEY").catch((e) => console.error(e.message));
+    process.exitCode = 1;
+    return;
+  }
   const today = israelToday();
   const sunday = addDays(today, -new Date(today + "T00:00:00Z").getUTCDay());
   const slots = weekSlots(sunday).filter((s) => s.date >= today);
