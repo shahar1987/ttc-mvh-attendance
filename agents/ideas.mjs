@@ -3,7 +3,7 @@
 // Claude מקבל רק נתונים מצטברים (אחוזי נוכחות לפי קבוצה ויום, כמה בסכנת נשירה,
 // ממצאי בודק הבאגים) — בלי שמות ובלי טלפונים.
 import { readFileSync } from "node:fs";
-import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
+import { firestore, loadAll, heartbeat, reportMissingKey } from "./lib/firebase.mjs";
 import { analyze, addDays, israelToday } from "./lib/analysis.mjs";
 import { ask } from "./lib/claude.mjs";
 import { tellOwner } from "./lib/owner.mjs";
@@ -13,6 +13,7 @@ const db = firestore();
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error("ideas did not run: ANTHROPIC_API_KEY is missing (Settings → Secrets and variables → Actions)");
   await tellOwner(db, { agent: "ideas", text: "💡 סוכן הרעיונות לא רץ: חסר מפתח ANTHROPIC_API_KEY ב-GitHub" }).catch((e) => console.error(e.message));
+  await reportMissingKey(db, "ideas", "ANTHROPIC_API_KEY").catch((e) => console.error(e.message));
   process.exit(1);
 }
 const today = israelToday();

@@ -42,12 +42,30 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
   const text = lines.length ? `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}` : "";
+  const ids = groups.map((g) => g.id);
+  // מסמנים את הקבוצות *לפני* השליחה. כך כישלון בסימון לא גורם לשליחה חוזרת כל רבע שעה (אם הכתיבה נכשלת —
+  // לא שולחים בכלל, והריצה הבאה מנסה מחדש). אם השליחה עצמה נכשלת — מבטלים את הסימון כדי לנסות שוב ברבע הבא.
+  await store.update("agentReports/bot", (cur) => {
+    const prev = cur.coachReminders?.date === today ? cur.coachReminders : {};
+    return { coachReminders: { date: today, groups: [...new Set([...(prev.groups || []), ...ids])], lastSentAt: { ...(prev.lastSentAt || {}), ...Object.fromEntries(ids.map((id) => [id, now.toISOString()])) } } };
+  });
   if (text) {
-    // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
-    await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), reminders: { at: now.toISOString(), text } } }));
-    // אם השליחה נכשלת — זורק, והקבוצות לא מסומנות כ"טופלו", כך שהריצה הבאה (עוד רבע שעה) מנסה שוב
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
+    try {
+      // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
+      await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), reminders: { at: now.toISOString(), text } } }));
+      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
+    } catch (e) {
+      // אם גם הביטול נכשל — התזכורת של היום מתפספסת (ונרשמת שגיאה), אבל לא נשלחת שוב ושוב
+      await store
+        .update("agentReports/bot", (cur) => {
+          if (cur.coachReminders?.date !== today) return null;
+          const lastSentAt = { ...(cur.coachReminders.lastSentAt || {}) };
+          ids.forEach((id) => delete lastSentAt[id]);
+          return { coachReminders: { ...cur.coachReminders, groups: (cur.coachReminders.groups || []).filter((g) => !ids.includes(g)), lastSentAt } };
+        })
+        .catch((e2) => { e.message += ` (וגם ביטול הסימון נכשל: ${e2.message} — התזכורת לא תישלח שוב היום)`; });
+      throw e;
+    }
   }
-  await store.update("agentReports/bot", (cur) => ({ coachReminders: { date: today, groups: [...new Set([...(cur.coachReminders?.date === today ? cur.coachReminders.groups || [] : []), ...groups.map((g) => g.id)])] } }));
   return text || "all marked";
 }

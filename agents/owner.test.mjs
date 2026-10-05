@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tellOwner, enqueueOwner } from "./lib/owner.mjs";
+import { tellOwner, enqueueOwner, enqueueAlertOnce } from "./lib/owner.mjs";
 
 // Firestore מדומה: שומר כל set עם merge כמו Firestore (מיזוג עמוק של מפות, arrayUnion מוסיף למערך)
 const UNION = Symbol("arrayUnion");
@@ -41,7 +41,8 @@ test("without WhatsApp secrets the message is queued for the worker, not lost", 
   assert.equal(bot.outbox.scan.how, "queued");
   assert.equal(bot.outboxQueue.length, 1);
   const q = bot.outboxQueue[0];
-  assert.deepEqual(Object.keys(q).sort(), ["at", "from", "id", "template", "templateParam", "text"]);
+  assert.deepEqual(Object.keys(q).sort(), ["at", "from", "id", "key", "template", "templateParam", "text"]);
+  assert.equal(q.key, "scan");
   assert.equal(q.text, "שורה ראשונה\nפרטים");
   assert.equal(q.from, "scan");
   assert.equal(q.templateParam, "סיכום");
@@ -62,4 +63,43 @@ test("two agents queueing at once keep both entries", async () => {
   assert.deepEqual(db.docs["agentReports/bot"].outboxQueue.map((x) => x.text).sort(), ["a", "b"]);
   assert.deepEqual(Object.keys(db.docs["agentReports/bot"].outbox).sort(), ["alert-backup", "ideas"]);
   assert.equal(db.docs["agentReports/bot"].outbox["alert-backup"].templateParam, "b");
+});
+
+test("queue item carries its outbox key (worker uses x.key || x.from)", async () => {
+  noWa();
+  const db = fakeDb();
+  await enqueueOwner(db, { agent: "github-actions", key: "alert-backup", text: "b" }, opts);
+  const q = db.docs["agentReports/bot"].outboxQueue[0];
+  assert.equal(q.key, "alert-backup");
+  assert.equal(q.from, "github-actions");
+  assert.ok(db.docs["agentReports/bot"].outbox["alert-backup"]);
+});
+
+test("direct send fails -> queued for the worker, no throw (so the heartbeat is still written)", async () => {
+  Object.assign(process.env, { WHATSAPP_TOKEN: "t", WHATSAPP_PHONE_ID: "p", OWNER_PHONE: "972500000000" });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({ error: { message: "down" } }) });
+  try {
+    const db = fakeDb();
+    assert.equal(await tellOwner(db, { agent: "supervisor", text: "x" }, opts), "queued");
+    assert.equal(db.docs["agentReports/bot"].outboxQueue.length, 1);
+    // queue also unavailable -> the original error is thrown
+    const broken = fakeDb();
+    broken.collection = () => ({ doc: () => ({ get: async () => ({ data: () => ({}) }), set: async () => { throw new Error("firestore down"); } }) });
+    await assert.rejects(tellOwner(broken, { agent: "supervisor", text: "x" }, opts), /WhatsApp 500/);
+  } finally {
+    globalThis.fetch = realFetch;
+    noWa();
+  }
+});
+
+test("workflow alert: same key at most once per 6 hours", async () => {
+  const db = fakeDb();
+  const t0 = new Date("2026-10-05T10:00:00Z");
+  assert.equal(await enqueueAlertOnce(db, { key: "alert-backup", text: "fail" }, { now: t0, ...opts }), "queued");
+  assert.equal(await enqueueAlertOnce(db, { key: "alert-backup", text: "fail" }, { now: new Date("2026-10-05T15:00:00Z"), ...opts }), "skipped");
+  assert.equal(await enqueueAlertOnce(db, { key: "alert-agents", text: "fail" }, { now: new Date("2026-10-05T15:00:00Z"), ...opts }), "queued");
+  assert.equal(await enqueueAlertOnce(db, { key: "alert-backup", text: "fail" }, { now: new Date("2026-10-05T16:01:00Z"), ...opts }), "queued");
+  assert.equal(db.docs["agentReports/bot"].outboxQueue.length, 3);
+  assert.equal(db.docs["agentReports/bot"].alertsSent["alert-backup"], "2026-10-05T16:01:00.000Z");
 });

@@ -62,12 +62,15 @@ export function fromValue(v) {
 const fromFields = (f = {}) => Object.fromEntries(Object.entries(f).map(([k, x]) => [k, fromValue(x)]));
 const docOut = (d) => ({ id: d.name.split("/").pop(), ...fromFields(d.fields) });
 
-const maskOf = (data) => Object.keys(data).map((k) => `updateMask.fieldPaths=${encodeURIComponent("`" + k + "`")}`).join("&");
-const bodyOf = (data) => JSON.stringify({ fields: Object.fromEntries(Object.entries(data).filter(([, v]) => v !== DELETE).map(([k, v]) => [k, toValue(v)])) });
+const quote = (k) => "`" + k + "`";
+const maskOf = (data) => Object.keys(data).map((k) => `updateMask.fieldPaths=${encodeURIComponent(quote(k))}`).join("&");
+const fieldsOf = (data) => Object.fromEntries(Object.entries(data).filter(([, v]) => v !== DELETE).map(([k, v]) => [k, toValue(v)]));
+const bodyOf = (data) => JSON.stringify({ fields: fieldsOf(data) });
 
 export function db(env) {
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
-  const base = `https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents`;
+  const root = `projects/${sa.project_id}/databases/(default)/documents`;
+  const base = `https://firestore.googleapis.com/v1/${root}`;
   const call = async (url, init = {}) => {
     const res = await fetch(url, {
       ...init,
@@ -95,16 +98,25 @@ export function db(env) {
     // כתיבה מותנית: מצליחה רק אם המסמך לא השתנה מאז updateTime (או, כש-updateTime ריק, רק אם עוד לא קיים).
     // מחזיר false כשמישהו אחר כתב בינתיים — ואז קוראים מחדש ומנסים שוב (ראו update).
     async mergeIf(path, data, updateTime) {
-      const pre = updateTime ? `currentDocument.updateTime=${encodeURIComponent(updateTime)}` : "currentDocument.exists=false";
-      const res = await fetch(`${base}/${path}?${maskOf(data)}&${pre}`, {
-        method: "PATCH",
+      // דרך documents:commit — התנאי (currentDocument) עובר בגוף ה-JSON, בפורמט שגם הענן וגם האמולטור מקבלים
+      const res = await fetch(`${base}:commit`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${await accessToken(sa)}`, "Content-Type": "application/json" },
-        body: bodyOf(data),
+        body: JSON.stringify({
+          writes: [
+            {
+              update: { name: `${root}/${path}`, fields: fieldsOf(data) },
+              updateMask: { fieldPaths: Object.keys(data).map(quote) },
+              currentDocument: updateTime ? { updateTime } : { exists: false },
+            },
+          ],
+        }),
       });
       if (res.ok) return true;
       const j = await res.json().catch(() => ({}));
-      if ([400, 404, 409].includes(res.status) && ["FAILED_PRECONDITION", "ALREADY_EXISTS", "NOT_FOUND", "ABORTED"].includes(j.error?.status)) return false;
-      throw new Error(`Firestore ${res.status}: ${j.error?.message || ""}`);
+      const e = Array.isArray(j) ? j[0]?.error : j.error; // האמולטור מחזיר לפעמים מערך
+      if ([400, 404, 409].includes(res.status) && ["FAILED_PRECONDITION", "ALREADY_EXISTS", "NOT_FOUND", "ABORTED"].includes(e?.status)) return false;
+      throw new Error(`Firestore ${res.status}: ${e?.message || ""}`);
     },
     // קריאה-שינוי-כתיבה בלי לדרוס כתיבה מקבילה: fn(data הנוכחי, או {} אם אין) מחזיר את השדות לכתוב,
     // או null כדי לא לכתוב כלום. אם מישהו כתב בינתיים — קוראים שוב ומריצים את fn מחדש.
