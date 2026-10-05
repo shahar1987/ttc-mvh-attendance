@@ -46,17 +46,17 @@ jobs:
       OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
+        id: install
         working-directory: agents
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Check for requests from the WhatsApp bot
         id: poll
@@ -79,11 +79,13 @@ jobs:
           echo "running: ${RUN:-nothing}"
 
       - name: 🔎 Daily attendance scan
+        id: scan
         if: contains(steps.pick.outputs.run, ',scan,')
         working-directory: agents
         run: node scan.mjs
 
       - name: Install a browser for the bug check
+        id: browser
         if: contains(steps.pick.outputs.run, ',bugcheck,')
         working-directory: agents
         run: |
@@ -91,26 +93,47 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: 🐞 Bug check
+        id: bugcheck
         if: contains(steps.pick.outputs.run, ',bugcheck,')
         working-directory: agents
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # רק כאן: בודק תהליכים שנכשלו
         run: node bugcheck.mjs
 
       - name: 💡 Weekly ideas
+        id: ideas
         if: contains(steps.pick.outputs.run, ',ideas,')
         working-directory: agents
         run: node ideas.mjs
 
+      # !cancelled(): רץ גם אם סוכן הרעיונות שלפניו נכשל (למשל חסר לו מפתח) — הם לא תלויים זה בזה
       - name: 📣 Weekly post drafts
-        if: contains(steps.pick.outputs.run, ',content,')
+        id: content
+        if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',content,') }}
         working-directory: agents
         run: node content.mjs
 
       - name: 🛡️ Supervisor
+        id: supervisor
         if: contains(steps.pick.outputs.run, ',supervisor,')
         working-directory: agents
         run: node supervisor.mjs
 
-      # לא פותחים issue על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות issues ביום
+      # לא מתריעים על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות התראות ביום
+      # התראה לשולה בוואטסאפ דרך התור של הבוט (agentReports/bot.outbox) — עובד גם כש-Issues כבויים
+      - name: Tell the owner on WhatsApp that an agent failed
+        if: failure() && github.event.schedule != '*/10 * * * *'
+        working-directory: agents
+        env:
+          ALERT_KEY: agents-${{ steps.pick.outputs.run }}
+          # לכל שלב יש id, כדי ש-alert.mjs ידלג כשהסוכן שנכשל כבר הודיע בעצמו על מפתח חסר
+          STEPS: ${{ toJSON(steps) }}
+          ALERT_TEXT: "❌ סוכן נכשל (${{ steps.pick.outputs.run }}). פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          [ -d node_modules ] || npm ci --no-audit --no-fund
+          node alert.mjs
+
+      # בלי "|| true": אם Issues כבויים בריפו השלב הזה ייכשל בגלוי (ההתראה בוואטסאפ כבר יצאה)
       - name: Open an issue if an agent failed
         if: failure() && github.event.schedule != '*/10 * * * *'
         env:
@@ -119,4 +142,4 @@ jobs:
           gh issue create \
             --title "❌ סוכן נכשל: ${{ steps.pick.outputs.run }}" \
             --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }} || true
+            --assignee ${{ github.repository_owner }}

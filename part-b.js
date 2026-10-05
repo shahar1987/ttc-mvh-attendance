@@ -3156,6 +3156,7 @@ function re({
     today = E(),
     minDate = "2026-09-07",
     [selDate, setSelDate] = b(ID || today),
+    [, setDayTick] = b(0),
     [showDatePicker, setShowDatePicker] = b(!!ID),
     m = selDate,
     isPast = m !== today,
@@ -3230,6 +3231,31 @@ function re({
     }
     prevDateKey.current = dateKey;
   }, [t.id, ID, IN]);
+  // מסך שנשאר פתוח אחרי חצות (טאבלט של המועדון): "היום" מתעדכן, ואם המאמן היה
+  // על היום הקודם בלי סימונים שלא נשמרו — עוברים ליום החדש. עם סימונים פתוחים
+  // לא נוגעים בכלום.
+  let dayRef = e.useRef(today),
+    selRef = e.useRef(selDate);
+  selRef.current = selDate;
+  j(() => {
+    let roll = () => {
+        let nd = E(),
+          od = dayRef.current;
+        if (nd === od) return;
+        dayRef.current = nd;
+        selRef.current === od && dirtyRef.current == null && setSelDate(nd);
+        setDayTick((v) => v + 1);
+      },
+      vis = () => document.visibilityState === "visible" && roll(),
+      iv = setInterval(roll, 60000);
+    document.addEventListener("visibilitychange", vis);
+    window.addEventListener("focus", roll);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", vis);
+      window.removeEventListener("focus", roll);
+    };
+  }, []);
   j(() => {
     if (isDirty()) return;
     let p = {},
@@ -3237,6 +3263,10 @@ function re({
       // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
       // עשר הקשות. השחקנים נכנסים ל-touched כדי שהשמירה תכתוב אותם.
       prefill = !o && !RO;
+    // אין עריכה פתוחה — מתחילים את רשימת ה-touched מחדש. בלי זה, כשרישומים של
+    // היום מגיעים ממכשיר אחר אחרי מילוי אוטומטי, נשארו ב-touched שחקנים שערכם
+    // עכשיו ריק, והשמירה ניסתה למחוק אותם — מחיקה מותרת רק למנהל, וכל השמירה נדחתה.
+    touchedRef.current = new Set();
     autoRef.current = new Set();
     (n.forEach((w) => {
       let k = l.find(
@@ -3282,7 +3312,11 @@ function re({
             ),
             st2 = x[w.id] || null;
           if (!st2) {
-            p.delete(k);
+            // ריק = מחיקת הרישום. רק מנהל רשאי למחוק (ראו firestore.rules), ומחיקה
+            // שנדחית מפילה את כל השמירה — אז מאמן לא שולח מחיקה בכלל.
+            prev && isAdminRole(s) && p.delete(k);
+            // הרישום נשאר בשרת — המסך מציג אותו כמו שהוא, לא "ריק"
+            prev && !isAdminRole(s) && (saved[w.id] = prev.status);
             return;
           }
           let rec = {
@@ -3802,7 +3836,9 @@ function re({
         : e.createElement(
             "button",
             {
-              onClick: () => confirmOverwrite() && f(!0),
+              onClick: () =>
+                confirmOverwrite() &&
+                (touchedRef.current.clear(), autoRef.current.clear(), f(!0)),
               className:
                 "w-full bg-blue-900 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
             },

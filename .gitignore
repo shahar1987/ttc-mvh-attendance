@@ -5,3 +5,6 @@ ui-debug.log
 agents/node_modules/
 worker/node_modules/
 worker/.wrangler/
+__pycache__/
+# נבנה ב-CI מ-part-a.js + part-b.js בכל פרסום; עותק בריפו תמיד מיושן
+bundle.js

@@ -40,9 +40,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'b584bf6b6f69d01daa7e58dac7e1acee' }} # מזהה, לא סוד
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -70,8 +70,8 @@ jobs:
       - name: Install dependencies
         if: steps.check.outputs.ready == 'true'
         run: |
-          (cd worker && npm install --no-audit --no-fund)
-          (cd agents && npm install --no-audit --no-fund)
+          (cd worker && npm ci --no-audit --no-fund)
+          (cd agents && npm ci --no-audit --no-fund)
 
       # חשבון Cloudflare חדש צריך תת-דומיין workers.dev לפני הפריסה הראשונה
       - name: Make sure the account has a workers.dev subdomain

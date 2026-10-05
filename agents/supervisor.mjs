@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { firestore, heartbeat } from "./lib/firebase.mjs";
 import { israelToday } from "./lib/analysis.mjs";
 import { tellOwner } from "./lib/owner.mjs";
+import { scheduleProblems } from "./lib/schedule.mjs";
 
 const db = firestore();
 const reports = db.collection("agentReports");
@@ -17,12 +18,9 @@ const health = (await reports.doc("health").get()).data() || {};
 const bot = (await reports.doc("bot").get()).data() || {};
 const problems = [];
 const hoursAgo = (iso) => (iso ? (Date.now() - new Date(iso).getTime()) / 3600000 : Infinity);
-const israelHour = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Jerusalem", hour: "numeric", hourCycle: "h23" }));
 
-// 1. כל סוכן רץ בזמן
-if (israelHour >= 10 && hoursAgo(health.scan?.at) > 20) problems.push("הסורק היומי לא רץ הבוקר");
-if (hoursAgo(health.bugcheck?.at) > 30) problems.push("בודק הבאגים לא רץ יותר מיממה");
-if (hoursAgo(health.ideas?.at) > 8 * 24 && health.ideas) problems.push("סוכן הרעיונות לא רץ השבוע");
+// 1. כל סוכן רץ בזמן (וגם שגיאות במשימות המתוזמנות של הבוט) — lib/schedule.mjs
+problems.push(...scheduleProblems(health, bot));
 
 // 2. הבוט
 const waReady = process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID;
@@ -92,4 +90,5 @@ if (key !== (sup.key || "")) {
     await tellOwner(db, { agent: "supervisor", text: "✅ המפקח: כל הסוכנים חזרו לעבוד כרגיל.", templateParam: "כל הסוכנים חזרו לעבוד כרגיל" });
   }
 }
-await heartbeat(db, "supervisor", { key, problems, day: israelToday() });
+// cronErrorAt — כדי שבריצה הבאה אפשר יהיה לזהות שגיאת cron חוזרת (lib/schedule.mjs)
+await heartbeat(db, "supervisor", { key, problems, day: israelToday(), cronErrorAt: bot.lastCronError?.at || null });

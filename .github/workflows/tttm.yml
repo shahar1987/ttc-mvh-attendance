@@ -10,10 +10,8 @@ on:
     - cron: "17 3 * * 0,3"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  actions: write
-  issues: write
+# הרשאות כתיבה רק ל-job שצריך אותן (למטה), לא לכל ה-workflow
+permissions: {}
 
 concurrency:
   group: tttm-refresh
@@ -23,10 +21,14 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write # דחיפת tttm.json
+      actions: write # gh workflow run deploy.yml
+      issues: write # issue כשהמשיכה נכשלת
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -63,12 +65,13 @@ jobs:
             echo "site rebuild requested"
           fi
 
+      # failure() ולא !success() — ריצה שבוטלה אינה תקלה. בלי "|| true": אם Issues כבויים זה ייכשל בגלוי
       - name: Open an issue if the refresh failed
-        if: ${{ !success() }}
+        if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh issue create \
             --title "❌ משיכת הנתונים מאתר האיגוד נכשלה" \
             --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }} || true
+            --assignee ${{ github.repository_owner }}
