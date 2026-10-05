@@ -49,7 +49,7 @@
 סוכנים שרצים לבד, בלי סשן של Claude Code, ומדברים עם שולה בוואטסאפ ממספר המועדון:
 
 - 🤖 **הבוט** (`worker/`, Cloudflare): הסוכן הראשי. עונה רק ל-`OWNER_PHONE`. שולח הודעות להורים רק אחרי "שלח" מפורש.
-- 🔎 **סורק יומי** (`agents/scan.mjs`), 🐞 **בודק באגים** (`agents/bugcheck.mjs`), 💡 **רעיונות** (`agents/ideas.mjs`), 🛡️ **מפקח** (`agents/supervisor.mjs`) — GitHub Actions ב-`.github/workflows/agents.yml`.
+- 🔎 **סורק יומי** (`agents/scan.mjs`), 🐞 **בודק באגים** (`agents/bugcheck.mjs`), 💡 **רעיונות** (`agents/ideas.mjs`), 📣 **סוכן הפרסום** (`agents/content.mjs`, טיוטות פוסטים שבועיות לאישור), 🛡️ **מפקח** (`agents/supervisor.mjs`) — GitHub Actions ב-`.github/workflows/agents.yml`.
 - התוצאות נשמרות ב-Firestore באוסף `agentReports` (חסום לאפליקציה בכלל האחרון של `firestore.rules`).
 - הלוגיקה של "ממתין להודעה" ב-`agents/lib/analysis.mjs` מועתקת מ-`pendingAbsenceMsgs`/`absenceAlerts` ב-`part-a.js`. **שינוי שם — לשנות גם כאן.**
 - בדיקות: `cd agents && npm test`.

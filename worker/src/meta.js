@@ -45,45 +45,86 @@ export const META_TOOL_DEFS = [
   {
     name: "publish_post",
     description:
-      "מפרסם פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה והפלטפורמה שהצגת לו. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. אינסטגרם חייב תמונה.",
+      "מפרסם (או מתזמן) פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה, הפלטפורמה והמועד שהצגת לו. text = נוסח הפייסבוק, בלי @ (בפייסבוק תיוג דרך ה-API לא עובד — כותבים את השמות במילים). instagram_text = נוסח האינסטגרם עם התיוגים (@); אם חסר — text. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. אינסטגרם חייב תמונה. at = מועד פרסום בשעון ישראל YYYY-MM-DDTHH:MM; בלי at — מיד. טיוטות השבוע של סוכן הפרסום: get_agent_results עם agent=content.",
     input_schema: {
       type: "object",
-      properties: { platform: { type: "string", enum: ["facebook", "instagram", "both"] }, text: { type: "string" }, image: { type: "string" } },
+      properties: {
+        platform: { type: "string", enum: ["facebook", "instagram", "both"] },
+        text: { type: "string" },
+        instagram_text: { type: "string" },
+        image: { type: "string" },
+        at: { type: "string" },
+      },
       required: ["platform", "text"],
       additionalProperties: false,
     },
   },
 ];
 
+// "2026-10-11T17:00" בשעון ישראל → Date (UTC)
+export function israelToUtc(local) {
+  const d = new Date(`${local}:00Z`);
+  const off = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })) - new Date(d.toLocaleString("en-US", { timeZone: "UTC" }));
+  return new Date(d - off);
+}
+
+async function graphPost(path, body) {
+  const r = await fetch(`${GRAPH}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
+  return j;
+}
+
+// הפרסום עצמו. img כבר קישור מלא (גם לתזמון — ב-cron אין origin).
+async function publishNow(page, { platform, text, igText, img }) {
+  const done = [];
+  if (platform !== "instagram") {
+    const r = img ? await graphPost(`${page.id}/photos`, { url: img, caption: text, access_token: page.token }) : await graphPost(`${page.id}/feed`, { message: text, access_token: page.token });
+    done.push(`פייסבוק (${page.name}) ✓ ${r.post_id || r.id}`);
+  }
+  if (platform !== "facebook") {
+    if (!page.ig) done.push("אינסטגרם: אין חשבון אינסטגרם עסקי מקושר לדף");
+    else if (!img) done.push("אינסטגרם: חייבים תמונה");
+    else {
+      const c = await graphPost(`${page.ig}/media`, { image_url: img, caption: igText, access_token: page.token });
+      const r = await graphPost(`${page.ig}/media_publish`, { creation_id: c.id, access_token: page.token });
+      done.push(`אינסטגרם (@${page.igName}) ✓ ${r.id}`);
+    }
+  }
+  return done.join(" · ");
+}
+
+// מה-cron של כל רבע שעה: מפרסם פוסטים מתוזמנים שהגיע זמנם. מחזיר שורות לדיווח לבעלים.
+export async function publishDue(store, now = new Date()) {
+  const social = (await store.get("agentReports/social")) || {};
+  const due = (social.queue || []).filter((q) => q.due <= now.toISOString());
+  if (!due.length) return [];
+  // קודם מוציאים מהתור — Cloudflare מריץ לפעמים cron פעמיים, ופוסט כפול גרוע מפוסט שנכשל ומדווח
+  await store.merge("agentReports/social", { queue: social.queue.filter((q) => q.due > now.toISOString()) });
+  const out = [];
+  for (const q of due) out.push(`📣 ${q.at}: ${await publishNow(social.pages[0], q).catch((e) => `נכשל — ${e.message}`)}`);
+  return out;
+}
+
 export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
-  const post = async (path, body) => {
-    const r = await fetch(`${GRAPH}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const j = await r.json();
-    if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
-    return j;
-  };
   return {
-    async publish_post({ platform, text, image }) {
-      const page = (await store.get("agentReports/social"))?.pages?.[0];
+    async publish_post({ platform, text, instagram_text, image, at }) {
+      const social = (await store.get("agentReports/social")) || {};
+      const page = social.pages?.[0];
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(store, origin)}`;
-      if (!(await confirmed(store, "post", { platform, text, image }, lastOwnerText, turn)))
-        return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח, התמונה והפלטפורמה ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
+      if (platform !== "instagram" && /@[\w.]+/.test(text)) return "לא פורסם: בפייסבוק @ נשאר טקסט מת. לכתוב בנוסח הפייסבוק את שמות השותפים במילים, בלי @, ואת התיוגים לשים ב-instagram_text.";
+      if (at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return "at צריך להיות בפורמט YYYY-MM-DDTHH:MM (שעון ישראל).";
+      if ((at || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).slice(5, 10) === "10-07") return "לא מפרסמים שיווק ב-7 באוקטובר. להציע לבעלים מועד אחר.";
+      if (!(await confirmed(store, "post", { platform, text, instagram_text, image, at }, lastOwnerText, turn)))
+        return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח (פייסבוק ואינסטגרם), התמונה, הפלטפורמה והמועד ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const img = image && (/^https?:\/\//.test(image) ? image : await mediaUrl(env, origin, image.replace(/\D/g, "")));
-      const done = [];
-      if (platform !== "instagram") {
-        const r = img ? await post(`${page.id}/photos`, { url: img, caption: text, access_token: page.token }) : await post(`${page.id}/feed`, { message: text, access_token: page.token });
-        done.push(`פייסבוק (${page.name}) ✓ ${r.post_id || r.id}`);
+      const item = { platform, text, igText: instagram_text || text, img: img || "" };
+      if (at && israelToUtc(at) > new Date(Date.now() + 10 * 60 * 1000)) {
+        const due = israelToUtc(at).toISOString();
+        await store.merge("agentReports/social", { queue: [...(social.queue || []), { ...item, at, due }] });
+        return `מתוזמן ל-${at.replace("T", " ")} (${platform === "both" ? "פייסבוק + אינסטגרם" : platform}). יתפרסם אוטומטית ואעדכן.`;
       }
-      if (platform !== "facebook") {
-        if (!page.ig) done.push("אינסטגרם: אין חשבון אינסטגרם עסקי מקושר לדף");
-        else if (!img) done.push("אינסטגרם: חייבים תמונה");
-        else {
-          const c = await post(`${page.ig}/media`, { image_url: img, caption: text, access_token: page.token });
-          const r = await post(`${page.ig}/media_publish`, { creation_id: c.id, access_token: page.token });
-          done.push(`אינסטגרם (@${page.igName}) ✓ ${r.id}`);
-        }
-      }
-      return `פורסם: ${done.join(" · ")}`;
+      return `פורסם: ${await publishNow(page, item)}`;
     },
   };
 }
