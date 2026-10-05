@@ -93,11 +93,16 @@ service cloud.firestore {
 
     // הזמנה שאפשר להסתמך עליה: קיימת, לא בוטלה ולא פג תוקפה.
     // expiresAtMs נכתב על ידי createInvite; הזמנה ישנה בלי השדה לא תיפסל.
+    // הזמנה שמומשה תקפה רק למי שמימש אותה: ההרשמה (signUpFromInvite) יוצרת
+    // פרופיל וקישורים ורק בסוף כותבת usedAt/usedByUid, ומי שנקטע באמצע וחוזר
+    // עם אותו חשבון צריך להמשיך. משתמש אחר עם קישור שכבר מומש — נחסם.
     function inviteLive(token) {
       return token is string && token.size() > 0
         && inviteDoc(token) != null
         && inviteDoc(token).data.get('revoked', false) == false
-        && inviteDoc(token).data.get('expiresAtMs', 99999999999999) > request.time.toMillis();
+        && inviteDoc(token).data.get('expiresAtMs', 99999999999999) > request.time.toMillis()
+        && (inviteDoc(token).data.get('usedAt', null) == null
+            || inviteDoc(token).data.get('usedByUid', '') == request.auth.uid);
     }
 
     // ---------- משתמשים ----------
@@ -160,15 +165,44 @@ service cloud.firestore {
     // הדאטה הקריטית ביותר. הורה רואה רק את הנוכחות של הילדים המקושרים אליו;
     // האפליקציה שואלת לפי playerId, והכלל נבדק על כל מסמך שמוחזר.
     // מחיקה — רק מנהל.
+    // חוזה השמירה ביצירה (גם למנהל): מזהה המסמך הוא date_groupId_playerId
+    // בדיוק כמו השדות שבו, והסטטוס Present או Absent.
+    function attendanceValid(attendanceId) {
+      return request.resource.data.get('status', '') in ['Present', 'Absent']
+        && request.resource.data.get('date', '') is string
+        && request.resource.data.get('groupId', '') is string
+        && request.resource.data.get('playerId', '') is string
+        && attendanceId == request.resource.data.get('date', '') + '_'
+             + request.resource.data.get('groupId', '') + '_'
+             + request.resource.data.get('playerId', '');
+    }
+
+    // רשומה קיימת לא עוברת לשחקן, לתאריך או לקבוצה אחרים. null בשני הצדדים
+    // כדי שרשומה ישנה שחסר בה שדה עדיין תתעדכן.
+    function attendanceKeysUnchanged() {
+      return request.resource.data.get('date', null) == resource.data.get('date', null)
+        && request.resource.data.get('groupId', null) == resource.data.get('groupId', null)
+        && request.resource.data.get('playerId', null) == resource.data.get('playerId', null);
+    }
+
+    // בעדכון לא דורשים את החוזה המלא — ייתכנו רשומות ישנות שלא נוכל לבדוק.
+    // סטטוס שלא נגעו בו נשאר כמו שהוא; סטטוס שמשתנה חייב להיות Present/Absent.
+    function attendanceStatusOk() {
+      return request.resource.data.get('status', null) == resource.data.get('status', null)
+        || request.resource.data.get('status', null) in ['Present', 'Absent'];
+    }
+
     match /attendance/{attendanceId} {
       allow read: if isTeam() || isLinkedToPlayer(resource.data.get('playerId', ''));
-      allow create: if isAdmin()
-        || isCoachOfGroup(request.resource.data.get('groupId', ''));
+      allow create: if attendanceValid(attendanceId)
+        && (isAdmin()
+            || isCoachOfGroup(request.resource.data.get('groupId', '')));
       // בעדכון בודקים את הקבוצה של המסמך הקיים, ולא של הבקשה — אחרת מאמן
       // יכול למשוך אליו כל רשומה במועדון פשוט על ידי כתיבת ה-groupId שלו.
-      allow update: if isAdmin()
-        || (isCoachOfGroup(resource.data.get('groupId', ''))
-            && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
+      allow update: if attendanceKeysUnchanged()
+        && attendanceStatusOk()
+        && (isAdmin()
+            || isCoachOfGroup(resource.data.get('groupId', '')));
       allow delete: if isAdmin();
     }
 
@@ -253,9 +287,13 @@ service cloud.firestore {
       allow list: if hasPerm('access');
       allow create, delete: if hasPerm('access');
       // בסוף ההרשמה המוזמן מסמן את ההזמנה כמומשה, ולא נוגע בשום שדה אחר.
+      // הזמנה שכבר מומשה אינה ניתנת "למימוש מחדש" על ידי משתמש אחר — אחרת
+      // הוא היה כותב את ה-uid שלו ב-usedByUid ועוקף את inviteLive.
       allow update: if hasPerm('access')
         || (isSignedIn()
             && resource.data.get('revoked', false) == false
+            && (resource.data.get('usedAt', null) == null
+                || resource.data.get('usedByUid', '') == request.auth.uid)
             && request.resource.data.diff(resource.data)
                  .affectedKeys().hasOnly(['usedAt', 'usedByUid'])
             && request.resource.data.get('usedByUid', '') == request.auth.uid);
@@ -301,9 +339,13 @@ service cloud.firestore {
     // יכול לנהל תחרות, אבל מחיקה — רק למי שיש לו הרשאת "תחרויות", כדי
     // שהורה לא יוכל למחוק את התחרויות של המועדון.
     // המסמך zz-connection-test הוא בדיקת החיבור של האפליקציה.
+    // state הוא תמיד מחרוזת JSON (pushCloud). אין מגבלת גודל: תחרות גדולה
+    // יכולה להתקרב למגבלת המסמך של Firestore עצמו (1MiB), וכל מגבלה נמוכה
+    // ממנה עלולה לחסום שמירה אמיתית באמצע תחרות.
     match /tournaments/{id} {
       allow read: if hasProfile();
-      allow create, update: if hasProfile();
+      allow create, update: if hasProfile()
+        && request.resource.data.get('state', '') is string;
       allow delete: if hasPerm('competitions');
     }
 
