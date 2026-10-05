@@ -83,7 +83,7 @@ async function main() {
   if (!slots.length) return console.log("no slots left this week");
   const doc = (n) => db.collection("agentReports").doc(n).get().then((d) => d.data() || {});
   const [social, last] = await Promise.all([doc("social"), doc("content")]);
-  const perf = await performance(social.pages?.[0]);
+  const perf = await performance((social.pages || []).find((p) => p.ig) || social.pages?.[0]);
 
   const user = `המועדים: ${JSON.stringify(slots.map((s) => `${s.date} ${s.time}`))}
 ביצועי הפוסטים האחרונים בדף: ${perf.length ? JSON.stringify(perf) : "אין נתונים (הדף עוד לא מחובר)"}

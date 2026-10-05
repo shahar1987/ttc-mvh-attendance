@@ -61,6 +61,9 @@ export const META_TOOL_DEFS = [
   },
 ];
 
+// הדף של המועדון: זה שמחובר לאינסטגרם (@ttcmhr). קורטדו מחובר גם — אסור לפרסם אליו.
+export const clubPage = (social) => { const ps = social?.pages || []; return ps.find((p) => p.ig) || ps[0]; };
+
 // "2026-10-11T17:00" בשעון ישראל → Date (UTC)
 export function israelToUtc(local) {
   const d = new Date(`${local}:00Z`);
@@ -102,7 +105,7 @@ export async function publishDue(store, now = new Date()) {
   // קודם מוציאים מהתור — Cloudflare מריץ לפעמים cron פעמיים, ופוסט כפול גרוע מפוסט שנכשל ומדווח
   await store.merge("agentReports/social", { queue: social.queue.filter((q) => q.due > now.toISOString()) });
   const out = [];
-  for (const q of due) out.push(`📣 ${q.at}: ${await publishNow(social.pages[0], q).catch((e) => `נכשל — ${e.message}`)}`);
+  for (const q of due) out.push(`📣 ${q.at}: ${await publishNow(clubPage(social), q).catch((e) => `נכשל — ${e.message}`)}`);
   return out;
 }
 
@@ -110,7 +113,7 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
   return {
     async publish_post({ platform, text, instagram_text, image, at }) {
       const social = (await store.get("agentReports/social")) || {};
-      const page = social.pages?.[0];
+      const page = clubPage(social);
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(store, origin)}`;
       if (platform !== "instagram" && /@[\w.]+/.test(text)) return "לא פורסם: בפייסבוק @ נשאר טקסט מת. לכתוב בנוסח הפייסבוק את שמות השותפים במילים, בלי @, ואת התיוגים לשים ב-instagram_text.";
       if (at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return "at צריך להיות בפורמט YYYY-MM-DDTHH:MM (שעון ישראל).";
