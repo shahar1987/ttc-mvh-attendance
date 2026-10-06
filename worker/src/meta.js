@@ -4,7 +4,7 @@
 // מה מותר: לפרסם רק אחרי "כן" מפורש בהודעה האחרונה, על טקסט ותמונה שהוצגו לו. אין מחיקה ואין עריכה.
 import { confirmed } from "./tools.js";
 import { sign, issueKey, checkKey, dropKey } from "./google.js";
-import { waConfig, downloadMedia } from "../../agents/lib/whatsapp.mjs";
+import { waConfig } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
@@ -18,9 +18,14 @@ export async function metaRoute(req, env, store) {
   if (url.pathname.startsWith("/meta/media/")) {
     const id = url.pathname.split("/").pop();
     if (url.searchParams.get("t") !== (await sign(env, `media:${id}`))) return new Response("forbidden", { status: 403 });
-    const m = await downloadMedia(waConfig(env), id);
-    return new Response(Buffer.from(m.data, "base64"), { headers: { "content-type": m.mimeType } });
+    // הזרמה ישירה מוואטסאפ (בלי base64 בזיכרון) — סרטון יכול להגיע ל-16MB
+    const auth = { Authorization: `Bearer ${waConfig(env).token}` };
+    const meta = await (await fetch(`${GRAPH}/${id}`, { headers: auth })).json();
+    if (!meta.url) return new Response("not found", { status: 404 });
+    const res = await fetch(meta.url, { headers: auth });
+    return new Response(res.body, { status: res.status, headers: { "content-type": (meta.mime_type || "").split(";")[0] } });
   }
+  if (url.pathname === "/meta/check") return metaCheck(env, store, url);
   const key = url.searchParams.get(url.pathname === "/meta/callback" ? "state" : "k");
   if (!(await checkKey(store, "meta", key))) return new Response("forbidden", { status: 403 });
   const redirect = `${url.origin}/meta/callback`;
@@ -46,17 +51,19 @@ export const META_TOOL_DEFS = [
   {
     name: "publish_post",
     description:
-      "מפרסם (או מתזמן) פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה, הפלטפורמה והמועד שהצגת לו. text = נוסח הפייסבוק, בלי @ (בפייסבוק תיוג דרך ה-API לא עובד — כותבים את השמות במילים). instagram_text = נוסח האינסטגרם עם התיוגים (@); אם חסר — text. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. אינסטגרם חייב תמונה. at = מועד פרסום בשעון ישראל YYYY-MM-DDTHH:MM; בלי at — מיד. טיוטות השבוע של סוכן הפרסום: get_agent_results עם agent=content.",
+      "מפרסם (או מתזמן) פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה, הפלטפורמה והמועד שהצגת לו. text = נוסח הפייסבוק, בלי @ (בפייסבוק תיוג דרך ה-API לא עובד — כותבים את השמות במילים). instagram_text = נוסח האינסטגרם עם התיוגים (@); אם חסר — text. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. video = מזהה הסרטון מהוואטסאפ (מופיע ב-[סרטון id=...]) או קישור ישיר. kind = post (ברירת מחדל) / story (סטורי: תמונה או סרטון, בלי טקסט) / reel (רילס: חייב video). פוסט באינסטגרם חייב תמונה. סרטונים עוברים עיבוד אצל Meta ולכן יוצאים בבדיקה של רבע השעה הקרובה. at = מועד פרסום בשעון ישראל YYYY-MM-DDTHH:MM; בלי at — מיד. טיוטות השבוע של סוכן הפרסום: get_agent_results עם agent=content.",
     input_schema: {
       type: "object",
       properties: {
         platform: { type: "string", enum: ["facebook", "instagram", "both"] },
+        kind: { type: "string", enum: ["post", "story", "reel"] },
         text: { type: "string" },
         instagram_text: { type: "string" },
         image: { type: "string" },
+        video: { type: "string" },
         at: { type: "string" },
       },
-      required: ["platform", "text"],
+      required: ["platform"],
       additionalProperties: false,
     },
   },
@@ -75,20 +82,50 @@ async function graphPost(path, body) {
   return j;
 }
 
-// הפרסום עצמו. img כבר קישור מלא (גם לתזמון — ב-cron אין origin).
-async function publishNow(page, { platform, text, igText, img }) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// סרטון באינסטגרם: Meta מעבדת אותו לפני שאפשר לפרסם. מחכים עד 5 דקות (רק מה-cron — ב-webhook אין זמן לזה).
+async function igReady(id, token) {
+  for (let i = 0; i < 60; i++) {
+    const j = await (await fetch(`${GRAPH}/${id}?fields=status_code&access_token=${token}`)).json();
+    if (j.status_code === "FINISHED") return;
+    if (j.status_code === "ERROR" || j.error) throw new Error("אינסטגרם לא הצליחה לעבד את הסרטון");
+    await sleep(5000);
+  }
+  throw new Error("אינסטגרם עוד מעבדת את הסרטון אחרי 5 דקות");
+}
+
+// סרטון לפייסבוק (סטורי או רילס): פתיחה, Meta מורידה את הקובץ מהקישור, סיום
+async function fbVideo(page, edge, url, finish) {
+  const { video_id } = await graphPost(`${page.id}/${edge}`, { upload_phase: "start", access_token: page.token });
+  const r = await fetch(`https://rupload.facebook.com/video-upload/v24.0/${video_id}`, { method: "POST", headers: { authorization: `OAuth ${page.token}`, file_url: url } });
+  if (!r.ok) throw new Error(`העלאת הסרטון לפייסבוק נכשלה (${r.status})`);
+  return graphPost(`${page.id}/${edge}`, { upload_phase: "finish", video_id, access_token: page.token, ...finish });
+}
+
+// הפרסום עצמו. img/vid כבר קישורים מלאים (גם לתזמון — ב-cron אין origin).
+async function publishNow(page, { platform, kind = "post", text, igText, img, vid }) {
   const done = [];
+  const t = page.token;
   if (platform !== "instagram") {
-    const r = img ? await graphPost(`${page.id}/photos`, { url: img, caption: text, access_token: page.token }) : await graphPost(`${page.id}/feed`, { message: text, access_token: page.token });
-    done.push(`פייסבוק (${page.name}) ✓ ${r.post_id || r.id}`);
+    let r;
+    if (kind === "story") r = vid ? await fbVideo(page, "video_stories", vid) : await graphPost(`${page.id}/photo_stories`, { photo_id: (await graphPost(`${page.id}/photos`, { url: img, published: false, access_token: t })).id, access_token: t });
+    else if (kind === "reel") r = await fbVideo(page, "video_reels", vid, { video_state: "PUBLISHED", description: text });
+    else r = img ? await graphPost(`${page.id}/photos`, { url: img, caption: text, access_token: t }) : await graphPost(`${page.id}/feed`, { message: text, access_token: t });
+    done.push(`פייסבוק${kind === "post" ? "" : kind === "story" ? " סטורי" : " רילס"} (${page.name}) ✓ ${r.post_id || r.id || r.video_id || ""}`.trim());
   }
   if (platform !== "facebook") {
     if (!page.ig) done.push("אינסטגרם: אין חשבון אינסטגרם עסקי מקושר לדף");
-    else if (!img) done.push("אינסטגרם: חייבים תמונה");
+    else if (kind === "post" && !img) done.push("אינסטגרם: חייבים תמונה");
     else {
-      const c = await graphPost(`${page.ig}/media`, { image_url: img, caption: igText, access_token: page.token });
-      const r = await graphPost(`${page.ig}/media_publish`, { creation_id: c.id, access_token: page.token });
-      done.push(`אינסטגרם (@${page.igName}) ✓ ${r.id}`);
+      const body =
+        kind === "story" ? { media_type: "STORIES", ...(vid ? { video_url: vid } : { image_url: img }) }
+        : kind === "reel" ? { media_type: "REELS", video_url: vid, caption: igText, share_to_feed: true }
+        : { image_url: img, caption: igText };
+      const c = await graphPost(`${page.ig}/media`, { ...body, access_token: t });
+      if (vid) await igReady(c.id, t);
+      const r = await graphPost(`${page.ig}/media_publish`, { creation_id: c.id, access_token: t });
+      done.push(`אינסטגרם${kind === "post" ? "" : kind === "story" ? " סטורי" : " רילס"} (@${page.igName}) ✓ ${r.id}`);
     }
   }
   return done.join(" · ");
@@ -123,25 +160,50 @@ export async function publishDue(store, now = new Date()) {
 
 export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
   return {
-    async publish_post({ platform, text, instagram_text, image, at }) {
+    async publish_post({ platform, kind = "post", text = "", instagram_text, image, video, at }) {
       const social = (await store.get("agentReports/social")) || {};
       const page = clubPage(social);
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(store, origin)}`;
+      if (kind === "reel" && !video) return "לרילס צריך סרטון (video).";
+      if (kind === "story" && !image && !video) return "לסטורי צריך תמונה או סרטון.";
+      if (kind !== "story" && !text.trim()) return "חסר נוסח (text).";
       if (platform !== "instagram" && /@[\w.]+/.test(text)) return "לא פורסם: בפייסבוק @ נשאר טקסט מת. לכתוב בנוסח הפייסבוק את שמות השותפים במילים, בלי @, ואת התיוגים לשים ב-instagram_text.";
       if (at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return "at צריך להיות בפורמט YYYY-MM-DDTHH:MM (שעון ישראל).";
       if ((at || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).slice(5, 10) === "10-07") return "לא מפרסמים שיווק ב-7 באוקטובר. להציע לבעלים מועד אחר.";
-      if (!(await confirmed(store, "post", { platform, text, instagram_text, image, at }, lastOwnerText, turn)))
+      if (!(await confirmed(store, "post", { platform, kind, text, instagram_text, image, video, at }, lastOwnerText, turn)))
         return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח (פייסבוק ואינסטגרם), התמונה, הפלטפורמה והמועד ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
-      const img = image && (/^https?:\/\//.test(image) ? image : await mediaUrl(env, origin, image.replace(/\D/g, "")));
-      const item = { platform, text, igText: instagram_text || text, img: img || "" };
-      if (at && israelToUtc(at) > new Date(Date.now() + 10 * 60 * 1000)) {
-        const due = israelToUtc(at).toISOString();
+      const link = async (m) => m && (/^https?:\/\//.test(m) ? m : await mediaUrl(env, origin, m.replace(/\D/g, "")));
+      const vid = await link(video);
+      const item = { platform, kind, text, igText: instagram_text || text, img: (await link(image)) || "", vid: vid || "" };
+      // סרטון תמיד דרך התור: העיבוד אצל Meta לוקח יותר זמן ממה שמותר ל-webhook
+      if (vid || (at && israelToUtc(at) > new Date(Date.now() + 10 * 60 * 1000))) {
+        const due = (at ? israelToUtc(at) : new Date()).toISOString();
         const id = Math.random().toString(36).slice(2, 8);
         // קוראים את התור מחדש רגע לפני הכתיבה (כתיבה מותנית) — כדי לא לדרוס פוסט שה-cron תפס או הוציא בינתיים
         await store.update("agentReports/social", (cur) => ({ queue: [...(cur.queue || []), { ...item, at, due, id }] }));
+        if (!at) return "בתור — הסרטון יעלה בבדיקה של רבע השעה הקרובה (Meta צריכה לעבד אותו), ואעדכן כשפורסם.";
         return `מתוזמן ל-${at.replace("T", " ")} (${platform === "both" ? "פייסבוק + אינסטגרם" : platform}). יתפרסם אוטומטית ואעדכן.`;
       }
       return `פורסם: ${await publishNow(page, item)}`;
     },
   };
+}
+
+// 🧪 /meta/check?k=<מפתח התיבה>&img=<קישור>&vid=<קישור>: בדיקה מול Meta בלי לפרסם כלום.
+// אינסטגרם: יוצר מכלי סטורי ורילס ומחכה לעיבוד, בלי media_publish (מכל שלא פורסם נמחק אחרי 24 שעות).
+// פייסבוק: תמונה לא מפורסמת (השלב הראשון של סטורי) ופתיחת העלאה של רילס, בלי finish.
+async function metaCheck(env, store, url) {
+  const { sha256 } = await import("./inbox.js");
+  if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  const page = clubPage((await store.get("agentReports/social")) || {});
+  if (!page) return Response.json({ ok: false, error: "not connected" });
+  const img = url.searchParams.get("img"), vid = url.searchParams.get("vid"), t = page.token;
+  const out = { page: page.name, ig: page.igName };
+  const step = async (name, fn) => { try { out[name] = (await fn()) || "ok"; } catch (e) { out[name] = `ERROR: ${e.message}`; } };
+  await step("fb_photo_unpublished", async () => (await graphPost(`${page.id}/photos`, { url: img, published: false, access_token: t })).id);
+  await step("fb_reel_start", async () => (await graphPost(`${page.id}/video_reels`, { upload_phase: "start", access_token: t })).video_id);
+  await step("ig_story_image", async () => { const c = await graphPost(`${page.ig}/media`, { media_type: "STORIES", image_url: img, access_token: t }); return `container ${c.id}`; });
+  await step("ig_reel_video", async () => { const c = await graphPost(`${page.ig}/media`, { media_type: "REELS", video_url: vid, caption: "test", access_token: t }); await igReady(c.id, t); return `container ${c.id} FINISHED`; });
+  await step("ig_publish_limit", async () => JSON.stringify((await (await fetch(`${GRAPH}/${page.ig}/content_publishing_limit?fields=quota_usage,config&access_token=${t}`)).json()).data?.[0] || {}));
+  return Response.json(out);
 }

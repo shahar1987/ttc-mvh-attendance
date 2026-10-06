@@ -13,7 +13,7 @@ import { remindCoaches } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
-import { dispatchWorkflows } from "./dispatch.js";
+import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
@@ -44,7 +44,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
-פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את נוסח הפייסבוק (שמות השותפים במילים, בלי @), את נוסח האינסטגרם (אותו טקסט + התיוגים עם @), איזו תמונה, באיזו פלטפורמה ומתי, ולשאול "לפרסם?". מפרסמים רק אחרי "כן" בהודעה הבאה שלו. "פרסם 2" = טיוטה 2 מטיוטות השבוע של סוכן הפרסום (get_agent_results, agent=content): הנוסחים והמועד (at) שלה בדיוק, והתמונה שהוא שלח. לא ב-7 באוקטובר. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את נוסח הפייסבוק (שמות השותפים במילים, בלי @), את נוסח האינסטגרם (אותו טקסט + התיוגים עם @), איזו תמונה או סרטון, האם זה פוסט, סטורי או רילס, באיזו פלטפורמה ומתי, ולשאול "לפרסם?". סטורי = kind story (בלי טקסט), רילס = kind reel עם video. מפרסמים רק אחרי "כן" בהודעה הבאה שלו. "פרסם 2" = טיוטה 2 מטיוטות השבוע של סוכן הפרסום (get_agent_results, agent=content): הנוסחים והמועד (at) שלה בדיוק, והתמונה שהוא שלח. לא ב-7 באוקטובר. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
 אישור פוסטר/פלייר מקלוד: כשתשובה מקלוד שואלת "מאשר את ... כגרסה הסופית?" והבעלים עונה "כן"/"מאשר" — להעביר מיד ל-ask_claude: "הבעלים אישר את <שם הקובץ> כגרסה הסופית. למחוק מהתיקייה את שאר הטיוטות שלו." (הבעלים לא מוחק טיוטות בעצמו.)
 בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה).
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
@@ -173,9 +173,12 @@ async function handle(m, env) {
     } else if (m.type === "image") {
       media = await downloadMedia(wa, m.image.id);
       text = `📷 [תמונה id=${m.image.id}] ${text || "מה דעתך?"}`;
+    } else if (m.type === "video") {
+      // הסרטון עצמו לא נשלח ל-Gemini — רק המזהה, כדי שאפשר יהיה לפרסם אותו כסטורי/רילס
+      text = `🎬 [סרטון id=${m.video.id}] ${m.video.caption || "מה לעשות עם הסרטון?"}`;
     }
     if (!text) {
-      await sendText(wa, m.from, "כרגע אני מבינה טקסט, הודעות קוליות ותמונות 🙂");
+      await sendText(wa, m.from, "כרגע אני מבינה טקסט, הודעות קוליות, תמונות וסרטונים 🙂");
       return;
     }
     if (["איפוס", "התחלה חדשה", "reset"].includes(text)) {
@@ -410,6 +413,11 @@ async function everyQuarter(env) {
     remindCoaches(env, store, wa),
     deliverOutbox(env, store, wa),
     dispatchWorkflows(env, store),
+    failedRuns(env, store).then(async ({ lines, ids }) => {
+      if (lines.length) await tell(store, wa, "github", `❌ *נכשל ב-GitHub:*\n${lines.join("\n")}`, `נכשל ב-GitHub: ${summary(lines)}`);
+      if (ids) await store.merge("agentReports/bot", { reportedRuns: ids });
+      return `failed runs: ${lines.length}`;
+    }),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));
   if (failed.length) await cronError(env, new Error(failed.join(" | ")));
