@@ -25,6 +25,7 @@ export async function metaRoute(req, env, store) {
     const res = await fetch(meta.url, { headers: auth });
     return new Response(res.body, { status: res.status, headers: { "content-type": (meta.mime_type || "").split(";")[0] } });
   }
+  if (url.pathname === "/meta/check") return metaCheck(env, store, url);
   const key = url.searchParams.get(url.pathname === "/meta/callback" ? "state" : "k");
   if (!(await checkKey(store, "meta", key))) return new Response("forbidden", { status: 403 });
   const redirect = `${url.origin}/meta/callback`;
@@ -186,4 +187,23 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       return `פורסם: ${await publishNow(page, item)}`;
     },
   };
+}
+
+// 🧪 /meta/check?k=<מפתח התיבה>&img=<קישור>&vid=<קישור>: בדיקה מול Meta בלי לפרסם כלום.
+// אינסטגרם: יוצר מכלי סטורי ורילס ומחכה לעיבוד, בלי media_publish (מכל שלא פורסם נמחק אחרי 24 שעות).
+// פייסבוק: תמונה לא מפורסמת (השלב הראשון של סטורי) ופתיחת העלאה של רילס, בלי finish.
+async function metaCheck(env, store, url) {
+  const { sha256 } = await import("./inbox.js");
+  if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  const page = clubPage((await store.get("agentReports/social")) || {});
+  if (!page) return Response.json({ ok: false, error: "not connected" });
+  const img = url.searchParams.get("img"), vid = url.searchParams.get("vid"), t = page.token;
+  const out = { page: page.name, ig: page.igName };
+  const step = async (name, fn) => { try { out[name] = (await fn()) || "ok"; } catch (e) { out[name] = `ERROR: ${e.message}`; } };
+  await step("fb_photo_unpublished", async () => (await graphPost(`${page.id}/photos`, { url: img, published: false, access_token: t })).id);
+  await step("fb_reel_start", async () => (await graphPost(`${page.id}/video_reels`, { upload_phase: "start", access_token: t })).video_id);
+  await step("ig_story_image", async () => { const c = await graphPost(`${page.ig}/media`, { media_type: "STORIES", image_url: img, access_token: t }); return `container ${c.id}`; });
+  await step("ig_reel_video", async () => { const c = await graphPost(`${page.ig}/media`, { media_type: "REELS", video_url: vid, caption: "test", access_token: t }); await igReady(c.id, t); return `container ${c.id} FINISHED`; });
+  await step("ig_publish_limit", async () => JSON.stringify((await (await fetch(`${GRAPH}/${page.ig}/content_publishing_limit?fields=quota_usage,config&access_token=${t}`)).json()).data?.[0] || {}));
+  return Response.json(out);
 }
