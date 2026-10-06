@@ -77,6 +77,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
   if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok" }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (url.includes("/content_publishing_limit")) return json({ data: [{ quota_usage: 1, config: { quota_total: 100 } }] });
   if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
     social.push({ url, body: JSON.parse(init.body) });
     return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1", video_id: "v1" });
@@ -766,6 +767,15 @@ await Promise.all(cw3);
 assert.match(texts().slice(beforeGh).join("\n"), /נכשל ב-GitHub/);
 assert.deepEqual(bot().reportedRuns, [7]);
 globalThis.ghRuns = [];
+
+// 20. בדיקה מול Meta בלי לפרסם: בלי מפתח חסום; עם מפתח — אין אף קריאה ל-media_publish או finish
+assert.equal((await worker.fetch(new Request("https://x/meta/check?k=bad"), ienv, {})).status, 403);
+const sc = social.length;
+const chk = await (await worker.fetch(new Request("https://x/meta/check?k=sekret&img=https://img/a.jpg&vid=https://vid/a.mp4"), ienv, {})).json();
+assert.match(chk.ig_reel_video, /FINISHED/);
+assert.ok(!Object.values(chk).some((v) => /ERROR/.test(v)), JSON.stringify(chk));
+assert.ok(!social.slice(sc).some((x) => /media_publish|photo_stories/.test(x.url) || x.body?.upload_phase === "finish"), "לא מפרסם כלום");
+assert.equal(social[sc].body.published, false);
 
 console.log("all bot tests passed");
 {
