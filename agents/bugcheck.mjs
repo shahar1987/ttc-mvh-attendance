@@ -51,17 +51,18 @@ const [players, groups, attendance, cancellations] = await Promise.all([
 ]);
 findings.push(...dataChecks({ players, groups, attendance, cancellations, today }));
 
-// 3. תהליכים שנכשלו ב-GitHub ביממה האחרונה
+// 3. תהליכים שהריצה האחרונה שלהם על main נכשלה (ריצה ירוקה מאוחרת יותר = תוקן)
 if (process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY) {
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const res = await fetch(
-    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs?status=failure&per_page=50&created=>=${since}`,
+    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs?branch=main&status=completed&per_page=100&created=>=${since}`,
     { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json" } },
   );
   if (res.ok) {
-    const runs = (await res.json()).workflow_runs || [];
-    const names = [...new Set(runs.map((r) => r.name))];
-    if (names.length) add("workflow-failed", "high", `תהליכים אוטומטיים שנכשלו ביממה האחרונה: ${names.join(", ")}`);
+    const latest = new Map();
+    for (const r of (await res.json()).workflow_runs || []) if (!latest.has(r.name)) latest.set(r.name, r); // החדשה ראשונה
+    const names = [...latest.values()].filter((r) => r.conclusion === "failure").map((r) => r.name);
+    if (names.length) add("workflow-failed", "high", `תהליכים אוטומטיים שהריצה האחרונה שלהם נכשלה: ${names.join(", ")}`);
   }
 }
 
