@@ -78,6 +78,30 @@ if (secrets.length) problems.push(`נמצא מפתח סודי בקוד הציב�
 // דיווח רק כשהמצב משתנה
 const key = problems.join("|");
 const sup = health.supervisor || {};
+
+// 5. תהליכים שנכשלו ב-GitHub — מדווחים בריצה הקרובה, לא רק בסיכום הלילי של בודק הבאגים.
+//    Agents לא נכלל: הוא כבר מודיע בעצמו כשסוכן נכשל. כל ריצה מדווחת פעם אחת (reportedRuns).
+let reportedRuns = sup.reportedRuns || [];
+if (process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY) {
+  const since = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+  const res = await fetch(
+    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs?status=failure&per_page=50&created=>=${since}`,
+    { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json" } },
+  );
+  if (res.ok) {
+    const failed = ((await res.json()).workflow_runs || []).filter((r) => r.name !== "Agents");
+    const fresh = failed.filter((r) => !reportedRuns.includes(r.id));
+    if (fresh.length) {
+      const names = [...new Set(fresh.map((r) => r.name))].join(", ");
+      await tellOwner(db, {
+        agent: "supervisor",
+        text: ["❌ נכשל עכשיו ב-GitHub:", ...fresh.map((r) => `• ${r.name}: ${r.html_url}`)].join("\n"),
+        templateParam: `נכשל ב-GitHub: ${names}`.slice(0, 200),
+      });
+    }
+    reportedRuns = failed.map((r) => r.id);
+  }
+}
 console.log(`problems: ${problems.length}`);
 if (key !== (sup.key || "")) {
   if (problems.length) {
@@ -91,4 +115,4 @@ if (key !== (sup.key || "")) {
   }
 }
 // cronErrorAt — כדי שבריצה הבאה אפשר יהיה לזהות שגיאת cron חוזרת (lib/schedule.mjs)
-await heartbeat(db, "supervisor", { key, problems, day: israelToday(), cronErrorAt: bot.lastCronError?.at || null });
+await heartbeat(db, "supervisor", { key, problems, day: israelToday(), cronErrorAt: bot.lastCronError?.at || null, reportedRuns });
