@@ -5,13 +5,13 @@ import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
-import { confirmed } from "./tools.js";
+import { confirmed, findGroup } from "./tools.js";
 import { drainQueue } from "./queue.js";
 
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
 
-// "שם", "מאמנים", או מספר → [{name, phone}] + שמות שלא נמצאו / לא חד-משמעיים
+// "שם", "מאמנים", "קבוצת X" (ההורים של כל השחקנים הפעילים בקבוצה), או מספר → [{name, phone}] + שמות שלא נמצאו / לא חד-משמעיים
 async function resolve(store, to) {
   const [users, players] = await Promise.all([store.list("users"), store.list("players")]);
   const people = [
@@ -21,11 +21,17 @@ async function resolve(store, to) {
   const out = [];
   const problems = [];
   for (const q of to.map((x) => String(x).trim()).filter(Boolean)) {
+    const group = q.match(/^קבוצ(?:ת|ה)\s+(.+)/);
     if (COACHES.test(q)) out.push(...people.filter((p) => p.staff));
-    else if (isValidPhone(q)) out.push({ name: q, phone: q });
+    else if (group) {
+      const { g, roster } = await findGroup(store, group[1], undefined, players);
+      if (g) out.push(...roster.map((p) => ({ name: p.name || "", phone: p.parentPhone })));
+      else problems.push(roster);
+    } else if (isValidPhone(q)) out.push({ name: q, phone: q });
     else {
       const hits = people.filter((p) => p.name.includes(q));
-      if (hits.length === 1) out.push(hits[0]);
+      const exact = hits.filter((p) => p.name === q);
+      if (hits.length === 1 || exact.length === 1) out.push(exact[0] || hits[0]);
       else problems.push(hits.length ? `"${q}" מתאים לכמה: ${hits.map((h) => h.name).join(", ")}` : `"${q}" לא נמצא`);
     }
   }
@@ -57,7 +63,7 @@ export const MESSAGE_TOOL_DEFS = [
   {
     name: "send_message",
     description:
-      "מכין הודעת וואטסאפ שהבעלים שולח מהמספר שלו: מחזיר קישור לכל נמען, שפותח את הוואטסאפ שלו עם הטקסט מוכן. to = רשימה של שמות (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). בשעה שנקבעה הקישורים יגיעו לבעלים. את הקישורים להעביר לו כמו שהם, כל אחד בשורה. לקבוצת וואטסאפ אין קישור — להציע לו להעתיק את הנוסח לקבוצה.",
+      "מכין הודעת וואטסאפ שהבעלים שולח מהמספר שלו: מחזיר קישור לכל נמען, שפותח את הוואטסאפ שלו עם הטקסט מוכן. to = רשימה של שמות מלאים (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, 'קבוצת <שם>' לכל ההורים בקבוצה, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). בשעה שנקבעה הקישורים יגיעו לבעלים. את הקישורים להעביר לו כמו שהם, כל אחד בשורה. לקבוצת וואטסאפ אין קישור — להציע לו להעתיק את הנוסח לקבוצה.",
     input_schema: {
       type: "object",
       properties: { to: { type: "array", items: { type: "string" } }, text: { type: "string" }, at: { type: "string" } },
@@ -67,7 +73,7 @@ export const MESSAGE_TOOL_DEFS = [
   },
   {
     name: "preview_recipients",
-    description: "מי יקבל את ההודעה (שם ומספר מוסתר) לפני ששואלים את הבעלים — באותו פורמט to של send_message.",
+    description: "רשימה ממוספרת של מי יקבל (שם ומספר מוסתר), באותו פורמט to של send_message. כשהבעלים רוצה לבחור מתוך רשימה (למשל 'תראי לי את קבוצת מתחילים'): להציג לו את הרשימה הממוספרת, והוא עונה במספרים ('1,3'). אז לקרוא ל-send_message עם השמות המלאים של המספרים שבחר.",
     input_schema: { type: "object", properties: { to: { type: "array", items: { type: "string" } } }, required: ["to"], additionalProperties: false },
   },
   {
@@ -86,7 +92,7 @@ export function makeMessageTools({ store, lastOwnerText = "", turn }) {
   return {
     async preview_recipients({ to }) {
       const { recipients, problems } = await resolve(store, to);
-      return JSON.stringify({ recipients: recipients.map((r) => `${r.name} (…${r.phone.slice(-4)})`), problems });
+      return JSON.stringify({ recipients: recipients.map((r, i) => `${i + 1}. ${r.name} (…${r.phone.slice(-4)})`), problems });
     },
 
     async send_message({ to, text, at }) {

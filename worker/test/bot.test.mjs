@@ -302,7 +302,7 @@ assert.deepEqual(await publishDue(db(env), new Date("2099-01-02T00:00:00Z")), []
 put("users/u1", { role: "coach" });
 put("users/u3", { name: "מנהלת", role: "admin", phone: "0527654321" });
 const prev = JSON.parse(await callTool("תשלחי למאמנים", { name: "preview_recipients", args: { to: ["מאמנים", "דני"] } }));
-assert.deepEqual(prev.recipients, ["יוסי (…4567)", "מנהלת (…4321)"]);
+assert.deepEqual(prev.recipients, ["1. יוסי (…4567)", "2. מנהלת (…4321)"]);
 assert.match(prev.problems.join(), /"דני" מתאים לכמה/);
 const n0m = sent.length;
 const now1 = await callTool("תשלחי למאמנים ישיבה מחר", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } });
@@ -311,6 +311,12 @@ assert.match(now1, /יוסי: https:\/\/wa\.me\/972501234567\?text=%D7.*\nמנה
 assert.match(now1, /%0A%D7%91-20%3A00/, "ירידת שורה ותווים מקודדים בקישור");
 assert.match(await callTool("כן", { name: "send_message", args: { to: ["נועה"], text: "תזכורת", at: "2099-01-01T18:00" } }), /לא נשלח: אין נמענים.*אין טלפון/);
 put("players/p2", { parentPhone: "0541112222" });
+put("players/p1", { parentPhone: "0540000044" });
+const grp = JSON.parse(await callTool("תראי לי את המתחילים", { name: "preview_recipients", args: { to: ["קבוצת מתחילים"] } }));
+assert.deepEqual(grp.recipients, ["1. דני כהן (…0044)", "2. נועה לוי (…2222)"]);
+assert.match(grp.problems.join(), /לדני לוי אין טלפון/);
+assert.match(JSON.parse(await callTool("x", { name: "preview_recipients", args: { to: ["קבוצת שאר ישוב"] } })).problems.join(), /כמה קבוצות/);
+assert.match(await callTool("שלחי ל-1", { name: "send_message", args: { to: ["דני כהן"], text: "היי" } }), /^ללחוץ.*\nדני כהן: https:\/\/wa\.me\/972540000044/);
 const sch = await callTool("תתזמני", { name: "send_message", args: { to: ["נועה", "מנהלת"], text: "תזכורת", at: "2099-01-01T18:00" } });
 const sid = sch.match(/מזהה (\w+)/)[1];
 assert.equal(docs.get("agentReports/bot").scheduled[0].due, "2099-01-01T16:00:00.000Z", "18:00 בחורף בישראל = 16:00 UTC");
