@@ -117,8 +117,6 @@ jobs:
         id: supervisor
         if: contains(steps.pick.outputs.run, ',supervisor,')
         working-directory: agents
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # תהליכים שנכשלו — מדווחים תוך שעה
         run: node supervisor.mjs
 
       # לא מתריעים על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות התראות ביום

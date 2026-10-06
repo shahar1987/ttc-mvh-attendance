@@ -13,7 +13,7 @@ import { remindCoaches } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
-import { dispatchWorkflows } from "./dispatch.js";
+import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
@@ -409,6 +409,11 @@ async function everyQuarter(env) {
     remindCoaches(env, store, wa),
     deliverOutbox(env, store, wa),
     dispatchWorkflows(env, store),
+    failedRuns(env, store).then(async ({ lines, ids }) => {
+      if (lines.length) await tell(store, wa, "github", `❌ *נכשל ב-GitHub:*\n${lines.join("\n")}`, `נכשל ב-GitHub: ${summary(lines)}`);
+      if (ids) await store.merge("agentReports/bot", { reportedRuns: ids });
+      return `failed runs: ${lines.length}`;
+    }),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));
   if (failed.length) await cronError(env, new Error(failed.join(" | ")));
