@@ -3257,7 +3257,24 @@ function re({
     };
   }, []);
   j(() => {
-    if (isDirty()) return;
+    if (isDirty()) {
+      // באמצע עריכה הגיעו רישומים ממכשיר אחר (מאמן שני שמר). שחקן שעדיין
+      // מסומן אצלנו "הגיע" רק בגלל המילוי האוטומטי מקבל את מה שנשמר בשרת,
+      // ויוצא מרשימת השמירה — אחרת השמירה שלנו הייתה דורסת "לא הגיע" אמיתי.
+      // שחקנים שהמאמן הזה סימן בעצמו לא משתנים.
+      let upd = {};
+      autoRef.current.forEach((pid) => {
+        let k = l.find(
+          (v) => v.groupId === t.id && v.date === m && v.playerId === pid,
+        );
+        k &&
+          ((upd[pid] = k.status),
+          autoRef.current.delete(pid),
+          touchedRef.current.delete(pid));
+      });
+      Object.keys(upd).length && h((cur) => ({ ...cur, ...upd }));
+      return;
+    }
     let p = {},
       // יום שעדיין אין לו רישום נפתח כשכולם מסומנים "הגיע" — המאמן מתקן רק
       // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
@@ -3311,6 +3328,11 @@ function re({
               (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
             ),
             st2 = x[w.id] || null;
+          // מילוי אוטומטי לא דורס רישום אמיתי שכבר בשרת (ממאמן אחר)
+          if (autoRef.current.has(pid) && prev) {
+            saved[w.id] = prev.status;
+            return;
+          }
           if (!st2) {
             // ריק = מחיקת הרישום. רק מנהל רשאי למחוק (ראו firestore.rules), ומחיקה
             // שנדחית מפילה את כל השמירה — אז מאמן לא שולח מחיקה בכלל.
