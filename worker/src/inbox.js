@@ -42,7 +42,7 @@ export async function claudeRoute(req, env, store) {
 <form method="post"><input name="token" required dir="ltr" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"><button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`);
 }
 
-const sha256 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+export const sha256 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 export async function inboxRoute(req, env, store, wa) {
   const url = new URL(req.url);

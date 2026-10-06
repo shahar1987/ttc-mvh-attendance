@@ -61,6 +61,7 @@ globalThis.fetch = async (url, init = {}) => {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
   }
+  if (url.includes("/actions/runs?")) return json({ workflow_runs: globalThis.ghRuns || [] });
   if (url.startsWith("https://api.github.com/")) {
     dispatches.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization });
     return new Response(null, { status: globalThis.ghFail ? 500 : 204 });
@@ -76,10 +77,13 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
   if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok" }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (url.includes("/content_publishing_limit")) return json({ data: [{ quota_usage: 1, config: { quota_total: 100 } }] });
   if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
     social.push({ url, body: JSON.parse(init.body) });
-    return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1" });
+    return json(url.endsWith("/media") ? { id: "c1" } : { id: "x1", post_id: "pg1_1", video_id: "v1" });
   }
+  if (url.startsWith("https://rupload.facebook.com/")) return (social.push({ url, fileUrl: init.headers.file_url }), json({ success: true }));
+  if (url.includes("graph.facebook.com/v24.0/c1?fields=status_code")) return json({ status_code: "FINISHED" });
   if (url.includes("graph.facebook.com/v24.0/media")) return json({ url: "https://lookaside/" + url.split("/").pop(), mime_type: url.endsWith("aud") ? "audio/ogg; codecs=opus" : "image/jpeg" });
   if (url.startsWith("https://lookaside/")) return new Response(new Uint8Array([1, 2, 3]));
   if (url.includes("graph.facebook.com")) {
@@ -278,6 +282,13 @@ assert.match(social[0].body.url, /^https:\/\/x\/meta\/media\/777\?t=\w+$/);
 assert.equal((await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).status, 403, "מפתח חיבור חד-פעמי: אחרי שימוש — חסום");
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
+{
+  const { sign } = await import("../src/google.js");
+  const r = await worker.fetch(new Request(`https://x/meta/media/mediaimg?t=${await sign(env, "media:mediaimg")}`), env, {});
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("content-type"), "image/jpeg");
+  assert.deepEqual([...new Uint8Array(await r.arrayBuffer())], [1, 2, 3], "הקובץ מוזרם כמו שהוא");
+}
 
 // 12ב. סוכן הפרסום: @ בפייסבוק נחסם, נוסח אינסטגרם נפרד, תזמון לתור ופרסום מה-cron
 const { publishDue, israelToUtc } = await import("../src/meta.js");
@@ -297,6 +308,27 @@ assert.equal(social[s0].body.caption, "אימון ראשון", "פייסבוק �
 assert.equal(social[s0 + 1].body.caption, "אימון ראשון @matnas.mvhr", "אינסטגרם עם תיוגים");
 assert.equal(docs.get("agentReports/social").queue.length, 0, "יצא מהתור");
 assert.deepEqual(await publishDue(db(env), new Date("2099-01-02T00:00:00Z")), [], "לא מתפרסם פעמיים");
+
+// 12ג. סטורי ורילס: סטורי תמונה מיד, סרטון תמיד דרך התור (Meta מעבדת), רילס בלי סרטון נחסם
+assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", kind: "reel", text: "רילס" } }), /צריך סרטון/);
+const st = { platform: "both", kind: "story", image: "https://img/s.jpg" };
+await callTool("סטורי", { name: "publish_post", args: st });
+const s1 = social.length;
+assert.match(await callTool("כן", { name: "publish_post", args: st }), /פייסבוק סטורי.*✓.*אינסטגרם סטורי.*✓/);
+assert.deepEqual(social.slice(s1).map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "pg1/photo_stories", "ig1/media", "ig1/media_publish"]);
+assert.equal(social[s1].body.published, false);
+assert.equal(social[s1 + 2].body.media_type, "STORIES");
+const rl = { platform: "both", kind: "reel", text: "רילס חדש", video: "https://vid/r.mp4" };
+await callTool("רילס", { name: "publish_post", args: rl });
+const s2 = social.length;
+assert.match(await callTool("כן", { name: "publish_post", args: rl }), /בתור/);
+assert.equal(social.length, s2, "סרטון לא מתפרסם בתוך ה-webhook");
+const rpub = await publishDue(db(env), new Date(Date.now() + 60000));
+assert.match(rpub[0], /פייסבוק רילס.*✓.*אינסטגרם רילס.*✓/);
+assert.deepEqual(social.slice(s2).map((x) => x.url.split("/v24.0/")[1] || x.url), ["pg1/video_reels", "v1", "pg1/video_reels", "ig1/media", "ig1/media_publish"]);
+assert.equal(social[s2 + 1].fileUrl, "https://vid/r.mp4");
+assert.equal(social[s2 + 2].body.description, "רילס חדש");
+assert.deepEqual([social[s2 + 3].body.media_type, social[s2 + 3].body.video_url], ["REELS", "https://vid/r.mp4"]);
 
 // 13. הודעות בשם המועדון: מאמנים לפי תפקיד, שם, מתוזמן, ביטול
 put("users/u1", { role: "coach" });
@@ -719,6 +751,31 @@ await worker.scheduled({ cron: "0 17 * * *" }, env, { waitUntil: (p) => cw2.push
 await Promise.all(cw2);
 globalThis.firestoreDown = false;
 assert.match(await (await import("node:fs/promises")).readFile(new URL("../wrangler.toml", import.meta.url), "utf8"), /\[observability\]\s*\nenabled = true/);
+
+// 19. ריצה שנכשלה ב-GitHub: מדווחת בוואטסאפ פעם אחת בלבד
+const { failedRuns } = await import("../src/dispatch.js");
+globalThis.ghRuns = [{ id: 7, name: "Build and deploy", html_url: "https://github.com/x/runs/7" }];
+let fr = await failedRuns(env, store);
+assert.deepEqual(fr, { lines: ["• Build and deploy: https://github.com/x/runs/7"], ids: [7] });
+put("agentReports/bot", { reportedRuns: [7] });
+assert.deepEqual(await failedRuns(env, store), { lines: [], ids: null }, "לא מדווחים פעמיים");
+const beforeGh = texts().length;
+put("agentReports/bot", { reportedRuns: [] });
+const cw3 = [];
+await worker.scheduled({ cron: "*/15 * * * *" }, env, { waitUntil: (p) => cw3.push(p) });
+await Promise.all(cw3);
+assert.match(texts().slice(beforeGh).join("\n"), /נכשל ב-GitHub/);
+assert.deepEqual(bot().reportedRuns, [7]);
+globalThis.ghRuns = [];
+
+// 20. בדיקה מול Meta בלי לפרסם: בלי מפתח חסום; עם מפתח — אין אף קריאה ל-media_publish או finish
+assert.equal((await worker.fetch(new Request("https://x/meta/check?k=bad"), ienv, {})).status, 403);
+const sc = social.length;
+const chk = await (await worker.fetch(new Request("https://x/meta/check?k=sekret&img=https://img/a.jpg&vid=https://vid/a.mp4"), ienv, {})).json();
+assert.match(chk.ig_reel_video, /FINISHED/);
+assert.ok(!Object.values(chk).some((v) => /ERROR/.test(v)), JSON.stringify(chk));
+assert.ok(!social.slice(sc).some((x) => /media_publish|photo_stories/.test(x.url) || x.body?.upload_phase === "finish"), "לא מפרסם כלום");
+assert.equal(social[sc].body.published, false);
 
 console.log("all bot tests passed");
 {
