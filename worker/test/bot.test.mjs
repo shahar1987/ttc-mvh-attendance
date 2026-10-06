@@ -61,6 +61,7 @@ globalThis.fetch = async (url, init = {}) => {
     google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
     return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
   }
+  if (url.includes("/actions/runs?")) return json({ workflow_runs: globalThis.ghRuns || [] });
   if (url.startsWith("https://api.github.com/")) {
     dispatches.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization });
     return new Response(null, { status: globalThis.ghFail ? 500 : 204 });
@@ -719,6 +720,22 @@ await worker.scheduled({ cron: "0 17 * * *" }, env, { waitUntil: (p) => cw2.push
 await Promise.all(cw2);
 globalThis.firestoreDown = false;
 assert.match(await (await import("node:fs/promises")).readFile(new URL("../wrangler.toml", import.meta.url), "utf8"), /\[observability\]\s*\nenabled = true/);
+
+// 19. ריצה שנכשלה ב-GitHub: מדווחת בוואטסאפ פעם אחת בלבד
+const { failedRuns } = await import("../src/dispatch.js");
+globalThis.ghRuns = [{ id: 7, name: "Build and deploy", html_url: "https://github.com/x/runs/7" }];
+let fr = await failedRuns(env, store);
+assert.deepEqual(fr, { lines: ["• Build and deploy: https://github.com/x/runs/7"], ids: [7] });
+put("agentReports/bot", { reportedRuns: [7] });
+assert.deepEqual(await failedRuns(env, store), { lines: [], ids: null }, "לא מדווחים פעמיים");
+const beforeGh = texts().length;
+put("agentReports/bot", { reportedRuns: [] });
+const cw3 = [];
+await worker.scheduled({ cron: "*/15 * * * *" }, env, { waitUntil: (p) => cw3.push(p) });
+await Promise.all(cw3);
+assert.match(texts().slice(beforeGh).join("\n"), /נכשל ב-GitHub/);
+assert.deepEqual(bot().reportedRuns, [7]);
+globalThis.ghRuns = [];
 
 console.log("all bot tests passed");
 {

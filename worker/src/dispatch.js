@@ -74,3 +74,20 @@ export async function dispatchWorkflows(env, store) {
   if (errors.length) throw new Error(errors.join(" · "));
   return done.join(",") || "nothing pending";
 }
+
+// ❌ ריצות שנכשלו ב-GitHub — נבדק כאן כל רבע שעה, כי GitHub מדלג על רוב הריצות המתוזמנות של המפקח השעתי.
+// הריפו ציבורי, אז אין צורך בטוקן (אם יש GH_DISPATCH_TOKEN — משתמשים בו בשביל מכסת בקשות גבוהה יותר).
+// מחזיר שורה לכל ריצה שעוד לא דווחה, ואת כל הריצות שנכשלו ב-6 השעות האחרונות (ids) לסימון אחרי השליחה.
+export async function failedRuns(env, store) {
+  const repo = env.GH_REPO || "shahar1987/ttc-mvh-attendance";
+  const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+  const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs?status=failure&per_page=50&created=>=${since}`, {
+    headers: { accept: "application/vnd.github+json", "user-agent": "shula-whatsapp-worker", ...(env.GH_DISPATCH_TOKEN ? { authorization: `Bearer ${env.GH_DISPATCH_TOKEN}` } : {}) },
+  });
+  if (r.status === 403 || r.status === 429) return { lines: [], ids: null }; // מכסה — ננסה ברבע השעה הבא
+  if (!r.ok) throw new Error(`GitHub runs: ${r.status}`);
+  const runs = (await r.json()).workflow_runs || [];
+  const seen = new Set(((await store.get("agentReports/bot")) || {}).reportedRuns || []);
+  const fresh = runs.filter((x) => !seen.has(x.id));
+  return { lines: fresh.map((x) => `• ${x.name}: ${x.html_url}`), ids: fresh.length ? runs.map((x) => x.id) : null };
+}
