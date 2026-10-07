@@ -11,7 +11,7 @@ import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue } from "./meta.js"
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL } from "./inbox.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 
@@ -114,8 +114,11 @@ export default {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
     const raw = await req.text();
-    if (!(await validSignature(raw, req.headers.get("x-hub-signature-256"), env.META_APP_SECRET)))
+    if (!(await validSignature(raw, req.headers.get("x-hub-signature-256"), env.META_APP_SECRET))) {
+      // נרשם כדי שבדיקת החיבור (ensureWebhook) תתריע: הודעות מגיעות אבל נדחות — כנראה ה-App Secret ב-Meta הוחלף
+      if (req.headers.get("x-hub-signature-256")) ctx.waitUntil(db(env).merge("agentReports/bot", { badSignatureAt: new Date().toISOString() }).catch(() => {}));
       return new Response("bad signature", { status: 401 });
+    }
 
     let body;
     try {
@@ -417,6 +420,7 @@ async function everyQuarter(env) {
       if (ids) await store.merge("agentReports/bot", { reportedRuns: ids });
       return `failed runs: ${lines.length}`;
     }),
+    ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));
   if (failed.length) await cronError(env, new Error(failed.join(" | ")));
