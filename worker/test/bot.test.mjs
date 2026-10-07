@@ -375,6 +375,9 @@ const ienv = { ...env, INBOX_KEY_SHA256: createHash("sha256").update("sekret").d
 assert.match(await callTool("מה יש לי ביומן מחר?", { name: "ask_claude", args: { request: "מה יש ביומן מחר" } }), /נרשם/);
 assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad"), ienv, {})).status, 403);
 const open1 = await (await worker.fetch(new Request("https://x/inbox?k=sekret"), ienv, {})).json();
+const diag = await (await worker.fetch(new Request("https://x/inbox?k=sekret&diag"), ienv, {})).json();
+assert.ok(Array.isArray(diag.log) && "lastError" in diag && !("history" in diag), "diag: יומן ושגיאות, בלי שאר המסמך");
+assert.equal((await worker.fetch(new Request("https://x/inbox?k=bad&diag"), ienv, {})).status, 403);
 assert.equal(open1.at(-1).request, "מה יש ביומן מחר");
 const n3 = sent.length;
 const ans = await worker.fetch(new Request("https://x/inbox?k=sekret", { method: "POST", body: JSON.stringify({ id: open1.at(-1).id, answer: "אימון ב-17:00" }) }), ienv, {});
