@@ -48,6 +48,16 @@ export async function inboxRoute(req, env, store, wa) {
   const url = new URL(req.url);
   if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
   const bot = (await store.get("agentReports/bot")) || {};
+  // 🩺 לאחראית על שולה (רוטינה לילית של קלוד): מה קרה ביממתיים האחרונות — שיחות, שגיאות, הודעות שלא נענו. קריאה בלבד.
+  if (req.method === "GET" && url.searchParams.has("diag")) {
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const pick = (k) => bot[k] ?? null;
+    return Response.json({
+      now: new Date().toISOString(),
+      log: (bot.log || []).filter((e) => e.at > since),
+      ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "unansweredAlerted", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
+    });
+  }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
   if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
   const { id, answer, notify } = await req.json();
