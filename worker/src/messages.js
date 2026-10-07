@@ -177,3 +177,37 @@ export async function ensureTemplates(env) {
   }
   return out;
 }
+
+// 🔌 Meta מפסיקה לפעמים להעביר לשולה את ההודעות הנכנסות, ואז שולה שותקת בלי שום שגיאה
+// (2026-10-02: ה-WABA לא היה רשום לאפליקציה; 2026-10-07: שתיקה מ-9:53). נבדק כל רבע שעה:
+// מה שאפשר לתקן — מתקנים ומדווחים. מה שלא — מדווחים, אותה בעיה לכל היותר פעם ב-6 שעות.
+export async function ensureWebhook(env, store) {
+  const { WHATSAPP_WABA_ID: waba, META_APP_ID: app, META_APP_SECRET: secret } = env;
+  if (!waba || !app || !secret) return [];
+  const g = async (path, token, init) => {
+    const j = await fetch(`https://graph.facebook.com/v24.0/${path}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } }).then((r) => r.json());
+    if (j.error) throw new Error(`Meta ${path}: ${j.error.message}`);
+    return j;
+  };
+  const appToken = `${app}|${secret}`;
+  const fixed = [], open = [];
+  const subs = (await g(`${waba}/subscribed_apps`, env.WHATSAPP_TOKEN)).data || [];
+  if (!subs.some((s) => s.whatsapp_business_api_data?.id === app)) {
+    await g(`${waba}/subscribed_apps`, env.WHATSAPP_TOKEN, { method: "POST" });
+    fixed.push("✅ חשבון הוואטסאפ לא היה מחובר לאפליקציה של שולה, ולכן ההודעות שלך לא הגיעו אליה. חיברתי מחדש.");
+  }
+  const hook = ((await g(`${app}/subscriptions`, appToken)).data || []).find((s) => s.object === "whatsapp_business_account");
+  if (!hook) open.push("⚠️ אין webhook לוואטסאפ באפליקציה shula ב-Meta, אז הודעות לא מגיעות אליי. צריך להריץ את Agents setup.");
+  else if (!hook.active || !(hook.fields || []).some((f) => (f.name || f) === "messages")) {
+    await g(`${app}/subscriptions`, appToken, { method: "POST", body: JSON.stringify({ object: "whatsapp_business_account", callback_url: hook.callback_url, verify_token: env.WEBHOOK_VERIFY_TOKEN, fields: "messages" }) });
+    fixed.push("✅ קבלת ההודעות הנכנסות הייתה כבויה ב-Meta. הפעלתי מחדש.");
+  }
+  const bot = (await store.get("agentReports/bot")) || {};
+  if (bot.badSignatureAt && Date.now() - new Date(bot.badSignatureAt).getTime() < 30 * 60 * 1000)
+    open.push("⚠️ Meta שולחת לי הודעות אבל החתימה לא מתאימה, אז אני דוחה אותן. כנראה ה-App Secret של האפליקציה shula הוחלף, וצריך לעדכן את META_APP_SECRET.");
+  if (fixed.length) fixed.push("הודעות ששלחת קודם לא הגיעו אליי, אפשר לשלוח אותן שוב.");
+  const key = open.join("|");
+  const repeat = key && bot.webhookOpen?.key === key && Date.now() - new Date(bot.webhookOpen.at).getTime() < 6 * 3600 * 1000;
+  if (key && !repeat) await store.merge("agentReports/bot", { webhookOpen: { key, at: new Date().toISOString() } });
+  return [...fixed, ...(repeat ? [] : open)];
+}
