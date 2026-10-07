@@ -1,0 +1,6 @@
+{
+  "name": "context-alarm",
+  "version": "0.1.0",
+  "description": "Warns above the prompt when the context window fills past 60% and 80%",
+  "types": "./types/index.d.ts"
+}
