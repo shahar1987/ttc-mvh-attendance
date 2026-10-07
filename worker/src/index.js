@@ -18,6 +18,7 @@ import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
 const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
+const DEADLINE_MS = 22000; // (בבדיקות: env.DEADLINE_MS) לפני ה-30 שניות של Cloudflare, עם מרווח לשליחת הודעת השגיאה
 const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
 let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
 
@@ -152,10 +153,13 @@ async function validSignature(raw, header, secret) {
 async function handle(m, env) {
   const wa = waConfig(env);
   let store = null;
-  let replied = false;
-  // כל תשובה לבעלים עוברת כאן — כך noteReplied יודע שההודעה נענתה (ראו unanswered)
-  const reply = (text) => sendText(wa, m.from, text).then((r) => ((replied = true), r));
-  try {
+  let replied = false, late = false, stage = "התחלה";
+  // כל תשובה לבעלים עוברת כאן — כך lastReplyAt יודע שההודעה נענתה (ראו unanswered). אחרי שהזמן נגמר — כבר לא עונים.
+  const reply = (text) => (late ? Promise.resolve("") : sendText(wa, m.from, text).then((r) => ((replied = true), r)));
+  // Cloudflare עוצר עבודת רקע ~30 שניות אחרי שענינו ל-Meta, בלי שגיאה ובלי catch. לכן עוצרים לבד קודם ואומרים לבעלים איפה נתקענו.
+  let timer;
+  const deadline = new Promise((_, no) => (timer = setTimeout(() => no(new Error(`לקח לי יותר מדי זמן (נתקעתי ב: ${stage})`)), Number(env.DEADLINE_MS) || DEADLINE_MS)));
+  const work = async () => {
     store = db(env);
     const now = new Date().toISOString();
     // Meta שולחת לפעמים את אותה הודעה פעמיים — הכתיבה מותנית, כך שגם שתי עותקים במקביל לא נענים פעמיים
@@ -168,14 +172,19 @@ async function handle(m, env) {
     });
     if (dup) return;
 
+    stage = "קבלת ההודעה";
     await typing(wa, m.id).catch(() => {});
     let text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.image?.caption || "").trim();
     let media = null;
     if (m.type === "audio") {
-      text = await transcribe(env, await downloadMedia(wa, m.audio.id));
+      stage = "הורדת ההקלטה";
+      const audio = await downloadMedia(wa, m.audio.id);
+      stage = "תמלול ההקלטה";
+      text = await transcribe(env, audio);
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
+      stage = "הורדת התמונה";
       media = await downloadMedia(wa, m.image.id);
       text = `📷 [תמונה id=${m.image.id}] ${text || "מה דעתך?"}`;
     } else if (m.type === "video") {
@@ -191,7 +200,9 @@ async function handle(m, env) {
       await reply("איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
+    stage = "חשיבה על התשובה (Gemini)";
     const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
+    stage = "שליחת התשובה בוואטסאפ";
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
     const done = new Date().toISOString();
@@ -199,11 +210,16 @@ async function handle(m, env) {
       history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: done }].slice(-16),
       log: [...(cur.log || []), { at: now, user: text, shula: answer }].slice(-LOG_KEEP),
     }));
+  };
+  try {
+    await Promise.race([work(), deadline]);
   } catch (e) {
     // קודם מודיעים לבעלים (לא תלוי ב-Firestore), ורק אז מנסים לרשום את השגיאה
     await reply(`משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
+    late = true; // אם העבודה עוד תסתיים ברקע — לא שולחים תשובה כפולה אחרי הודעת השגיאה
     await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } }).catch(() => {});
   } finally {
+    clearTimeout(timer);
     if (replied) await store?.merge("agentReports/bot", { lastReplyAt: new Date().toISOString() }).catch(() => {});
   }
 }
@@ -269,13 +285,15 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   else contents.push({ role: "user", parts: newParts });
   const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  // בלי השעה במפורש Gemini ממציא אותה (2026-10-07: ענה 14:38 כשהשעה הייתה 13:45)
+  const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 
   let askedClaude = false, nudged = false, remindNudged = false;
   const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday})` }] },
+      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
       tools: [{ functionDeclarations: FUNCTION_DECLS }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
