@@ -152,6 +152,9 @@ async function validSignature(raw, header, secret) {
 async function handle(m, env) {
   const wa = waConfig(env);
   let store = null;
+  let replied = false;
+  // כל תשובה לבעלים עוברת כאן — כך noteReplied יודע שההודעה נענתה (ראו unanswered)
+  const reply = (text) => sendText(wa, m.from, text).then((r) => ((replied = true), r));
   try {
     store = db(env);
     const now = new Date().toISOString();
@@ -170,7 +173,7 @@ async function handle(m, env) {
     let media = null;
     if (m.type === "audio") {
       text = await transcribe(env, await downloadMedia(wa, m.audio.id));
-      if (!text) return void (await sendText(wa, m.from, "לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
+      if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
       media = await downloadMedia(wa, m.image.id);
@@ -180,16 +183,16 @@ async function handle(m, env) {
       text = `🎬 [סרטון id=${m.video.id}] ${m.video.caption || "מה לעשות עם הסרטון?"}`;
     }
     if (!text) {
-      await sendText(wa, m.from, "כרגע אני מבינה טקסט, הודעות קוליות, תמונות וסרטונים 🙂");
+      await reply("כרגע אני מבינה טקסט, הודעות קוליות, תמונות וסרטונים 🙂");
       return;
     }
     if (["איפוס", "התחלה חדשה", "reset"].includes(text)) {
       await store.merge("agentReports/bot", { history: [] });
-      await sendText(wa, m.from, "איפסתי את השיחה. מתחילים מחדש 🙂");
+      await reply("איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
     const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
-    for (let i = 0; i < answer.length; i += CHUNK) await sendText(wa, m.from, answer.slice(i, i + CHUNK));
+    for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
     const done = new Date().toISOString();
     await store.update("agentReports/bot", (cur) => ({
@@ -198,9 +201,22 @@ async function handle(m, env) {
     }));
   } catch (e) {
     // קודם מודיעים לבעלים (לא תלוי ב-Firestore), ורק אז מנסים לרשום את השגיאה
-    await sendText(wa, m.from, `משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
+    await reply(`משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
     await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } }).catch(() => {});
+  } finally {
+    if (replied) await store?.merge("agentReports/bot", { lastReplyAt: new Date().toISOString() }).catch(() => {});
   }
+}
+
+// 🔇 הודעה שהגיעה לשולה ולא נענתה (Cloudflare עצר באמצע, Gemini נתקע, וואטסאפ דחה את התשובה) — בלי זה זו שתיקה בלי סיבה.
+// handle רושם lastOwnerMsgAt בהתחלה ו-lastReplyAt אחרי תשובה; אם עברו 3 דקות בלי תשובה — מודיעים, פעם אחת להודעה.
+// ponytail: עוקב רק אחרי ההודעה האחרונה; שתי הודעות רצופות שהראשונה נענתה אחרי השנייה — השנייה לא תיתפס. מעקב לפי מזהה הודעה אם זה יקרה
+export function unanswered(bot, now = Date.now()) {
+  const got = bot.lastOwnerMsgAt;
+  if (!got || got <= (bot.lastReplyAt || "") || got === bot.unansweredAlerted || now - new Date(got).getTime() < 3 * 60 * 1000) return null;
+  const t = new Date(got).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
+  const err = bot.lastError?.at >= got ? `\nהשגיאה: ${String(bot.lastError.message).slice(0, 150)}` : "";
+  return `🔇 קיבלתי ממך הודעה ב-${t} ולא הצלחתי לענות עליה.${err}\nאפשר לשלוח אותה שוב.`;
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
@@ -419,6 +435,12 @@ async function everyQuarter(env) {
       if (lines.length) await tell(store, wa, "github", `❌ *נכשל ב-GitHub:*\n${lines.join("\n")}`, `נכשל ב-GitHub: ${summary(lines)}`);
       if (ids) await store.merge("agentReports/bot", { reportedRuns: ids });
       return `failed runs: ${lines.length}`;
+    }),
+    store.get("agentReports/bot").then(async (bot) => {
+      const text = unanswered(bot || {});
+      if (!text) return "unanswered: 0";
+      await store.merge("agentReports/bot", { unansweredAlerted: bot.lastOwnerMsgAt });
+      return tell(store, wa, "unanswered", text, text.split("\n")[0]);
     }),
     ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),
   ]);

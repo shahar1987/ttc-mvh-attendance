@@ -38,3 +38,15 @@ assert.deepEqual(await ensureWebhook(env, store), [], "אותה בעיה — ל�
 // בלי מזהים — לא עושה כלום
 assert.deepEqual(await ensureWebhook({}, store), []);
 console.log("webhook ok");
+
+// 🔇 הודעה שהגיעה ולא נענתה
+const { unanswered } = await import("../src/index.js");
+const T = Date.parse("2026-10-07T09:38:00Z");
+const got = "2026-10-07T09:38:00.000Z";
+assert.equal(unanswered({}, T), null);
+assert.equal(unanswered({ lastOwnerMsgAt: got }, T + 60e3), null, "עוד לא עברו 3 דקות");
+assert.match(unanswered({ lastOwnerMsgAt: got }, T + 4 * 60e3), /12:38.*לא הצלחתי לענות/);
+assert.equal(unanswered({ lastOwnerMsgAt: got, lastReplyAt: "2026-10-07T09:38:20.000Z" }, T + 4 * 60e3), null, "נענתה");
+assert.equal(unanswered({ lastOwnerMsgAt: got, unansweredAlerted: got }, T + 4 * 60e3), null, "כבר דווח");
+assert.match(unanswered({ lastOwnerMsgAt: got, lastError: { at: "2026-10-07T09:38:30.000Z", message: "boom" } }, T + 4 * 60e3), /boom/);
+console.log("unanswered ok");
