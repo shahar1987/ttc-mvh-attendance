@@ -90,5 +90,10 @@ if (key !== (sup.key || "")) {
     await tellOwner(db, { agent: "supervisor", text: "✅ המפקח: כל הסוכנים חזרו לעבוד כרגיל.", templateParam: "כל הסוכנים חזרו לעבוד כרגיל" });
   }
 }
+// בוט למטה = גם ההתראה בוואטסאפ לא תצא (היא עוברת דרכו). לכן הריצה נכשלת, ו-GitHub שולח לבעלים מייל על ריצה שנכשלה.
+if (problems.some((p) => p.startsWith("בוט הוואטסאפ"))) {
+  console.error("::error::בוט הוואטסאפ (שולה) לא עונה — ההתראה בוואטסאפ לא תגיע, לכן הריצה נכשלת כדי שיישלח מייל");
+  process.exitCode = 1;
+}
 // cronErrorAt — כדי שבריצה הבאה אפשר יהיה לזהות שגיאת cron חוזרת (lib/schedule.mjs)
 await heartbeat(db, "supervisor", { key, problems, day: israelToday(), cronErrorAt: bot.lastCronError?.at || null });
