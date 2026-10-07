@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "ttc-mods": {
+      "source": {
+        "source": "github",
+        "repo": "shahar1987/ttc-mvh-attendance"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "context-alarm@ttc-mods": true
+  }
+}
