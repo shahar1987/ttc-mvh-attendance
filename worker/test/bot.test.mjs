@@ -69,6 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     const next = geminiQueue.shift();
+    if (next === "hang") return new Promise(() => {}); // Gemini שלא עונה לעולם
     return json({ candidates: [next?.finishReason ? { content: { parts: next.parts }, finishReason: next.finishReason } : { content: { parts: next } }] });
   }
   if (url.includes("/message_templates")) {
@@ -777,6 +778,15 @@ assert.ok(!Object.values(chk).some((v) => /ERROR/.test(v)), JSON.stringify(chk))
 assert.ok(!social.slice(sc).some((x) => /media_publish|photo_stories/.test(x.url) || x.body?.upload_phase === "finish"), "לא מפרסם כלום");
 assert.equal(social[sc].body.published, false);
 
+// Gemini תקוע — במקום שתיקה (Cloudflare עוצר אחרי ~30 שניות) הבעלים מקבל הודעה איפה נתקענו, ובשאלה יש את השעה
+const nHang = sent.length;
+geminiQueue.length = 0;
+geminiQueue.push("hang");
+env.DEADLINE_MS = "50";
+await webhook("מה השעה?", env.OWNER_PHONE, "hang1");
+env.DEADLINE_MS = "";
+assert.match(sent.slice(nHang).map((x) => x.text?.body || "").join(), /יותר מדי זמן.*חשיבה על התשובה/);
+assert.match(geminiCalls.at(-1).systemInstruction.parts[0].text, /השעה עכשיו בישראל: \d\d:\d\d/);
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
