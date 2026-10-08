@@ -55,7 +55,7 @@ export async function inboxRoute(req, env, store, wa) {
     return Response.json({
       now: new Date().toISOString(),
       log: (bot.log || []).filter((e) => e.at > since),
-      ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "unansweredAlerted", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
+      ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "waiting", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
     });
   }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו

@@ -50,9 +50,12 @@ const { unanswered } = await import("../src/index.js");
 const T = Date.parse("2026-10-07T09:38:00Z");
 const got = "2026-10-07T09:38:00.000Z";
 assert.equal(unanswered({}, T), null);
-assert.equal(unanswered({ lastOwnerMsgAt: got }, T + 60e3), null, "עוד לא עברו 3 דקות");
-assert.match(unanswered({ lastOwnerMsgAt: got }, T + 4 * 60e3), /12:38.*לא הצלחתי לענות/);
-assert.equal(unanswered({ lastOwnerMsgAt: got, lastReplyAt: "2026-10-07T09:38:20.000Z" }, T + 4 * 60e3), null, "נענתה");
-assert.equal(unanswered({ lastOwnerMsgAt: got, unansweredAlerted: got }, T + 4 * 60e3), null, "כבר דווח");
-assert.match(unanswered({ lastOwnerMsgAt: got, lastError: { at: "2026-10-07T09:38:30.000Z", message: "boom" } }, T + 4 * 60e3), /boom/);
+assert.equal(unanswered({ waiting: { m1: got } }, T + 60e3), null, "עוד לא עברו 3 דקות");
+assert.match(unanswered({ waiting: { m1: got } }, T + 4 * 60e3).text, /12:38.*לא הצלחתי לענות/);
+assert.equal(unanswered({ waiting: {} }, T + 4 * 60e3), null, "נענתה");
+assert.match(unanswered({ waiting: { m1: got }, lastError: { at: "2026-10-07T09:38:30.000Z", message: "boom" } }, T + 4 * 60e3).text, /boom/);
+// שלוש הודעות רצופות, הראשונה נענתה — שתי האחרות עדיין מדווחות
+const two = unanswered({ waiting: { m3: "2026-10-07T09:39:00.000Z", m2: "2026-10-07T09:38:30.000Z" }, lastReplyAt: "2026-10-07T09:39:30.000Z" }, T + 6 * 60e3);
+assert.match(two.text, /2 הודעות \(12:38, 12:39\)/);
+assert.deepEqual(two.ids, ["m2", "m3"]);
 console.log("unanswered ok");
