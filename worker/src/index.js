@@ -9,7 +9,7 @@ import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { remindCoaches } from "./reminders.js";
+import { shortLinks, remindCoaches } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -86,6 +86,11 @@ export default {
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
     if (url.pathname === "/claude/start") return claudeRoute(req, env, db(env));
+    // 🔗 קישור קצר לתזכורת וואטסאפ (shortLinks) — מפנה ל-wa.me המלא
+    if (url.pathname.startsWith("/w/")) {
+      const to = (((await db(env).get("agentReports/links")) || {}).links || {})[url.pathname.slice(3)]?.url;
+      return to?.startsWith("https://wa.me/") ? Response.redirect(to, 302) : new Response("הקישור פג (נשמר 7 ימים)", { status: 404 });
+    }
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
@@ -168,7 +173,7 @@ async function handle(m, env) {
     await store.update("agentReports/bot", (cur) => {
       bot = cur;
       dup = (cur.seenIds || []).includes(m.id);
-      return dup ? null : { seenIds: [...(cur.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now };
+      return dup ? null : { seenIds: [...(cur.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now, waiting: { ...(cur.waiting || {}), [m.id]: now } };
     });
     if (dup) return;
 
@@ -220,19 +225,21 @@ async function handle(m, env) {
     await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } }).catch(() => {});
   } finally {
     clearTimeout(timer);
-    if (replied) await store?.merge("agentReports/bot", { lastReplyAt: new Date().toISOString() }).catch(() => {});
+    if (replied) await store?.update("agentReports/bot", (cur) => { const { [m.id]: _, ...waiting } = cur.waiting || {}; return { lastReplyAt: new Date().toISOString(), waiting }; }).catch(() => {});
   }
 }
 
 // 🔇 הודעה שהגיעה לשולה ולא נענתה (Cloudflare עצר באמצע, Gemini נתקע, וואטסאפ דחה את התשובה) — בלי זה זו שתיקה בלי סיבה.
-// handle רושם lastOwnerMsgAt בהתחלה ו-lastReplyAt אחרי תשובה; אם עברו 3 דקות בלי תשובה — מודיעים, פעם אחת להודעה.
-// ponytail: עוקב רק אחרי ההודעה האחרונה; שתי הודעות רצופות שהראשונה נענתה אחרי השנייה — השנייה לא תיתפס. מעקב לפי מזהה הודעה אם זה יקרה
+// handle רושם כל הודעה ב-waiting ומוחק אותה אחרי שענה. מה שנשאר שם יותר מ-3 דקות — מדווח פעם אחת ונמחק.
+// לפי מזהה הודעה, לא "ההודעה האחרונה": שלוש הודעות רצופות שרק הראשונה נענתה — השתיים האחרות לא נבלעות (2026-10-07 22:14–22:17).
 export function unanswered(bot, now = Date.now()) {
-  const got = bot.lastOwnerMsgAt;
-  if (!got || got <= (bot.lastReplyAt || "") || got === bot.unansweredAlerted || now - new Date(got).getTime() < 3 * 60 * 1000) return null;
-  const t = new Date(got).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
-  const err = bot.lastError?.at >= got ? `\nהשגיאה: ${String(bot.lastError.message).slice(0, 150)}` : "";
-  return `🔇 קיבלתי ממך הודעה ב-${t} ולא הצלחתי לענות עליה.${err}\nאפשר לשלוח אותה שוב.`;
+  const stuck = Object.entries(bot.waiting || {}).filter(([, at]) => now - new Date(at).getTime() >= 3 * 60 * 1000).sort((a, b) => a[1].localeCompare(b[1]));
+  if (!stuck.length) return null;
+  const hhmm = (at) => new Date(at).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
+  const first = stuck[0][1];
+  const err = bot.lastError?.at >= first ? `\nהשגיאה: ${String(bot.lastError.message).slice(0, 150)}` : "";
+  const text = stuck.length === 1 ? `🔇 קיבלתי ממך הודעה ב-${hhmm(first)} ולא הצלחתי לענות עליה.` : `🔇 קיבלתי ממך ${stuck.length} הודעות (${stuck.map(([, at]) => hhmm(at)).join(", ")}) ולא הצלחתי לענות עליהן.`;
+  return { text: `${text}${err}\nאפשר לשלוח שוב.`, ids: stuck.map(([id]) => id) };
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
@@ -444,7 +451,7 @@ async function everyQuarter(env) {
   const store = db(env);
   const wa = waConfig(env);
   const parts = await Promise.allSettled([
-    sendDue(store, new Date(), (lines) => tell(store, wa, "scheduled", `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`, `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
+    sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
     remindCoaches(env, store, wa),
     deliverOutbox(env, store, wa),
@@ -455,10 +462,10 @@ async function everyQuarter(env) {
       return `failed runs: ${lines.length}`;
     }),
     store.get("agentReports/bot").then(async (bot) => {
-      const text = unanswered(bot || {});
-      if (!text) return "unanswered: 0";
-      await store.merge("agentReports/bot", { unansweredAlerted: bot.lastOwnerMsgAt });
-      return tell(store, wa, "unanswered", text, text.split("\n")[0]);
+      const u = unanswered(bot || {});
+      if (!u) return "unanswered: 0";
+      await store.update("agentReports/bot", (cur) => ({ waiting: Object.fromEntries(Object.entries(cur.waiting || {}).filter(([id]) => !u.ids.includes(id))) }));
+      return tell(store, wa, "unanswered", u.text, u.text.split("\n")[0]);
     }),
     staleInbox(store).then((lines) => lines.length && tell(store, wa, "inbox", `📮 *בקשות לקלוד שעוד לא נענו* (כנראה הרוטינה של קלוד לא רצה — מכסת שימוש או תקלה; האחראית הלילית תבדוק):\n${lines.join("\n")}`, `בקשות לקלוד שלא נענו: ${summary(lines)}`)),
     ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),

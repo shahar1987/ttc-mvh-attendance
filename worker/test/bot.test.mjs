@@ -265,6 +265,18 @@ assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(docs.get("agentReports/bot").outbox.reminders.text, /wa\.me/, "הקישורים נשמרים לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+// 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
+{
+  const { shortLinks } = await import("../src/reminders.js");
+  const long = "https://wa.me/972501234567?text=%D7%94%D7%99%D7%99";
+  const short = await shortLinks({ PUBLIC_URL: "https://x" }, db(env), `• נוער — יוסי: ${long}`);
+  assert.match(short, /^• נוער — יוסי: https:\/\/x\/w\/[0-9a-f]{10}$/);
+  const r = await worker.fetch(new Request(short.split(": ")[1]), env, {});
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.get("location"), long);
+  assert.equal((await worker.fetch(new Request("https://x/w/nope"), env, {})).status, 404);
+  assert.equal(await shortLinks({}, db(env), long), long, "בלי PUBLIC_URL — בלי שינוי");
+}
 
 // 12. פרסום לפייסבוק ולאינסטגרם: רק אחרי "כן", ותמונה מהוואטסאפ עוברת דרך /meta/media
 const notMeta = await callTool("תחברי את פייסבוק", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
@@ -790,6 +802,12 @@ await webhook("מה השעה?", env.OWNER_PHONE, "hang1");
 env.DEADLINE_MS = "";
 assert.match(sent.slice(nHang).map((x) => x.text?.body || "").join(), /יותר מדי זמן.*חשיבה על התשובה/);
 assert.match(geminiCalls.at(-1).systemInstruction.parts[0].text, /השעה עכשיו בישראל: \d\d:\d\d/);
+// 🔇 הודעה שנענתה יוצאת מ-waiting; הודעה שהתשובה אליה לא יצאה (וואטסאפ דחה) נשארת שם עד שה-cron מדווח
+assert.ok(!("hang1" in (bot().waiting || {})), "נענתה (בהודעת השגיאה)");
+globalThis.waFail = true;
+await webhook("שלום", env.OWNER_PHONE, "lost1");
+globalThis.waFail = false;
+assert.ok("lost1" in bot().waiting, "לא נענתה — נשארת לדיווח");
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
