@@ -10,7 +10,7 @@ import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { remindCoaches } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL } from "./inbox.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
@@ -460,6 +460,7 @@ async function everyQuarter(env) {
       await store.merge("agentReports/bot", { unansweredAlerted: bot.lastOwnerMsgAt });
       return tell(store, wa, "unanswered", text, text.split("\n")[0]);
     }),
+    staleInbox(store).then((lines) => lines.length && tell(store, wa, "inbox", `📮 *בקשות לקלוד שעוד לא נענו* (כנראה הרוטינה של קלוד לא רצה — מכסת שימוש או תקלה; האחראית הלילית תבדוק):\n${lines.join("\n")}`, `בקשות לקלוד שלא נענו: ${summary(lines)}`)),
     ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));

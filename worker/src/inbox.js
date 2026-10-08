@@ -83,6 +83,13 @@ export async function inboxRoute(req, env, store, wa) {
   return Response.json({ ok: true });
 }
 
+// 📮⏳ בקשה לקלוד שלא נענתה תוך שעתיים: שולה הבטיחה "עד שעה", אז אם הרוטינה של קלוד לא רצה (מכסת שימוש, תקלה) — הבעלים יודע. פעם אחת לבקשה.
+export async function staleInbox(store, now = Date.now()) {
+  const old = (await store.where("agentReports", "inboxStatus", "open")).filter((r) => !r.staleAlerted && now - new Date(r.at).getTime() > 2 * 3600 * 1000);
+  for (const r of old) await store.merge(`agentReports/${r.id}`, { staleAlerted: new Date(now).toISOString() });
+  return old.map((r) => `• "${String(r.request).slice(0, 120)}" (מחכה ${Math.round((now - new Date(r.at).getTime()) / 3600000)} שעות)`);
+}
+
 export const INBOX_TOOL_DEFS = [
   {
     name: "ask_claude",
