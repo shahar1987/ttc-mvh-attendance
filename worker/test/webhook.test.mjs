@@ -2,6 +2,7 @@
 // הרצה: cd worker && node test/webhook.test.mjs
 import assert from "node:assert/strict";
 import { ensureWebhook } from "../src/messages.js";
+import { staleInbox } from "../src/inbox.js";
 
 const env = { WHATSAPP_WABA_ID: "w1", META_APP_ID: "a1", META_APP_SECRET: "s", WHATSAPP_TOKEN: "t", WEBHOOK_VERIFY_TOKEN: "v" };
 let state, posts;
@@ -37,6 +38,11 @@ assert.deepEqual(await ensureWebhook(env, store), [], "אותה בעיה — ל�
 
 // בלי מזהים — לא עושה כלום
 assert.deepEqual(await ensureWebhook({}, store), []);
+// בקשה לקלוד שמחכה יותר משעתיים — מדווחת פעם אחת; בקשה טרייה לא
+const asks = { ask_a: { id: "ask_a", at: new Date(Date.now() - 3 * 3600e3).toISOString(), request: "מטריקול", inboxStatus: "open" }, ask_b: { id: "ask_b", at: new Date().toISOString(), request: "טרי", inboxStatus: "open" } };
+const inboxStore = { where: async () => Object.values(asks).map((a) => ({ ...a })), merge: async (p, d) => Object.assign(asks[p.split("/")[1]], d) };
+assert.match((await staleInbox(inboxStore)).join(), /מטריקול.*3 שעות/);
+assert.deepEqual(await staleInbox(inboxStore), [], "כבר דווח");
 console.log("webhook ok");
 
 // 🔇 הודעה שהגיעה ולא נענתה
