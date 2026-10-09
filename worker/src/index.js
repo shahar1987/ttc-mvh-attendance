@@ -19,12 +19,14 @@ const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-la
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
 const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
 const DEADLINE_MS = 22000; // (בבדיקות: env.DEADLINE_MS) לפני ה-30 שניות של Cloudflare, עם מרווח לשליחת הודעת השגיאה
+const QUEUE_DEADLINE_MS = 120000; // בתור (env.MESSAGES) אין מגבלת 30 שניות — עדיין מתחת ל-3 הדקות של התראת ה-🔇
 const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
 let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
 
 const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
 את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
 עוזרת בכל דבר: שאלות, ניסוח הודעות ופוסטים, תכנון, רעיונות, חשיבה על החלטות. אם משהו לא ברור — שאלה אחת קצרה.
+בהיסטוריה, תשובות קודמות שלך מסתיימות לפעמים בשורה "[מערכת: כלים שהופעלו...]" — זה רישום אמיתי של מה שעשית. אם כלי לא מופיע שם, לא הפעלת אותו. אל תכתבי שורה כזאת בעצמך.
 
 מערכת הנוכחות של המועדון — יש לך כלים אמיתיים (tools):
 - נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים.
@@ -78,6 +80,16 @@ export default {
   async scheduled(event, rawEnv, ctx) {
     const env = withAliases(rawEnv);
     ctx.waitUntil(runCron(env, event.cron));
+  },
+
+  // 📨 הודעות מהתור (env.MESSAGES): שם יש לשולה עד 2 דקות להודעה, לא 30 שניות. handle לא זורק לעולם.
+  async queue(batch, rawEnv) {
+    const env = withAliases(rawEnv);
+    ORIGIN ||= env.PUBLIC_URL || "";
+    for (const msg of batch.messages) {
+      await handle(msg.body, { ...env, DEADLINE_MS: env.QUEUE_DEADLINE_MS || QUEUE_DEADLINE_MS });
+      msg.ack(); // לא מנסים שוב: ניסיון חוזר היה נחסם ממילא ככפול (seenIds), והבעלים כבר קיבל הודעת שגיאה
+    }
   },
 
   async fetch(req, rawEnv, ctx) {
@@ -139,7 +151,8 @@ export default {
       .flatMap((c) => c.value?.messages || [])
       .filter((m) => m.from === owner && m.type !== "reaction"); // תגובת אימוג'י להודעה — לא עונים עליה
     // עונים ל-Meta מיד (אחרת היא שולחת שוב), וממשיכים לעבוד ברקע
-    for (const m of msgs) ctx.waitUntil(handle(m, env));
+    // יש תור (נוצר בפריסה) → העבודה עוברת אליו; אין, או שהשליחה לתור נכשלה → כמו קודם, ברקע של הבקשה הזאת
+    for (const m of msgs) ctx.waitUntil(env.MESSAGES ? env.MESSAGES.send(m).catch(() => handle(m, env)) : handle(m, env));
     return new Response("ok");
   },
 };
@@ -160,6 +173,10 @@ async function handle(m, env) {
   const wa = waConfig(env);
   let store = null;
   let replied = false, late = false, stage = "התחלה";
+  // ⏱️ כמה זמן לקח כל שלב — נשמר ביומן ובשגיאה, כדי ששתיקה הבאה תהיה ניתנת לאבחון
+  const ms = {};
+  let mark = Date.now();
+  const at = (next) => ((ms[stage] = (ms[stage] || 0) + Date.now() - mark), (mark = Date.now()), (stage = next));
   // כל תשובה לבעלים עוברת כאן — כך lastReplyAt יודע שההודעה נענתה (ראו unanswered). אחרי שהזמן נגמר — כבר לא עונים.
   const reply = (text) => (late ? Promise.resolve("") : sendText(wa, m.from, text).then((r) => ((replied = true), r)));
   // Cloudflare עוצר עבודת רקע ~30 שניות אחרי שענינו ל-Meta, בלי שגיאה ובלי catch. לכן עוצרים לבד קודם ואומרים לבעלים איפה נתקענו.
@@ -178,19 +195,19 @@ async function handle(m, env) {
     });
     if (dup) return;
 
-    stage = "קבלת ההודעה";
+    at("קבלת ההודעה");
     await typing(wa, m.id).catch(() => {});
     let text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.image?.caption || "").trim();
     let media = null;
     if (m.type === "audio") {
-      stage = "הורדת ההקלטה";
+      at("הורדת ההקלטה");
       const audio = await downloadMedia(wa, m.audio.id);
-      stage = "תמלול ההקלטה";
+      at("תמלול ההקלטה");
       text = await transcribe(env, audio);
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
-      stage = "הורדת התמונה";
+      at("הורדת התמונה");
       media = await downloadMedia(wa, m.image.id);
       text = `📷 [תמונה id=${m.image.id}] ${text || "מה דעתך?"}`;
     } else if (m.type === "video") {
@@ -206,15 +223,18 @@ async function handle(m, env) {
       await reply("איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
-    stage = "חשיבה על התשובה (Gemini)";
-    const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
-    stage = "שליחת התשובה בוואטסאפ";
+    at("חשיבה על התשובה (Gemini)");
+    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
+    at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
     const done = new Date().toISOString();
+    at("שמירה");
+    // ההיסטוריה היא טקסט בלבד — בלי השורה הזאת שולה לא יודעת בהודעה הבאה אילו כלים באמת הפעילה
+    const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
-      history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: done }].slice(-16),
-      log: [...(cur.log || []), { at: now, user: text, shula: answer }].slice(-LOG_KEEP),
+      history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
+      log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {
@@ -223,7 +243,8 @@ async function handle(m, env) {
     // קודם מודיעים לבעלים (לא תלוי ב-Firestore), ורק אז מנסים לרשום את השגיאה
     await reply(`משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
     late = true; // אם העבודה עוד תסתיים ברקע — לא שולחים תשובה כפולה אחרי הודעת השגיאה
-    await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } }).catch(() => {});
+    at(stage);
+    await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e), ms } }).catch(() => {});
   } finally {
     clearTimeout(timer);
     if (replied) await store?.update("agentReports/bot", (cur) => { const { [m.id]: _, ...waiting } = cur.waiting || {}; return { lastReplyAt: new Date().toISOString(), waiting }; }).catch(() => {});
@@ -266,6 +287,9 @@ async function gemini(env, body) {
   throw lastErr;
 }
 
+// שורה פנימית בסוף כל תשובה בהיסטוריה: אילו כלים הופעלו באמת (המודל רואה רק טקסט מהתורות הקודמות)
+const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:";
+
 // ponytail: היוריסטיקה על נוסח התשובה; אם שולה תמציא ניסוחים אחרים — להוסיף כאן
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
@@ -297,6 +321,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 
   let askedClaude = false, nudged = false, remindNudged = false;
+  const used = []; // שמות הכלים שהופעלו בתור הזה (✗ = נכשל) — נשמרים בהיסטוריה, ראו TOOLS_MEMO
   const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
@@ -308,28 +333,29 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
     });
     const calls = parts.filter((p) => p.functionCall);
     if (!calls.length) {
-      const answer = parts.map((p) => p.text || "").join("").trim();
+      // אם המודל העתיק את שורת הכלים מההיסטוריה לתשובה — לא שולחים אותה לבעלים
+      const answer = parts.map((p) => p.text || "").join("").split("\n").filter((l) => !l.startsWith(TOOLS_MEMO)).join("\n").trim();
       // תשובה ריקה (נחסמה, נגמר התקציב...) — אומרים את האמת במקום "👍" שנראה כמו אישור
       if (!answer) {
         await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: `Gemini החזיר תשובה ריקה (finishReason: ${parts.finishReason || "?"})` } }).catch(() => {});
-        return { answer: "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn };
+        return { answer: "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn, used };
       }
       // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — מעבירים בעצמנו
       if (CLAIMS_HANDOFF.test(answer) && !askedClaude) {
-        if (nudged) return { answer: String(await tools.ask_claude({ request: media ? `${text} (צורפה תמונה)` : text })), userTurn };
+        if (nudged) return used.push("ask_claude"), { answer: String(await tools.ask_claude({ request: media ? `${text} (צורפה תמונה)` : text })), userTurn, used };
         nudged = true;
         contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-ask_claude, אז שום דבר לא הועבר לקלוד. אם התכוונת להעביר — קרא/י עכשיו ל-ask_claude עם הבקשה המלאה. אחרת ענה/י בלי לטעון שהעברת." }] });
         continue;
       }
       // "שמרתי תזכורת" בלי remind_me — אותו דבר: תזכורת פעם אחת, ואם שוב לא — אומרים לבעלים את האמת
       if (CLAIMS_REMINDER.test(answer) && !reminders.length) {
-        if (remindNudged) return { answer: "⚠️ לא הצלחתי לשמור את התזכורת, אז היא *לא* תגיע. תכתוב לי שוב מתי ועל מה, ואשמור.", userTurn };
+        if (remindNudged) return { answer: "⚠️ לא הצלחתי לשמור את התזכורת, אז היא *לא* תגיע. תכתוב לי שוב מתי ועל מה, ואשמור.", userTurn, used };
         remindNudged = true;
         contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-remind_me, אז שום תזכורת לא נשמרה. קרא/י עכשיו ל-remind_me עם at ו-text, או ענה/י בלי לטעון ששמרת." }] });
         continue;
       }
       const missing = reminders.filter((r) => !answer.includes(r));
-      return { answer: missing.length ? `${missing.join("\n")}\n${answer}` : answer, userTurn };
+      return { answer: missing.length ? `${missing.join("\n")}\n${answer}` : answer, userTurn, used };
     }
     if (calls.some((c) => c.functionCall.name === "ask_claude")) askedClaude = true;
     contents.push({ role: "model", parts });
@@ -341,15 +367,17 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
           if (!fn) throw new Error("unknown tool");
           result = String(await fn(args || {}));
           if (name === "remind_me" && result.startsWith("⏰")) reminders.push(result);
+          used.push(name);
         } catch (e) {
           result = `שגיאה: ${e.message}`;
+          used.push(`${name} ✗`);
         }
         return { functionResponse: { name, response: { result } } };
       }),
     );
     contents.push({ role: "user", parts: results });
   }
-  return { answer: askedClaude ? "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ." : "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn };
+  return { answer: askedClaude ? "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ." : "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn, used };
 }
 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
