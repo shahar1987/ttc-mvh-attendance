@@ -343,7 +343,39 @@ assert.equal(social[s2 + 1].fileUrl, "https://vid/r.mp4");
 assert.equal(social[s2 + 2].body.description, "רילס חדש");
 assert.deepEqual([social[s2 + 3].body.media_type, social[s2 + 3].body.video_url], ["REELS", "https://vid/r.mp4"]);
 
-// 13. הודעות בשם המועדון: מאמנים לפי תפקיד, שם, מתוזמן, ביטול
+// 12ד. חוברת הכללים: ימים רגישים, ילדים בתמונה, תיוג ידני בפייסבוק, כללים קבועים, תזכורת אחרי 24 שעות
+{
+  const { stalePost, FB_TAGS } = await import("../src/meta.js");
+  assert.match(await callTool("פרסם", { name: "publish_post", args: { platform: "facebook", text: "אימון", at: "2027-10-11T10:00" } }), /יום כיפור/);
+  assert.match(await callTool("פרסם", { name: "publish_post", args: { platform: "facebook", text: "אימון", at: "2026-04-21T10:00" } }), /יום הזיכרון/);
+  assert.match(await callTool("פרסם", { name: "publish_post", args: { platform: "facebook", text: "זוכרים. אימון ניסיון חינם", at: "2026-10-07T08:00", memorial: true } }), /בלי הזמנה לאימון/);
+  const mem = { platform: "facebook", text: "זוכרים ולא שוכחים", at: "2027-10-07T08:00", memorial: true };
+  assert.match(await callTool("פוסט זיכרון", { name: "publish_post", args: mem }), /עוד לא פורסם/);
+  assert.match(await callTool("כן", { name: "publish_post", args: mem }), /מתוזמן/, "פוסט זיכרון באישור עובר");
+  docs.get("agentReports/social").queue = [];
+
+  const kid = { platform: "facebook", text: "אימון ילדים", image: "https://img/k.jpg", kids: true };
+  const k0 = social.length;
+  assert.match(await callTool("תפרסמי", { name: "publish_post", args: kid }), /⚠️ לא פורסם: יש ילדים/);
+  assert.match(await callTool("כן", { name: "publish_post", args: kid }), /⚠️ לא פורסם: יש ילדים/, "כן בלי הסכמת הורים — לא מפרסם");
+  assert.equal(social.length, k0);
+  await callTool("יש הסכמת הורים", { name: "publish_post", args: kid });
+  const kidPub = await callTool("כן", { name: "publish_post", args: kid });
+  assert.match(kidPub, /פייסבוק.*✓/, "הסכמה ואז כן — מתפרסם");
+  assert.ok(kidPub.includes(`לתייג ידנית בפייסבוק: ${FB_TAGS}`), "רשימת תיוג ידני אחרי פרסום בפייסבוק");
+
+  assert.match(await callTool("תקן: בלי אימוג'ים", { name: "save_post_rule", args: { rule: "בלי אימוג'ים" } }), /עוד לא נשמר/);
+  assert.match(await callTool("כן", { name: "save_post_rule", args: { rule: "בלי אימוג'ים" } }), /נשמר ככלל קבוע/);
+  await webhook("מה נשמע");
+  assert.match(geminiCalls.at(-1).systemInstruction.parts[0].text, /כללי פרסום קבועים[^]*בלי אימוג'ים/, "הכלל נכנס להנחיות של שולה");
+
+  await callTool("תפרסמי", { name: "publish_post", args: { platform: "facebook", text: "מחכה לאישור" } });
+  const store = db(env);
+  assert.equal(await stalePost(store, new Date(Date.now() + 3600e3)), "", "פחות מיום — שקט");
+  assert.match(await stalePost(store, new Date(Date.now() + 25 * 3600e3)), /מחכה ל"כן" שלך.*"מחכה לאישור"/);
+  assert.equal(await stalePost(store, new Date(Date.now() + 26 * 3600e3)), "", "תזכורת אחת בלבד");
+}
+
 put("users/u1", { role: "coach" });
 put("users/u3", { name: "מנהלת", role: "admin", phone: "0527654321" });
 const prev = JSON.parse(await callTool("תשלחי למאמנים", { name: "preview_recipients", args: { to: ["מאמנים", "דני"] } }));

@@ -3,7 +3,7 @@
 import { appendFileSync } from "node:fs";
 import { firestore } from "./lib/firebase.mjs";
 
-const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content"]);
+const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "insights"]);
 const db = firestore();
 const ref = db.collection("agentReports").doc("bot");
 const requested = await db.runTransaction(async (tx) => {

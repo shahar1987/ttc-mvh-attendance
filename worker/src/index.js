@@ -7,7 +7,7 @@
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
-import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue } from "./meta.js";
+import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
@@ -47,7 +47,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מזג אוויר (get_weather): אם לא אמר איפה — ברירת המחדל היא שאר ישוב (המועדון). כשרלוונטי לאימון — לציין גשם/רוח שעלולים להשפיע על ההגעה.
 
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
-פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את נוסח הפייסבוק (שמות השותפים במילים, בלי @), את נוסח האינסטגרם (אותו טקסט + התיוגים עם @), איזו תמונה או סרטון, האם זה פוסט, סטורי או רילס, באיזו פלטפורמה ומתי, ולשאול "לפרסם?". סטורי = kind story (בלי טקסט), רילס = kind reel עם video. מפרסמים רק אחרי "כן" בהודעה הבאה שלו. "פרסם 2" = טיוטה 2 מטיוטות השבוע של סוכן הפרסום (get_agent_results, agent=content): הנוסחים והמועד (at) שלה בדיוק, והתמונה שהוא שלח. לא ב-7 באוקטובר. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
+פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את נוסח הפייסבוק (שמות השותפים במילים, בלי @), את נוסח האינסטגרם (אותו טקסט + התיוגים עם @), איזו תמונה או סרטון, האם זה פוסט, סטורי או רילס, באיזו פלטפורמה ומתי, ולשאול "לפרסם?". סטורי = kind story (בלי טקסט), רילס = kind reel עם video. מפרסמים רק אחרי "כן" בהודעה הבאה שלו. "פרסם 2" = טיוטה 2 מטיוטות השבוע של סוכן הפרסום (get_agent_results, agent=content): הנוסחים והמועד (at) שלה בדיוק, והתמונה שהוא שלח. ב-7 באוקטובר, ביום כיפור וביום הזיכרון אין תוכן פרסומי — רק פוסט זיכרון (memorial: true) אם הבעלים מאשר. ילדים בתמונה: לסמן ⚠️ בטיוטה, kids: true, ולפרסם רק אחרי שהוא כותב שיש הסכמת הורים. אחרי פרסום בפייסבוק — להעביר לו את רשימת התיוג הידני שהכלי מחזיר. כשהוא מבקש תיקון בפוסט ("תקן: ...") — לתקן, להציג שוב, ולשאול גם "לשמור את זה ככלל קבוע?"; אחרי "כן" — save_post_rule. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
 אישור פוסטר/פלייר מקלוד: כשתשובה מקלוד שואלת "מאשר את ... כגרסה הסופית?" והבעלים עונה "כן"/"מאשר" — להעביר מיד ל-ask_claude: "הבעלים אישר את <שם הקובץ> כגרסה הסופית. למחוק מהתיקייה את שאר הטיוטות שלו." (הבעלים לא מוחק טיוטות בעצמו.)
 בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה).
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
@@ -326,7 +326,9 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+      systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}
+
+היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
       tools: [{ functionDeclarations: FUNCTION_DECLS }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
@@ -482,6 +484,7 @@ async function everyQuarter(env) {
   const parts = await Promise.allSettled([
     sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
+    stalePost(store).then((text) => text && tell(store, wa, "post-reminder", text, text)),
     remindCoaches(env, store, wa),
     deliverOutbox(env, store, wa),
     dispatchWorkflows(env, store),
