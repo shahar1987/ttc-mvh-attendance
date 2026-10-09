@@ -7,6 +7,7 @@ test("phone formatting", () => assert.equal(localPhone("972501234567"), "050-123
 test("week slots: Sun/Tue/Wed, 7 October skipped", () => {
   assert.deepEqual(weekSlots("2026-10-11").map((s) => s.date), ["2026-10-11", "2026-10-13", "2026-10-14"]);
   assert.deepEqual(weekSlots("2026-10-04").map((s) => s.date), ["2026-10-04", "2026-10-06"]);
+  assert.deepEqual(weekSlots("2026-04-19").map((s) => s.date), ["2026-04-19", "2026-04-22"], "יום הזיכרון");
 });
 
 test("tidy: no @ on Facebook, closing + credit once, tags only on Instagram", () => {
