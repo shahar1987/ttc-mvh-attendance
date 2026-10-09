@@ -48,6 +48,16 @@ export async function inboxRoute(req, env, store, wa) {
   const url = new URL(req.url);
   if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
   const bot = (await store.get("agentReports/bot")) || {};
+  // 🩺 לאחראית על שולה (רוטינה לילית של קלוד): מה קרה ביממתיים האחרונות — שיחות, שגיאות, הודעות שלא נענו. קריאה בלבד.
+  if (req.method === "GET" && url.searchParams.has("diag")) {
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const pick = (k) => bot[k] ?? null;
+    return Response.json({
+      now: new Date().toISOString(),
+      log: (bot.log || []).filter((e) => e.at > since),
+      ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "waiting", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
+    });
+  }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
   if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
   const { id, answer, notify } = await req.json();
@@ -71,6 +81,13 @@ export async function inboxRoute(req, env, store, wa) {
   }));
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "יש תשובה מקלוד לבקשה שלך" });
   return Response.json({ ok: true });
+}
+
+// 📮⏳ בקשה לקלוד שלא נענתה תוך שעתיים: שולה הבטיחה "עד שעה", אז אם הרוטינה של קלוד לא רצה (מכסת שימוש, תקלה) — הבעלים יודע. פעם אחת לבקשה.
+export async function staleInbox(store, now = Date.now()) {
+  const old = (await store.where("agentReports", "inboxStatus", "open")).filter((r) => !r.staleAlerted && now - new Date(r.at).getTime() > 2 * 3600 * 1000);
+  for (const r of old) await store.merge(`agentReports/${r.id}`, { staleAlerted: new Date(now).toISOString() });
+  return old.map((r) => `• "${String(r.request).slice(0, 120)}" (מחכה ${Math.round((now - new Date(r.at).getTime()) / 3600000)} שעות)`);
 }
 
 export const INBOX_TOOL_DEFS = [

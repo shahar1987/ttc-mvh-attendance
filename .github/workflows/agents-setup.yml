@@ -73,6 +73,13 @@ jobs:
           (cd worker && npm ci --no-audit --no-fund)
           (cd agents && npm ci --no-audit --no-fund)
 
+      # ✅ לא מעלים לשולה קוד שהבדיקות שלו נכשלות (וואטסאפ, Gemini ו-Firestore מדומים — בלי רשת ובלי סודות)
+      - name: Run the bot's tests
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          (cd worker && npm test)
+          (cd agents && npm test)
+
       # חשבון Cloudflare חדש צריך תת-דומיין workers.dev לפני הפריסה הראשונה
       - name: Make sure the account has a workers.dev subdomain
         if: steps.check.outputs.ready == 'true'
@@ -87,8 +94,28 @@ jobs:
           fi
           echo "url=https://shula-whatsapp.$SUB.workers.dev" >> "$GITHUB_OUTPUT"
 
+      # הגרסה שרצה עכשיו — לחזור אליה אם הגרסה החדשה לא עונה (Rollback למטה)
+      - name: Remember the live version
+        if: steps.check.outputs.ready == 'true'
+        id: prev
+        working-directory: worker
+        run: echo "id=$(npx wrangler deployments status --json 2>/dev/null | jq -r '.versions[0].version_id // empty' 2>/dev/null)" >> "$GITHUB_OUTPUT"
+
+      # 📨 תור להודעות (חינמי) — נותן לשולה 2 דקות להודעה במקום 30 שניות. אם אין הרשאה — ממשיכים בלי תור
+      - name: Make sure the message queue exists
+        if: steps.check.outputs.ready == 'true'
+        working-directory: worker
+        run: |
+          if npx wrangler queues info shula-messages >/dev/null 2>&1 || npx wrangler queues create shula-messages; then
+            cat queue.toml >> wrangler.toml
+            echo "התור קיים — שולה תעבוד דרכו"
+          else
+            echo "::warning::לא הצלחתי ליצור תור ב-Cloudflare (כנראה לטוקן אין הרשאת Queues: Edit). שולה עובדת בלי תור, כמו קודם."
+          fi
+
       - name: Deploy the bot to Cloudflare
         if: steps.check.outputs.ready == 'true'
+        id: deploy
         working-directory: worker
         run: npx wrangler deploy
 
@@ -108,11 +135,31 @@ jobs:
           npx wrangler secret bulk /tmp/secrets.json
           rm /tmp/secrets.json
 
+      # לא רק "עונה": גם הכתובת של וואטסאפ דוחה הודעה בלי חתימה (401), וגם מקבלת הודעה חתומה ממספר זר (200, בלי לענות לאף אחד)
       - name: Check the bot is alive
         if: steps.check.outputs.ready == 'true'
         run: |
+          URL="${{ steps.sub.outputs.url }}"
           sleep 5
-          curl -sf "${{ steps.sub.outputs.url }}/health"
+          curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "$URL/webhook")
+          [ "$CODE" = "401" ] || { echo "webhook בלי חתימה החזיר $CODE במקום 401"; exit 1; }
+          if [ -n "$META_APP_SECRET" ]; then
+            BODY='{"entry":[{"changes":[{"value":{"messages":[{"id":"deploy-check","from":"0","type":"text","text":{"body":"x"}}]}}]}]}'
+            SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$META_APP_SECRET" | sed 's/.* //')
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "x-hub-signature-256: sha256=$SIG" -d "$BODY" "$URL/webhook")
+            [ "$CODE" = "200" ] || { echo "webhook חתום החזיר $CODE במקום 200"; exit 1; }
+          fi
+          echo "שולה חיה ועונה"
+
+      # ↩️ הגרסה החדשה לא עונה → חוזרים לגרסה שרצה לפני הפריסה, והריצה נשארת אדומה (שולה תתריע עליה)
+      - name: Roll back if the new version is broken
+        if: failure() && steps.deploy.outcome == 'success'
+        working-directory: worker
+        run: |
+          npx wrangler rollback ${{ steps.prev.outputs.id }} -y -m "הבדיקה אחרי הפריסה נכשלה — חוזרים לגרסה הקודמת"
+          sleep 5
+          curl -sf --retry 3 --retry-delay 5 --retry-all-errors "${{ steps.sub.outputs.url }}/health" && echo "חזרנו לגרסה הקודמת, שולה עונה"
 
       # רק כשכל הסודות של Meta הוגדרו גם כאן; אחרת ה-webhook הקיים (שכבר מחובר לאותה כתובת) נשאר כמו שהוא
       - name: Connect WhatsApp and submit message templates

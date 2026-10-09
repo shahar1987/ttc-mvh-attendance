@@ -2,6 +2,7 @@
 // הרצה: cd worker && node test/webhook.test.mjs
 import assert from "node:assert/strict";
 import { ensureWebhook } from "../src/messages.js";
+import { staleInbox } from "../src/inbox.js";
 
 const env = { WHATSAPP_WABA_ID: "w1", META_APP_ID: "a1", META_APP_SECRET: "s", WHATSAPP_TOKEN: "t", WEBHOOK_VERIFY_TOKEN: "v" };
 let state, posts;
@@ -37,6 +38,11 @@ assert.deepEqual(await ensureWebhook(env, store), [], "אותה בעיה — ל�
 
 // בלי מזהים — לא עושה כלום
 assert.deepEqual(await ensureWebhook({}, store), []);
+// בקשה לקלוד שמחכה יותר משעתיים — מדווחת פעם אחת; בקשה טרייה לא
+const asks = { ask_a: { id: "ask_a", at: new Date(Date.now() - 3 * 3600e3).toISOString(), request: "מטריקול", inboxStatus: "open" }, ask_b: { id: "ask_b", at: new Date().toISOString(), request: "טרי", inboxStatus: "open" } };
+const inboxStore = { where: async () => Object.values(asks).map((a) => ({ ...a })), merge: async (p, d) => Object.assign(asks[p.split("/")[1]], d) };
+assert.match((await staleInbox(inboxStore)).join(), /מטריקול.*3 שעות/);
+assert.deepEqual(await staleInbox(inboxStore), [], "כבר דווח");
 console.log("webhook ok");
 
 // 🔇 הודעה שהגיעה ולא נענתה
@@ -44,9 +50,12 @@ const { unanswered } = await import("../src/index.js");
 const T = Date.parse("2026-10-07T09:38:00Z");
 const got = "2026-10-07T09:38:00.000Z";
 assert.equal(unanswered({}, T), null);
-assert.equal(unanswered({ lastOwnerMsgAt: got }, T + 60e3), null, "עוד לא עברו 3 דקות");
-assert.match(unanswered({ lastOwnerMsgAt: got }, T + 4 * 60e3), /12:38.*לא הצלחתי לענות/);
-assert.equal(unanswered({ lastOwnerMsgAt: got, lastReplyAt: "2026-10-07T09:38:20.000Z" }, T + 4 * 60e3), null, "נענתה");
-assert.equal(unanswered({ lastOwnerMsgAt: got, unansweredAlerted: got }, T + 4 * 60e3), null, "כבר דווח");
-assert.match(unanswered({ lastOwnerMsgAt: got, lastError: { at: "2026-10-07T09:38:30.000Z", message: "boom" } }, T + 4 * 60e3), /boom/);
+assert.equal(unanswered({ waiting: { m1: got } }, T + 60e3), null, "עוד לא עברו 3 דקות");
+assert.match(unanswered({ waiting: { m1: got } }, T + 4 * 60e3).text, /12:38.*לא הצלחתי לענות/);
+assert.equal(unanswered({ waiting: {} }, T + 4 * 60e3), null, "נענתה");
+assert.match(unanswered({ waiting: { m1: got }, lastError: { at: "2026-10-07T09:38:30.000Z", message: "boom" } }, T + 4 * 60e3).text, /boom/);
+// שלוש הודעות רצופות, הראשונה נענתה — שתי האחרות עדיין מדווחות
+const two = unanswered({ waiting: { m3: "2026-10-07T09:39:00.000Z", m2: "2026-10-07T09:38:30.000Z" }, lastReplyAt: "2026-10-07T09:39:30.000Z" }, T + 6 * 60e3);
+assert.match(two.text, /2 הודעות \(12:38, 12:39\)/);
+assert.deepEqual(two.ids, ["m2", "m3"]);
 console.log("unanswered ok");
