@@ -8,6 +8,22 @@ import { outboxMap } from "./queue.js";
 
 const GRACE_MIN = 30;
 
+// 🔗 קישורי wa.me עם נוסח בעברית יוצאים ארוכים מאוד (כל אות מקודדת ל-%D7%..) וממלאים את המסך.
+// מחליפים כל אחד בקישור קצר של ה-worker (/w/<id>) שמפנה אליו. נשמרים 7 ימים ב-agentReports/links. בלי PUBLIC_URL — משאירים כמו שהם.
+export async function shortLinks(env, store, text) {
+  const urls = env.PUBLIC_URL ? [...new Set(String(text).match(/https:\/\/wa\.me\/\S+/g) || [])] : [];
+  if (!urls.length) return text;
+  const at = new Date().toISOString(), week = new Date(Date.now() - 7 * 864e5).toISOString();
+  const map = Object.fromEntries(urls.map((u) => [u, crypto.randomUUID().replace(/-/g, "").slice(0, 10)]));
+  await store.update("agentReports/links", (cur) => ({
+    links: {
+      ...Object.fromEntries(Object.entries(cur.links || {}).filter(([, v]) => v?.at > week)),
+      ...Object.fromEntries(Object.entries(map).map(([url, id]) => [id, { url, at }])),
+    },
+  }));
+  return urls.reduce((t, u) => t.split(u).join(`${env.PUBLIC_URL}/w/${map[u]}`), String(text));
+}
+
 const israelNow = (now) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now).map((x) => [x.type, x.value]));
   return { dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday), min: Number(p.hour) * 60 + Number(p.minute) };
@@ -41,7 +57,7 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
     }
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
-  const text = lines.length ? `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}` : "";
+  const text = lines.length ? await shortLinks(env, store, `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}`) : "";
   const ids = groups.map((g) => g.id);
   // מסמנים את הקבוצות *לפני* השליחה. כך כישלון בסימון לא גורם לשליחה חוזרת כל רבע שעה (אם הכתיבה נכשלת —
   // לא שולחים בכלל, והריצה הבאה מנסה מחדש). אם השליחה עצמה נכשלת — מבטלים את הסימון כדי לנסות שוב ברבע הבא.

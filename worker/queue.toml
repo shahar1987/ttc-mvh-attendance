@@ -1,0 +1,11 @@
+
+# 📨 תור ההודעות — נוסף לסוף wrangler.toml בזמן הפריסה, רק אם התור קיים בחשבון (agents-setup.yml).
+# כך פריסה עם טוקן שאין לו הרשאת Queues לא נכשלת: שולה פשוט ממשיכה לעבוד בלי תור, כמו קודם.
+[[queues.producers]]
+binding = "MESSAGES"
+queue = "shula-messages"
+
+[[queues.consumers]]
+queue = "shula-messages"
+max_batch_size = 1 # כל הודעה מטופלת מיד, לבד
+max_retries = 0 # ניסיון חוזר היה נחסם ככפול ממילא (seenIds)
