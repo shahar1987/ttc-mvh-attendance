@@ -163,7 +163,8 @@ function dateInOwnerText(d, ownerText, today = israelToday()) {
   return t.includes(d) || new RegExp(`(^|\\D)0?${day}[./]0?${m}(\\D|$)`).test(t);
 }
 
-export function makeTools({ env, store, wa, lastOwnerText, turn }) {
+// coach = מדריך שמדבר עם שולה: רואה ומסמן רק בקבוצות שלו (coach.groups), והאישור שלו נשמר בנפרד מזה של הבעלים
+export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
   const latest = () => store.get("agentReports/latest");
 
   return {
@@ -302,7 +303,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
 
     async get_attendance({ group, date }) {
       const d = validDate(date);
-      const { g, roster } = await findGroup(store, group);
+      const { g, roster } = await findGroup(store, group, coach?.groups);
       if (!g) return roster; // הודעת שגיאה
       const recs = (await store.where("attendance", "groupId", g.id)).filter((a) => a.date === d);
       const status = new Map(recs.map((a) => [a.playerId, a.status]));
@@ -322,9 +323,9 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
       if (short.length) return `לא נשמר: שם קצר מדי (${short.map((q) => `"${q}"`).join(", ")}). צריך לפחות 2 אותיות מהשם.`;
       // מיידי רק כשהכל כתוב בהודעה של הבעלים: השמות, הקבוצה, והתאריך (או שזה היום). אחרת — "כן" נפרד.
       const direct = inOwnerText([...present, ...absent], lastOwnerText) && inOwnerText([group], lastOwnerText) && dateInOwnerText(d, lastOwnerText);
-      if (!direct && !(await confirmed(store, "attendance", { group, date: d, present, absent }, lastOwnerText, turn)))
+      if (!direct && !(await confirmed(store, coach ? `attendance_${coach.id}` : "attendance", { group, date: d, present, absent }, lastOwnerText, turn)))
         return "לא נשמר עדיין. להציג לבעלים בדיוק את הקבוצה, התאריך, מי מסומן נוכח ומי נעדר ולשאול \"לשמור?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
-      const { g, roster } = await findGroup(store, group);
+      const { g, roster } = await findGroup(store, group, coach?.groups);
       if (!g) return roster;
       const saved = [];
       const problems = [];
@@ -346,7 +347,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn }) {
             groupId: g.id,
             playerId: p.id,
             status,
-            markedBy: "shula-whatsapp",
+            markedBy: coach ? `shula-whatsapp:${coach.id}` : "shula-whatsapp",
             updatedAt: new Date().toISOString(),
             ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE } : {}),
           });

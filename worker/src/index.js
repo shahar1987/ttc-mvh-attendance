@@ -2,7 +2,7 @@
 //
 // Meta שולחת כל הודעה שמגיעה למספר ל-POST /webhook. הבוט:
 //   1. מוודא שההודעה באמת מ-Meta (חתימה עם App Secret)
-//   2. עונה רק למספר של הבעלים (OWNER_PHONE). כל מספר אחר — מתעלם. זו הנעילה.
+//   2. עונה למספר של הבעלים (OWNER_PHONE), ולמדריכים שהבעלים הפעיל (coaches.js) — רק על הקבוצות שלהם. כל מספר אחר — מתעלם.
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
@@ -14,6 +14,7 @@ import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, sta
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
+import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
@@ -53,6 +54,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message מיד ולהעביר לו את הקישורים שחזרו, כל אחד בשורה. ההודעות יוצאות מהמספר שלו כשהוא לוחץ "שלח" בכל קישור, אז לא צריך לבקש ממנו "כן" לפני. לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
 תזכורות לבעלים עצמו ("תזכירי לי", "תשלחי לי התראה ב-"): לקרוא ל-remind_me מיד ולהעביר לו מה שהכלי החזיר. אין לך דרך אחרת להזכיר לו — בלי הכלי לא לכתוב "שמרתי"/"אזכיר לך".
+מדריכים (coach_access): כשהבעלים מבקש "תפעילי את שולה ל..." — לקרוא ל-coach_access ולהעביר לו מה שחזר, כולל הצעדים ב-Meta. מדריך מופעל מדבר איתך בשיחה נפרדת ורואה רק את הקבוצות שלו.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.
 
 🧠 חשיבה בקול (מ-awesome-llm-apps/thinking-out-loud): כשמגיעה הודעה ארוכה ומבולגנת (בדרך כלל הקלטה, 🎤) עם קפיצות ו"לא רגע, בעצם", או כשהוא אומר "חושב בקול" — לא עושים כלום עדיין: בלי כלים, בלי טיוטות, בלי פתרונות. עונים רק בסיכום הזה:
@@ -87,7 +89,7 @@ export default {
     const env = withAliases(rawEnv);
     ORIGIN ||= env.PUBLIC_URL || "";
     for (const msg of batch.messages) {
-      await handle(msg.body, { ...env, DEADLINE_MS: env.QUEUE_DEADLINE_MS || QUEUE_DEADLINE_MS });
+      await route(msg.body, { ...env, DEADLINE_MS: env.QUEUE_DEADLINE_MS || QUEUE_DEADLINE_MS });
       msg.ack(); // לא מנסים שוב: ניסיון חוזר היה נחסם ממילא ככפול (seenIds), והבעלים כבר קיבל הודעת שגיאה
     }
   },
@@ -149,13 +151,27 @@ export default {
     const msgs = (body.entry || [])
       .flatMap((e) => e.changes || [])
       .flatMap((c) => c.value?.messages || [])
-      .filter((m) => m.from === owner && m.type !== "reaction"); // תגובת אימוג'י להודעה — לא עונים עליה
+      .filter((m) => m.from && m.type !== "reaction"); // תגובת אימוג'י להודעה — לא עונים עליה
     // עונים ל-Meta מיד (אחרת היא שולחת שוב), וממשיכים לעבוד ברקע
     // יש תור (נוצר בפריסה) → העבודה עוברת אליו; אין, או שהשליחה לתור נכשלה → כמו קודם, ברקע של הבקשה הזאת
-    for (const m of msgs) ctx.waitUntil(env.MESSAGES ? env.MESSAGES.send(m).catch(() => handle(m, env)) : handle(m, env));
+    for (const m of msgs) ctx.waitUntil(env.MESSAGES ? env.MESSAGES.send(m).catch(() => route(m, env)) : route(m, env));
     return new Response("ok");
   },
 };
+
+// הבעלים — השיחה המלאה. מספר אחר — רק אם הוא מדריך מופעל; אחרת מתעלמים בשקט. לא זורק לעולם.
+async function route(m, env) {
+  if (m.from === String(env.OWNER_PHONE || "").replace(/\D/g, "")) return handle(m, env);
+  const store = db(env), wa = waConfig(env);
+  let coach = null;
+  try {
+    coach = await coachFor(store, m.from);
+    if (coach) await handleCoach(m, env, store, wa, coach, gemini);
+  } catch (e) {
+    if (coach) await sendText(wa, m.from, "משהו השתבש אצלי, נסה שוב עוד דקה.").catch(() => {});
+    await store.merge("agentReports/bot", { lastCoachError: { at: new Date().toISOString(), message: String(e.message || e).slice(0, 300) } }).catch(() => {});
+  }
+}
 
 async function validSignature(raw, header, secret) {
   if (!header || !secret || !header.startsWith("sha256=")) return false;
@@ -265,7 +281,7 @@ export function unanswered(bot, now = Date.now()) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 async function gemini(env, body) {
   let lastErr;
@@ -295,7 +311,7 @@ const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעב�
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, lastOwnerText: text, turn }), ...makeInboxTools({ env, store, origin: ORIGIN }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, lastOwnerText: text, turn }), ...makeInboxTools({ env, store, origin: ORIGIN }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
