@@ -808,6 +808,39 @@ globalThis.waFail = true;
 await webhook("שלום", env.OWNER_PHONE, "lost1");
 globalThis.waFail = false;
 assert.ok("lost1" in bot().waiting, "לא נענתה — נשארת לדיווח");
+
+// 🧠 שולה זוכרת אילו כלים הפעילה: שורת מערכת בהיסטוריה (לא בתשובה לבעלים), ויומן עם זמני שלבים
+geminiQueue.length = 0;
+geminiQueue.push([{ functionCall: { name: "get_attendance", args: { group: "מתחילים", date: Y } } }], [{ text: "בדקתי" }]);
+await webhook("מי היה אתמול במתחילים?", env.OWNER_PHONE, "memo1");
+assert.equal(texts().at(-1), "בדקתי", "הבעלים לא רואה את שורת המערכת");
+assert.match(bot().history.at(-1).text, /^בדקתי\n\[מערכת: כלים שהופעלו בתשובה הזאת: get_attendance\]$/);
+const entry = bot().log.at(-1);
+assert.deepEqual(entry.tools, ["get_attendance"]);
+assert.ok(["קבלת ההודעה", "חשיבה על התשובה (Gemini)", "שליחת התשובה בוואטסאפ"].every((k) => typeof entry.ms[k] === "number"), JSON.stringify(entry.ms));
+geminiQueue.push([{ text: "כן, היא הייתה\n[מערכת: כלים שהופעלו בתשובה הזאת: get_attendance]" }]);
+await webhook("נועה הייתה?", env.OWNER_PHONE, "memo2");
+assert.match(JSON.stringify(geminiCalls.at(-1).contents), /כלים שהופעלו בתשובה הזאת: get_attendance/, "המודל רואה בהיסטוריה מה הופעל");
+assert.equal(texts().at(-1), "כן, היא הייתה", "שורת מערכת שהמודל העתיק לא נשלחת");
+assert.ok(!("tools" in bot().log.at(-1)) && !/מערכת/.test(bot().history.at(-1).text), "בלי כלים — בלי שורה");
+
+// 📨 תור: ה-webhook רק מכניס לתור, והתור מטפל עם יותר זמן; תור שנכשל → כמו קודם
+const queued = [];
+env.MESSAGES = { send: async (m) => void queued.push(m) };
+const nQ = sent.length;
+await webhook("דרך התור", env.OWNER_PHONE, "q1");
+assert.equal(queued.length, 1);
+assert.equal(sent.length, nQ, "ה-webhook לא עונה בעצמו כשיש תור");
+geminiQueue.push([{ text: "ענית מהתור" }]);
+let acked = 0;
+await worker.queue({ messages: [{ body: queued[0], ack: () => acked++ }] }, env);
+assert.equal(texts().at(-1), "ענית מהתור");
+assert.equal(acked, 1);
+env.MESSAGES = { send: async () => { throw new Error("queue down"); } };
+geminiQueue.push([{ text: "בלי תור" }]);
+await webhook("התור נפל", env.OWNER_PHONE, "q2");
+assert.equal(texts().at(-1), "בלי תור", "תור שנכשל — עונים ישירות");
+delete env.MESSAGES;
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
