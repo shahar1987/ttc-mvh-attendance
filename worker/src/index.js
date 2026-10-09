@@ -9,8 +9,8 @@ import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { remindCoaches } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL } from "./inbox.js";
+import { shortLinks, remindCoaches } from "./reminders.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
@@ -18,6 +18,7 @@ import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
 const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
+const DEADLINE_MS = 22000; // (בבדיקות: env.DEADLINE_MS) לפני ה-30 שניות של Cloudflare, עם מרווח לשליחת הודעת השגיאה
 const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
 let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
 
@@ -86,6 +87,11 @@ export default {
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
     if (url.pathname === "/claude/start") return claudeRoute(req, env, db(env));
+    // 🔗 קישור קצר לתזכורת וואטסאפ (shortLinks) — מפנה ל-wa.me המלא
+    if (url.pathname.startsWith("/w/")) {
+      const to = (((await db(env).get("agentReports/links")) || {}).links || {})[url.pathname.slice(3)]?.url;
+      return to?.startsWith("https://wa.me/") ? Response.redirect(to, 302) : new Response("הקישור פג (נשמר 7 ימים)", { status: 404 });
+    }
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
@@ -153,10 +159,13 @@ async function validSignature(raw, header, secret) {
 async function handle(m, env) {
   const wa = waConfig(env);
   let store = null;
-  let replied = false;
-  // כל תשובה לבעלים עוברת כאן — כך noteReplied יודע שההודעה נענתה (ראו unanswered)
-  const reply = (text) => sendText(wa, m.from, text).then((r) => ((replied = true), r));
-  try {
+  let replied = false, late = false, stage = "התחלה";
+  // כל תשובה לבעלים עוברת כאן — כך lastReplyAt יודע שההודעה נענתה (ראו unanswered). אחרי שהזמן נגמר — כבר לא עונים.
+  const reply = (text) => (late ? Promise.resolve("") : sendText(wa, m.from, text).then((r) => ((replied = true), r)));
+  // Cloudflare עוצר עבודת רקע ~30 שניות אחרי שענינו ל-Meta, בלי שגיאה ובלי catch. לכן עוצרים לבד קודם ואומרים לבעלים איפה נתקענו.
+  let timer;
+  const deadline = new Promise((_, no) => (timer = setTimeout(() => no(new Error(`לקח לי יותר מדי זמן (נתקעתי ב: ${stage})`)), Number(env.DEADLINE_MS) || DEADLINE_MS)));
+  const work = async () => {
     store = db(env);
     const now = new Date().toISOString();
     // Meta שולחת לפעמים את אותה הודעה פעמיים — הכתיבה מותנית, כך שגם שתי עותקים במקביל לא נענים פעמיים
@@ -165,18 +174,23 @@ async function handle(m, env) {
     await store.update("agentReports/bot", (cur) => {
       bot = cur;
       dup = (cur.seenIds || []).includes(m.id);
-      return dup ? null : { seenIds: [...(cur.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now };
+      return dup ? null : { seenIds: [...(cur.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now, waiting: { ...(cur.waiting || {}), [m.id]: now } };
     });
     if (dup) return;
 
+    stage = "קבלת ההודעה";
     await typing(wa, m.id).catch(() => {});
     let text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.image?.caption || "").trim();
     let media = null;
     if (m.type === "audio") {
-      text = await transcribe(env, await downloadMedia(wa, m.audio.id));
+      stage = "הורדת ההקלטה";
+      const audio = await downloadMedia(wa, m.audio.id);
+      stage = "תמלול ההקלטה";
+      text = await transcribe(env, audio);
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
+      stage = "הורדת התמונה";
       media = await downloadMedia(wa, m.image.id);
       text = `📷 [תמונה id=${m.image.id}] ${text || "מה דעתך?"}`;
     } else if (m.type === "video") {
@@ -192,7 +206,9 @@ async function handle(m, env) {
       await reply("איפסתי את השיחה. מתחילים מחדש 🙂");
       return;
     }
+    stage = "חשיבה על התשובה (Gemini)";
     const { answer, userTurn } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
+    stage = "שליחת התשובה בוואטסאפ";
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
     const done = new Date().toISOString();
@@ -200,24 +216,31 @@ async function handle(m, env) {
       history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer, at: done }].slice(-16),
       log: [...(cur.log || []), { at: now, user: text, shula: answer }].slice(-LOG_KEEP),
     }));
+  };
+  try {
+    await Promise.race([work(), deadline]);
   } catch (e) {
     // קודם מודיעים לבעלים (לא תלוי ב-Firestore), ורק אז מנסים לרשום את השגיאה
     await reply(`משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
+    late = true; // אם העבודה עוד תסתיים ברקע — לא שולחים תשובה כפולה אחרי הודעת השגיאה
     await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e) } }).catch(() => {});
   } finally {
-    if (replied) await store?.merge("agentReports/bot", { lastReplyAt: new Date().toISOString() }).catch(() => {});
+    clearTimeout(timer);
+    if (replied) await store?.update("agentReports/bot", (cur) => { const { [m.id]: _, ...waiting } = cur.waiting || {}; return { lastReplyAt: new Date().toISOString(), waiting }; }).catch(() => {});
   }
 }
 
 // 🔇 הודעה שהגיעה לשולה ולא נענתה (Cloudflare עצר באמצע, Gemini נתקע, וואטסאפ דחה את התשובה) — בלי זה זו שתיקה בלי סיבה.
-// handle רושם lastOwnerMsgAt בהתחלה ו-lastReplyAt אחרי תשובה; אם עברו 3 דקות בלי תשובה — מודיעים, פעם אחת להודעה.
-// ponytail: עוקב רק אחרי ההודעה האחרונה; שתי הודעות רצופות שהראשונה נענתה אחרי השנייה — השנייה לא תיתפס. מעקב לפי מזהה הודעה אם זה יקרה
+// handle רושם כל הודעה ב-waiting ומוחק אותה אחרי שענה. מה שנשאר שם יותר מ-3 דקות — מדווח פעם אחת ונמחק.
+// לפי מזהה הודעה, לא "ההודעה האחרונה": שלוש הודעות רצופות שרק הראשונה נענתה — השתיים האחרות לא נבלעות (2026-10-07 22:14–22:17).
 export function unanswered(bot, now = Date.now()) {
-  const got = bot.lastOwnerMsgAt;
-  if (!got || got <= (bot.lastReplyAt || "") || got === bot.unansweredAlerted || now - new Date(got).getTime() < 3 * 60 * 1000) return null;
-  const t = new Date(got).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
-  const err = bot.lastError?.at >= got ? `\nהשגיאה: ${String(bot.lastError.message).slice(0, 150)}` : "";
-  return `🔇 קיבלתי ממך הודעה ב-${t} ולא הצלחתי לענות עליה.${err}\nאפשר לשלוח אותה שוב.`;
+  const stuck = Object.entries(bot.waiting || {}).filter(([, at]) => now - new Date(at).getTime() >= 3 * 60 * 1000).sort((a, b) => a[1].localeCompare(b[1]));
+  if (!stuck.length) return null;
+  const hhmm = (at) => new Date(at).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
+  const first = stuck[0][1];
+  const err = bot.lastError?.at >= first ? `\nהשגיאה: ${String(bot.lastError.message).slice(0, 150)}` : "";
+  const text = stuck.length === 1 ? `🔇 קיבלתי ממך הודעה ב-${hhmm(first)} ולא הצלחתי לענות עליה.` : `🔇 קיבלתי ממך ${stuck.length} הודעות (${stuck.map(([, at]) => hhmm(at)).join(", ")}) ולא הצלחתי לענות עליהן.`;
+  return { text: `${text}${err}\nאפשר לשלוח שוב.`, ids: stuck.map(([id]) => id) };
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
@@ -270,13 +293,15 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
   else contents.push({ role: "user", parts: newParts });
   const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  // בלי השעה במפורש Gemini ממציא אותה (2026-10-07: ענה 14:38 כשהשעה הייתה 13:45)
+  const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 
   let askedClaude = false, nudged = false, remindNudged = false;
   const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday})` }] },
+      systemInstruction: { parts: [{ text: `${SYSTEM}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
       tools: [{ functionDeclarations: FUNCTION_DECLS }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
@@ -427,7 +452,7 @@ async function everyQuarter(env) {
   const store = db(env);
   const wa = waConfig(env);
   const parts = await Promise.allSettled([
-    sendDue(store, new Date(), (lines) => tell(store, wa, "scheduled", `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`, `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
+    sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
     remindCoaches(env, store, wa),
     deliverOutbox(env, store, wa),
@@ -438,11 +463,12 @@ async function everyQuarter(env) {
       return `failed runs: ${lines.length}`;
     }),
     store.get("agentReports/bot").then(async (bot) => {
-      const text = unanswered(bot || {});
-      if (!text) return "unanswered: 0";
-      await store.merge("agentReports/bot", { unansweredAlerted: bot.lastOwnerMsgAt });
-      return tell(store, wa, "unanswered", text, text.split("\n")[0]);
+      const u = unanswered(bot || {});
+      if (!u) return "unanswered: 0";
+      await store.update("agentReports/bot", (cur) => ({ waiting: Object.fromEntries(Object.entries(cur.waiting || {}).filter(([id]) => !u.ids.includes(id))) }));
+      return tell(store, wa, "unanswered", u.text, u.text.split("\n")[0]);
     }),
+    staleInbox(store).then((lines) => lines.length && tell(store, wa, "inbox", `📮 *בקשות לקלוד שעוד לא נענו* (כנראה הרוטינה של קלוד לא רצה — מכסת שימוש או תקלה; האחראית הלילית תבדוק):\n${lines.join("\n")}`, `בקשות לקלוד שלא נענו: ${summary(lines)}`)),
     ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));
