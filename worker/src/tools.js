@@ -19,7 +19,7 @@ export async function confirmed(store, kind, payload, ownerText, turn) {
   await store.update("agentReports/bot", (bot) => {
     const p = bot.pending?.[kind];
     ok = APPROVAL.test(ownerText || "") && p?.key === key && p.turn !== turn;
-    return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn } } };
+    return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn, at: p?.key === key ? p.at || new Date().toISOString() : new Date().toISOString() } } };
   });
   return ok;
 }

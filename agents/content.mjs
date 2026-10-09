@@ -4,19 +4,20 @@
 // Gemini (חינמי, אותו מפתח של שולה). בלי שמות שחקנים ובלי טלפונים בקוד — הריפו ציבורי.
 import { fileURLToPath } from "node:url";
 import { israelToday, addDays } from "./lib/analysis.mjs";
+import { sensitiveDay } from "./lib/sensitive.mjs";
+import { weeklyReport } from "./insights.mjs";
 
 // תיוג באינסטגרם בלבד. בפייסבוק @ דרך ה-API נשאר טקסט מת — שם כותבים את השמות במילים.
 export const IG_TAGS = "@matnas.mvhr @mevoothahermon @kiryat8 @galil.elion";
 export const CREDIT = 'בשיתוף מתנ"ס אזורי מבואות החרמון והמועצה האזורית מבואות החרמון';
-export const BLOCKED_DAYS = ["10-07"]; // 7 באוקטובר — לא מפרסמים שיווק
 // יום לפני אימון: ראשון→שני (כורזים, דפנה), שלישי→רביעי (כורזים), רביעי→חמישי (שאר ישוב, דפנה)
 const SLOTS = [{ dow: 0, time: "17:00" }, { dow: 2, time: "17:00" }, { dow: 3, time: "17:00" }];
 
 export const localPhone = (p) => String(p || "").replace(/\D/g, "").replace(/^972/, "0").replace(/^(\d{3})(\d{7})$/, "$1-$2");
 
-// מועדי הפרסום של השבוע שמתחיל ב-sunday (YYYY-MM-DD), בלי ימים חסומים
+// מועדי הפרסום של השבוע שמתחיל ב-sunday (YYYY-MM-DD), בלי 7.10, יום כיפור ויום הזיכרון
 export const weekSlots = (sunday) =>
-  SLOTS.map((s) => ({ ...s, date: addDays(sunday, s.dow) })).filter((s) => !BLOCKED_DAYS.includes(s.date.slice(5)));
+  SLOTS.map((s) => ({ ...s, date: addDays(sunday, s.dow) })).filter((s) => !sensitiveDay(s.date));
 
 // סידור טיוטה מהמודל: פייסבוק בלי @, קרדיט ושורת סיום תמיד, אינסטגרם = אותו טקסט + תיוגים
 export function tidy(text, phone) {
@@ -97,19 +98,24 @@ async function main() {
   const slots = weekSlots(sunday).filter((s) => s.date >= today);
   if (!slots.length) return console.log("no slots left this week");
   const doc = (n) => db.collection("agentReports").doc(n).get().then((d) => d.data() || {});
-  const [social, last] = await Promise.all([doc("social"), doc("content")]);
-  const perf = await performance((social.pages || []).find((p) => p.ig) || social.pages?.[0]);
+  const [social, last, insights, bot] = await Promise.all([doc("social"), doc("content"), doc("insights"), doc("bot")]);
+  // הנתונים היומיים (insights.mjs) כשיש; אחרת 15 הפוסטים האחרונים מהדף כמו קודם
+  const fresh = insights.posts && Date.now() - new Date(insights.updatedAt) < 3 * 864e5;
+  const perf = fresh ? insights.posts.map(({ platform, at, type, text, reach, likes, comments, shares, saves }) => ({ platform, at, type, text, reach, likes, comments, shares, saves })) : await performance((social.pages || []).find((p) => p.ig) || social.pages?.[0]);
+  const rules = (bot.postRules || []).map((r) => r.rule);
 
   const user = `המועדים: ${JSON.stringify(slots.map((s) => `${s.date} ${s.time}`))}
 ביצועי הפוסטים האחרונים בדף: ${perf.length ? JSON.stringify(perf) : "אין נתונים (הדף עוד לא מחובר)"}
 הנושאים מהשבוע שעבר: ${(last.drafts || []).map((d) => d.topic).join(" | ") || "אין"}`;
-  const out = await draftsJson(SYSTEM, user);
+  const out = await draftsJson(rules.length ? `${SYSTEM}\nכללים קבועים שהבעלים אישר (גוברים על כל השאר):\n- ${rules.join("\n- ")}` : SYSTEM, user);
   const drafts = slots.map((s, i) => ({ at: `${s.date}T${s.time}`, topic: out[i]?.topic || "", image: out[i]?.image || "", ...tidy(out[i]?.text, process.env.OWNER_PHONE) })).filter((d) => d.topic);
   if (!drafts.length) throw new Error("Gemini returned no drafts");
 
   await db.collection("agentReports").doc("content").set({ date: today, createdAt: new Date().toISOString(), drafts, performance: perf });
   const day = (d) => new Date(d + "Z").toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "numeric", timeZone: "UTC" });
+  const report = fresh ? `📊 *מה עבד השבוע*\n${weeklyReport(insights.posts)}\n\n` : "";
   const text =
+    report +
     `📣 *טיוטות הפרסום לשבוע*\n\n` +
     drafts.map((d, i) => `*${i + 1}. ${day(d.at)} ${d.at.slice(11)}* — ${d.topic}\n${d.facebook}\n🖼 ${d.image}`).join("\n\n") +
     `\n\nבאינסטגרם נוספים: ${IG_TAGS}\nלאשר: לשלוח תמונה ולכתוב "פרסם 2" (או "פרסם 2 בלי אינסטגרם"). אפשר לבקש שינוי לפני.`;

@@ -6,7 +6,8 @@ name: Agents
 #   🔎 scan        — כל בוקר ב-08:00 (שעון קיץ; 07:00 בחורף): דוח נוכחות לשולה
 #   🐞 bugcheck    — כל לילה ב-03:30: האתר החי, תקינות הנתונים, תהליכים שנכשלו
 #   💡 ideas       — ראשון ב-09:00: 3 רעיונות לשבוע
-#   📣 content     — ראשון ב-09:00: 3 טיוטות פוסטים לשבוע (לאישור בוואטסאפ)
+#   📈 insights    — כל לילה ב-03:30: נתוני חשיפה ומעורבות מ-Meta (קריאה בלבד)
+#   📣 content     — ראשון ב-09:00: דוח "מה עבד השבוע" + 3 טיוטות פוסטים לשבוע (לאישור בוואטסאפ)
 #   🛡️ supervisor  — כל שעה: שכולם רצו, שהבוט עונה, שלא דלף מידע
 #   כל 10 דקות: בודק אם שולה ביקשה מהבוט "תריץ עכשיו"
 #
@@ -24,7 +25,7 @@ on:
       agent:
         description: "איזה סוכן להריץ"
         type: choice
-        options: [scan, bugcheck, ideas, supervisor, content]
+        options: [scan, bugcheck, ideas, supervisor, content, insights]
 
 permissions:
   contents: read
@@ -69,7 +70,7 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "0 5 * * *")    RUN=scan ;;
-            "30 0 * * *")   RUN=bugcheck ;;
+            "30 0 * * *")   RUN=bugcheck,insights ;;
             "0 6 * * 0")    RUN=ideas,content ;;
             "17 * * * *")   RUN=supervisor ;;
             "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
@@ -99,6 +100,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # רק כאן: בודק תהליכים שנכשלו
         run: node bugcheck.mjs
+
+      # !cancelled(): לא תלוי בבודק הבאגים שרץ לפניו
+      - name: 📈 Daily post insights
+        id: insights
+        if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',insights,') }}
+        working-directory: agents
+        run: node insights.mjs
 
       - name: 💡 Weekly ideas
         id: ideas
