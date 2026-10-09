@@ -22,6 +22,13 @@
 - שלום: ...
 ```
 
+## [פתוח] 2026-10-09 — שולה גם למדריכים (מצב מדריך)
+סוג: פיצ'ר + 🔒 נגיעה בנתונים (מדריך כותב ל-attendance באותו חוזה, רק בקבוצות שלו)
+מסלול: ענף claude/project-thread-7oqdtg ← PR ← אישור הבעלים ← שחרור
+- בונה: worker/src/coaches.js. הבעלים מפעיל מדריך דרך שולה (coach_access, אישור דו-שלבי) → agentReports/coaches.ids (מזהי users, לא טלפונים). הטלפון והקבוצות (coachId/coachIds) מהאפליקציה. למדריך: list_groups/get_attendance/mark_attendance/get_weather על הקבוצות שלו בלבד, היסטוריה נפרדת ב-agentReports/coach_<id>. אין לו גוגל, פרסום, send_message, קלוד או סוכנים.
+- בודק: worker/test/bot.test.mjs ("coach mode ok").
+- מגבלה: מספר הניסיון של Meta עונה ל-5 מספרים בסך הכל (הבעלים + 4 מדריכים). כל מדריך צריך להתווסף ב-Meta לרשימת הנמענים ולשלוח הודעה ראשונה.
+
 ## [פתוח] 2026-10-09 — כל שיפורי שולה בעדכון אחד, בלי לפגוע בה
 סוג: פיצ'ר (כולל PR #46)
 מסלול: ענף claude/project-thread-y1zqdj (כולל את ענף PR #46) ← PR ← אישור שלום ← שחרור
