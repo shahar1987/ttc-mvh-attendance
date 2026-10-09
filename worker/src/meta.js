@@ -6,6 +6,7 @@ import { confirmed } from "./tools.js";
 import { sign, issueKey, checkKey, dropKey } from "./google.js";
 import { waConfig } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
+import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
@@ -51,7 +52,7 @@ export const META_TOOL_DEFS = [
   {
     name: "publish_post",
     description:
-      "מפרסם (או מתזמן) פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה, הפלטפורמה והמועד שהצגת לו. text = נוסח הפייסבוק, בלי @ (בפייסבוק תיוג דרך ה-API לא עובד — כותבים את השמות במילים). instagram_text = נוסח האינסטגרם עם התיוגים (@); אם חסר — text. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. video = מזהה הסרטון מהוואטסאפ (מופיע ב-[סרטון id=...]) או קישור ישיר. kind = post (ברירת מחדל) / story (סטורי: תמונה או סרטון, בלי טקסט) / reel (רילס: חייב video). פוסט באינסטגרם חייב תמונה. סרטונים עוברים עיבוד אצל Meta ולכן יוצאים בבדיקה של רבע השעה הקרובה. at = מועד פרסום בשעון ישראל YYYY-MM-DDTHH:MM; בלי at — מיד. טיוטות השבוע של סוכן הפרסום: get_agent_results עם agent=content.",
+      "מפרסם (או מתזמן) פוסט בדף הפייסבוק ו/או באינסטגרם של המועדון. כשהבעלים מבקש לחבר את פייסבוק/אינסטגרם — לקרוא לכלי בלי לפרסם כדי לקבל את קישור החיבור. מפרסם רק אחרי שהבעלים ענה 'כן' על הנוסח המדויק, התמונה, הפלטפורמה והמועד שהצגת לו. text = נוסח הפייסבוק, בלי @ (בפייסבוק תיוג דרך ה-API לא עובד — כותבים את השמות במילים). instagram_text = נוסח האינסטגרם עם התיוגים (@); אם חסר — text. image = מזהה התמונה מהוואטסאפ (מופיע ב-[תמונה id=...]) או קישור ישיר לתמונה. video = מזהה הסרטון מהוואטסאפ (מופיע ב-[סרטון id=...]) או קישור ישיר. kind = post (ברירת מחדל) / story (סטורי: תמונה או סרטון, בלי טקסט) / reel (רילס: חייב video). פוסט באינסטגרם חייב תמונה. סרטונים עוברים עיבוד אצל Meta ולכן יוצאים בבדיקה של רבע השעה הקרובה. at = מועד פרסום בשעון ישראל YYYY-MM-DDTHH:MM; בלי at — מיד. kids = true כשרואים ילדים בתמונה או בסרטון (לסמן ⚠️ בטיוטה): מתפרסם רק אחרי שהבעלים כתב שיש הסכמת הורים. ב-7 באוקטובר, ביום כיפור וביום הזיכרון — רק פוסט זיכרון (memorial = true), בלי הזמנה לאימון. טיוטות השבוע של סוכן הפרסום: get_agent_results עם agent=content.",
     input_schema: {
       type: "object",
       properties: {
@@ -62,10 +63,17 @@ export const META_TOOL_DEFS = [
         image: { type: "string" },
         video: { type: "string" },
         at: { type: "string" },
+        kids: { type: "boolean" },
+        memorial: { type: "boolean" },
       },
       required: ["platform"],
       additionalProperties: false,
     },
+  },
+  {
+    name: "save_post_rule",
+    description: "שומר כלל קבוע לכתיבת פוסטים (נכנס לכל טיוטה מעכשיו, גם בטיוטות השבועיות). אחרי שהבעלים ביקש תיקון בפוסט — לשאול 'לשמור את זה ככלל קבוע?'. נשמר רק אחרי 'כן' בהודעה הבאה, עם אותו נוסח כלל בדיוק. rule = משפט אחד ברור.",
+    input_schema: { type: "object", properties: { rule: { type: "string" } }, required: ["rule"], additionalProperties: false },
   },
 ];
 
@@ -81,6 +89,11 @@ async function graphPost(path, body) {
   if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
   return j;
 }
+
+// תיוג דרך ה-API בפייסבוק לא עובד (@ נשאר טקסט מת), אז אחרי פרסום שולה מזכירה את מי לתייג ידנית
+export const FB_TAGS = 'מתנ"ס אזורי מבואות החרמון, המועצה האזורית מבואות החרמון, קריית שמונה, גליל עליון';
+// "יש הסכמת הורים" / "ההורים אישרו" — לפרסום עם ילדים בתמונה
+const CONSENT = /(יש|קיבלתי|קיבלנו|עם)\s+(את\s+)?(אישור|הסכמת|הסכמה)(\s+של)?\s+(ה)?הורים|ההורים\s+(אישרו|הסכימו|נתנו)/;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -113,6 +126,7 @@ async function publishNow(page, { platform, kind = "post", text, igText, img, vi
     else if (kind === "reel") r = await fbVideo(page, "video_reels", vid, { video_state: "PUBLISHED", description: text });
     else r = img ? await graphPost(`${page.id}/photos`, { url: img, caption: text, access_token: t }) : await graphPost(`${page.id}/feed`, { message: text, access_token: t });
     done.push(`פייסבוק${kind === "post" ? "" : kind === "story" ? " סטורי" : " רילס"} (${page.name}) ✓ ${r.post_id || r.id || r.video_id || ""}`.trim());
+    if (kind !== "story") done.push(`לתייג ידנית בפייסבוק: ${FB_TAGS}`);
   }
   if (platform !== "facebook") {
     if (!page.ig) done.push("אינסטגרם: אין חשבון אינסטגרם עסקי מקושר לדף");
@@ -160,7 +174,7 @@ export async function publishDue(store, now = new Date()) {
 
 export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
   return {
-    async publish_post({ platform, kind = "post", text = "", instagram_text, image, video, at }) {
+    async publish_post({ platform, kind = "post", text = "", instagram_text, image, video, at, kids = false, memorial = false }) {
       const social = (await store.get("agentReports/social")) || {};
       const page = clubPage(social);
       if (!page) return `פייסבוק ואינסטגרם עוד לא מחוברים. לשלוח לבעלים את הקישור לחיבור: ${await metaLink(store, origin)}`;
@@ -169,9 +183,19 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       if (kind !== "story" && !text.trim()) return "חסר נוסח (text).";
       if (platform !== "instagram" && /@[\w.]+/.test(text)) return "לא פורסם: בפייסבוק @ נשאר טקסט מת. לכתוב בנוסח הפייסבוק את שמות השותפים במילים, בלי @, ואת התיוגים לשים ב-instagram_text.";
       if (at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return "at צריך להיות בפורמט YYYY-MM-DDTHH:MM (שעון ישראל).";
-      if ((at || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).slice(5, 10) === "10-07") return "לא מפרסמים שיווק ב-7 באוקטובר. להציע לבעלים מועד אחר.";
-      if (!(await confirmed(store, "post", { platform, kind, text, instagram_text, image, video, at }, lastOwnerText, turn)))
-        return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח (פייסבוק ואינסטגרם), התמונה, הפלטפורמה והמועד ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
+      const day = sensitiveDay((at || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).slice(0, 10));
+      if (day && !memorial) return `לא מפרסמים תוכן פרסומי ב-${day}. אפשר רק פוסט זיכרון (memorial: true) באישור הבעלים, או מועד אחר.`;
+      if (memorial && /אימון ניסיון|הצטרפות/.test(`${text} ${instagram_text || ""}`)) return "פוסט זיכרון בלי הזמנה לאימון ובלי שורת הסיום הקבועה. להסיר ולהציג לבעלים שוב.";
+      const payload = { platform, kind, text, instagram_text, image, video, at, kids, memorial };
+      const ok = await confirmed(store, "post", payload, lastOwnerText, turn);
+      if (kids) {
+        // ההסכמה נשמרת לפוסט הזה, כדי ש"כן" רגיל אחריה עדיין יעבוד
+        const key = JSON.stringify(payload);
+        if (CONSENT.test(lastOwnerText || "")) await store.merge("agentReports/bot", { kidsConsent: key });
+        if ((await store.get("agentReports/bot"))?.kidsConsent !== key)
+          return "⚠️ לא פורסם: יש ילדים בתמונה. להציג לבעלים את הפוסט ולשאול \"יש הסכמת הורים? לפרסם?\". מפרסמים רק אחרי שהוא כותב שיש הסכמת הורים (למשל \"כן, יש הסכמת הורים\").";
+      }
+      if (!ok) return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח (פייסבוק ואינסטגרם), התמונה, הפלטפורמה והמועד ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const link = async (m) => m && (/^https?:\/\//.test(m) ? m : await mediaUrl(env, origin, m.replace(/\D/g, "")));
       const vid = await link(video);
       const item = { platform, kind, text, igText: instagram_text || text, img: (await link(image)) || "", vid: vid || "" };
@@ -186,7 +210,30 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       }
       return `פורסם: ${await publishNow(page, item)}`;
     },
+    async save_post_rule({ rule }) {
+      rule = String(rule || "").trim().slice(0, 300);
+      if (!rule) return "חסר נוסח הכלל.";
+      if (!(await confirmed(store, "rule", { rule }, lastOwnerText, turn))) return `עוד לא נשמר. לשאול את הבעלים: "לשמור ככלל קבוע: ${rule}?". אחרי "כן" — לקרוא שוב עם אותו נוסח בדיוק.`;
+      await store.update("agentReports/bot", (bot) => ({ postRules: [...(bot.postRules || []).filter((r) => r.rule !== rule), { rule, at: new Date().toISOString() }].slice(-30) }));
+      return `✅ נשמר ככלל קבוע: ${rule}`;
+    },
   };
+}
+
+// כללי הכתיבה שהבעלים אישר — נכנסים להנחיות של שולה (ושל סוכן הפרסום השבועי, content.mjs)
+export const rulesPrompt = (bot) => ((bot?.postRules || []).length ? `\n\nכללי פרסום קבועים שהבעלים אישר (גוברים על כל השאר):\n- ${bot.postRules.map((r) => r.rule).join("\n- ")}` : "");
+
+// פוסט שמחכה ל"כן" יותר מ-24 שעות: תזכורת אחת. בלי "כן" הוא לא יוצא אף פעם (ראו confirmed).
+export async function stalePost(store, now = new Date()) {
+  let text = "";
+  await store.update("agentReports/bot", (bot) => {
+    const p = bot.pending?.post;
+    if (!p?.at || p.reminded || now - new Date(p.at) < 24 * 3600 * 1000) return null;
+    const { text: t = "", platform } = JSON.parse(p.key);
+    text = `⏳ פוסט מחכה ל"כן" שלך כבר יותר מיום (${platform === "both" ? "פייסבוק + אינסטגרם" : platform}): "${t.split("\n")[0].slice(0, 60)}". בלי "כן" הוא לא יוצא.`;
+    return { pending: { ...bot.pending, post: { ...p, reminded: true } } };
+  });
+  return text;
 }
 
 // 🧪 /meta/check?k=<מפתח התיבה>&img=<קישור>&vid=<קישור>: בדיקה מול Meta בלי לפרסם כלום.
