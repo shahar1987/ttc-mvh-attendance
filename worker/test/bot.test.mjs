@@ -399,9 +399,10 @@ assert.deepEqual(prev.recipients, ["1. יוסי (…4567)", "2. מנהלת (…4
 assert.match(prev.problems.join(), /"דני" מתאים לכמה/);
 const n0m = sent.length;
 const now1 = await callTool("תשלחי למאמנים ישיבה מחר", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } });
-assert.equal(sent.slice(n0m).filter((b) => b.type === "template").length, 0, "הבוט לא שולח בעצמו");
-assert.match(now1, /יוסי: https:\/\/wa\.me\/972501234567\?text=%D7.*\nמנהלת: https:\/\/wa\.me\/972527654321\?text=/);
-assert.match(now1, /%0A%D7%91-20%3A00/, "ירידת שורה ותווים מקודדים בקישור");
+const direct = sent.slice(n0m).filter((b) => b.type === "template");
+assert.deepEqual(direct.map((b) => [b.to, b.template.name, b.template.components[0].parameters[0].text]), [["972501234567", "club_message", "ישיבה מחר · ב-20:00"], ["972527654321", "club_message", "ישיבה מחר · ב-20:00"]], "למאמנים שולה שולחת בעצמה");
+assert.match(now1, /יוסי: נשלח משולה ✓\nמנהלת: נשלח משולה ✓/);
+assert.doesNotMatch(now1, /wa\.me/);
 assert.match(await callTool("כן", { name: "send_message", args: { to: ["נועה"], text: "תזכורת", at: "2099-01-01T18:00" } }), /לא נשלח: אין נמענים.*אין טלפון/);
 put("players/p2", { parentPhone: "0541112222" });
 put("players/p1", { parentPhone: "0540000044" });
@@ -517,7 +518,7 @@ const { makeMetaTools } = await import("../src/meta.js");
 const { israelToUtc: tz } = await import("../src/time.js");
 const store = db(env);
 const bot = () => docs.get("agentReports/bot");
-const tools = (text, turn = "t" + Math.random()) => ({ ...makeTools({ env, store, wa: waConfig(env), lastOwnerText: text, turn }), ...makeMessageTools({ store, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: "https://x", turn }) });
+const tools = (text, turn = "t" + Math.random()) => ({ ...makeTools({ env, store, wa: waConfig(env), lastOwnerText: text, turn }), ...makeMessageTools({ store, wa: waConfig(env), lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: "https://x", turn }) });
 const D2 = dayBefore(2), D3 = dayBefore(10);
 
 // 2+3. הודעות היעדרות: אישור דו-שלבי, קישורים בלי לסמן "נשלח", וסימון רק אחרי "שלחתי" — ורק על רשומה שעדיין Absent
@@ -610,6 +611,13 @@ for (const [at, re] of [["2099-02-31T10:00", /לא תקינה/], ["18:00", /לא
   assert.match(r, re, at);
   assert.doesNotMatch(r, /wa\.me/, at);
 }
+
+// 15. שליחה ישירה למאמן נכשלה — הבעלים מקבל קישור במקום
+globalThis.waFailNext = 1;
+const now1f = await tools("שוב").send_message({ to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" });
+assert.match(now1f, /יוסי: שולה לא הצליחה לשלוח \(WhatsApp 500: boom\)[^]*ללחוץ[^]*יוסי: https:\/\/wa\.me\/972501234567\?text=%D7/, "כישלון — קישור במקום");
+assert.match(now1f, /%0A%D7%91-20%3A00/, "ירידת שורה ותווים מקודדים בקישור");
+assert.doesNotMatch(now1f, /מנהלת: https/, "מי שקיבל משולה לא מקבל גם קישור");
 
 // 4. הודעות מתוזמנות יוצאות מהתור רק אחרי שהשליחה לבעלים הצליחה; אחרי 5 כישלונות — נזרקות עם שגיאה
 put("agentReports/bot", { scheduled: [{ id: "q1", due: "2000-01-01T00:00:00.000Z", at: "2000-01-01T02:00", text: "בדיקה", remind: true, recipients: [] }] });
