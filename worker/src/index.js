@@ -191,6 +191,7 @@ async function handle(m, env) {
   let replied = false, late = false, stage = "התחלה";
   // ⏱️ כמה זמן לקח כל שלב — נשמר ביומן ובשגיאה, כדי ששתיקה הבאה תהיה ניתנת לאבחון
   const ms = {};
+  const gem = []; // ניסיונות Gemini בהודעה הזאת (ראו gemini)
   let mark = Date.now();
   const at = (next) => ((ms[stage] = (ms[stage] || 0) + Date.now() - mark), (mark = Date.now()), (stage = next));
   // כל תשובה לבעלים עוברת כאן — כך lastReplyAt יודע שההודעה נענתה (ראו unanswered). אחרי שהזמן נגמר — כבר לא עונים.
@@ -240,7 +241,7 @@ async function handle(m, env) {
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id);
+    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem);
     at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
@@ -250,7 +251,7 @@ async function handle(m, env) {
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
       history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
-      log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
+      log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {
@@ -260,7 +261,7 @@ async function handle(m, env) {
     await reply(`משהו השתבש אצלי: ${String(e.message || e).slice(0, 200)}\nנסה שוב עוד דקה.`).catch(() => {});
     late = true; // אם העבודה עוד תסתיים ברקע — לא שולחים תשובה כפולה אחרי הודעת השגיאה
     at(stage);
-    await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e), ms } }).catch(() => {});
+    await store?.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: String(e.message || e), ms, gem } }).catch(() => {});
   } finally {
     clearTimeout(timer);
     if (replied) await store?.update("agentReports/bot", (cur) => { const { [m.id]: _, ...waiting } = cur.waiting || {}; return { lastReplyAt: new Date().toISOString(), waiting }; }).catch(() => {});
@@ -283,14 +284,19 @@ export function unanswered(bot, now = Date.now()) {
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
-async function gemini(env, body) {
+// trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
+async function gemini(env, body, trace = []) {
   let lastErr;
   for (const model of [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))]) {
+    const t0 = Date.now();
+    // מודל שנתקע (2026-10-09/10: 60–120 שניות על "טופל") — עוברים לבא בתור במקום לשרוף את כל הזמן של ההודעה
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
       body: JSON.stringify(body),
-    });
+      signal: AbortSignal.timeout(Number(env.GEMINI_TIMEOUT_MS) || 40000),
+    }).catch((e) => ({ ok: false, status: e.name === "TimeoutError" ? "timeout" : e.message }));
+    trace.push(`${model} ${Math.round((Date.now() - t0) / 1000)}s ${r.status}`);
     if (r.ok) {
       const c = (await r.json())?.candidates?.[0];
       const parts = c?.content?.parts || [];
@@ -310,7 +316,7 @@ const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:"
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
-async function think(env, store, wa, bot, text, media, stillTyping, turn) {
+async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = []) {
   const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }), ...makeInboxTools({ env, store, origin: ORIGIN }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
@@ -348,7 +354,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
       contents,
       tools: [{ functionDeclarations: FUNCTION_DECLS }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
-    });
+    }, trace);
     const calls = parts.filter((p) => p.functionCall);
     if (!calls.length) {
       // אם המודל העתיק את שורת הכלים מההיסטוריה לתשובה — לא שולחים אותה לבעלים
@@ -356,7 +362,9 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn) {
       // תשובה ריקה (נחסמה, נגמר התקציב...) — אומרים את האמת במקום "👍" שנראה כמו אישור
       if (!answer) {
         await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: `Gemini החזיר תשובה ריקה (finishReason: ${parts.finishReason || "?"})` } }).catch(() => {});
-        return { answer: "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn, used };
+        // אחרי שכלי כבר רץ (2026-10-10 05:39: ask_claude הועבר, ובכל זאת "נסה שוב") — לא להטעות שכלום לא קרה
+        const did = used.includes("ask_claude") ? "העברתי לקלוד, והתשובה ממנו תגיע אליך בוואטסאפ." : used.length ? `ביצעתי: ${used.join(", ")}. לא הצלחתי לנסח תשובה מלאה, אפשר לשאול אותי מה יצא.` : "";
+        return { answer: did || "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn, used };
       }
       // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — מעבירים בעצמנו
       if (CLAIMS_HANDOFF.test(answer) && !askedClaude) {
