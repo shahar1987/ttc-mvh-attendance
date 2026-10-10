@@ -9,7 +9,7 @@ import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { shortLinks, remindCoaches } from "./reminders.js";
+import { shortLinks, remindCoaches, coachReminderTest } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -502,6 +502,7 @@ async function everyQuarter(env) {
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
     stalePost(store).then((text) => text && tell(store, wa, "post-reminder", text, text)),
     remindCoaches(env, store, wa),
+    coachReminderTest(env, store, wa),
     deliverOutbox(env, store, wa),
     dispatchWorkflows(env, store),
     failedRuns(env, store).then(async ({ lines, ids }) => {
