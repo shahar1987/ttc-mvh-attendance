@@ -1,8 +1,9 @@
 // ⏰ תזכורת למאמנים שלא מילאו נוכחות — רץ כל רבע שעה (wrangler.toml → triggers).
 // קבוצה שהתאמנה היום (groups.days), שהאימון שלה נגמר לפני חצי שעה לפחות, ואין לה אף רשומת נוכחות להיום:
-// הבעלים מקבל קישור לכל מאמן שלה, עם נוסח coach_attendance_reminder מוכן, ושולח מהמספר שלו בלחיצה.
+// הבוט שולח לכל מאמן שלה את התבנית coach_attendance_reminder עם קישור שפותח ישר את הקבוצה, והבעלים מקבל סיכום.
+// מאמן שהשליחה אליו נכשלה (למשל התבנית לא אושרה) — הבעלים מקבל עבורו קישור wa.me כמו פעם, ושולח בעצמו.
 import { israelToday, normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
-import { waLink, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { waLink, notifyOwner, sendTemplate } from "../../agents/lib/whatsapp.mjs";
 import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
 
@@ -46,20 +47,17 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
   const [players, users, recs] = await Promise.all([store.list("players"), store.list("users"), store.where("attendance", "date", today)]);
   const marked = new Set(recs.map((a) => a.groupId));
   const lines = [];
+  const targets = [];
   for (const g of groups) {
     const hasPlayers = players.some((p) => p.groupId === g.id && p.isActive && !p.deleted);
     if (!hasPlayers || marked.has(g.id)) continue;
     for (const id of coachIds(g)) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
-      if (!isValidPhone(c.phone || "")) {
-        lines.push(`• ${g.name} — ${c.name}: אין טלפון שמור`);
-        continue;
-      }
-      lines.push(`• ${g.name} — ${c.name}: ${waLink(normalizePhone(c.phone), renderTemplate("coach_attendance_reminder", [c.name, g.name]) + `\n${APP_URL}#group=${g.id}`)}`);
+      if (!isValidPhone(c.phone || "")) lines.push(`• ${g.name} — ${c.name}: אין טלפון שמור`);
+      else targets.push({ g, c, phone: normalizePhone(c.phone) });
     }
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
-  const text = lines.length ? await shortLinks(env, store, `⏰ *נוכחות שלא מולאה היום* — ללחוץ על קישור ואז "שלח":\n${lines.join("\n")}`) : "";
   const ids = groups.map((g) => g.id);
   // מסמנים את הקבוצות *לפני* השליחה. כך כישלון בסימון לא גורם לשליחה חוזרת כל רבע שעה (אם הכתיבה נכשלת —
   // לא שולחים בכלל, והריצה הבאה מנסה מחדש). אם השליחה עצמה נכשלת — מבטלים את הסימון כדי לנסות שוב ברבע הבא.
@@ -67,12 +65,27 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
     const prev = cur.coachReminders?.date === today ? cur.coachReminders : {};
     return { coachReminders: { date: today, groups: [...new Set([...(prev.groups || []), ...ids])], lastSentAt: { ...(prev.lastSentAt || {}), ...Object.fromEntries(ids.map((id) => [id, now.toISOString()])) } } };
   });
+  let sentCount = 0;
+  for (const { g, c, phone } of targets) {
+    const link = `${APP_URL}#group=${g.id}`;
+    try {
+      // הקישור נכנס בפרמטר של שם הקבוצה, כי נוסח התבנית המאושרת לא כולל קישור
+      await sendTemplate(wa, phone, "coach_attendance_reminder", [c.name, `${g.name} · ${link}`]);
+      sentCount++;
+      lines.push(`• ${g.name} — ${c.name}: נשלחה תזכורת ✓`);
+    } catch (e) {
+      lines.push(`• ${g.name} — ${c.name}: השליחה נכשלה, אפשר לשלוח בעצמך: ${waLink(phone, renderTemplate("coach_attendance_reminder", [c.name, g.name]) + `\n${link}`)}`);
+    }
+  }
+  const text = lines.length ? await shortLinks(env, store, `⏰ *נוכחות שלא מולאה היום*:\n${lines.join("\n")}`) : "";
   if (text) {
     try {
       // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
       await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), reminders: { at: now.toISOString(), text } } }));
-      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום. אפשר להשיב כדי לקבל קישורי תזכורת` });
+      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום (${sentCount} קיבלו תזכורת). אפשר להשיב כדי לקבל את הפרטים` });
     } catch (e) {
+      // מאמנים כבר קיבלו תזכורת — לא מבטלים את הסימון, אחרת הם יקבלו אותה שוב ברבע השעה הבאה
+      if (sentCount) throw e;
       // אם גם הביטול נכשל — התזכורת של היום מתפספסת (ונרשמת שגיאה), אבל לא נשלחת שוב ושוב
       await store
         .update("agentReports/bot", (cur) => {
