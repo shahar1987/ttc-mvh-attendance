@@ -60,14 +60,14 @@ const DEFAULT_PERMISSIONS_BY_ROLE = {
 // תפריט הצוות. כל פריט מסומן בהרשאה שפותחת אותו; פריט בלי הרשאה פתוח לכל
 // משתמש צוות (מילוי נוכחות — הבסיס של העבודה היומיומית).
 const STAFF_MENU_ITEMS = [
-  { key: "dashboard", label: "דשבורד", icon: le, perm: "reports", viewerToo: !0 },
+  { key: "dashboard", label: "דשבורד", short: "סקירה", icon: le, perm: "reports", viewerToo: !0 },
   { key: "attendance", label: "מילוי נוכחות", icon: Z },
-  { key: "groups", label: "ניהול קבוצות", icon: H, perm: "manageGroups", viewerToo: !0 },
-  { key: "phonebook", label: "ספר טלפונים", icon: se, perm: "phonebook" },
+  { key: "groups", label: "ניהול קבוצות", short: "קבוצות", icon: H, perm: "manageGroups", viewerToo: !0 },
+  { key: "phonebook", label: "ספר טלפונים", short: "טלפונים", icon: se, perm: "phonebook" },
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
-  { key: "reports", label: "דוחות", icon: ReportsIcon, perm: "reports" },
+  { key: "reports", label: "דוחות", short: "דוחות מפורטים", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
-  { key: "import", label: "ייבוא שחקנים", icon: K, perm: "manageGroups" },
+  { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups" },
   {
     key: "tournaments",
     label: "תחרויות",
@@ -76,6 +76,50 @@ const STAFF_MENU_ITEMS = [
     perm: "competitions",
   },
 ];
+// התפריט מציג 5 קבוצות במקום כל מסך בנפרד. קבוצה עם כמה מסכים מקבלת שורת לשוניות מעל המסך (SectionTabs).
+const MENU_SECTIONS = [
+  { label: "נוכחות", icon: Z, keys: ["attendance"] },
+  { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import"] },
+  { label: "תשלומים", icon: ye, keys: ["payments"] },
+  { label: "דוחות", icon: ReportsIcon, keys: ["dashboard", "reports"] },
+  { label: "הרשאות", icon: Ie, keys: ["permissions"] },
+];
+function menuItemVisible(it, isAdmin, isViewer, profile) {
+  return it.adminOnly
+    ? isAdmin
+    : it.perm
+      ? canDo(profile, it.perm) || (it.viewerToo && isViewer)
+      : !0;
+}
+// המסכים שהמשתמש רואה בתוך קבוצה, לפי הסדר שבקבוצה
+function sectionItems(sec, isAdmin, isViewer, profile) {
+  return sec.keys
+    .map((k) => STAFF_MENU_ITEMS.find((it) => it.key === k))
+    .filter((it) => it && menuItemVisible(it, isAdmin, isViewer, profile));
+}
+function SectionTabs({ view, setView, isAdmin, isViewer, profile }) {
+  let sec = MENU_SECTIONS.find((x) => x.keys.includes(view)),
+    items = sec ? sectionItems(sec, isAdmin, isViewer, profile) : [];
+  return items.length < 2
+    ? null
+    : e.createElement(
+        "div",
+        { className: "flex gap-1 p-1 mx-4 mt-3 bg-slate-100 rounded-xl no-print", role: "tablist" },
+        items.map((it) =>
+          e.createElement(
+            "button",
+            {
+              key: it.key,
+              role: "tab",
+              "aria-selected": view === it.key,
+              onClick: () => view !== it.key && setView(it.key),
+              className: `flex-1 min-h-[44px] rounded-lg text-sm font-semibold ${view === it.key ? "bg-white text-blue-900 shadow-sm" : "text-slate-600"}`,
+            },
+            it.short || it.label,
+          ),
+        ),
+      );
+}
 
 function userPermissions(u) {
   if (isAdminRole(u)) return ALL_PERMISSION_KEYS;
@@ -391,11 +435,12 @@ function it({ groups: t, users: s, players: a, readOnly: RO }) {
     m = async (o) => {
       let x = a.filter((h) => h.groupId === o.id && h.isActive && !h.deleted);
       if (
-        !window.confirm(
+        !(await askConfirm(
           x.length > 0
             ? `למחוק את הקבוצה "${o.name}"? ${x.length} השחקנים הפעילים בה יועברו למאגר "שחקנים ללא קבוצה" ותוכל לשבץ אותם מחדש. הפעולה אינה הפיכה.`
             : `למחוק את הקבוצה "${o.name}"? הפעולה אינה הפיכה.`,
-        )
+          { yes: "כן, למחוק", danger: !0 },
+        ))
       )
         return;
       n("");
@@ -962,9 +1007,10 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
     runAccountTask = async (type, u) => {
       if (
         type === "reset-access" &&
-        !window.confirm(
+        !(await askConfirm(
           `לאפס את הגישה של "${u.name}"? חשבון ההתחברות, הפרופיל והקישורים שלו יימחקו, ותצטרך לשלוח לו הזמנה חדשה. הפעולה מתבצעת תוך כמה דקות.`,
-        )
+          { yes: "כן, לאפס", danger: !0 },
+        ))
       )
         return;
       let extra;
@@ -1083,9 +1129,10 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
     [deletingCoachId, setDeletingCoachId] = b(null),
     handleDeleteCoach = async (u) => {
       if (
-        !window.confirm(
+        !(await askConfirm(
           `למחוק את המשתמש "${u.name}"? הוא ינותק מכל הקבוצות שלו, מכל כרטיסי השחקן המקושרים אליו, וההרשאה שלו במערכת תוסר. הפעולה אינה הפיכה.`,
-        )
+          { yes: "כן, למחוק", danger: !0 },
+        ))
       )
         return;
       (setDeletingCoachId(u.id), i(""));
@@ -2025,13 +2072,13 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     markSuggestionHandled = (playerId, fileName) =>
       setHandledSuggestions((h) => ({ ...h, [`${playerId}::${fileName}`]: !0 })),
     // אישור הצעת תיקון: מעדכן את השם באפליקציה לשם שבקובץ ומסמן ששילם — בלחיצה אחת
-    applySuggestion = (playerId, fileName, currentName) => {
+    applySuggestion = async (playerId, fileName, currentName) => {
       if (
-        !confirm(
+        !(await askConfirm(
           currentName === fileName
             ? `לסמן ש"${fileName}" שילם?`
             : `לשנות את השם באפליקציה מ"${currentName}" ל"${fileName}" ולסמן ששילם?`,
-        )
+        ))
       )
         return;
       // notPayingSource: "manual" — האישור שלך גובר על הסנכרון, כך שההרצה הבאה
@@ -2094,10 +2141,10 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       });
     },
     deleteMapping = (id) => {
-      confirm("למחוק את שורת המיפוי הזו?") &&
+      askConfirm("למחוק את שורת המיפוי הזו?", { yes: "כן, למחוק", danger: !0 }).then((ok) => ok &&
         Ee(S(P, "paymentMappings", id)).catch((err) =>
           alert("מחיקה נכשלה: " + (err.message || err)),
-        );
+        ));
     },
     addMapping = () => {
       if (!newLabel.trim()) return;
@@ -2830,12 +2877,12 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
                     "button",
                     {
                       onClick: () =>
-                        window.confirm(`לסמן ש"${x.name}" הסדיר את התשלום? הוא יוסר מהרשימה.`) &&
+                        askConfirm(`לסמן ש"${x.name}" הסדיר את התשלום? הוא יוסר מהרשימה.`, { yes: "כן, הוסדר" }).then((ok) => ok &&
                         O(S(P, "players", x.id), {
                           notPaying: !1,
                           notPayingSource: "manual",
                           paymentSettledAt: new Date().toISOString(),
-                        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err))),
+                        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err)))),
                       className:
                         "min-h-[44px] rounded-full bg-emerald-500 text-white text-sm font-semibold px-3 active:scale-95 transition-transform",
                     },
@@ -2959,28 +3006,32 @@ function dt({
       e.createElement(
         "nav",
         { className: "flex-1 py-2 overflow-y-auto" },
-        STAFF_MENU_ITEMS.filter((it) =>
-          it.adminOnly
-            ? a
-            : it.perm
-              ? canDo(PR, it.perm) || (it.viewerToo && VW)
-              : !0,
-                ).map(({ key: h, label: u, icon: f, external: ext }) =>
+        MENU_SECTIONS.map((sec) => ({ sec, items: sectionItems(sec, a, VW, PR) }))
+          .filter((x) => x.items.length)
+          .map(({ sec, items }) => {
+            let on = items.some((it) => it.key === l);
+            return e.createElement(
+              "button",
+              {
+                key: sec.label,
+                onClick: () => (on || i(items[0].key), s()),
+                className: `w-full px-5 py-4 flex items-center gap-3 justify-start text-right ${on ? "bg-emerald-50 text-emerald-700" : "text-slate-600"}`,
+              },
+              e.createElement(sec.icon, { className: "w-5 h-5 shrink-0" }),
+              e.createElement("span", { className: "font-semibold text-base" }, sec.label),
+            );
+          }),
+        // קישורים החוצה (תחרויות) בשורה קטנה בתחתית התפריט
+        STAFF_MENU_ITEMS.filter((it) => it.external && menuItemVisible(it, a, VW, PR)).map((it) =>
           e.createElement(
             "button",
             {
-              key: h,
-              onClick: () => {
-                if (ext) {
-                  (window.open(ext, "_blank", "noopener"), s());
-                } else {
-                  (i(h), s());
-                }
-              },
-              className: `w-full px-5 py-3.5 flex items-center gap-3 justify-start text-right ${l === h ? "bg-emerald-50 text-emerald-700" : "text-slate-600"}`,
+              key: it.key,
+              onClick: () => (window.open(it.external, "_blank", "noopener"), s()),
+              className: "w-full px-5 py-3 mt-2 border-t border-slate-100 flex items-center gap-3 justify-start text-right text-slate-500",
             },
-            e.createElement(f, { className: "w-4 h-4 shrink-0" }),
-            e.createElement("span", { className: "font-medium text-sm" }, u),
+            e.createElement(it.icon, { className: "w-4 h-4 shrink-0" }),
+            e.createElement("span", { className: "text-sm" }, it.label, " ↗"),
           ),
         ),
       ),
@@ -3153,7 +3204,7 @@ function re({
     staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
     confirmOverwrite = () => {
       let recs = existingDayRecords();
-      if (recs.length === 0) return !0;
+      if (recs.length === 0) return Promise.resolve(!0);
       let names = [...new Set(recs.map((r) => staffName(r.markedBy)))].join(", "),
         latest = recs.reduce(
           (mx, r) => (r.updatedAt && (!mx || r.updatedAt > mx) ? r.updatedAt : mx),
@@ -3161,8 +3212,9 @@ function re({
         ),
         whenTxt = latest ? new Date(latest).toLocaleString("he-IL") : "לא ידוע",
         who = names || "לא ידוע";
-      return window.confirm(
+      return askConfirm(
         `נוכחות לתאריך ${Ke(m)} בקבוצת ${t.name} כבר מולאה ע"י ${who} (${whenTxt}). לערוך ולשמור מחדש?`,
+        { yes: "כן, לערוך" },
       );
     },
     cancelled = findCancellation(CX, t.id, m),
@@ -3170,9 +3222,10 @@ function re({
     [cancelErr, setCancelErr] = b(""),
     undoCancel = async () => {
       if (
-        !window.confirm(
+        !(await askConfirm(
           "להחזיר את האימון? אחרי ההחזרה יהיה צריך לרשום נוכחות מחדש.",
-        )
+          { yes: "כן, להחזיר את האימון", no: "חזרה" },
+        ))
       )
         return;
       setCancelErr("");
@@ -3205,11 +3258,11 @@ function re({
     // שחקנים שסומנו "הגיע" אוטומטית בפתיחת היום ועוד לא נגעו בהם
     autoRef = e.useRef(new Set()),
     isDirty = () => dirtyRef.current === dayKey,
+    // מחזיר Promise<boolean>: בלי סימונים פתוחים — מיד true
     confirmLeave = () =>
-      !isDirty() ||
-      window.confirm(
-        "יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?",
-      );
+      isDirty()
+        ? askConfirm("יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?", { yes: "כן, לצאת בלי לשמור", no: "להישאר" })
+        : Promise.resolve(!0);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
@@ -3382,8 +3435,8 @@ function re({
         "button",
         {
           onClick: () => {
-            confirmLeave() &&
-              ((dirtyRef.current = null), touchedRef.current.clear(), i());
+            confirmLeave().then((ok) => ok &&
+              ((dirtyRef.current = null), touchedRef.current.clear(), i()));
           },
           className:
             "flex items-center gap-1.5 text-sm text-slate-600 self-start min-h-[44px]",
@@ -3409,11 +3462,12 @@ function re({
               min: minDate,
               dir: "ltr",
               onChange: (v) => {
-                v.target.value &&
-                  confirmLeave() &&
+                let d = v.target.value;
+                d &&
+                  confirmLeave().then((ok) => ok &&
                   ((dirtyRef.current = null),
                   touchedRef.current.clear(),
-                  setSelDate(v.target.value));
+                  setSelDate(d)));
               },
               className:
                 "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
@@ -3422,11 +3476,11 @@ function re({
               "button",
               {
                 onClick: () => {
-                  confirmLeave() &&
+                  confirmLeave().then((ok) => ok &&
                     ((dirtyRef.current = null),
                     touchedRef.current.clear(),
                     setSelDate(today),
-                    setShowDatePicker(!1));
+                    setShowDatePicker(!1)));
                 },
                 className: "text-xs font-semibold text-blue-900",
               },
@@ -3684,9 +3738,10 @@ function re({
                 {
                   key: "arch",
                   onClick: () => {
-                    window.confirm(
+                    askConfirm(
                       `להעביר את ${p.name} לארכיון? ההיסטוריה שלו תישמר.`,
-                    ) && c(p.id);
+                      { yes: "כן, לארכיון" },
+                    ).then((ok) => ok && c(p.id));
                   },
                   className:
                     "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 shrink-0",
@@ -3847,8 +3902,8 @@ function re({
             "button",
             {
               onClick: () =>
-                confirmOverwrite() &&
-                (touchedRef.current.clear(), autoRef.current.clear(), f(!0)),
+                confirmOverwrite().then((ok) => ok &&
+                (touchedRef.current.clear(), autoRef.current.clear(), f(!0))),
               className:
                 "w-full bg-blue-900 text-white font-semibold rounded-xl py-3.5 active:scale-[0.98] transition-transform shadow-lg",
             },
@@ -4228,6 +4283,23 @@ function Q() {
         () => window.removeEventListener("popstate", onPop)
       );
     }, []),
+    // קישור מתזכורת המאמן (worker/src/reminders.js): ‎#group=<id> פותח ישר את מסך הסימון של הקבוצה.
+    // קבוצה שאינה של המאמן לא נמצאת ב-mt ולכן נשארים ברשימת הקבוצות.
+    j(() => {
+      let fromHash = () => {
+        let id = (location.hash.match(/^#group=([\w-]+)$/) || [])[1];
+        if (!id) return;
+        goToGroupScreen(id);
+        try {
+          history.replaceState({ screen: "attendance", attGroup: id }, "", location.pathname + location.search);
+        } catch (e2) {}
+      };
+      return (
+        fromHash(),
+        window.addEventListener("hashchange", fromHash),
+        () => window.removeEventListener("hashchange", fromHash)
+      );
+    }, []),
     j(() => {
       let N;
       return (
@@ -4386,6 +4458,7 @@ function Q() {
         ),
       ),
       !g && e.createElement(ct, null),
+      e.createElement(SectionTabs, { view: m, setView: goToScreen, isAdmin: r, isViewer: vw, profile: s }),
       dataError &&
         e.createElement(
           "div",

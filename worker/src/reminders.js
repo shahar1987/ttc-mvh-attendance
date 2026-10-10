@@ -7,6 +7,8 @@ import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
 
 const GRACE_MIN = 30;
+// הקישור פותח את האפליקציה ישר על מסך הסימון של הקבוצה (part-b.js קורא את #group=)
+const APP_URL = "https://shahar1987.github.io/ttc-mvh-attendance/";
 
 // 🔗 קישורי wa.me עם נוסח בעברית יוצאים ארוכים מאוד (כל אות מקודדת ל-%D7%..) וממלאים את המסך.
 // מחליפים כל אחד בקישור קצר של ה-worker (/w/<id>) שמפנה אליו. נשמרים 7 ימים ב-agentReports/links. בלי PUBLIC_URL — משאירים כמו שהם.
@@ -53,7 +55,7 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
         lines.push(`• ${g.name} — ${c.name}: אין טלפון שמור`);
         continue;
       }
-      lines.push(`• ${g.name} — ${c.name}: ${waLink(normalizePhone(c.phone), renderTemplate("coach_attendance_reminder", [c.name, g.name]))}`);
+      lines.push(`• ${g.name} — ${c.name}: ${waLink(normalizePhone(c.phone), renderTemplate("coach_attendance_reminder", [c.name, g.name]) + `\n${APP_URL}#group=${g.id}`)}`);
     }
     if (!coachIds(g).length) lines.push(`• ${g.name}: אין מאמן משויך`);
   }
