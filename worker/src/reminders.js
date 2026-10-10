@@ -234,3 +234,47 @@ export async function readReceipts(store, wa, statuses) {
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") });
   return hits;
 }
+
+// ☀️ בוקר טוב למאמנים: ביום אימון, מ-08:00 (ברבע השעה הראשון אחרי), כל מאמן מקבל הודעה קלילה עם הקבוצות והשעות שלו להיום.
+// Gemini מנסח כל יום מחדש; אם הוא לא עונה — נוסח קבוע, כדי שהתזכורת תגיע בכל מקרה. פעם אחת ביום (מסומן לפני השליחה).
+const MORNING_MIN = 8 * 60;
+export async function morningGreetings(env, store, wa, gemini, now = new Date()) {
+  const today = israelToday(now);
+  const { dow, min } = israelNow(now);
+  if (min < MORNING_MIN) return "too early";
+  const claimed = await store.update("agentReports/bot", (cur) => (cur.morningGreetings === today ? null : { morningGreetings: today }));
+  if (!claimed) return "done today";
+  const [groups, users, cancellations] = await Promise.all([store.list("groups"), store.list("users"), store.where("cancellations", "date", today)]);
+  const todays = groups
+    .filter((g) => !g.deleted && g.isActive !== false && Array.isArray(g.days) && g.days.includes(dow) && !cancellations.some((c) => c.groupId === g.id))
+    .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
+  const byCoach = new Map();
+  for (const g of todays) for (const id of coachIds(g)) byCoach.set(id, [...(byCoach.get(id) || []), g]);
+  const out = [], watch = {};
+  for (const [id, gs] of byCoach) {
+    const c = users.find((u) => u.id === id);
+    if (!c || !isValidPhone(c.phone || "")) continue;
+    const first = String(c.name || "").trim().split(/\s+/)[0] || "";
+    const plan = gs.map((g) => `${g.name}${g.startTime ? ` ב-${g.startTime}` : ""}`).join(", ");
+    const fallback = `בוקר טוב ${first}! ☀️ תזכורת: היום יש אימון — ${plan}. שיהיה יום מעולה 🏓`;
+    let text = fallback;
+    try {
+      const parts = await gemini(env, {
+        contents: [{ role: "user", parts: [{ text: `כתבי הודעת בוקר טוב קצרה (עד 2 משפטים, שורה אחת, בלי ירידות שורה) למאמן טניס שולחן בשם ${first}, בעברית, בטון חברי, קליל ומגניב, עם אימוג'י אחד או שניים. היא חייבת להזכיר שהיום יש אימון: ${plan}. כל פעם ניסוח אחר לגמרי (היום ${today}). להחזיר רק את ההודעה.` }] }],
+        generationConfig: { temperature: 1.2, maxOutputTokens: 200 },
+      });
+      const t = parts.map((p) => p.text || "").join("").replace(/\s+/g, " ").trim();
+      // השעות והקבוצות חייבות להופיע כמו שהן — אחרת נוסח קבוע (שלא תישלח שעה שגויה)
+      if (t && t.length < 400 && gs.every((g) => t.includes(g.name) && (!g.startTime || t.includes(g.startTime)))) text = t;
+    } catch {}
+    try {
+      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+      if (wamid) watch[wamid] = { who: c.name, what: "תזכורת הבוקר לאימון", at: now.toISOString() };
+      out.push(`${c.name} ✓`);
+    } catch (e) {
+      out.push(`${c.name}: נכשל (${e.message})`);
+    }
+  }
+  if (Object.keys(watch).length) await watchReads(store, watch, now);
+  return `morning: ${out.join(", ") || "no coaches today"}`;
+}
