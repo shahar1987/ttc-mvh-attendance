@@ -1920,10 +1920,9 @@ function PaymentTrackPicker({ player, group, tracks, onClose }) {
 
 function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
   let [a, l] = b(""),
-    [showAll, setShowAll] = b(!1),
+    // "unpaid" | "paid" | "all" — נבחר מהמספרים הגדולים בראש המסך
+    [view, setView] = b("unpaid"),
     [sync, setSync] = b(null),
-    [showMapping, setShowMapping] = b(!1),
-    [showPaid, setShowPaid] = b(!1),
     [syncRequest, setSyncRequest] = b(null),
     [mappings, setMappings] = b([]),
     [drafts, setDrafts] = b({}),
@@ -2161,7 +2160,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         })
         .catch((err) => alert("הוספת מיפוי נכשלה: " + (err.message || err)));
     };
-  let toggle = (p) => {
+  let coveredGroupIds = new Set(mappings.map((m) => m.groupId)),
+    toggle = (p) => {
       RO ||
         O(S(P, "players", p.id), {
           notPaying: !p.notPaying,
@@ -2171,7 +2171,13 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     base = t
       .filter((m) => m.isActive && !m.deleted)
       .filter((m) => !excludedGroupIds.has(m.groupId))
-      .filter((m) => showAll || m.notPaying)
+      .filter((m) =>
+        view === "all"
+          ? !0
+          : view === "paid"
+            ? !m.notPaying && coveredGroupIds.has(m.groupId)
+            : m.notPaying,
+      )
       .filter(
         (m) =>
           (m.name || "").includes(a) || (m.parentName || "").includes(a),
@@ -2184,7 +2190,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     ).length,
     // "שילמו" = שחקן פעיל בקבוצה שממופה לקובץ המתנ"ס שאינו מסומן כלא משלם,
     // כלומר הקובץ זיהה אותו כמשלם (או שאישרת אותו ידנית).
-    coveredGroupIds = new Set(mappings.map((m) => m.groupId)),
     paidByGroup = s
       .map((g) => ({
         group: g,
@@ -2276,86 +2281,58 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     };
+  // 10.10: המסך סודר מחדש. למעלה שני מספרים גדולים (לא שילמו / שילמו) שהם גם הסינון,
+  // מתחתם הרשימה עצמה. כל מה שאינו הרשימה — הצעות לבדיקה, סנכרון, מיפוי — מקופל.
+  let fold = (title, count, tone, open, ...kids) =>
+      e.createElement(
+        "details",
+        {
+          open,
+          className: `rounded-xl border ${tone === "amber" ? "bg-amber-50 border-amber-200" : "bg-white border-slate-200"}`,
+        },
+        e.createElement(
+          "summary",
+          {
+            className: `cursor-pointer min-h-[52px] px-4 flex items-center justify-between gap-2 text-sm font-semibold ${tone === "amber" ? "text-amber-900" : "text-blue-950"}`,
+          },
+          title,
+          count != null
+            ? e.createElement(
+                "span",
+                {
+                  className: `shrink-0 min-w-[28px] text-center rounded-full px-2 py-0.5 text-xs font-bold ${tone === "amber" ? "bg-amber-200 text-amber-900" : "bg-slate-100 text-slate-600"}`,
+                },
+                count,
+              )
+            : null,
+        ),
+        e.createElement("div", { className: "px-4 pb-4 flex flex-col gap-3" }, ...kids),
+      ),
+    stat = (key, num, label, color) =>
+      e.createElement(
+        "button",
+        {
+          onClick: () => setView(key),
+          "aria-pressed": view === key,
+          className: `flex-1 min-h-[88px] rounded-xl border-2 px-3 py-2 flex flex-col items-center justify-center transition-colors ${view === key ? (color === "red" ? "border-red-400 bg-red-50" : "border-emerald-400 bg-emerald-50") : "border-slate-200 bg-white"}`,
+        },
+        e.createElement(
+          "span",
+          { className: `text-3xl font-bold leading-none ${color === "red" ? "text-red-700" : "text-emerald-700"}` },
+          num,
+        ),
+        e.createElement("span", { className: "text-sm font-semibold text-slate-700 mt-1" }, label),
+      ),
+    reviewCount =
+      suggestions.length +
+      (sync?.ambiguousNames?.length ? 1 : 0) +
+      familyFlags.length +
+      sessionGaps.length,
+    subTitle = (txt) => e.createElement("p", { className: "text-sm font-semibold text-blue-950" }, txt),
+    note = (txt) => e.createElement("p", { className: "text-xs text-slate-500 leading-relaxed" }, txt);
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
-    e.createElement(
-      "div",
-      {
-        className:
-          "bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col gap-1",
-      },
-      e.createElement(
-        "p",
-        { className: "text-sm font-semibold text-amber-900" },
-        `${totalNotPaying} שחקנים מסומנים כרגע כלא משלמים`,
-      ),
-      sync
-        ? e.createElement(
-            "p",
-            { className: "text-xs text-amber-700" },
-            `עדכון אחרון מהקובץ בדרייב: ${new Date(sync.updatedAt).toLocaleString("he-IL")}`,
-            sync.unmatchedCount
-              ? ` \xB7 ${sync.unmatchedCount} שמות מהקובץ לא זוהו בוודאות`
-              : "",
-          )
-        : e.createElement(
-            "p",
-            { className: "text-xs text-amber-700" },
-            "עדיין לא בוצע עדכון אוטומטי מהקובץ בדרייב (רץ פעם בשבוע). אפשר לסמן שחקנים ידנית כאן בינתיים.",
-          ),
-      // 27.9: פרטי הסנכרון (שמות לא מזוהים, ספירת הבקרה, שינויים מול הקובץ הקודם) עברו
-      // לשורה מקופלת. אזהרות אמיתיות — פער בספירה, קובץ חלקי — נשארות גלויות.
-      sync &&
-      (sync.unmatchedNames?.length ||
-        sync.reconciliation ||
-        (sync.fileDiff && !sync.fileDiff.isFirstRun))
-        ? e.createElement(
-            "details",
-            { className: "text-sm text-amber-800" },
-            e.createElement(
-              "summary",
-              { className: "cursor-pointer font-semibold min-h-[44px] flex items-center" },
-              "פרטי הסנכרון",
-            ),
-            sync.unmatchedNames?.length
-              ? e.createElement(
-                  "p",
-                  { className: "leading-relaxed mt-1" },
-                  "לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "),
-                )
-              : null,
-            sync.reconciliation
-              ? e.createElement(
-                  "p",
-                  { className: "leading-relaxed mt-1" },
-                  `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
-                )
-              : null,
-            sync.fileDiff && !sync.fileDiff.isFirstRun
-              ? e.createElement(
-                  "p",
-                  { className: "mt-1" },
-                  `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות/קבוצה`,
-                )
-              : null,
-          )
-        : null,
-      sync?.reconciliation && !sync.reconciliation.fileBalanced
-        ? e.createElement(
-            "p",
-            { className: "text-sm text-red-700 font-semibold leading-relaxed" },
-            "יש פער בין הקובץ לספירה — כדאי לבדוק את פרטי הסנכרון לפני שמסיקים מסקנות",
-          )
-        : null,
-      sync?.reconciliation?.lowCoverage
-        ? e.createElement(
-            "p",
-            { className: "text-sm text-red-700 font-semibold leading-relaxed" },
-            "בקובץ הרבה פחות שורות ממספר השחקנים הפעילים — ייתכן שזה קובץ חלקי. אל תסיק שכולם לא משלמים.",
-          )
-        : null,
-    ),
     sync?.needsReview && sync?.partialFile
       ? e.createElement(
           "div",
@@ -2375,69 +2352,54 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           ),
         )
       : null,
-    !RO &&
+    e.createElement(
+      "div",
+      { className: "flex flex-col gap-2" },
       e.createElement(
         "div",
-        { className: "flex items-center gap-2 flex-wrap" },
-        e.createElement(
-          "button",
-          {
-            onClick: triggerManualSync,
-            disabled: syncPending,
-            className:
-              "flex items-center gap-1.5 bg-blue-900 text-white text-xs font-semibold rounded-lg px-3 py-2 disabled:opacity-50",
-          },
-          e.createElement(RefreshIcon, {
-            className: `w-3.5 h-3.5 ${syncPending ? "animate-spin" : ""}`,
-          }),
-          syncPending ? "רענון בתהליך..." : "רענון עכשיו מהקובץ בדרייב",
-        ),
-        syncPending
-          ? e.createElement(
-              "span",
-              { className: "text-xs text-slate-500" },
-              "הרשימה תתעדכן לבד, בדרך כלל תוך כ-15 דקות",
-            )
-          : null,
-        e.createElement(
-          "a",
-          {
-            href: "https://github.com/shahar1987/ttc-mvh-attendance/actions/workflows/sync-payments.yml",
-            target: "_blank",
-            rel: "noreferrer",
-            className: "text-sm text-slate-600 underline inline-flex items-center min-h-[44px]",
-          },
-          "להרצה מיידית",
-        ),
-        e.createElement(
-          "button",
-          {
-            onClick: exportNotPayingCsv,
-            disabled: totalNotPaying === 0,
-            className:
-              "text-xs font-semibold text-blue-900 border border-blue-200 rounded-lg px-3 py-2 disabled:opacity-40",
-          },
-          "ייצוא רשימה לאקסל",
-        ),
+        { className: "flex gap-3" },
+        stat("unpaid", totalNotPaying, "לא שילמו", "red"),
+        stat("paid", totalPaid, "שילמו", "green"),
       ),
-    !RO &&
-      suggestions.length > 0 &&
       e.createElement(
-        "div",
-        {
-          className:
-            "bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex flex-col gap-3",
-        },
-        e.createElement(
-          "p",
-          { className: "text-sm font-semibold text-blue-900" },
-          `${suggestions.length} שמות בקובץ שכנראה כתובים אחרת באפליקציה`,
-        ),
-        e.createElement(
-          "p",
-          { className: "text-xs text-blue-700 leading-relaxed" },
-          "לכל שורה: מימין השם כפי שהוא בקובץ המתנ\"ס, ומתחת השחקן באפליקציה עם אותו שם משפחה. אישור משנה את השם באפליקציה לשם שבקובץ ומסמן שהוא שילם.",
-        ),
+        "p",
+        { className: "text-xs text-slate-500 text-center" },
+        syncPending
+          ? "מתבצע רענון מהקובץ בדרייב. הרשימה תתעדכן לבד, בדרך כלל תוך כ-15 דקות"
+          : sync
+            ? `עודכן מהקובץ בדרייב: ${new Date(sync.updatedAt).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}`
+            : "עדיין לא בוצע עדכון מהקובץ בדרייב",
+      ),
+      sync?.reconciliation && !sync.reconciliation.fileBalanced
+        ? e.createElement(
+            "p",
+            { className: "text-sm text-red-700 font-semibold leading-relaxed text-center" },
+            "יש פער בין הקובץ לספירה. כדאי לבדוק ב\"סנכרון והגדרות\" לפני שמסיקים מסקנות",
+          )
+        : null,
+      sync?.reconciliation?.lowCoverage
+        ? e.createElement(
+            "p",
+            { className: "text-sm text-red-700 font-semibold leading-relaxed text-center" },
+            "בקובץ הרבה פחות שורות ממספר השחקנים הפעילים. ייתכן שזה קובץ חלקי, אל תסיק שכולם לא משלמים.",
+          )
+        : null,
+    ),
+    !RO &&
+      reviewCount > 0 &&
+      fold(
+        "שמות שכדאי לבדוק",
+        reviewCount,
+        "amber",
+        !1,
+        suggestions.length > 0 &&
+          e.createElement(
+            "div",
+            { className: "flex flex-col gap-2" },
+            subTitle(`${suggestions.length} שמות בקובץ שכנראה כתובים אחרת באפליקציה`),
+            note(
+              "לכל שורה: השם כפי שהוא בקובץ המתנ\"ס, ומתחת השחקן באפליקציה. אישור משנה את השם באפליקציה לשם שבקובץ ומסמן שהוא שילם.",
+            ),
         suggestions.map((sg, idx) =>
           e.createElement(
             "div",
@@ -2522,147 +2484,229 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             ),
           ),
         ),
+          ),
+        sync?.ambiguousNames?.length
+          ? e.createElement(
+              "div",
+              { className: "flex flex-col gap-1" },
+              subTitle("שני שחקנים עם אותו שם בדיוק באותה קבוצה"),
+              note(
+                sync.ambiguousNames.join(", ") +
+                  ". עד שהשמות יהיו שונים אי אפשר לדעת מי מהם שילם, ולכן שניהם נשארים ברשימת הלא משלמים.",
+              ),
+            )
+          : null,
+        familyFlags.length > 0 &&
+          e.createElement(
+            "div",
+            { className: "flex flex-col gap-1" },
+            subTitle("אותו שם משפחה אצל כמה משלמים באותה קבוצה"),
+            note("כדאי לוודא שהשמות באפליקציה ברורים ומובחנים."),
+            familyFlags.map((f, idx) =>
+              e.createElement(
+                "p",
+                { key: idx, className: "text-xs text-slate-700" },
+                `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
+              ),
+            ),
+          ),
+        sessionGaps.length > 0 &&
+          e.createElement(
+            "div",
+            { className: "flex flex-col gap-1" },
+            subTitle(`${sessionGaps.length} שחקנים שילמו על פחות אימונים ממה שהקבוצה מתאמנת`),
+            note(
+              "זה לא בהכרח חוב. יש מי שנרשם בכוונה לפעם בשבוע, אבל שווה לוודא.",
+            ),
+            sessionGaps.map((g, idx) =>
+              e.createElement(
+                "p",
+                { key: idx, className: "text-xs text-slate-700" },
+                `${g.player.name} \xB7 ${g.group?.name || "קבוצה"} \xB7 שילם על ${g.paid} בשבוע, הקבוצה מתאמנת ${g.actual}`,
+                g.label
+                  ? e.createElement(
+                      "span",
+                      { className: "text-slate-500" },
+                      ` \xB7 בקובץ: ${g.label}`,
+                    )
+                  : null,
+              ),
+            ),
+          ),
       ),
+    e.createElement(
+      "div",
+      { className: "relative" },
+      e.createElement(Ne, {
+        className:
+          "w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2",
+      }),
+      e.createElement("input", {
+        value: a,
+        onChange: (m) => l(m.target.value),
+        placeholder: "חיפוש לפי שם שחקן או הורה",
+        className:
+          "w-full bg-white border border-slate-200 rounded-xl py-3 pr-9 pl-3 text-base text-right outline-none focus:border-emerald-400",
+      }),
+    ),
     !RO &&
-      sync?.ambiguousNames?.length
-      ? e.createElement(
+      e.createElement(
+        "button",
+        {
+          onClick: () => setView((v) => (v === "all" ? "unpaid" : "all")),
+          className: "self-start text-sm text-blue-900 underline min-h-[44px]",
+        },
+        view === "all" ? "חזרה לרשימת מי שלא שילם" : "הצג את כל השחקנים, כדי לסמן ידנית",
+      ),
+    n.length === 0 &&
+      e.createElement(
+        "p",
+        { className: "text-center text-sm text-slate-500 py-8" },
+        a
+          ? "לא נמצאו תוצאות"
+          : view === "paid"
+            ? "עדיין אף אחד לא זוהה כמשלם"
+            : view === "unpaid"
+              ? "כל השחקנים שילמו 🎉"
+              : "לא נמצאו שחקנים",
+      ),
+    n.map(({ group: m, players: o }) =>
+      e.createElement(
+        "div",
+        { key: m.id, className: "flex flex-col gap-1.5" },
+        e.createElement(
+          "h3",
+          { className: "text-sm font-semibold text-slate-600 px-1 flex items-center gap-2" },
+          m.name,
+          e.createElement("span", { className: "text-xs font-normal text-slate-400" }, o.length),
+        ),
+        e.createElement(
           "div",
           {
             className:
-              "bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex flex-col gap-1",
+              "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
           },
-          e.createElement(
-            "p",
-            { className: "text-sm font-semibold text-red-900" },
-            "שמות זהים לגמרי לשני שחקנים באותה קבוצה — צריך להבחין ביניהם באפליקציה",
-          ),
-          e.createElement(
-            "p",
-            { className: "text-xs text-red-700 leading-relaxed" },
-            sync.ambiguousNames.join(", ") +
-              " — עד שהשמות יהיו שונים אי אפשר לדעת מי מהם שילם, ולכן שניהם נשארים מסומנים כלא משלמים.",
-          ),
-        )
-      : null,
-    !RO &&
-      familyFlags.length > 0 &&
-      e.createElement(
-        "div",
-        {
-          className:
-            "bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex flex-col gap-1.5",
-        },
-        e.createElement(
-          "p",
-          { className: "text-sm font-semibold text-orange-900" },
-          "שם משפחה זהה בין כמה משלמים באותה קבוצה — כדאי לוודא שהשמות באפליקציה ברורים ומובחנים",
-        ),
-        familyFlags.map((f, idx) =>
-          e.createElement(
-            "p",
-            { key: idx, className: "text-xs text-orange-800" },
-            `${f.group?.name || "קבוצה"}: ${f.names.join(" \xB7 ")}`,
-          ),
-        ),
-      ),
-    !RO &&
-      sessionGaps.length > 0 &&
-      e.createElement(
-        "div",
-        {
-          className:
-            "bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex flex-col gap-1.5",
-        },
-        e.createElement(
-          "p",
-          { className: "text-sm font-semibold text-violet-900" },
-          `${sessionGaps.length} שחקנים רשומים לפחות אימונים ממה שהקבוצה מתאמנת בפועל`,
-        ),
-        e.createElement(
-          "p",
-          { className: "text-xs text-violet-700 leading-relaxed" },
-          'המספר נלקח משורת המיפוי של הקבוצה בקובץ המתנ"ס, מול ימי האימון של הקבוצה באפליקציה. זה לא בהכרח חוב — יש מי שנרשם בכוונה לפעם בשבוע — אבל שווה לוודא.',
-        ),
-        sessionGaps.map((g, idx) =>
-          e.createElement(
-            "p",
-            { key: idx, className: "text-xs text-violet-800" },
-            `${g.player.name} \xB7 ${g.group?.name || "קבוצה"} \xB7 שילם על ${g.paid} בשבוע, הקבוצה מתאמנת ${g.actual}`,
-            g.label
-              ? e.createElement(
-                  "span",
-                  { className: "text-xs text-violet-500" },
-                  ` \xB7 בקובץ: ${g.label}`,
-                )
-              : null,
-          ),
-        ),
-      ),
-    e.createElement(
-      "button",
-      {
-        onClick: () => setShowPaid((v) => !v),
-        className: "self-start text-xs text-emerald-800 underline",
-      },
-      showPaid ? "הסתר את מי ששילם" : `שילמו (${totalPaid})`,
-    ),
-    showPaid &&
-      e.createElement(
-        "div",
-        {
-          className:
-            "flex flex-col gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3",
-        },
-        e.createElement(
-          "p",
-          { className: "text-xs text-emerald-800 leading-relaxed" },
-          "שחקנים שמופיעים גם בקובץ התשלומים וגם באפליקציה, או שאישרת אותם ידנית. מי שלא ברשימה הזו ושייך לקבוצה ממופה מופיע למטה כלא משלם.",
-        ),
-        totalPaid === 0
-          ? e.createElement(
-              "p",
-              { className: "text-xs text-emerald-900" },
-              "עדיין אף אחד לא זוהה כמשלם — הרץ סנכרון כדי לעדכן.",
-            )
-          : paidByGroup.map((x) =>
+          o.map((x) =>
+            e.createElement(
+              "div",
+              {
+                key: x.id,
+                className: "px-4 py-3 flex items-center justify-between gap-3",
+              },
               e.createElement(
                 "div",
-                { key: x.group.id, className: "flex flex-col gap-0.5" },
+                { className: "text-right flex-1 min-w-0" },
                 e.createElement(
-                  "p",
-                  { className: "text-xs font-semibold text-emerald-900" },
-                  `${x.group.name} (${x.players.length})`,
+                  "div",
+                  { className: "text-base font-semibold text-blue-950 flex items-center gap-1.5" },
+                  x.name,
+                  view === "all" && x.notPaying
+                    ? e.createElement(
+                        "span",
+                        { className: "text-xs font-normal bg-red-100 text-red-700 rounded-full px-2 py-0.5" },
+                        "לא שילם",
+                      )
+                    : null,
                 ),
-                x.players.map((p) =>
+                x.parentName || x.parentPhone
+                  ? e.createElement(
+                      "div",
+                      { className: "text-xs text-slate-500" },
+                      x.parentName ? x.parentName + " \xB7 " : "",
+                      e.createElement("span", { dir: "ltr" }, x.parentPhone || ""),
+                    )
+                  : null,
+                x.notPaying && reasonText(x.id)
+                  ? e.createElement(
+                      "div",
+                      { className: "text-xs text-slate-500 leading-snug mt-0.5" },
+                      reasonText(x.id),
+                    )
+                  : null,
+                x.notPayingSource === "manual"
+                  ? e.createElement(
+                      "div",
+                      { className: "text-xs text-slate-400 mt-0.5" },
+                      x.notPaying ? "סומן ידנית כלא משלם" : "אושר ידנית",
+                    )
+                  : null,
+              ),
+              e.createElement(
+                "div",
+                { className: "flex items-center gap-2 shrink-0" },
+                x.notPaying &&
+                  isValidPhone(x.parentPhone) &&
+                  (tracksFor(x.groupId).length === 1
+                    ? // מסלול יחיד (פרקינסון, סגל ליגות) — פתיחה ישירה בלי חלונית
+                      e.createElement(
+                        "a",
+                        {
+                          href: ne(
+                            normalizePhone(x.parentPhone),
+                            paymentMsg(x, m, tracksFor(x.groupId)[0]),
+                          ),
+                          target: "_blank",
+                          rel: "noreferrer",
+                          className:
+                            "min-w-[48px] min-h-[48px] rounded-full bg-emerald-50 flex items-center justify-center",
+                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
+                          title: "שליחת הודעת תשלום בוואטסאפ",
+                        },
+                        e.createElement(te, { className: "w-5 h-5 text-emerald-600" }),
+                      )
+                    : e.createElement(
+                        "button",
+                        {
+                          onClick: () => setPayTarget({ player: x, group: m }),
+                          className:
+                            "min-w-[48px] min-h-[48px] rounded-full bg-emerald-50 flex items-center justify-center active:scale-95 transition-transform",
+                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
+                          title: "שליחת הודעת תשלום בוואטסאפ",
+                        },
+                        e.createElement(te, { className: "w-5 h-5 text-emerald-600" }),
+                      )),
+                // אחרי שיחה שבה התשלום הוסדר: לחיצה אחת מורידה את השחקן מהרשימה.
+                // נשמר כסימון ידני, ולכן הסנכרון מהקובץ לא יחזיר אותו.
+                !RO && x.notPaying &&
                   e.createElement(
-                    "p",
-                    { key: p.id, className: "text-xs text-emerald-800" },
-                    p.name,
-                    p.notPayingSource === "manual"
-                      ? e.createElement(
-                          "span",
-                          { className: "text-xs text-emerald-600" },
-                          " \xB7 אושר ידנית",
-                        )
-                      : null,
+                    "button",
+                    {
+                      onClick: () =>
+                        askConfirm(`לסמן ש"${x.name}" הסדיר את התשלום? הוא יוסר מהרשימה.`, { yes: "כן, הוסדר" }).then((ok) => ok &&
+                        O(S(P, "players", x.id), {
+                          notPaying: !1,
+                          notPayingSource: "manual",
+                          paymentSettledAt: new Date().toISOString(),
+                        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err)))),
+                      className:
+                        "min-h-[48px] rounded-full bg-emerald-600 text-white text-sm font-semibold px-4 active:scale-95 transition-transform",
+                    },
+                    "הוסדר ✓",
                   ),
-                ),
+                !RO && !x.notPaying &&
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () => toggle(x),
+                      className:
+                        "min-h-[48px] rounded-full border border-slate-300 text-slate-600 text-sm px-4 active:scale-95 transition-transform",
+                    },
+                    "לא שילם",
+                  ),
               ),
             ),
-      ),
-    multiGroup.length > 0 &&
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-2 bg-white border border-slate-200 rounded-xl p-3" },
-        e.createElement(
-          "p",
-          { className: "text-sm font-bold text-blue-950" },
-          `ילדים שמתאמנים ביותר מקבוצה אחת (${multiGroup.length})`,
+          ),
         ),
-        e.createElement(
-          "p",
-          { className: "text-xs text-slate-500 leading-relaxed" },
-          'זוהו לפי שם זהה וטלפון הורה זהה. המספר הוא כמה אימונים בשבוע הילד מתאמן בכל הקבוצות יחד — להשוואה מול מה שנרשם אליו במתנ"ס.',
+      ),
+    ),
+    multiGroup.length > 0 &&
+      fold(
+        "ילדים שמתאמנים ביותר מקבוצה אחת",
+        multiGroup.length,
+        "plain",
+        !1,
+        note(
+          'זוהו לפי שם זהה וטלפון הורה זהה. המספר הוא כמה אימונים בשבוע הילד מתאמן בכל הקבוצות יחד, להשוואה מול מה שנרשם אליו במתנ"ס.',
         ),
         multiGroup.map((c) =>
           e.createElement(
@@ -2688,28 +2732,70 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
       ),
     !RO &&
-      e.createElement(
-        "button",
-        {
-          onClick: () => setShowMapping((v) => !v),
-          className: "self-start text-xs text-blue-900 underline",
-        },
-        showMapping
-          ? "הסתר מיפוי קבוצות מתנ\"ס"
-          : `מיפוי קבוצות מתנ"ס (${mappings.length})`,
-      ),
-    !RO &&
-      showMapping &&
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3" },
+      fold(
+        "סנכרון והגדרות",
+        null,
+        "plain",
+        !1,
         e.createElement(
-          "p",
-          { className: "text-xs text-slate-500 leading-relaxed" },
-          'כאן קובעים לאיזו קבוצה באפליקציה כל שם קבוצה בקובץ המתנ"ס מתאים, וכמה אימונים בשבוע הרישום הזה אמור לכסות. המספר ניתן לעריכה חופשית בכל עת ולא קבוע בקוד. קבוצת "' +
-            PAYMENT_EXCLUDED_GROUP_NAME +
-            '" לא מוצגת כאן ולא נכללת במסך הזה כרגע.',
+          "div",
+          { className: "flex flex-wrap gap-2" },
+          e.createElement(
+            "button",
+            {
+              onClick: triggerManualSync,
+              disabled: syncPending,
+              className:
+                "min-h-[48px] flex items-center gap-2 bg-blue-900 text-white text-sm font-semibold rounded-xl px-4 disabled:opacity-50",
+            },
+            e.createElement(RefreshIcon, {
+              className: `w-4 h-4 ${syncPending ? "animate-spin" : ""}`,
+            }),
+            syncPending ? "רענון בתהליך..." : "רענון מהקובץ בדרייב",
+          ),
+          e.createElement(
+            "button",
+            {
+              onClick: exportNotPayingCsv,
+              disabled: totalNotPaying === 0,
+              className:
+                "min-h-[48px] text-sm font-semibold text-blue-900 border border-blue-200 bg-white rounded-xl px-4 disabled:opacity-40",
+            },
+            "ייצוא לאקסל",
+          ),
         ),
+        e.createElement(
+          "a",
+          {
+            href: "https://github.com/shahar1987/ttc-mvh-attendance/actions/workflows/sync-payments.yml",
+            target: "_blank",
+            rel: "noreferrer",
+            className: "self-start text-sm text-slate-600 underline inline-flex items-center min-h-[44px]",
+          },
+          "הרצה מיידית של הסנכרון (GitHub)",
+        ),
+        sync?.unmatchedNames?.length
+          ? note("לא זוהו בוודאות מהקובץ: " + sync.unmatchedNames.join(", "))
+          : null,
+        sync?.reconciliation
+          ? note(
+              `בקרה: ${sync.reconciliation.paid} משלמים + ${sync.reconciliation.notPaying} לא משלמים = ${sync.reconciliation.activeCovered} שחקנים פעילים בקבוצות ממופות \xB7 ${sync.reconciliation.fileRows} שורות בקובץ, ${sync.reconciliation.fileAccounted} מהן נספרו`,
+            )
+          : null,
+        sync?.fileDiff && !sync.fileDiff.isFirstRun
+          ? note(
+              `שינויים מול הקובץ הקודם: ${sync.fileDiff.added} נרשמים חדשים, ${sync.fileDiff.removed} שנעלמו, ${(sync.fileDiff.changed || []).length} ששינו תדירות או קבוצה`,
+            )
+          : null,
+        e.createElement(
+          "div",
+          { className: "border-t border-slate-100 pt-3 flex flex-col gap-2" },
+          subTitle(`מיפוי קבוצות מתנ"ס (${mappings.length})`),
+          note(
+            'לאיזו קבוצה באפליקציה מתאים כל שם קבוצה בקובץ המתנ"ס, וכמה אימונים בשבוע הרישום מכסה. קבוצת "' +
+              PAYMENT_EXCLUDED_GROUP_NAME +
+              '" לא נכללת במסך הזה.',
+          ),
         mappings.map((row) =>
           e.createElement(PaymentMappingRow, {
             key: row.id,
@@ -2778,177 +2864,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             "הוספה",
           ),
         ),
-      ),
-    e.createElement(
-      "div",
-      { className: "relative" },
-      e.createElement(Ne, {
-        className:
-          "w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2",
-      }),
-      e.createElement("input", {
-        value: a,
-        onChange: (m) => l(m.target.value),
-        placeholder: "חיפוש לפי שם שחקן או הורה",
-        className:
-          "w-full bg-white border border-slate-200 rounded-xl py-3 pr-9 pl-3 text-sm text-right outline-none focus:border-emerald-400",
-      }),
-    ),
-    !RO &&
-      e.createElement(
-        "button",
-        {
-          onClick: () => setShowAll((v) => !v),
-          className: "self-start text-xs text-blue-900 underline",
-        },
-        showAll
-          ? "הצג רק מי שלא משלם"
-          : "הצג את כל השחקנים (כדי לסמן ידנית)",
-      ),
-    n.length === 0 &&
-      e.createElement(
-        "p",
-        { className: "text-center text-sm text-slate-400 py-8" },
-        showAll ? "לא נמצאו תוצאות" : "אין כרגע אף שחקן שמסומן כלא משלם",
-      ),
-    n.map(({ group: m, players: o }) =>
-      e.createElement(
-        "div",
-        { key: m.id, className: "flex flex-col gap-2" },
-        e.createElement(
-          "h3",
-          { className: "text-xs font-semibold text-slate-500 px-1" },
-          m.name,
-        ),
-        e.createElement(
-          "div",
-          {
-            className:
-              "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100",
-          },
-          o.map((x) =>
-            e.createElement(
-              "div",
-              {
-                key: x.id,
-                className: "px-4 py-3 flex items-center justify-between gap-2",
-              },
-              e.createElement(
-                "div",
-                { className: "flex items-center gap-1.5 shrink-0" },
-                isValidPhone(x.parentPhone) &&
-                  (tracksFor(x.groupId).length === 1
-                    ? // מסלול יחיד (פרקינסון, סגל ליגות) — פתיחה ישירה בלי חלונית
-                      e.createElement(
-                        "a",
-                        {
-                          href: ne(
-                            normalizePhone(x.parentPhone),
-                            paymentMsg(x, m, tracksFor(x.groupId)[0]),
-                          ),
-                          target: "_blank",
-                          rel: "noreferrer",
-                          className:
-                            "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center",
-                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
-                          title: "שליחת הודעת תשלום בוואטסאפ",
-                        },
-                        e.createElement(te, {
-                          className: "w-4 h-4 text-emerald-600",
-                        }),
-                      )
-                    : e.createElement(
-                        "button",
-                        {
-                          onClick: () => setPayTarget({ player: x, group: m }),
-                          className:
-                            "min-w-[44px] min-h-[44px] rounded-full bg-emerald-50 flex items-center justify-center active:scale-95 transition-transform",
-                          "aria-label": "שליחת הודעת תשלום בוואטסאפ",
-                          title: "שליחת הודעת תשלום בוואטסאפ",
-                        },
-                        e.createElement(te, {
-                          className: "w-4 h-4 text-emerald-600",
-                        }),
-                      )),
-                // אחרי שיחה שבה התשלום הוסדר: לחיצה אחת מורידה את השחקן מהרשימה.
-                // נשמר כסימון ידני, ולכן הסנכרון מהקובץ לא יחזיר אותו.
-                !RO && x.notPaying &&
-                  e.createElement(
-                    "button",
-                    {
-                      onClick: () =>
-                        askConfirm(`לסמן ש"${x.name}" הסדיר את התשלום? הוא יוסר מהרשימה.`, { yes: "כן, הוסדר" }).then((ok) => ok &&
-                        O(S(P, "players", x.id), {
-                          notPaying: !1,
-                          notPayingSource: "manual",
-                          paymentSettledAt: new Date().toISOString(),
-                        }).catch((err) => alert("שמירה נכשלה: " + (err.message || err)))),
-                      className:
-                        "min-h-[44px] rounded-full bg-emerald-500 text-white text-sm font-semibold px-3 active:scale-95 transition-transform",
-                    },
-                    "הוסדר ✓",
-                  ),
-                !RO && !x.notPaying &&
-                  e.createElement(
-                    "button",
-                    {
-                      onClick: () => toggle(x),
-                      className: `min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center ${x.notPaying ? "bg-red-100" : "bg-slate-100"}`,
-                      "aria-label": x.notPaying
-                        ? "בטל סימון לא משלם"
-                        : "סמן כלא משלם",
-                    },
-                    e.createElement(BanIcon, {
-                      className: `w-4 h-4 ${x.notPaying ? "text-red-600" : "text-slate-400"}`,
-                    }),
-                  ),
-              ),
-              e.createElement(
-                "div",
-                { className: "text-right flex-1" },
-                e.createElement(
-                  "div",
-                  {
-                    className:
-                      "text-sm font-medium text-blue-950 flex items-center gap-1.5 justify-end",
-                  },
-                  x.notPaying &&
-                    e.createElement(
-                      "span",
-                      {
-                        className:
-                          "text-xs bg-red-100 text-red-700 rounded-full px-1.5 py-0.5",
-                      },
-                      "לא משלם",
-                    ),
-                  x.name,
-                ),
-                e.createElement(
-                  "div",
-                  { className: "text-xs text-slate-400" },
-                  x.parentName ? x.parentName + " \xB7 " : "",
-                  x.parentPhone,
-                ),
-                x.notPaying && reasonText(x.id)
-                  ? e.createElement(
-                      "div",
-                      { className: "text-xs text-slate-500 leading-snug" },
-                      reasonText(x.id),
-                    )
-                  : null,
-                x.notPaying && x.notPayingSource === "manual"
-                  ? e.createElement(
-                      "div",
-                      { className: "text-xs text-slate-400" },
-                      "סומן ידנית \xB7 הסנכרון לא משנה אותו",
-                    )
-                  : null,
-              ),
-            ),
-          ),
         ),
       ),
-    ),
     payTarget &&
       e.createElement(PaymentTrackPicker, {
         player: payTarget.player,
