@@ -13,13 +13,17 @@ export const APPROVAL = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|
 // אישור בשני שלבים לפעולה שיוצאת החוצה: הקריאה הראשונה שומרת טיוטה ולא עושה כלום. רק אם הבעלים ענה "כן"
 // בהודעה *אחרת* (לא באותה הודעה שבה ביקש — "תשלחי למאמנים..." מכיל "תשלחי") ועם אותם פרטים בדיוק — מאשרים.
 // הכתיבה מותנית: שתי קריאות במקביל (Gemini מפעיל כמה כלים יחד) לא יכולות שתיהן "לצרוך" את אותו אישור.
+// "כן" תקף רק 10 דקות אחרי שהשאלה נשאלה — "כן" לשאלה אחרת שעה אחר כך לא מפעיל טיוטה ישנה
+const CONFIRM_TTL_MS = 10 * 60 * 1000;
 export async function confirmed(store, kind, payload, ownerText, turn) {
   const key = JSON.stringify(payload);
   let ok = false;
   await store.update("agentReports/bot", (bot) => {
     const p = bot.pending?.[kind];
-    ok = APPROVAL.test(ownerText || "") && p?.key === key && p.turn !== turn;
-    return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn, at: p?.key === key ? p.at || new Date().toISOString() : new Date().toISOString() } } };
+    const fresh = Date.now() - Date.parse(p?.askedAt || p?.at || 0) < CONFIRM_TTL_MS;
+    ok = APPROVAL.test(ownerText || "") && p?.key === key && p.turn !== turn && fresh;
+    const now = new Date().toISOString();
+    return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn, at: p?.key === key ? p.at || now : now, askedAt: now } } };
   });
   return ok;
 }

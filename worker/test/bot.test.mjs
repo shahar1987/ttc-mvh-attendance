@@ -659,6 +659,14 @@ const tc = tools("כן", "c-b");
 const par = await Promise.all([tc.publish_post({ platform: "facebook", text: "מקביל" }), tc.publish_post({ platform: "facebook", text: "מקביל" })]);
 assert.equal(social.length - s5b, 1, "פורסם פעם אחת");
 assert.equal(par.filter((x) => /^פורסם/.test(x)).length, 1);
+// confirmed: "כן" שמגיע יותר מ-10 דקות אחרי השאלה לא מאשר טיוטה ישנה
+const s5c = social.length;
+await tools("פרסם", "old-a").publish_post({ platform: "facebook", text: "ישן" });
+const pbOld = docs.get("agentReports/bot");
+put("agentReports/bot", { ...pbOld, pending: { ...pbOld.pending, post: { ...pbOld.pending.post, askedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString() } } });
+assert.doesNotMatch(await tools("כן", "old-b").publish_post({ platform: "facebook", text: "ישן" }), /^פורסם/);
+assert.equal(social.length, s5c, "לא פורסם על סמך כן ישן");
+assert.match(await tools("כן", "old-c").publish_post({ platform: "facebook", text: "ישן" }), /^פורסם/, "אחרי שאלה חדשה — כן מאשר");
 
 // 6. היסטוריה: כתיבה מקבילה (תשובה מקלוד) בין הקריאה לכתיבה — לא נדרסת
 globalThis.beforePatch = (path, u) => {

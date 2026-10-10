@@ -3105,6 +3105,7 @@ function re({
   initialDate: ID,
   initialNonce: IN,
   readOnly: RO,
+  loadError: LE,
 }) {
   // רשימת השחקנים לפי א"ב — המאמן מוצא את מי שחסר בלי לחפש. הסדר משפיע רק
   // על התצוגה; השמירה עובדת לפי מזהה שחקן.
@@ -3112,9 +3113,10 @@ function re({
       .filter((p) => p.groupId === t.id && p.isActive && !p.deleted)
       .sort((x, y) => (x.name || "").localeCompare(y.name || "", "he")),
     today = E(),
+    defDay = attDefaultDay(),
     minDate = "2026-09-07",
-    [selDate, setSelDate] = b(ID || today),
-    [, setDayTick] = b(0),
+    [selDate, setSelDate] = b(ID || defDay),
+    [, setDayTick] = b(""),
     [showDatePicker, setShowDatePicker] = b(!!ID),
     m = selDate,
     isPast = m !== today,
@@ -3186,7 +3188,7 @@ function re({
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
     if (prevDateKey.current !== dateKey) {
-      setSelDate(ID || today);
+      setSelDate(ID || defDay);
       setShowDatePicker(!!ID);
     }
     prevDateKey.current = dateKey;
@@ -3194,17 +3196,18 @@ function re({
   // מסך שנשאר פתוח אחרי חצות (טאבלט של המועדון): "היום" מתעדכן, ואם המאמן היה
   // על היום הקודם בלי סימונים שלא נשמרו — עוברים ליום החדש. עם סימונים פתוחים
   // לא נוגעים בכלום.
-  let dayRef = e.useRef(today),
+  let dayRef = e.useRef(defDay),
     selRef = e.useRef(selDate);
   selRef.current = selDate;
   j(() => {
     let roll = () => {
-        let nd = E(),
+        let nd = attDefaultDay(),
           od = dayRef.current;
+        // "היום" (לכותרת ולתאריך המקסימלי) מתחלף בחצות, ברירת המחדל ב-04:00
+        setDayTick(E());
         if (nd === od) return;
         dayRef.current = nd;
         selRef.current === od && dirtyRef.current == null && setSelDate(nd);
-        setDayTick((v) => v + 1);
       },
       vis = () => document.visibilityState === "visible" && roll(),
       iv = setInterval(roll, 60000);
@@ -3274,6 +3277,28 @@ function re({
     A = async () => {
       (r(!0), N(""));
       try {
+        // לפני שכותבים — מה באמת שמור בשרת ליום הזה. בלי זה מסך שלא התעדכן
+        // (ויפי חלש, מאמן אחר שמר, ההאזנה נפלה) דרס "לא הגיע" אמיתי ב"הגיע".
+        let srvDay = null;
+        try {
+          let snap = await Promise.race([
+            fsGetDocsFromServer(
+              fsQuery(M(P, "attendance"), fsWhere("groupId", "==", t.id), fsWhere("date", "==", m)),
+            ),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000)),
+          ]);
+          srvDay = {};
+          snap.docs.forEach((d) => (srvDay[d.data().playerId] = d.data()));
+        } catch (e2) {}
+        if (
+          !srvDay &&
+          LE &&
+          !(await askConfirm(
+            "אין חיבור לשרת, ונתוני הנוכחות לא נטענו. שמירה עכשיו עלולה לדרוס סימונים של מאמן אחר. לשמור בכל זאת?",
+            { yes: "כן, לשמור", no: "לא עכשיו" },
+          ))
+        )
+          return;
         let p = Te(P),
           saved = { ...x };
         // רק שחקנים שנגעו בהם בפועל בעריכה הזו נכתבים לשרת — לא כל השחקנים
@@ -3284,9 +3309,11 @@ function re({
           let w = n.find((p2) => p2.id === pid);
           if (!w) return;
           let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
-            prev = l.find(
-              (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
-            ),
+            prev =
+              (srvDay && srvDay[w.id]) ||
+              l.find(
+                (v) => v.groupId === t.id && v.date === m && v.playerId === w.id,
+              ),
             st2 = x[w.id] || null;
           // מילוי אוטומטי לא דורס רישום אמיתי שכבר בשרת (ממאמן אחר)
           if (autoRef.current.has(pid) && prev) {
@@ -3578,7 +3605,6 @@ function re({
             reason,
             note,
             userId: s.id,
-            attendance: l,
           }),
       }),
     e.createElement(
@@ -3849,6 +3875,7 @@ function mt({
   pendingNonce: IN,
   readOnly: RO,
   onOpenPayments: OP,
+  loadError: LE,
 }) {
   let [editGroup, setEditGroup] = b(null),
     c = i || RO ? s : s.filter((r) => isGroupCoach(r, t.id)),
@@ -3948,6 +3975,7 @@ function mt({
             initialDate: ID,
             initialNonce: IN,
             readOnly: RO,
+            loadError: LE,
           }),
           // התראות והודעות ממתינות אחרי הרשימה — לא לפני המשימה העיקרית
           !RO &&
@@ -4162,7 +4190,9 @@ function Q() {
     { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid, staffMode),
     { data: rawAttendance, loading: aLoading, error: aError } = L("attendance", coachGroupIds, t?.uid, staffMode, coachGroupIds ? undefined : ["date", ">=", ATT_HISTORY_FROM]),
     { data: cancellations, loading: xLoading } = L("cancellations", coachGroupIds, t?.uid, staffMode),
-    n = excludeCancelled(rawAttendance, cancellations),
+    [olderFrom, setOlderFrom] = b(null),
+    [olderAtt, setOlderAtt] = b([]),
+    n = excludeCancelled(olderAtt.length ? olderAtt.concat(rawAttendance) : rawAttendance, cancellations),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
@@ -4214,6 +4244,21 @@ function Q() {
     };
   profileRef.current = s || null;
   useCoachFieldsHealer(!!s && isAdminRole(s), i, l);
+  // דוח על טווח שמתחיל לפני חלון ההאזנה של המנהל — טוענים את החלק הישן פעם אחת
+  let olderOn = staffMode && !coachGroupIds;
+  j(() => {
+    if (!olderOn) return;
+    olderAttReq = (from) => setOlderFrom((cur) => (!cur || from < cur ? from : cur));
+    return () => (olderAttReq = null);
+  }, [olderOn]);
+  j(() => {
+    if (!olderFrom || !olderOn) return;
+    fsGetDocs(
+      fsQuery(M(P, "attendance"), fsWhere("date", ">=", olderFrom), fsWhere("date", "<", ATT_HISTORY_FROM)),
+    )
+      .then((snap) => setOlderAtt(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+      .catch((err) => console.warn("older attendance load failed:", err));
+  }, [olderFrom, olderOn]);
   if (
     (j(() => {
       s?.id && qe(s.id);
@@ -4486,6 +4531,7 @@ function Q() {
           cancellations,
           readOnly: vw,
           onOpenPayments: canDo(s, "payments") ? () => goToScreen("payments") : null,
+          loadError: !!aError,
         }),
       e.createElement(dt, {
         open: x,

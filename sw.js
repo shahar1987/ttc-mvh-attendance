@@ -8,7 +8,7 @@
 //     deploy, so a cached copy can never be stale. This is what makes launches fast.
 //   * index.html (navigations)                 -> serve the cached copy immediately,
 //     refresh it in the background. A new deploy is picked up on the next launch.
-//   * everything else (tttm.json, manifest)    -> network-first, cache fallback.
+//   * everything else (manifest)               -> network-first, cache fallback.
 const VERSION = '__BUILD_VERSION__';
 const CACHE = 'ttc-shell-' + VERSION;
 // בפיתוח מקומי (sw.js בלי הזרקת גרסה) אין קבצים עם ?v= — לא מנסים לשמור אותם
