@@ -44,6 +44,13 @@
 
 ---
 
+## [פתוח] 2026-10-10 — שיפורי זרימה: קישור ישיר מהתזכורת, תפריט של 5, חלונות אישור
+סוג: שינוי קטן + פיצ'ר (לא נוגע ב-attendance ולא בחוקים)
+מסלול: ענף claude/project-thread-6bqj3o ← PR ← "כן" של הבעלים ← שחרור
+- חוקר: מיפוי זרימה מהקוד (https://claude.ai/artifact/1CSz6AXkhm9aAWc2UZPNxr). רעיונות 3, 5, 6 נפלו כי פורטל ההורים הוסר (e39fa37).
+- בונה: (1) reminders.js מוסיף לקישור למאמן ‎#group=<id>, ו-Q() ב-part-b.js פותח ממנו את מסך הסימון (קבוצה שאינה של המאמן — נשארים ברשימה). (2) MENU_SECTIONS: חמש שורות בתפריט, SectionTabs מעל מסך בקבוצה עם כמה מסכים; תחרויות בשורה קטנה בתחתית. (3) askConfirm ב-part-a.js מחליף את כל window.confirm (Promise<boolean>); confirmLeave/confirmOverwrite מחזירים Promise.
+- בודק: worker/test/bot.test.mjs (נבדק הקישור #group=g3), webhook.test, build של esbuild ו-tailwind, צילומי Playwright של התפריט, הלשוניות והחלון. owner.test.mjs נכשל גם על main (מודול חסר בסביבה).
+
 ## [פתוח] 2026-10-09 — סוכן הפרסום: השלמת שלבים 1–3 של מסמך התכנון
 סוג: פיצ'ר (לא נוגע ב-attendance, בחוקים או באפליקציה — רק agentReports/bot, agentReports/insights ו-agentReports/content)
 מסלול: ענף claude/publishing-agent-stages ← PR טיוטה ← "כן" של הבעלים ← שחרור

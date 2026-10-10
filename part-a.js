@@ -495,6 +495,64 @@ async function cancelTraining({ date, groupId, reason, note, userId }) {
 async function undoCancellation(c) {
   await Ee(S(P, "cancellations", c.id));
 }
+// חלון אישור של האפליקציה במקום window.confirm של הדפדפן: טקסט גדול ושני כפתורים גבוהים.
+// מחזיר Promise<boolean>. Escape או לחיצה מחוץ לחלון = ביטול. הפוקוס על "ביטול" כדי שאנטר לא יאשר בטעות.
+let confirmRoot = null;
+function askConfirm(text, { yes = "כן, להמשיך", no = "ביטול", danger = !1 } = {}) {
+  if (!confirmRoot) {
+    let el = document.createElement("div");
+    document.body.appendChild(el);
+    confirmRoot = bt(el);
+  }
+  return new Promise((resolve) => {
+    let done = (v) => (confirmRoot.render(null), resolve(v));
+    confirmRoot.render(e.createElement(ConfirmDialog, { text, yes, no, danger, done }));
+  });
+}
+function ConfirmDialog({ text, yes, no, danger, done }) {
+  let noRef = e.useRef(null);
+  j(() => {
+    noRef.current && noRef.current.focus();
+    let onKey = (ev) => ev.key === "Escape" && done(!1);
+    return (
+      window.addEventListener("keydown", onKey),
+      () => window.removeEventListener("keydown", onKey)
+    );
+  }, []);
+  return e.createElement(
+    "div",
+    {
+      dir: "rtl",
+      role: "alertdialog",
+      "aria-modal": "true",
+      "aria-label": text,
+      className: "fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-4",
+      onClick: (ev) => ev.target === ev.currentTarget && done(!1),
+    },
+    e.createElement(
+      "div",
+      { className: "w-full max-w-md bg-white rounded-2xl p-5 flex flex-col gap-3 shadow-xl" },
+      e.createElement("p", { className: "text-base text-slate-800 leading-relaxed mb-1" }, text),
+      e.createElement(
+        "button",
+        {
+          onClick: () => done(!0),
+          className: `min-h-[56px] rounded-xl text-white text-base font-bold ${danger ? "bg-red-500" : "bg-blue-900"}`,
+        },
+        yes,
+      ),
+      e.createElement(
+        "button",
+        {
+          ref: noRef,
+          onClick: () => done(!1),
+          className: "min-h-[56px] rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-base font-semibold",
+        },
+        no,
+      ),
+    ),
+  );
+}
 function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose }) {
   // 27.9: אין סיבה ברירת מחדל — אישור מהיר רשם "מזג אוויר" גם כשזו לא הייתה הסיבה
   let [reason, setReason] = b(""),
@@ -512,9 +570,10 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
       }
       if (
         hasAttendance &&
-        !window.confirm(
+        !(await askConfirm(
           "כבר נשמרה נוכחות להיום לקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
-        )
+          { yes: "כן, לבטל את האימון", no: "חזרה" },
+        ))
       )
         return;
       (setSaving(!0), setErr(""));
@@ -3135,9 +3194,10 @@ function at({
     },
     delPlayer = async () => {
       if (
-        !window.confirm(
+        !(await askConfirm(
           `למחוק את "${n}" מהמערכת? הוא יוסר מכל המסכים הפעילים (רשימות, ספר טלפונים, קבוצה), אך היסטוריית הנוכחות שלו תישמר בדוחות. הפעולה אינה הפיכה.`,
-        )
+          { yes: "כן, למחוק", danger: !0 },
+        ))
       )
         return;
       (y(!0), C(""));
