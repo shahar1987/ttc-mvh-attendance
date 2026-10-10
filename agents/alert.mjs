@@ -10,14 +10,18 @@ import { enqueueAlertOnce } from "./lib/owner.mjs";
 import { alreadyToldOwner } from "./lib/schedule.mjs";
 
 const key = `alert-${(process.env.ALERT_KEY || "workflow").replace(/[^\w-]/g, "_")}`;
-const text = process.env.ALERT_TEXT || "❌ תהליך אוטומטי נכשל";
+let text = process.env.ALERT_TEXT || "❌ תהליך אוטומטי נכשל";
 const db = firestore();
 
 if (process.env.STEPS) {
+  const steps = JSON.parse(process.env.STEPS);
   const health = (await db.collection("agentReports").doc("health").get()).data() || {};
-  if (alreadyToldOwner(JSON.parse(process.env.STEPS), health)) {
+  if (alreadyToldOwner(steps, health)) {
     console.log(`${key}: the failed agents already told the owner themselves — skipped`);
     process.exit(0);
   }
+  // שמות השלבים שנכשלו בפועל (לא כל מה שתוכנן לרוץ)
+  const failed = Object.entries(steps).filter(([, s]) => s?.outcome === "failure").map(([id]) => id);
+  if (failed.length) text = text.replace("סוכן נכשל", `סוכן נכשל: ${failed.join(", ")}`);
 }
 await enqueueAlertOnce(db, { key, text });
