@@ -267,6 +267,35 @@ assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(docs.get("agentReports/bot").outbox.reminders.text, /נשלחה תזכורת/, "הסיכום נשמר לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+// 📋 סיכום אימון למאמן: רק לקבוצה שמולאה (בוגרים), עם מי הגיע / לא הגיע / ליצור קשר, ופעם אחת בלבד
+{
+  const { coachSummaries } = await import("../src/reminders.js");
+  put("players/p7", { name: "p7", groupId: "g5", isActive: true });
+  put("players/p8", { name: "p8", groupId: "g5", isActive: true });
+  put("attendance/2026-10-04_g5_p7", { date: "2026-10-04", groupId: "g5", playerId: "p7", status: "Absent" });
+  put("attendance/2026-10-04_g5_p8", { date: "2026-10-04", groupId: "g5", playerId: "p8", status: "Absent", msgSentAt: "x" });
+  const early = new Date("2026-10-04T14:03:00Z"); // 17:03 — עוד לא עברו 5 דקות
+  assert.equal(await coachSummaries(env, db(env), waConfig(env), early), "nothing due");
+  const n2 = sent.length;
+  assert.match(await coachSummaries(env, db(env), waConfig(env), sunday), /בוגרים — יוסי ✓/);
+  const tpl = sent.slice(n2).filter((b) => b.type === "template");
+  assert.equal(tpl.length, 1, "נוער לא מולאה — אין סיכום (התזכורת מטפלת בה)");
+  assert.equal(tpl[0].to, "972501234567");
+  assert.equal(tpl[0].template.name, "club_message");
+  assert.equal(tpl[0].template.components[0].parameters[0].text, "סיכום אימון בוגרים היום: הגיעו 1 מתוך 3 · הגיעו: p5 · לא הגיעו: p7, p8 · ליצור קשר: p7");
+  assert.equal(await coachSummaries(env, db(env), waConfig(env), sunday), "not marked yet", "בוגרים לא נשלח שוב; נוער מחכה למילוי");
+  // ✓✓ המאמן קרא — הבעלים מקבל עדכון, פעם אחת
+  const st = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "w", status: "read" }] } }] }] });
+  const sig = { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(st).digest("hex") };
+  for (let i = 0; i < 2; i++) {
+    const w = [];
+    await worker.fetch(new Request("https://x/webhook", { method: "POST", body: st, headers: sig }), env, { waitUntil: (p) => w.push(p) });
+    await Promise.all(w);
+  }
+  const reads = sent.filter((b) => JSON.stringify(b).includes("קרא/ה"));
+  assert.equal(reads.length, 1, "עדכון קריאה אחד בלבד");
+  assert.match(JSON.stringify(reads[0]), /יוסי קרא\/ה: סיכום אימון בוגרים/);
+}
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {
   const { shortLinks } = await import("../src/reminders.js");
