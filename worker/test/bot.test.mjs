@@ -256,14 +256,15 @@ put("attendance/2026-10-04_g5_p5", { date: "2026-10-04", groupId: "g5", playerId
 const sunday = new Date("2026-10-04T15:00:00Z");
 const n0 = sent.length;
 const rem = await remindCoaches(env, db(env), waConfig(env), sunday);
-assert.equal(sent.slice(n0).filter((b) => b.type === "template" && b.to !== "972500000000").length, 0, "שום הודעה לא יוצאת מהבוט למאמנים");
-const links = rem.match(/https:\/\/wa\.me\/\S+/g);
-assert.equal(links.length, 1, "רק המאמן של נוער (בוגרים מילאו, ערב עוד לא נגמר)");
-assert.match(links[0], /^https:\/\/wa\.me\/972501234567\?text=/);
-assert.match(decodeURIComponent(links[0].split("text=")[1]), /היי יוסי, תזכורת ידידותית למלא נוכחות עבור קבוצת נוער/);
-assert.match(decodeURIComponent(links[0].split("text=")[1]), /ttc-mvh-attendance\/#group=g3$/, "קישור שפותח ישר את הקבוצה");
+const toCoach = sent.slice(n0).filter((b) => b.type === "template" && b.to !== "972500000000");
+assert.equal(toCoach.length, 1, "רק המאמן של נוער (בוגרים מילאו, ערב עוד לא נגמר, לרון אין טלפון)");
+assert.equal(toCoach[0].to, "972501234567");
+assert.equal(toCoach[0].template.name, "coach_attendance_reminder");
+assert.deepEqual(toCoach[0].template.components[0].parameters.map((x) => x.text), ["יוסי", "נוער · https://shahar1987.github.io/ttc-mvh-attendance/#group=g3"], "קישור שפותח ישר את הקבוצה");
+assert.match(rem, /נוער — יוסי: נשלחה תזכורת ✓/);
+assert.doesNotMatch(rem, /wa\.me/, "כשהשליחה הצליחה אין קישור ידני");
 assert.match(rem, /נוער — רון: אין טלפון שמור/);
-assert.match(docs.get("agentReports/bot").outbox.reminders.text, /wa\.me/, "הקישורים נשמרים לשולה");
+assert.match(docs.get("agentReports/bot").outbox.reminders.text, /נשלחה תזכורת/, "הסיכום נשמר לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
@@ -635,6 +636,14 @@ await assert.rejects(remindCoaches(env, store, waConfig(env), sunday3), /ביט�
 globalThis.waFail = false; globalThis.firestoreDown = false; globalThis.beforePatch = null;
 assert.equal(await remindCoaches(env, store, waConfig(env), sunday3), "nothing due", "אין סערת שליחות");
 assert.equal(sent.length, n4c);
+// השליחה למאמן נכשלה (למשל התבנית לא אושרה) — שולה מקבלת קישור לשליחה ידנית, עם הקישור לקבוצה
+{
+  globalThis.waFailNext = 1;
+  const r = await remindCoaches(env, store, waConfig(env), new Date("2026-10-25T16:00:00Z"));
+  assert.match(r, /נוער — יוסי: השליחה נכשלה, אפשר לשלוח בעצמך: https:\/\/wa\.me\/972501234567\?text=/);
+  assert.match(decodeURIComponent(r.split("text=")[1].split(/\s/)[0]), /ttc-mvh-attendance\/#group=g3$/);
+  assert.match(r, /בוגרים — יוסי: נשלחה תזכורת ✓/, "כישלון אצל קבוצה אחת לא עוצר את האחרות");
+}
 
 // 5. פוסט מתוזמן: שתי ריצות cron במקביל — מתפרסם פעם אחת. פוסט שנתקע באמצע — לא מתפרסם שוב.
 put("agentReports/social", { queue: [{ id: "pp1", platform: "facebook", text: "פוסט", igText: "פוסט", img: "", at: "2000-01-01T10:00", due: "2000-01-01T08:00:00.000Z" }, { id: "pp2", platform: "facebook", text: "תקוע", igText: "", img: "", at: "2000-01-01T09:00", due: "2000-01-01T07:00:00.000Z", status: "publishing", claimedAt: "2000-01-01T07:00:00.000Z" }] });
