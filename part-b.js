@@ -3846,6 +3846,7 @@ function mt({
   pendingDate: ID,
   pendingNonce: IN,
   readOnly: RO,
+  onOpenPayments: OP,
 }) {
   let [editGroup, setEditGroup] = b(null),
     c = i || RO ? s : s.filter((r) => isGroupCoach(r, t.id)),
@@ -3869,8 +3870,48 @@ function mt({
       let N = (d) => (ee(d) ? (f(d) || fc(d) ? 1 : 0) : 2),
         C = N(r) - N(y);
       return C !== 0 ? C : r.name.localeCompare(y.name, "he");
-    });
-  useLocalAlertNotice(myAlerts, "נוכחות מועדון");
+    }),
+    todayGroups = g.filter((r) => ee(r)),
+    otherGroups = g.filter((r) => !ee(r)),
+    countIn = (r) => a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length,
+    activeCount = c.reduce((n, r) => n + countIn(r), 0),
+    weekFrom = (() => {
+      let d = new Date(u + "T00:00:00");
+      d.setDate(d.getDate() - 6);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    })(),
+    weekRecs = l.filter((r) => r.date >= weekFrom && r.date <= u && c.some((gr) => gr.id === r.groupId)),
+    weekPct = weekRecs.length
+      ? Math.round((100 * weekRecs.filter((r) => r.status === "Present").length) / weekRecs.length)
+      : null,
+    // אותה ספירה כמו במסך "מי לא משלם"
+    notPayingCount = OP
+      ? a.filter(
+          (m) =>
+            m.isActive &&
+            !m.deleted &&
+            m.notPaying &&
+            !s.some((gr) => gr.id === m.groupId && gr.name === PAYMENT_EXCLUDED_GROUP_NAME),
+        ).length
+      : 0,
+    toneCls = {
+      emerald: "text-emerald-700",
+      blue: "text-blue-950",
+      amber: "text-amber-700",
+      red: "text-red-700",
+    },
+    tile = (num, label, tone, onClick) =>
+      e.createElement(
+        onClick ? "button" : "div",
+        {
+          onClick,
+          className: "min-h-[80px] rounded-xl bg-white border border-slate-200 px-2 py-2 flex flex-col items-center justify-center text-center",
+        },
+        e.createElement("span", { className: `text-3xl font-bold leading-none ${toneCls[tone]}` }, num),
+        e.createElement("span", { className: "text-sm text-slate-600 mt-1.5 leading-tight" }, label),
+      );
+  useLocalAlertNotice
+(myAlerts, "נוכחות מועדון");
   return c.length === 0
     ? e.createElement(
         "p",
@@ -3940,85 +3981,55 @@ function mt({
         )
       : e.createElement(
           "div",
-          { className: "px-4 pt-4 pb-6 flex flex-col gap-3" },
-          // 27.9: בתחילת אימון המאמן בא לסמן נוכחות — הקבוצות קודם, המשימות אחריהן
-          // (אותו כלל כמו בתוך קבוצה: "לא לפני המשימה העיקרית").
+          { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+          // 10.10: מסך הפתיחה כלוח קטן — מספרים למעלה, האימונים של היום, כל השאר מקופל.
+          e.createElement(
+            "div",
+            { className: `grid gap-2 ${OP ? "grid-cols-2" : "grid-cols-3"}` },
+            tile(weekPct == null ? "—" : weekPct + "%", "נוכחות השבוע", "emerald"),
+            tile(activeCount, "שחקנים פעילים", "blue"),
+            tile(myMissing.length, "לא דווחו", myMissing.length ? "amber" : "blue"),
+            OP && tile(notPayingCount, "לא שילמו", notPayingCount ? "red" : "blue", OP),
+          ),
           e.createElement(
             "p",
-            { className: "text-sm text-slate-600 px-1" },
-            "בחר קבוצה כדי למלא נוכחות",
+            { className: "text-sm font-semibold text-blue-950 px-1 -mb-2" },
+            "האימונים של היום \xB7 יום ",
+            We[new Date().getDay()],
           ),
-          g.map((r) => {
+          todayGroups.length === 0 &&
+            e.createElement(
+              "div",
+              { className: "rounded-xl bg-white border border-slate-200 px-4 py-4 text-center text-slate-600" },
+              "אין אימון היום",
+            ),
+          todayGroups.map((r) => {
             let y = f(r),
-              cx = fc(r),
-              N = ee(r),
-              C = a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length;
-            // 29.9: האימון של היום שעוד לא מולא — כרטיס גדול עם כפתור אחד, השאר רשימה רגילה
-            if (N && !y && !cx)
-              return e.createElement(
-                "button",
-                {
-                  key: r.id,
-                  onClick: () => onSelectGroup(r.id),
-                  className:
-                    "rounded-2xl bg-blue-50 px-5 py-5 flex flex-col gap-1 text-right active:scale-[0.99] transition-transform",
-                },
-                e.createElement("span", { className: "text-sm text-slate-600" }, "האימון של היום"),
-                e.createElement("span", { className: "text-xl font-bold text-blue-950" }, r.name),
-                e.createElement("span", { className: "text-sm text-slate-600" }, q(r), " \xB7 ", C, " שחקנים"),
-                e.createElement(
-                  "span",
-                  {
-                    className:
-                      "mt-3 min-h-[56px] rounded-xl bg-blue-600 text-white text-lg font-bold flex items-center justify-center",
-                  },
-                  "מילוי נוכחות",
-                ),
-              );
+              cx = fc(r);
             return e.createElement(
               "button",
               {
                 key: r.id,
                 onClick: () => onSelectGroup(r.id),
-                className: `rounded-xl border px-4 py-3.5 flex items-center justify-between gap-2 active:scale-[0.99] transition-transform ${N && !y && !cx ? "bg-white border-emerald-400 border-2" : "bg-white border-slate-200"}`,
+                className: `rounded-2xl px-4 py-4 flex items-center gap-3 text-right active:scale-[0.99] transition-transform ${y || cx ? "bg-white border border-slate-200" : "bg-blue-50"}`,
               },
               e.createElement(
-                "span",
-                {
-                  className: `text-xs font-semibold px-2 py-1 rounded-full shrink-0 ${cx ? "bg-slate-100 text-slate-500" : y ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`,
-                },
-                cx
-                  ? "בוטל"
-                  : y
-                    ? "נשמר"
-                    : "טרם נשמר",
-              ),
-              e.createElement(
                 "div",
-                { className: "text-right flex-1 min-w-0" },
-                e.createElement(
-                  "div",
-                  { className: "font-semibold text-blue-950 truncate" },
-                  r.name,
-                  N &&
-                    e.createElement(
-                      "span",
-                      {
-                        className:
-                          "mr-1.5 text-xs font-bold text-emerald-600",
-                      },
-                      "\xB7 היום",
-                    ),
-                ),
-                e.createElement(
-                  "div",
-                  { className: "text-sm text-slate-500 truncate" },
-                  q(r),
-                  " \xB7 ",
-                  C,
-                  " שחקנים",
-                ),
+                { className: "flex-1 min-w-0" },
+                e.createElement("div", { className: "text-lg font-bold text-blue-950 truncate" }, r.name),
+                e.createElement("div", { className: "text-sm text-slate-600 truncate" }, r.startTime ? r.startTime + "-" + r.endTime : q(r), " \xB7 ", countIn(r), " שחקנים"),
               ),
+              y || cx
+                ? e.createElement(
+                    "span",
+                    { className: `shrink-0 text-sm font-semibold px-3 py-1.5 rounded-full ${cx ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"}` },
+                    cx ? "בוטל" : "נשמר ✓",
+                  )
+                : e.createElement(
+                    "span",
+                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-600 text-white font-bold flex items-center" },
+                    "מילוי",
+                  ),
             );
           }),
           e.createElement(MissingDaysCard, {
@@ -4026,6 +4037,33 @@ function mt({
             actionLabel: "מילוי עכשיו",
             onAction: RO ? null : (r) => onFillDate && onFillDate(r.group.id, r.date),
           }),
+          otherGroups.length > 0 &&
+            e.createElement(
+              "details",
+              { className: "rounded-xl bg-white border border-slate-200" },
+              e.createElement(
+                "summary",
+                { className: "cursor-pointer min-h-[52px] px-4 flex items-center justify-between gap-2 font-semibold text-blue-950" },
+                todayGroups.length ? "שאר הקבוצות" : "כל הקבוצות",
+                e.createElement("span", { className: "shrink-0 min-w-[28px] text-center rounded-full px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-600" }, otherGroups.length),
+              ),
+              e.createElement(
+                "div",
+                { className: "divide-y divide-slate-100 border-t border-slate-100" },
+                otherGroups.map((r) =>
+                  e.createElement(
+                    "button",
+                    {
+                      key: r.id,
+                      onClick: () => onSelectGroup(r.id),
+                      className: "w-full min-h-[56px] px-4 py-3 text-right block active:bg-slate-50",
+                    },
+                    e.createElement("div", { className: "font-semibold text-blue-950 truncate" }, r.name),
+                    e.createElement("div", { className: "text-sm text-slate-500 truncate" }, q(r), " \xB7 ", countIn(r), " שחקנים"),
+                  ),
+                ),
+              ),
+            ),
           !RO &&
           e.createElement(AlertsCard, {
             alerts: myAlerts,
@@ -4445,6 +4483,7 @@ function Q() {
           pendingNonce,
           cancellations,
           readOnly: vw,
+          onOpenPayments: canDo(s, "payments") ? () => goToScreen("payments") : null,
         }),
       e.createElement(dt, {
         open: x,
