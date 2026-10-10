@@ -881,3 +881,39 @@ console.log("all bot tests passed");
   assert.ok(!/קישור החיבור/.test(geminiCalls.at(-1).systemInstruction.parts[0].text));
 }
 console.log("google-via-claude ok");
+
+// 🏓 מצב מדריך: הבעלים מפעיל מדריך (אישור דו-שלבי), והמדריך רואה ומסמן רק בקבוצות שלו
+{
+  put("users/c1", { name: "יוסי מדריך", phone: "054-1234567" });
+  put("users/c2", { name: "רונית מדריכה", phone: "0547654321" });
+  put("groups/g1", { coachId: "c1" });
+  put("groups/g2", { coachIds: ["c2"] });
+  const coach = "972541234567";
+  const before = sent.length;
+  await webhook("היי", coach);
+  assert.equal(sent.length, before, "מדריך שלא הופעל — מתעלמים");
+
+  assert.match(await callTool("תפעילי את שולה ליוסי", { name: "coach_access", args: { name: "יוסי מד" } }), /לא בוצע עדיין/);
+  assert.equal(docs.has("agentReports/coaches"), false);
+  assert.match(await callTool("כן", { name: "coach_access", args: { name: "יוסי מד" } }), /הפעלתי את שולה ליוסי מדריך \(קבוצות: מתחילים שאר ישוב\)[\s\S]*972541234567/);
+  assert.deepEqual(docs.get("agentReports/coaches").ids, ["c1"]);
+
+  const coachCall = async (msg, call) => {
+    geminiQueue.push([{ functionCall: call }], [{ text: "תשובה למדריך" }]);
+    await webhook(msg, coach);
+    return geminiCalls.at(-1).contents.at(-1).parts[0].functionResponse.response.result;
+  };
+  assert.deepEqual(JSON.parse(await coachCall("אילו קבוצות יש לי?", { name: "list_groups", args: {} })), ["מתחילים שאר ישוב"]);
+  const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name).sort();
+  assert.deepEqual(decls, ["get_attendance", "get_weather", "list_groups", "mark_attendance"], "למדריך אין כלים של הבעלים");
+  assert.match(geminiCalls.at(-1).systemInstruction.parts[0].text, /יוסי מדריך/);
+  assert.equal(sent.at(-1).to, coach);
+  assert.equal(texts().at(-1), "תשובה למדריך");
+  assert.match(await coachCall("מי היה במתקדמים?", { name: "get_attendance", args: { group: "מתקדמים" } }), /לא נמצאה קבוצה/, "קבוצה של מדריך אחר — חסומה");
+  assert.match(await coachCall("תפרסמי פוסט", { name: "publish_post", args: {} }), /אין לך הרשאה/);
+  await coachCall("נועה הגיעה היום למתחילים", { name: "mark_attendance", args: { group: "מתחילים", present: ["נועה"] } });
+  assert.equal(docs.get(`attendance/${TODAY}_g1_p2`).markedBy, "shula-whatsapp:c1");
+  assert.equal(docs.get("agentReports/coach_c1").history.length, 8, "היסטוריה נפרדת למדריך (4 הודעות)");
+  assert.ok(!(docs.get("agentReports/bot").history || []).some((h) => h.text.includes("נועה הגיעה היום")), "לא נכנס לשיחה של הבעלים");
+}
+console.log("coach mode ok");
