@@ -27,7 +27,6 @@ import {
   Ban as BanIcon,
   RotateCcw as UndoIcon,
   Trophy as TrophyIcon,
-  Settings as SettingsIcon,
   RefreshCw as RefreshIcon,
   TrendingDown as TrendDownIcon,
   Minus as MinusIcon,
@@ -46,6 +45,8 @@ import {
   where as fsWhere,
   getDoc as fsGetDoc,
   getDocs as fsGetDocs,
+  getDocsFromServer as fsGetDocsFromServer,
+  waitForPendingWrites as fsWaitPending,
   terminate as fsTerminate,
   clearIndexedDbPersistence as fsClearCache,
 } from "firebase/firestore";
@@ -95,6 +96,19 @@ var F =
         .catch(() => null)
     : Promise.resolve(null);
 async function logoutAndClearCache() {
+  // ניקוי המטמון מוחק גם שמירות שעוד לא הגיעו לשרת ("נשמר במכשיר") — קודם מחכים להן
+  let synced = await Promise.race([
+    fsWaitPending(P).then(() => !0, () => !0),
+    new Promise((res) => setTimeout(() => res(!1), 3000)),
+  ]);
+  if (
+    !synced &&
+    !(await askConfirm(
+      "יש נוכחות ששמורה רק בטלפון ועוד לא נשלחה לשרת. התנתקות עכשיו תמחק אותה. להתנתק בכל זאת?",
+      { yes: "כן, להתנתק", no: "להישאר מחובר", danger: !0 },
+    ))
+  )
+    return;
   try {
     await R(D);
   } catch (t) {
@@ -128,7 +142,14 @@ async function He(t, s) {
 var X =
     "מועדון טניס שולחן מבואות החרמון",
   W = 'ע"ש רוני גלבוע',
-  E = () => new Date().toLocaleDateString("en-CA");
+  E = () => new Date().toLocaleDateString("en-CA"),
+  // עד 04:00 מסך הסימון נפתח על אתמול: מאמן שממלא אחרי חצות את האימון של הערב
+  // לא ייצור בטעות סט שלם של "הגיע" ליום החדש
+  attDefaultDay = () => {
+    let d = new Date();
+    d.getHours() < 4 && d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString("en-CA");
+  };
 function Ke(t) {
   return new Date(t + "T00:00:00").toLocaleDateString("he-IL", {
     weekday: "long",
@@ -421,10 +442,6 @@ function quotaAlerts(players, groups, attendance) {
 function isCoachLikeUser(u) {
   let r = u && typeof u.role === "string" ? u.role.trim().toLowerCase() : "";
   return r === "admin" || r === "coach";
-}
-function roleLabelHe(u) {
-  let r = u && typeof u.role === "string" ? u.role.trim().toLowerCase() : "";
-  return r === "admin" ? "מנהל" : r === "coach" ? "מאמן" : r === "viewer" ? "צופה" : "הורה/שחקן";
 }
 function groupCoachIds(g) {
   let a = g && Array.isArray(g.coachIds) ? g.coachIds.filter(Boolean) : [];
@@ -870,14 +887,17 @@ function playerDaysLabel(p) {
         .join(", ")
     : "";
 }
-// 27.9: מנהל וצופה האזינו לכל היסטוריית הנוכחות — היא גדלה כל עונה, ובטלפון חדש על ויפי חלש
-// כולה ירדה לפני שהמסך הראשון נפתח. הם טוענים 13 חודשים אחורה (עונה שלמה ועוד). מאמן לא מושפע:
-// השאילתה שלו כבר מסוננת לפי קבוצה, ותנאי תאריך נוסף עליה היה דורש אינדקס שאין — והנתונים לא היו נטענים.
+// מנהל וצופה מאזינים רק ל-4 חודשים אחרונים: כל פתיחה אחרי חצי שעה ברקע קוראת מחדש את כל
+// הרשומות, ועונה שלמה הייתה גומרת את מכסת הקריאות החינמית. דוח על טווח ישן יותר טוען את
+// מה שחסר פעם אחת (requestOlderAttendance). מאמן לא מושפע: השאילתה שלו מסוננת לפי קבוצה,
+// ותנאי תאריך נוסף עליה היה דורש אינדקס שאין.
 const ATT_HISTORY_FROM = (() => {
   let d = new Date();
-  d.setMonth(d.getMonth() - 13);
+  d.setMonth(d.getMonth() - 4);
   return d.toLocaleDateString("en-CA");
 })();
+let olderAttReq = null;
+const requestOlderAttendance = (from) => olderAttReq && olderAttReq(from);
 function L(t, groupIds, uid, enabled, filter) {
   let [s, a] = b([]),
     [l, i] = b(!0),
@@ -1044,6 +1064,9 @@ function PrintStyleTag() {
   );
 }
 function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
+  j(() => {
+    startDate && startDate < ATT_HISTORY_FROM && requestOlderAttendance(startDate);
+  }, [startDate]);
   return e.createElement(
     e.Fragment,
     null,
@@ -1077,9 +1100,6 @@ function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
         }),
       ),
     ),
-    // 27.9: מנהל טוען 13 חודשים אחורה — טווח שמתחיל לפני כן לא יוצג ריק בשקט
-    startDate && startDate < ATT_HISTORY_FROM &&
-      e.createElement("p", { className: "text-sm text-amber-800" }, `נתונים מלפני ${formatHeDate(ATT_HISTORY_FROM)} לא נטענים בחשבון מנהל, ולכן לא ייכללו בדוח.`),
   );
 }
 function ReportActionBar({ onPrint, onExportCsv }) {
