@@ -136,7 +136,7 @@ jobs:
           ALERT_KEY: agents-${{ steps.pick.outputs.run }}
           # לכל שלב יש id, כדי ש-alert.mjs ידלג כשהסוכן שנכשל כבר הודיע בעצמו על מפתח חסר
           STEPS: ${{ toJSON(steps) }}
-          ALERT_TEXT: "❌ סוכן נכשל (${{ steps.pick.outputs.run }}). פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ALERT_TEXT: "❌ סוכן נכשל. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: |
           [ -d node_modules ] || npm ci --no-audit --no-fund
           node alert.mjs
