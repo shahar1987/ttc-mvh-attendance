@@ -69,7 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     const next = geminiQueue.shift();
-    if (next === "hang") return new Promise(() => {}); // Gemini שלא עונה לעולם
+    if (next === "hang") return new Promise((_, no) => init.signal?.addEventListener("abort", () => no(init.signal.reason))); // Gemini שלא עונה לעולם (עד שמבטלים)
     return json({ candidates: [next?.finishReason ? { content: { parts: next.parts }, finishReason: next.finishReason } : { content: { parts: next } }] });
   }
   if (url.includes("/message_templates")) {
@@ -469,6 +469,18 @@ geminiQueue.push([{ text: "רגע, מעבירה לקלוד." }], [{ functionCall
 await webhook("נסי שוב");
 assert.equal(openAsks().length, openBefore + 2);
 assert.match(texts().at(-1), /העברתי לקלוד/);
+// 14ג. ask_claude רץ ואז Gemini החזיר טקסט ריק — לא "נסה שוב" (הבקשה כבר הועברה)
+geminiQueue.push([{ functionCall: { name: "ask_claude", args: { request: "לתזמן סטורי" } } }], { parts: [], finishReason: "STOP" });
+await webhook("🎤 תתזמן איך שנראה לך");
+assert.match(texts().at(-1), /העברתי לקלוד/);
+assert.doesNotMatch(texts().at(-1), /נסה שוב/);
+// 14ג2. מודל שנתקע — אחרי GEMINI_TIMEOUT_MS עוברים למודל הבא, והניסיונות נרשמים ביומן
+env.GEMINI_TIMEOUT_MS = "30";
+geminiQueue.push("hang", [{ text: "מהמודל הבא" }]);
+await webhook("טופל");
+env.GEMINI_TIMEOUT_MS = "";
+assert.equal(texts().at(-1), "מהמודל הבא");
+assert.match(docs.get("agentReports/bot").log.at(-1).gem.join(), /timeout.*200/);
 
 // 14ד. תזכורת לבעלים: "שמרתי" בלי remind_me — תזכורת לכלי, ואם שוב לא — אומרים את האמת. עם הכלי — נשמר, האישור נכתב מה-worker, וה-cron שולח.
 geminiQueue.push([{ text: "שמרתי לך התרעה ל-15:45 👍" }], [{ text: "בסדר, אזכיר לך." }]);
