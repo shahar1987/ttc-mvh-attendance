@@ -80,9 +80,10 @@ await t('לא מוחק תחרות', () => assertFails(deleteDoc(doc(as('parent1'
 await t('לא קורא את מסמכי המערכת', () => assertFails(getDoc(doc(as('parent1'), 'system/paymentSync'))));
 await t('לא קורא את מיפוי התשלומים', () => assertFails(getDocs(collection(as('parent1'), 'paymentMappings'))));
 await t('כן קורא את הפרופיל של עצמו', () => assertSucceeds(getDoc(doc(as('parent1'), 'users/parent1'))));
-await t('כן קורא את כרטיס הילד שלו', () => assertSucceeds(getDoc(doc(as('parent1'), 'players/p1'))));
-await t('כן קורא את הנוכחות של הילד שלו', () => assertSucceeds(getDocs(query(collection(as('parent1'), 'attendance'), where('playerId', 'in', ['p1'])))));
-await t('כן קורא את הקישורים של עצמו', () => assertSucceeds(getDocs(query(collection(as('parent1'), 'links'), where('uid', '==', 'parent1')))));
+// פורטל ההורים הוסר: קישור ישן כבר לא פותח את כרטיס הילד
+await t('לא קורא יותר את כרטיס הילד המקושר', () => assertFails(getDoc(doc(as('parent1'), 'players/p1'))));
+await t('לא קורא יותר את הנוכחות של הילד המקושר', () => assertFails(getDocs(query(collection(as('parent1'), 'attendance'), where('playerId', 'in', ['p1'])))));
+await t('לא קורא את הקישורים של עצמו', () => assertFails(getDocs(query(collection(as('parent1'), 'links'), where('uid', '==', 'parent1')))));
 await t('כן קורא קבוצות והודעות', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'groups'))); await assertSucceeds(getDocs(collection(as('parent1'), 'cancellations'))); });
 await t('כן קורא ומנהל תחרויות', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'tournaments'))); await assertSucceeds(setDoc(doc(as('parent1'), 'tournaments/t9'), { name: 'חדש' })); });
 
@@ -102,30 +103,21 @@ await t('כן קורא שחקנים ונוכחות', async () => { await assertS
 await t('לא כותב נוכחות', () => assertFails(setDoc(doc(as('viewer1'), 'attendance/2026-09-20_gA_p1'), { playerId: 'p1', groupId: 'gA', date: '2026-09-20', status: 'Present' })));
 await t('לא מוחק תחרות (אין לו הרשאת תחרויות)', () => assertFails(deleteDoc(doc(as('viewer1'), 'tournaments/t1'))));
 
-console.log('\n— הרשמת הורה דרך קישור הזמנה —');
-await t('קורא את ההזמנה לפני התחברות', () => assertSucceeds(getDoc(doc(anon(), 'invites/tok_open'))));
-await t('יוצר לעצמו פרופיל Member עם טוקן חי', () => assertSucceeds(setDoc(doc(as('newParent'), 'users/newParent'), { name: 'הורה חדש', role: 'Member', phone: '0500000077', inviteToken: 'tok_open', createdAt: 'now' })));
-await t('יוצר את הקישור לילד שבהזמנה', () => assertSucceeds(setDoc(doc(as('newParent'), 'links/newParent_p2'), { uid: 'newParent', playerId: 'p2', relation: 'parent', inviteToken: 'tok_open', createdAt: 'now' })));
-await t('מסמן את ההזמנה כמומשה', () => assertSucceeds(updateDoc(doc(as('newParent'), 'invites/tok_open'), { usedAt: 'now', usedByUid: 'newParent' })));
-await t('ואז באמת רואה את הילד שלו', () => assertSucceeds(getDoc(doc(as('newParent'), 'players/p2'))));
-
-console.log('\n— ניסיונות ניצול של ההרשמה —');
-await t('לא יוצר פרופיל של מנהל', () => assertFails(setDoc(doc(as('evil1'), 'users/evil1'), { name: 'x', role: 'Admin', inviteToken: 'tok_open' })));
-await t('לא יוצר פרופיל עם הרשאות', () => assertFails(setDoc(doc(as('evil2'), 'users/evil2'), { name: 'x', role: 'Member', permissions: ['payments'], inviteToken: 'tok_open' })));
-await t('לא יוצר פרופיל בלי טוקן', () => assertFails(setDoc(doc(as('evil3'), 'users/evil3'), { name: 'x', role: 'Member' })));
-await t('לא יוצר פרופיל עם טוקן שבוטל', () => assertFails(setDoc(doc(as('evil4'), 'users/evil4'), { name: 'x', role: 'Member', inviteToken: 'tok_revoked' })));
-await t('לא יוצר פרופיל עם טוקן שפג', () => assertFails(setDoc(doc(as('evil5'), 'users/evil5'), { name: 'x', role: 'Member', inviteToken: 'tok_expired' })));
-await t('לא יוצר פרופיל למישהו אחר', () => assertFails(setDoc(doc(as('evil6'), 'users/admin1'), { name: 'x', role: 'Member', inviteToken: 'tok_open' })));
-await t('לא מקשר את עצמו לילד שלא בהזמנה', () => assertFails(setDoc(doc(as('newParent'), 'links/newParent_p1'), { uid: 'newParent', playerId: 'p1', inviteToken: 'tok_open' })));
-await t('לא מקשר בשם מישהו אחר', () => assertFails(setDoc(doc(as('newParent'), 'links/parent2_p2'), { uid: 'parent2', playerId: 'p2', inviteToken: 'tok_open' })));
-await t('לא מוחק לעצמו את סימון המימוש', () => assertFails(updateDoc(doc(as('newParent'), 'invites/tok_open'), { revoked: false, playerIds: ['p1'] })));
-
-console.log('\n— בקשות גישה מבחוץ —');
-await t('טופס תקין עובר', () => assertSucceeds(addDoc(collection(anon(), 'accessRequests'), { name: 'הורה', phone: '0501111111', childName: 'ילד', relation: 'parent', note: '', status: 'pending', createdAt: '2026-09-20' })));
-await t('שדה זר נחסם', () => assertFails(addDoc(collection(anon(), 'accessRequests'), { name: 'x', phone: 'y', status: 'pending', createdAt: 'z', junk: 'a'.repeat(100) })));
-await t('טקסט ענק נחסם', () => assertFails(addDoc(collection(anon(), 'accessRequests'), { name: 'a'.repeat(5000), phone: 'y', status: 'pending', createdAt: 'z' })));
-await t('סטטוס מאושר מראש נחסם', () => assertFails(addDoc(collection(anon(), 'accessRequests'), { name: 'x', phone: 'y', status: 'approved', createdAt: 'z' })));
+console.log('\n— פורטל ההורים הוסר: אין הרשמה ואין בקשות גישה —');
+await t('לא קורא הזמנה לפני התחברות', () => assertFails(getDoc(doc(anon(), 'invites/tok_open'))));
+await t('לא יוצר לעצמו פרופיל Member גם עם טוקן חי', () => assertFails(setDoc(doc(as('newParent'), 'users/newParent'), { name: 'הורה חדש', role: 'Member', phone: '0500000077', inviteToken: 'tok_open', createdAt: 'now' })));
+await t('לא יוצר לעצמו קישור לילד', () => assertFails(setDoc(doc(as('newParent'), 'links/newParent_p2'), { uid: 'newParent', playerId: 'p2', relation: 'parent', inviteToken: 'tok_open', createdAt: 'now' })));
+await t('לא מסמן הזמנה כמומשה', () => assertFails(updateDoc(doc(as('newParent'), 'invites/tok_open'), { usedAt: 'now', usedByUid: 'newParent' })));
+await t('לא שולח בקשת גישה מבחוץ', () => assertFails(addDoc(collection(anon(), 'accessRequests'), { name: 'הורה', phone: '0501111111', childName: 'ילד', relation: 'parent', note: '', status: 'pending', createdAt: '2026-09-20' })));
 await t('לא קורא את הבקשות', () => assertFails(getDocs(collection(anon(), 'accessRequests'))));
+await t('מאמן עם הרשאת access ישנה כבר לא מנהל הזמנות וקישורים', async () => {
+  await assertFails(getDocs(collection(as('coachA'), 'invites')));
+  await assertFails(setDoc(doc(as('coachA'), 'links/parent2_p1'), { uid: 'parent2', playerId: 'p1', relation: 'parent', inviteToken: '' }));
+});
+await t('מנהל עדיין מנקה נתונים ישנים', async () => {
+  await assertSucceeds(updateDoc(doc(as('admin1'), 'invites/tok_open'), { revoked: true }));
+  await assertSucceeds(deleteDoc(doc(as('admin1'), 'links/parent1_p1')));
+});
 
 // ====================================================================
 // נוכחות — כל נתיבי הכתיבה של האפליקציה, בדיוק בצורה שהם נשלחים
@@ -200,61 +192,6 @@ await t('מאמן קבוצה אחרת לא נוגע ברשומה ישנה', () =
 await t('מנהל לא משנה playerId של רשומה', () => assertFails(updateDoc(doc(as('admin1'), A1), { playerId: 'p3' })));
 await t('מנהל לא משנה date של רשומה', () => assertFails(updateDoc(doc(as('admin1'), A1), { date: '2026-09-19' })));
 await t('מנהל לא משנה groupId של רשומה', () => assertFails(updateDoc(doc(as('admin1'), A1), { groupId: 'gB' })));
-
-// ====================================================================
-// הרשמה דרך הזמנה — הרצף המדויק של signUpFromInvite (part-a)
-// users.set ← links.set לכל ילד ← invites.update(usedAt, usedByUid)
-// ====================================================================
-console.log('\n— הזמנה עם שני ילדים: הרצף המלא של האפליקציה —');
-const NOW = '2026-09-22T09:00:00.000Z';
-await t('1. יוצר פרופיל Member (השדות של האפליקציה)', () => assertSucceeds(setDoc(doc(as('twoKids'), 'users/twoKids'),
-  { name: 'הורה של שניים', role: 'Member', phone: '0500000080', email: '', inviteToken: 'tok_two', consentAt: NOW, createdAt: NOW })));
-await t('2. קישור לילד הראשון', () => assertSucceeds(setDoc(doc(as('twoKids'), 'links/twoKids_p1'),
-  { uid: 'twoKids', playerId: 'p1', relation: 'parent', inviteToken: 'tok_two', createdAt: NOW })));
-await t('3. קישור לילד השני', () => assertSucceeds(setDoc(doc(as('twoKids'), 'links/twoKids_p3'),
-  { uid: 'twoKids', playerId: 'p3', relation: 'parent', inviteToken: 'tok_two', createdAt: NOW })));
-await t('4. מסמן את ההזמנה כמומשה (updateDoc)', () => assertSucceeds(updateDoc(doc(as('twoKids'), 'invites/tok_two'), { usedAt: NOW, usedByUid: 'twoKids' })));
-await t('5. רואה את שני הילדים ואת הנוכחות שלהם', async () => {
-  await assertSucceeds(getDoc(doc(as('twoKids'), 'players/p1')));
-  await assertSucceeds(getDoc(doc(as('twoKids'), 'players/p3')));
-  await assertSucceeds(getDocs(query(collection(as('twoKids'), 'attendance'), where('playerId', 'in', ['p1', 'p3']))));
-});
-await t('המממש עצמו עדיין עובר את inviteLive אחרי המימוש (ניסיון חוזר)', async () => {
-  await env.withSecurityRulesDisabled((c) => deleteDoc(doc(c.firestore(), 'links/twoKids_p3')));
-  await assertSucceeds(setDoc(doc(as('twoKids'), 'links/twoKids_p3'), { uid: 'twoKids', playerId: 'p3', relation: 'parent', inviteToken: 'tok_two', createdAt: NOW }));
-  await assertSucceeds(updateDoc(doc(as('twoKids'), 'invites/tok_two'), { usedAt: NOW, usedByUid: 'twoKids' }));
-});
-
-console.log('\n— הרשמה שנקטעה באמצע וחוזרת (אותו חשבון) —');
-await t('נקטע אחרי הפרופיל: ההמשך (קישורים + מימוש) עובר', async () => {
-  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'invites/tok_retry'),
-    { phone: '0500000083', playerIds: ['p3'], revoked: false, usedAt: null, usedByUid: null, expiresAtMs: FAR }));
-  await assertSucceeds(setDoc(doc(as('retryP'), 'users/retryP'), { name: 'x', role: 'Member', phone: '0500000083', email: '', inviteToken: 'tok_retry', consentAt: NOW, createdAt: NOW }));
-  // ...הסשן נקטע. בכניסה חוזרת hasProfile=true, ולכן מדלגים ישר לקישורים:
-  await assertSucceeds(setDoc(doc(as('retryP'), 'links/retryP_p3'), { uid: 'retryP', playerId: 'p3', relation: 'parent', inviteToken: 'tok_retry', createdAt: NOW }));
-  await assertSucceeds(updateDoc(doc(as('retryP'), 'invites/tok_retry'), { usedAt: NOW, usedByUid: 'retryP' }));
-});
-await t('הזמנה ישנה בלי usedAt/usedByUid בכלל — עדיין עובדת', async () => {
-  await assertSucceeds(setDoc(doc(as('legacyP'), 'users/legacyP'), { name: 'x', role: 'Member', inviteToken: 'tok_legacy', createdAt: NOW }));
-  await assertSucceeds(setDoc(doc(as('legacyP'), 'links/legacyP_p3'), { uid: 'legacyP', playerId: 'p3', relation: 'parent', inviteToken: 'tok_legacy', createdAt: NOW }));
-  await assertSucceeds(updateDoc(doc(as('legacyP'), 'invites/tok_legacy'), { usedAt: NOW, usedByUid: 'legacyP' }));
-});
-
-console.log('\n— ניצול של הזמנה שכבר מומשה —');
-await t('משתמש אחר לא יוצר פרופיל עם הזמנה שמומשה', () => assertFails(setDoc(doc(as('thief'), 'users/thief'),
-  { name: 'x', role: 'Member', inviteToken: 'tok_used', createdAt: NOW })));
-await t('משתמש אחר לא מתקשר לילד דרך הזמנה שמומשה', () => assertFails(setDoc(doc(as('parent2'), 'links/parent2_p1'),
-  { uid: 'parent2', playerId: 'p1', relation: 'parent', inviteToken: 'tok_used', createdAt: NOW })));
-await t('משתמש אחר לא "מממש מחדש" את ההזמנה על שמו', () => assertFails(updateDoc(doc(as('thief'), 'invites/tok_used'), { usedAt: NOW, usedByUid: 'thief' })));
-await t('גם אחרי רצף מלא של הורה אמיתי — זר לא משתמש באותו קישור', async () => {
-  await assertFails(setDoc(doc(as('thief2'), 'users/thief2'), { name: 'x', role: 'Member', inviteToken: 'tok_two', createdAt: NOW }));
-  await assertFails(setDoc(doc(as('parent2'), 'links/parent2_p3'), { uid: 'parent2', playerId: 'p3', relation: 'parent', inviteToken: 'tok_two', createdAt: NOW }));
-  await assertFails(updateDoc(doc(as('parent2'), 'invites/tok_two'), { usedAt: NOW, usedByUid: 'parent2' }));
-});
-await t('מנהל/בעל הרשאת גישה עדיין מנהל הזמנות וקישורים', async () => {
-  await assertSucceeds(updateDoc(doc(as('coachA'), 'invites/tok_used'), { revoked: true }));
-  await assertSucceeds(setDoc(doc(as('coachA'), 'links/parent2_p1'), { uid: 'parent2', playerId: 'p1', relation: 'parent', inviteToken: '' }));
-});
 
 // ====================================================================
 // תחרויות — pushCloud ובדיקת החיבור של ttc-mvh-tournaments
