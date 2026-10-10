@@ -311,7 +311,7 @@ const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעב�
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
 async function think(env, store, wa, bot, text, media, stillTyping, turn) {
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, lastOwnerText: text, turn }), ...makeInboxTools({ env, store, origin: ORIGIN }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn }), ...makeInboxTools({ env, store, origin: ORIGIN }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.

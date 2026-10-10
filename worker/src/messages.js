@@ -1,7 +1,9 @@
 // ✉️ הודעות שהבעלים מכתיב לשולה — לאנשים לפי שם, לכל המאמנים, או למספר — עכשיו או בשעה שנקבעה.
-// ההודעות יוצאות מהמספר של הבעלים: שולה מחזירה לו קישור wa.me לכל נמען, והוא לוחץ "שלח" — הלחיצה היא האישור.
+// למאמנים ולמנהלים שולה שולחת בעצמה, מהמספר שלה (תבנית club_message) — הבעלים ביקש בלי לחיצה נוספת (10.10.2026).
+// להורים ולמספרים אחרים: שולה מחזירה לבעלים קישור wa.me לכל נמען, והוא לוחץ "שלח" — הלחיצה היא האישור.
+// אם השליחה הישירה נכשלה (למשל המספר לא ברשימת הנמענים של מספר הניסיון ב-Meta) — הבעלים מקבל קישור במקום.
 // מתוזמנות נשמרות ב-agentReports/bot.scheduled, ובשעה שנקבעה הקישורים מגיעים אליו מה-cron (wrangler.toml).
-import { waLink } from "../../agents/lib/whatsapp.mjs";
+import { waLink, sendTemplate } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
@@ -41,7 +43,7 @@ async function resolve(store, to) {
     if (!isValidPhone(p.phone || "")) problems.push(`ל${p.name} אין טלפון שמור`);
     else if (!seen.has(normalizePhone(p.phone))) {
       seen.add(normalizePhone(p.phone));
-      recipients.push({ name: p.name, phone: normalizePhone(p.phone) });
+      recipients.push({ name: p.name, phone: normalizePhone(p.phone), staff: !!p.staff });
     }
   }
   return { recipients, problems };
@@ -63,7 +65,7 @@ export const MESSAGE_TOOL_DEFS = [
   {
     name: "send_message",
     description:
-      "מכין הודעת וואטסאפ שהבעלים שולח מהמספר שלו: מחזיר קישור לכל נמען, שפותח את הוואטסאפ שלו עם הטקסט מוכן. to = רשימה של שמות מלאים (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, 'קבוצת <שם>' לכל ההורים בקבוצה, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). בשעה שנקבעה הקישורים יגיעו לבעלים. את הקישורים להעביר לו כמו שהם, כל אחד בשורה. לקבוצת וואטסאפ אין קישור — להציע לו להעתיק את הנוסח לקבוצה.",
+      "שולח הודעת וואטסאפ שהבעלים הכתיב. למאמנים ולמנהלים (עכשיו, בלי at) — שולה שולחת בעצמה מהמספר שלה, בלי אישור נוסף. להורים ולמספרים — מחזיר קישור לכל נמען, שפותח את הוואטסאפ של הבעלים עם הטקסט מוכן. למסור לבעלים בדיוק מה הכלי החזיר: מי קיבל ממך ומי צריך קישור. to = רשימה של שמות מלאים (מאמן/משתמש/שחקן — להורה), 'מאמנים' לכל הצוות, 'קבוצת <שם>' לכל ההורים בקבוצה, או מספרי טלפון. at = YYYY-MM-DDTHH:MM שעון ישראל לשליחה מתוזמנת (בלי = עכשיו). בשעה שנקבעה הקישורים יגיעו לבעלים. את הקישורים להעביר לו כמו שהם, כל אחד בשורה. לקבוצת וואטסאפ אין קישור — להציע לו להעתיק את הנוסח לקבוצה.",
     input_schema: {
       type: "object",
       properties: { to: { type: "array", items: { type: "string" } }, text: { type: "string" }, at: { type: "string" } },
@@ -88,7 +90,7 @@ export const MESSAGE_TOOL_DEFS = [
   },
 ];
 
-export function makeMessageTools({ store, lastOwnerText = "", turn }) {
+export function makeMessageTools({ store, wa, lastOwnerText = "", turn }) {
   return {
     async preview_recipients({ to }) {
       const { recipients, problems } = await resolve(store, to);
@@ -108,7 +110,18 @@ export function makeMessageTools({ store, lastOwnerText = "", turn }) {
         await store.update("agentReports/bot", (bot) => ({ scheduled: [...(bot.scheduled || []), { id, due, at, text, recipients }] }));
         return `תוזמן ל-${at.replace("T", " ")} (מזהה ${id}) ל: ${recipients.map((r) => r.name).join(", ")}${note}`;
       }
-      return `ללחוץ על כל קישור ואז "שלח":\n${deliver(recipients, text)}${note}`;
+      const direct = [], links = [];
+      for (const r of recipients) {
+        if (!r.staff || !wa) { links.push(r); continue; }
+        try {
+          await sendTemplate(wa, r.phone, "club_message", [text]);
+          direct.push(`${r.name}: נשלח משולה ✓`);
+        } catch (e) {
+          direct.push(`${r.name}: שולה לא הצליחה לשלוח (${e.message}), אפשר בקישור למטה`);
+          links.push(r);
+        }
+      }
+      return [direct.join("\n"), links.length ? `ללחוץ על כל קישור ואז "שלח":\n${deliver(links, text)}` : ""].filter(Boolean).join("\n") + note;
     },
 
     async remind_me({ at, text }) {
