@@ -279,6 +279,20 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal((await worker.fetch(new Request("https://x/w/nope"), env, {})).status, 404);
   assert.equal(await shortLinks({}, db(env), long), long, "בלי PUBLIC_URL — בלי שינוי");
 }
+// 🧪 בדיקה חד-פעמית: ביום שלישי — האימון של יום ראשון שלא מולא, פעם אחת בלבד
+{
+  const { coachReminderTest } = await import("../src/reminders.js");
+  const tuesday = new Date("2026-10-06T10:00:00Z");
+  const n1 = sent.length;
+  const out = await coachReminderTest(env, db(env), waConfig(env), tuesday);
+  const tpl = sent.slice(n1).filter((b) => b.type === "template" && b.to !== "972500000000");
+  assert.deepEqual(tpl.map((b) => b.template.components[0].parameters[1].text).sort(), [
+    "נוער (בדיקה בלבד, אין צורך לעשות כלום) · https://shahar1987.github.io/ttc-mvh-attendance/#group=g3",
+    "ערב (בדיקה בלבד, אין צורך לעשות כלום) · https://shahar1987.github.io/ttc-mvh-attendance/#group=g6",
+  ], "בוגרים מילאו — לא נשלח");
+  assert.match(out, /נוער \(2026-10-04\) — רון: אין טלפון שמור/);
+  assert.equal(await coachReminderTest(env, db(env), waConfig(env), tuesday), "test done", "לא שולחים פעמיים");
+}
 
 // 12. פרסום לפייסבוק ולאינסטגרם: רק אחרי "כן", ותמונה מהוואטסאפ עוברת דרך /meta/media
 const notMeta = await callTool("תחברי את פייסבוק", { name: "publish_post", args: { platform: "both", text: "אימון", image: "777" } });
