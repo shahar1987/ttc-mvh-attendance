@@ -76,12 +76,14 @@ const STAFF_MENU_ITEMS = [
     perm: "competitions",
   },
 ];
-// התפריט מציג 5 קבוצות במקום כל מסך בנפרד. קבוצה עם כמה מסכים מקבלת שורת לשוניות מעל המסך (SectionTabs).
+// התפריט מציג קבוצות במקום כל מסך בנפרד. קבוצה עם כמה מסכים מקבלת שורת לשוניות מעל המסך (SectionTabs).
+// 10.10: הדשבורד בשורה משלו בראש התפריט, לבקשת שולה.
 const MENU_SECTIONS = [
+  { label: "דשבורד", icon: le, keys: ["dashboard"] },
   { label: "נוכחות", icon: Z, keys: ["attendance"] },
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
-  { label: "דוחות", icon: ReportsIcon, keys: ["dashboard", "reports"] },
+  { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
   { label: "הרשאות", icon: Ie, keys: ["permissions"] },
 ];
 function menuItemVisible(it, isAdmin, isViewer, profile) {
