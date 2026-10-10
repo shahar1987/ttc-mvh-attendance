@@ -9,7 +9,7 @@ const DAYS = 30;
 const getJson = async (url) => {
   const r = await fetch(url);
   const j = await r.json();
-  if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
+  if (!r.ok || j.error) throw Object.assign(new Error(j.error?.message || `Meta ${r.status}`), { code: j.error?.code });
   return j;
 };
 
@@ -85,13 +85,29 @@ export function weeklyReport(posts, now = new Date()) {
   return lines.join("\n");
 }
 
+// 190 = טוקן לא תקף (פג, בוטל, הוחלפה סיסמה)
+export const tokenDead = (e) => e?.code === 190 || /access token/i.test(e?.message || "");
+export const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים. הפוסטים שמתוזמנים ב-Metricool לא מושפעים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
+
 async function main() {
-  const { firestore, heartbeat } = await import("./lib/firebase.mjs");
+  const { firestore, heartbeat, reportMissingKey } = await import("./lib/firebase.mjs");
   const db = firestore();
   const social = (await db.collection("agentReports").doc("social").get()).data() || {};
   const page = (social.pages || []).find((p) => p.ig) || social.pages?.[0];
   if (!page?.token) return console.log("insights: page not connected");
-  const posts = await collect(page);
+  let posts;
+  try {
+    posts = await collect(page);
+  } catch (e) {
+    if (!tokenDead(e)) throw e;
+    // הטוקן מת (החלפת סיסמה / Meta ביטלה) — רק הבעלים יכול לחבר מחדש. אומרים לו מה לעשות, פעם אחת, וההתראה הכללית מדלגת
+    console.error("insights: Meta token invalid — owner must reconnect");
+    const { tellOwner } = await import("./lib/owner.mjs");
+    await tellOwner(db, { agent: "insights", text: RECONNECT }).catch((err) => console.error(err.message));
+    await reportMissingKey(db, "insights", "META_TOKEN").catch((err) => console.error(err.message));
+    process.exitCode = 1;
+    return;
+  }
   await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts });
   console.log(`insights: ${posts.length} posts`);
   await heartbeat(db, "insights");
