@@ -9,6 +9,7 @@ import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
 import { confirmed, findGroup } from "./tools.js";
 import { drainQueue } from "./queue.js";
+import { watchReads } from "./reminders.js";
 
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
@@ -111,16 +112,20 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn }) {
         return `תוזמן ל-${at.replace("T", " ")} (מזהה ${id}) ל: ${recipients.map((r) => r.name).join(", ")}${note}`;
       }
       const direct = [], links = [];
+      const watch = {};
       for (const r of recipients) {
         if (!r.staff || !wa) { links.push(r); continue; }
         try {
-          await sendTemplate(wa, r.phone, "club_message", [text]);
+          const wamid = await sendTemplate(wa, r.phone, "club_message", [text]);
+          if (wamid) watch[wamid] = { who: r.name, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
           direct.push(`${r.name}: נשלח משולה ✓`);
         } catch (e) {
           direct.push(`${r.name}: שולה לא הצליחה לשלוח (${e.message}), אפשר בקישור למטה`);
           links.push(r);
         }
       }
+      // הבעלים יקבל "✓✓ קרא" כשהמאמן פותח את ההודעה; כישלון כאן לא מבטל את מה שכבר נשלח
+      if (Object.keys(watch).length) await watchReads(store, watch).catch(() => {});
       return [direct.join("\n"), links.length ? `ללחוץ על כל קישור ואז "שלח":\n${deliver(links, text)}` : ""].filter(Boolean).join("\n") + note;
     },
 

@@ -150,3 +150,87 @@ export async function coachReminderTest(env, store, wa, now = new Date()) {
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `בדיקת תזכורת למאמנים: ${sentCount} נשלחו. אפשר להשיב כדי לקבל פרטים` });
   return text;
 }
+
+// 📋 סיכום אימון למאמנים: 5 דקות אחרי סוף האימון (בפועל ברבע השעה הראשון אחרי), אם כבר מולאה נוכחות להיום.
+// מי הגיע, מי לא, ועם מי צריך ליצור קשר (נעדר שעוד לא נשלחה עליו הודעה). מאמן שמילא באיחור — מקבל ברבע שאחרי המילוי.
+// לא מולאה בכלל — remindCoaches למעלה מזכיר למאמן ומעדכן את הבעלים חצי שעה אחרי האימון.
+// נשלח בתבנית club_message (מאושרת), ומזהה ההודעה נשמר ב-readWatch כדי שהבעלים יקבל "קרא" (readReceipts).
+const SUMMARY_MIN = 5;
+export async function coachSummaries(env, store, wa, now = new Date()) {
+  const today = israelToday(now);
+  const { dow, min } = israelNow(now);
+  const bot = (await store.get("agentReports/bot")) || {};
+  const done = bot.coachSummaries?.date === today ? bot.coachSummaries.groups : [];
+  const groups = (await store.list("groups")).filter(
+    (g) => !g.deleted && g.isActive !== false && Array.isArray(g.days) && g.days.includes(dow) && toMin(g.endTime) !== null && min >= toMin(g.endTime) + SUMMARY_MIN && !done.includes(g.id),
+  );
+  if (!groups.length) return "nothing due";
+  const recs = await store.where("attendance", "date", today);
+  const due = groups.filter((g) => recs.some((a) => a.groupId === g.id));
+  if (!due.length) return "not marked yet";
+  const [players, users] = await Promise.all([store.list("players"), store.list("users")]);
+  const nameOf = (id) => (players.find((p) => p.id === id)?.name || "").trim() || "?";
+  const ids = due.map((g) => g.id);
+  // מסמנים לפני השליחה (כמו remindCoaches) — כישלון לא יגרום לסיכום כפול כל רבע שעה
+  await store.update("agentReports/bot", (cur) => {
+    const prev = cur.coachSummaries?.date === today ? cur.coachSummaries.groups || [] : [];
+    return { coachSummaries: { date: today, groups: [...new Set([...prev, ...ids])] } };
+  });
+  const problems = [], watch = {}, out = [];
+  for (const g of due) {
+    const mine = recs.filter((a) => a.groupId === g.id);
+    const here = mine.filter((a) => a.status === "Present").map((a) => nameOf(a.playerId));
+    const away = mine.filter((a) => a.status === "Absent");
+    const contact = away.filter((a) => !a.msgSentAt).map((a) => nameOf(a.playerId));
+    const text = [
+      `סיכום אימון ${g.name} היום: הגיעו ${here.length} מתוך ${mine.length}`,
+      here.length && `הגיעו: ${here.join(", ")}`,
+      away.length && `לא הגיעו: ${away.map((a) => nameOf(a.playerId)).join(", ")}`,
+      contact.length ? `ליצור קשר: ${contact.join(", ")}` : away.length && "כל מי שלא הגיע כבר קיבל הודעה",
+    ].filter(Boolean).join(" · ").slice(0, 900);
+    for (const id of coachIds(g)) {
+      const c = users.find((u) => u.id === id) || { name: "מאמן" };
+      if (!isValidPhone(c.phone || "")) { problems.push(`• ${g.name} — ${c.name}: אין טלפון שמור`); continue; }
+      try {
+        const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+        if (wamid) watch[wamid] = { who: c.name, what: `סיכום אימון ${g.name}`, at: now.toISOString() };
+        out.push(`${g.name} — ${c.name} ✓`);
+      } catch (e) {
+        problems.push(`• ${g.name} — ${c.name}: השליחה נכשלה (${e.message})`);
+      }
+    }
+  }
+  if (Object.keys(watch).length) await watchReads(store, watch, now);
+  if (problems.length) {
+    const msg = `📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${problems.join("\n")}`;
+    await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: `סיכום אימון לא נשלח ל-${problems.length} מאמנים. אפשר להשיב כדי לקבל פרטים` });
+  }
+  return `summaries: ${out.join(", ") || "none"}${problems.length ? ` · problems: ${problems.length}` : ""}`;
+}
+
+// 👀 הודעות למאמנים שהבעלים רוצה לדעת מתי נקראו. נשמרות 7 ימים.
+export async function watchReads(store, entries, now = new Date()) {
+  const week = new Date(now.getTime() - 7 * 864e5).toISOString();
+  await store.update("agentReports/bot", (cur) => ({
+    readWatch: { ...Object.fromEntries(Object.entries(cur.readWatch || {}).filter(([, v]) => v?.at > week)), ...entries },
+  }));
+}
+
+// Meta שולחת ב-webhook סטטוס "read" כשהנמען פתח את ההודעה (רק אם אישורי קריאה פעילים אצלו).
+// הודעה שבמעקב — הבעלים מקבל "✓✓ קרא", והיא יוצאת מהמעקב (פעם אחת לכל הודעה).
+export async function readReceipts(store, wa, statuses) {
+  const ids = statuses.filter((s) => s.status === "read").map((s) => s.id);
+  if (!ids.length) return [];
+  let hits = [];
+  await store.update("agentReports/bot", (cur) => {
+    hits = ids.map((id) => cur.readWatch?.[id]).filter(Boolean);
+    if (!hits.length) return null;
+    return { readWatch: Object.fromEntries(Object.entries(cur.readWatch).filter(([id]) => !ids.includes(id))) };
+  });
+  if (!hits.length) return [];
+  const bot = (await store.get("agentReports/bot")) || {};
+  const text = hits.map((h) => `✓✓ ${h.who} קרא/ה: ${h.what}`).join("\n");
+  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") });
+  return hits;
+}
