@@ -296,6 +296,29 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal(reads.length, 1, "עדכון קריאה אחד בלבד");
   assert.match(JSON.stringify(reads[0]), /יוסי קרא\/ה: סיכום אימון בוגרים/);
 }
+// ☀️ בוקר טוב למאמן ביום אימון: נוסח של Gemini רק אם הוא כולל את כל הקבוצות והשעות, אחרת נוסח קבוע; פעם אחת ביום
+{
+  const { morningGreetings } = await import("../src/reminders.js");
+  const gem = async () => geminiQueue.shift() || [];
+  put("groups/g5", { ...docs.get("groups/g5"), startTime: "16:00" });
+  put("cancellations/c1", { groupId: "g6", date: "2026-10-04" });
+  const am = (h) => new Date(`2026-10-04T0${h}:00:00Z`);
+  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(4)), "too early", "07:00 — מוקדם");
+  geminiQueue.push([{ text: "בוקר טוב יוסי! 😎 היום נוער ובוגרים ב-16:00, יאללה!" }]);
+  const n3 = sent.length;
+  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(5)), "morning: יוסי ✓", "רון בלי טלפון, ערב בוטל");
+  const m = sent.slice(n3).filter((b) => b.type === "template");
+  assert.equal(m.length, 1);
+  assert.equal(m[0].template.components[0].parameters[0].text, "בוקר טוב יוסי! 😎 היום נוער ובוגרים ב-16:00, יאללה!");
+  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(6)), "done today");
+  // Gemini השמיט שעה — נוסח קבוע עם כל הפרטים
+  docs.get("agentReports/bot").morningGreetings = "";
+  geminiQueue.push([{ text: "בוקר טוב יוסי! היום אימון נוער 🏓" }]);
+  const n4 = sent.length;
+  await morningGreetings(env, db(env), waConfig(env), gem, am(5));
+  assert.equal(sent.slice(n4).find((b) => b.type === "template").template.components[0].parameters[0].text, "בוקר טוב יוסי! ☀️ תזכורת: היום יש אימון — נוער, בוגרים ב-16:00. שיהיה יום מעולה 🏓");
+  docs.delete("cancellations/c1");
+}
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {
   const { shortLinks } = await import("../src/reminders.js");
