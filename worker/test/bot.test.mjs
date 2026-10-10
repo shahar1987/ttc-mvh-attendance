@@ -261,6 +261,7 @@ const links = rem.match(/https:\/\/wa\.me\/\S+/g);
 assert.equal(links.length, 1, "רק המאמן של נוער (בוגרים מילאו, ערב עוד לא נגמר)");
 assert.match(links[0], /^https:\/\/wa\.me\/972501234567\?text=/);
 assert.match(decodeURIComponent(links[0].split("text=")[1]), /היי יוסי, תזכורת ידידותית למלא נוכחות עבור קבוצת נוער/);
+assert.match(decodeURIComponent(links[0].split("text=")[1]), /ttc-mvh-attendance\/#group=g3$/, "קישור שפותח ישר את הקבוצה");
 assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(docs.get("agentReports/bot").outbox.reminders.text, /wa\.me/, "הקישורים נשמרים לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
