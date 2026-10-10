@@ -11,7 +11,7 @@ rules_version = '2';
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
-// 1. הורה (תפקיד "Member") רואה את הילדים שקושרו אליו ב-links, ולא את המועדון.
+// 1. הורה (תפקיד "Member") לא רואה כרטיסי שחקנים או נוכחות — פורטל ההורים הוסר ב-10.10.2026.
 // 2. כשבודקים בעלות על מסמך קיים בודקים את resource.data — מה שכתוב כרגע
 //    במסד — ולא את request.resource.data, שהוא מה שהבקשה מבקשת לכתוב.
 
@@ -81,28 +81,9 @@ service cloud.firestore {
     }
 
     // הורה מקושר לכרטיס שחקן דרך מסמך ב-links שמזהה אותו: uid_playerId.
+    // פורטל ההורים הוסר (10.10.2026): קישור הורה-שחקן כבר לא פותח גישה לכרטיס.
     function isLinkedToPlayer(playerId) {
-      return isSignedIn()
-        && playerId is string && playerId != ''
-        && exists(/databases/$(database)/documents/links/$(request.auth.uid + '_' + playerId));
-    }
-
-    function inviteDoc(token) {
-      return get(/databases/$(database)/documents/invites/$(token));
-    }
-
-    // הזמנה שאפשר להסתמך עליה: קיימת, לא בוטלה ולא פג תוקפה.
-    // expiresAtMs נכתב על ידי createInvite; הזמנה ישנה בלי השדה לא תיפסל.
-    // הזמנה שמומשה תקפה רק למי שמימש אותה: ההרשמה (signUpFromInvite) יוצרת
-    // פרופיל וקישורים ורק בסוף כותבת usedAt/usedByUid, ומי שנקטע באמצע וחוזר
-    // עם אותו חשבון צריך להמשיך. משתמש אחר עם קישור שכבר מומש — נחסם.
-    function inviteLive(token) {
-      return token is string && token.size() > 0
-        && inviteDoc(token) != null
-        && inviteDoc(token).data.get('revoked', false) == false
-        && inviteDoc(token).data.get('expiresAtMs', 99999999999999) > request.time.toMillis()
-        && (inviteDoc(token).data.get('usedAt', null) == null
-            || inviteDoc(token).data.get('usedByUid', '') == request.auth.uid);
+      return false;
     }
 
     // ---------- משתמשים ----------
@@ -116,12 +97,8 @@ service cloud.firestore {
       // הרשמה דרך קישור הזמנה: המוזמן יוצר לעצמו פרופיל של "Member" בלבד,
       // ורק אם הוא מצמיד אליו טוקן הזמנה חי. בלי הסעיף הזה אי אפשר להירשם
       // כלל, כי משתמש חדש אינו מנהל ואין מי שייצור עבורו את המסמך.
-      allow create: if isAdmin()
-        || (isSignedIn()
-            && request.auth.uid == userId
-            && request.resource.data.get('role', '') == 'Member'
-            && !('permissions' in request.resource.data)
-            && inviteLive(request.resource.data.get('inviteToken', '')));
+      // אין יותר הרשמה עצמית דרך הזמנה (פורטל ההורים הוסר) — רק מנהל יוצר פרופיל.
+      allow create: if isAdmin();
 
       allow delete: if isAdmin();
       allow update: if isAdmin()
@@ -259,67 +236,16 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ---------- גישת הורים ----------
-    // הורה רואה את הקישורים של עצמו (האפליקציה שואלת לפי uid); הרשימה
-    // המלאה — רק למי שיש לו הרשאת "גישת הורים".
+    // ---------- גישת הורים (הוסרה 10.10.2026) ----------
+    // הנתונים הישנים נשארים, אבל רק המנהל קורא, מתקן או מוחק אותם.
     match /links/{linkId} {
-      allow read: if hasPerm('access')
-        || (isSignedIn() && resource.data.get('uid', '') == request.auth.uid);
-      // ההרשמה דרך הזמנה יוצרת את הקישור בעצמה, ורק לילדים שההזמנה מפרטת:
-      // מזהה המסמך חייב להיות uid_playerId של המבקש, והשחקן חייב להופיע
-      // ברשימת playerIds של הזמנה חיה.
-      allow create: if hasPerm('access')
-        || (isSignedIn()
-            && request.resource.data.get('uid', '') == request.auth.uid
-            && linkId == request.auth.uid + '_' + request.resource.data.get('playerId', '')
-            && inviteLive(request.resource.data.get('inviteToken', ''))
-            && request.resource.data.get('playerId', '')
-                 in inviteDoc(request.resource.data.get('inviteToken', '')).data.get('playerIds', []));
-      allow update, delete: if hasPerm('access');
+      allow read, write: if isAdmin();
     }
-
     match /invites/{token} {
-      // מזהה המסמך הוא הטוקן שבקישור — 24 בתים אקראיים (192 ביט), כלומר
-      // הקישור עצמו הוא המפתח. קריאה של הזמנה בודדת חייבת לעבוד לפני שיש
-      // חשבון, כי מסך ההזמנה נטען לפני ההתחברות. שליפה של כל ההזמנות —
-      // ובתוכן שמות ילדים וטלפונים — רק למי שיש לו הרשאת "גישת הורים".
-      allow get: if true;
-      allow list: if hasPerm('access');
-      allow create, delete: if hasPerm('access');
-      // בסוף ההרשמה המוזמן מסמן את ההזמנה כמומשה, ולא נוגע בשום שדה אחר.
-      // הזמנה שכבר מומשה אינה ניתנת "למימוש מחדש" על ידי משתמש אחר — אחרת
-      // הוא היה כותב את ה-uid שלו ב-usedByUid ועוקף את inviteLive.
-      allow update: if hasPerm('access')
-        || (isSignedIn()
-            && resource.data.get('revoked', false) == false
-            && (resource.data.get('usedAt', null) == null
-                || resource.data.get('usedByUid', '') == request.auth.uid)
-            && request.resource.data.diff(resource.data)
-                 .affectedKeys().hasOnly(['usedAt', 'usedByUid'])
-            && request.resource.data.get('usedByUid', '') == request.auth.uid);
+      allow read, write: if isAdmin();
     }
-
     match /accessRequests/{id} {
-      // הורה מגיש בקשה לפני שיש לו חשבון, ולכן אין כאן דרישת התחברות.
-      // במקום זה הבקשה מוגבלת בדיוק לשדות ולאורכים שהטופס שולח, כדי שלא
-      // יהיה אפשר למלא את המסד בתוכן מבחוץ ולשרוף את המכסה.
-      allow create: if request.resource.data.keys().hasOnly(
-             ['name', 'phone', 'childName', 'relation', 'note', 'status', 'createdAt'])
-        && request.resource.data.keys().hasAll(['name', 'phone', 'status', 'createdAt'])
-        && request.resource.data.status == 'pending'
-        && request.resource.data.name is string
-        && request.resource.data.name.size() <= 60
-        && request.resource.data.phone is string
-        && request.resource.data.phone.size() <= 20
-        && request.resource.data.get('childName', '') is string
-        && request.resource.data.get('childName', '').size() <= 60
-        && request.resource.data.get('relation', '') is string
-        && request.resource.data.get('relation', '').size() <= 20
-        && request.resource.data.get('note', '') is string
-        && request.resource.data.get('note', '').size() <= 300
-        && request.resource.data.createdAt is string
-        && request.resource.data.createdAt.size() <= 40;
-      allow read, update, delete: if hasPerm('access');
+      allow read, update, delete: if isAdmin();
     }
 
     // ---------- מערכת ----------

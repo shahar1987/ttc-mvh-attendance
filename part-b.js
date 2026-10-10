@@ -47,16 +47,6 @@ const APP_PERMISSIONS = [
     label: "תחרויות ודירוג",
     desc: "מערכת התחרויות של המועדון",
   },
-  {
-    key: "sendMessages",
-    label: "הודעות מהמועדון",
-    desc: "פרסום הודעות בפורטל לכל ההורים",
-  },
-  {
-    key: "access",
-    label: "גישת הורים",
-    desc: "אישור בקשות גישה וקישור הורים לכרטיס שחקן",
-  },
 ];
 const ALL_PERMISSION_KEYS = APP_PERMISSIONS.map((p) => p.key);
 // ברירת מחדל לפי תפקיד — משמשת רק למשתמשים שעדיין לא הוגדרו להם הרשאות
@@ -64,11 +54,11 @@ const ALL_PERMISSION_KEYS = APP_PERMISSIONS.map((p) => p.key);
 const DEFAULT_PERMISSIONS_BY_ROLE = {
   admin: ALL_PERMISSION_KEYS,
   viewer: ["reports", "phonebook", "competitions"],
-  coach: ["access", "competitions"],
+  coach: ["competitions"],
   member: [],
 };
 // תפריט הצוות. כל פריט מסומן בהרשאה שפותחת אותו; פריט בלי הרשאה פתוח לכל
-// משתמש צוות (מילוי נוכחות ופורטל המועדון — הבסיס של העבודה היומיומית).
+// משתמש צוות (מילוי נוכחות — הבסיס של העבודה היומיומית).
 const STAFF_MENU_ITEMS = [
   { key: "dashboard", label: "דשבורד", icon: le, perm: "reports", viewerToo: !0 },
   { key: "attendance", label: "מילוי נוכחות", icon: Z },
@@ -77,8 +67,6 @@ const STAFF_MENU_ITEMS = [
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
   { key: "reports", label: "דוחות", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
-  { key: "access", label: "גישת הורים", icon: J, perm: "access" },
-  { key: "portal", label: "פורטל המועדון", icon: le },
   { key: "import", label: "ייבוא שחקנים", icon: K, perm: "manageGroups" },
   {
     key: "tournaments",
@@ -1302,7 +1290,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
               e.createElement(
                 "p",
                 { className: "text-xs text-slate-400 leading-snug px-1" },
-                "השינוי נשמר מיד ומתעדכן אצל כולם. מילוי נוכחות לקבוצות שלו ופורטל המועדון פתוחים לכל מאמן ואינם ניתנים להגבלה.",
+                "השינוי נשמר מיד ומתעדכן אצל כולם. מילוי נוכחות לקבוצות שלו פתוח לכל מאמן ואינו ניתן להגבלה.",
               ),
             ),
         );
@@ -4153,7 +4141,6 @@ function useCoachFieldsHealer(on, groups, users) {
 function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
     staffMode = !!s && !isMemberRole(s),
-    [route, setRoute] = b(parseHashRoute),
     { data: l } = L("users", null, t?.uid, staffMode),
     { data: i, loading: iLoading } = L("groups", null, t?.uid, staffMode),
     coachGroupIds =
@@ -4217,13 +4204,6 @@ function Q() {
   useCoachFieldsHealer(!!s && isAdminRole(s), i, l);
   if (
     (j(() => {
-      let onHash = () => setRoute(parseHashRoute());
-      return (
-        window.addEventListener("hashchange", onHash),
-        () => window.removeEventListener("hashchange", onHash)
-      );
-    }, []),
-    j(() => {
       s?.id && qe(s.id);
     }, [s?.id]),
     j(() => {
@@ -4281,8 +4261,6 @@ function Q() {
         "טוען…",
       ),
     );
-  if (route.name === "invite")
-    return e.createElement(InviteScreen, { token: route.token });
   if (!t) return e.createElement(tt, null);
   if (!s) {
     let N =
@@ -4337,8 +4315,26 @@ function Q() {
       ),
     );
   }
+  // פורטל ההורים הוסר: חשבון הורה/שחקן ישן רואה הודעה ויכול רק להתנתק
   if (isMemberRole(s))
-    return e.createElement(MemberPortal, { profile: s, authUser: t });
+    return e.createElement(
+      "div",
+      {
+        dir: "rtl",
+        className:
+          "min-h-screen bg-blue-950 flex flex-col items-center justify-center gap-4 px-6 text-center",
+      },
+      e.createElement(
+        "p",
+        { className: "text-white text-sm leading-relaxed" },
+        "פורטל ההורים אינו פעיל יותר. לפרטים פנו למנהל המועדון.",
+      ),
+      e.createElement(
+        "button",
+        { onClick: () => logoutAndClearCache(), className: "text-blue-300 text-sm underline" },
+        "התנתקות",
+      ),
+    );
   let r = isAdminRole(s),
     vw = isViewerRole(s);
   return e.createElement(
@@ -4441,27 +4437,6 @@ function Q() {
       canDo(s, "manageGroups") &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
-      canDo(s, "access") &&
-        m === "access" &&
-        e.createElement(AccessScreen, {
-          players: c,
-          users: l,
-          currentUserId: s.id,
-          uid: t?.uid,
-          isAdmin: r,
-        }),
-      m === "portal" &&
-        e.createElement(MemberPortal, {
-          profile: s,
-          authUser: t,
-          embedded: !0,
-          staffGroupIds: coachGroupIds,
-          users: l,
-          isStaff: r || isCoachRole(s),
-          isAdmin: r,
-          allPlayers: c,
-          allAttendance: n,
-        }),
       m === "attendance" &&
         e.createElement(mt, {
           profile: s,
@@ -4534,766 +4509,3 @@ function Q() {
   );
 }
 bt(document.getElementById("root")).render(xt.createElement(Q, null));
-
-// ===== מסך ניהול גישת הורים: בקשות והזמנות =====
-function NewInviteModal({
-  players: players,
-  onClose: onClose,
-  currentUserId: currentUserId,
-  prefill: prefill,
-  onCreated: onCreated,
-  isAdmin: isAdmin,
-}) {
-  let [q, setQ] = b((prefill && prefill.childName) || ""),
-    [sel, setSel] = b([]),
-    [name, setName] = b((prefill && prefill.name) || ""),
-    [phone, setPhone] = b((prefill && prefill.phone) || ""),
-    [rel, setRel] = b((prefill && prefill.relation) || "parent"),
-    [busy, setBusy] = b(!1),
-    [err, setErr] = b(""),
-    active = players.filter((p) => !p.deleted && p.isActive !== !1),
-    shown = q.trim()
-      ? active.filter((p) => String(p.name || "").includes(q.trim()))
-      : active.slice(0, 20),
-    toggle = (p) => {
-      let adding = !sel.includes(p.id),
-        next = adding ? (isAdmin ? [...sel, p.id] : [p.id]) : sel.filter((x) => x !== p.id);
-      setSel(next);
-      // פרטי ההורה ממולאים לפי השחקן הראשון שנבחר ומתעדכנים כשמחליפים שחקן —
-      // כדי שהזמנה לא תישלח לטלפון של הורה אחר
-      if (adding && (!isAdmin || next.length === 1)) {
-        (setName(p.parentName || ""), setPhone(p.parentPhone || ""));
-      } else if (!adding && next.length === 0) {
-        (setName(""), setPhone(""));
-      }
-    },
-    ok = sel.length > 0 && name.trim().length > 1 && isValidPhone(phone),
-    submit = async () => {
-      (setBusy(!0), setErr(""));
-      // פותחים את הלשונית באופן סינכרוני (לפני ה-await) כדי שחוסם החלונות הקופצים לא יעצור את וואטסאפ
-      let win = null;
-      try {
-        win = window.open("about:blank", "_blank");
-      } catch (e2) {}
-      try {
-        let chosen = players.filter((p) => sel.includes(p.id)),
-          token = await createInvite({
-            phone: phone,
-            displayName: name,
-            playerIds: chosen.map((p) => p.id),
-            playerNames: chosen.map((p) => p.name),
-            relation: rel,
-            createdBy: currentUserId || "",
-          }),
-          inv = {
-            phone: phone,
-            displayName: name,
-            playerNames: chosen.map((p) => p.name),
-          };
-        let url = inviteWhatsappUrl(inv, token);
-        (win ? (win.location = url) : window.open(url, "_blank"),
-          onCreated && onCreated(token),
-          onClose());
-      } catch (e2) {
-        try {
-          win && win.close();
-        } catch (e3) {}
-        (setErr("יצירת ההזמנה נכשלה: " + (e2.message || e2)), setBusy(!1));
-      }
-    };
-  return e.createElement(
-    "div",
-    {
-      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
-      onClick: onClose,
-    },
-    e.createElement(
-      "div",
-      {
-        dir: "rtl",
-        onClick: (x) => x.stopPropagation(),
-        className:
-          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3 max-h-[90vh] overflow-y-auto",
-      },
-      e.createElement(
-        "div",
-        { className: "flex items-center justify-between" },
-        e.createElement(
-          "button",
-          { onClick: onClose, className: "text-slate-400" },
-          e.createElement(T, { className: "w-5 h-5" }),
-        ),
-        e.createElement(
-          "h3",
-          { className: "font-bold text-blue-950" },
-          "הזמנה חדשה",
-        ),
-      ),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          isAdmin
-            ? "לאיזה שחקן/ים (אפשר לסמן כמה)"
-            : "לאיזה שחקן (מאמן מזמין לשחקן אחד מהקבוצות שלו)",
-        ),
-        e.createElement("input", {
-          value: q,
-          onChange: (x) => setQ(x.target.value),
-          placeholder: "חיפוש שחקן",
-          className:
-            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
-        }),
-        e.createElement(
-          "div",
-          {
-            className:
-              "max-h-44 overflow-y-auto border border-slate-100 rounded-lg",
-          },
-          ...shown.map((p) =>
-            e.createElement(
-              "label",
-              {
-                key: p.id,
-                className:
-                  "flex items-center gap-2 px-3 py-2 border-b border-slate-50 text-sm",
-              },
-              e.createElement("input", {
-                type: "checkbox",
-                checked: sel.includes(p.id),
-                onChange: () => toggle(p),
-                className: "w-4 h-4",
-              }),
-              e.createElement("span", { className: "flex-1" }, p.name),
-            ),
-          ),
-          shown.length === 0 &&
-            e.createElement(
-              "p",
-              { className: "text-xs text-slate-400 px-3 py-2" },
-              "לא נמצאו שחקנים",
-            ),
-        ),
-      ),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "שם ההורה / המוזמן",
-        ),
-        e.createElement("input", {
-          value: name,
-          onChange: (x) => setName(x.target.value),
-          className:
-            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
-        }),
-      ),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "טלפון (זה יהיה שם המשתמש שלו)",
-        ),
-        e.createElement("input", {
-          value: phone,
-          onChange: (x) => setPhone(x.target.value),
-          dir: "ltr",
-          className:
-            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm outline-none focus:border-emerald-400",
-        }),
-      ),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "הקשר לשחקן",
-        ),
-        e.createElement(
-          "select",
-          {
-            value: rel,
-            onChange: (x) => setRel(x.target.value),
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none",
-          },
-          e.createElement("option", { value: "parent" }, "הורה"),
-          e.createElement("option", { value: "self" }, "השחקן עצמו"),
-          e.createElement("option", { value: "family" }, "בן משפחה"),
-        ),
-      ),
-      err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
-      e.createElement(
-        "button",
-        {
-          onClick: submit,
-          disabled: busy || !ok,
-          className:
-            "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
-        },
-        busy ? "יוצר…" : "יצירה ושליחה בוואטסאפ",
-      ),
-      e.createElement(
-        "p",
-        { className: "text-xs text-slate-400 text-center" },
-        "הקישור אישי, חד-פעמי ותקף ל-7 ימים",
-      ),
-    ),
-  );
-}
-function AccessScreen({
-  players: players,
-  users: users,
-  currentUserId: currentUserId,
-  uid: uid,
-  isAdmin: isAdmin,
-}) {
-  let { data: invites } = L(
-      "invites",
-      null,
-      uid,
-      !0,
-      isAdmin ? null : ["createdBy", "==", currentUserId],
-    ),
-    { data: requests } = L("accessRequests", null, uid),
-    { data: links } = L("links", null, uid, isAdmin),
-    [tab, setTab] = b("requests"),
-    [modal, setModal] = b(null),
-    // מאמן רואה רק בקשות שמזכירות שחקן מהקבוצות שלו; מנהל רואה הכול
-    pending = requests.filter(
-      (r) =>
-        r.status === "pending" &&
-        (isAdmin ||
-          players.some((p) => {
-            let a = String(p.name || "").replace(/\s+/g, " ").trim(),
-              c = String(r.childName || "").replace(/\s+/g, " ").trim();
-            return a && c && (a === c || a.includes(c) || c.includes(a));
-          })),
-    ),
-    playerName = (id) => (players.find((p) => p.id === id) || {}).name || id,
-    sortedInvites = invites
-      .slice()
-      .sort((a, c) => String(c.createdAt).localeCompare(String(a.createdAt))),
-    tabBtn = (key, label, count) =>
-      e.createElement(
-        "button",
-        {
-          onClick: () => setTab(key),
-          className:
-            "flex-1 py-2.5 text-sm font-semibold rounded-xl " +
-            (tab === key
-              ? "bg-blue-950 text-white"
-              : "bg-white text-slate-600"),
-        },
-        label,
-        count
-          ? e.createElement(
-              "span",
-              {
-                className:
-                  "mr-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5",
-              },
-              count,
-            )
-          : null,
-      );
-  return e.createElement(
-    "div",
-    { className: "p-4 flex flex-col gap-3" },
-    e.createElement(
-      "div",
-      { className: "flex gap-2" },
-      tabBtn("requests", "בקשות גישה", pending.length),
-      tabBtn("invites", "הזמנות", 0),
-      isAdmin && tabBtn("links", "קישורים", 0),
-    ),
-    tab === "requests"
-      ? e.createElement(
-          e.Fragment,
-          null,
-          pending.length === 0 &&
-            e.createElement(
-              "p",
-              { className: "text-sm text-slate-400 text-center py-8" },
-              "אין בקשות ממתינות",
-            ),
-          ...pending.map((r) =>
-            e.createElement(
-              "div",
-              {
-                key: r.id,
-                className: "bg-white rounded-2xl p-4 flex flex-col gap-2",
-              },
-              e.createElement(
-                "div",
-                null,
-                e.createElement(
-                  "p",
-                  { className: "font-bold text-blue-950 text-sm" },
-                  r.name,
-                ),
-                e.createElement(
-                  "p",
-                  { dir: "ltr", className: "text-xs text-slate-500 text-right" },
-                  r.phone,
-                ),
-                e.createElement(
-                  "p",
-                  { className: "text-xs text-slate-600 mt-1" },
-                  (RELATION_LABELS[r.relation] || "הורה") +
-                    (r.childName ? " של " + r.childName : ""),
-                ),
-                r.note &&
-                  e.createElement(
-                    "p",
-                    { className: "text-xs text-slate-400 mt-1" },
-                    r.note,
-                  ),
-              ),
-              e.createElement(
-                "div",
-                { className: "flex gap-2" },
-                e.createElement(
-                  "button",
-                  {
-                    onClick: () =>
-                      setModal({
-                        prefill: {
-                          name: r.name,
-                          phone: r.phone,
-                          childName: r.childName,
-                          relation: r.relation,
-                        },
-                        requestId: r.id,
-                      }),
-                    className:
-                      "flex-1 bg-emerald-500 text-white text-sm font-semibold rounded-xl py-2.5",
-                  },
-                  "אישור ושליחת הזמנה",
-                ),
-                isAdmin &&
-                e.createElement(
-                  "button",
-                  {
-                    onClick: () =>
-                      window.confirm("לדחות את הבקשה?") &&
-                      setAccessRequestStatus(
-                        r.id,
-                        "rejected",
-                        currentUserId,
-                      ).catch((x) => window.alert("הפעולה נכשלה: " + x.message)),
-                    className:
-                      "px-4 bg-slate-100 text-slate-600 text-sm rounded-xl",
-                  },
-                  "דחייה",
-                ),
-              ),
-            ),
-          ),
-        )
-      : tab === "invites"
-      ? e.createElement(
-          e.Fragment,
-          null,
-          e.createElement(
-            "button",
-            {
-              onClick: () => setModal({ prefill: null }),
-              className:
-                "bg-emerald-500 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2",
-            },
-            e.createElement(K, { className: "w-4 h-4" }),
-            "הזמנה חדשה",
-          ),
-          sortedInvites.length === 0 &&
-            e.createElement(
-              "p",
-              { className: "text-sm text-slate-400 text-center py-8" },
-              "עדיין לא נשלחו הזמנות",
-            ),
-          ...sortedInvites.map((inv) => {
-            let st = inviteStatus(inv);
-            return e.createElement(
-              "div",
-              {
-                key: inv.id,
-                className: "bg-white rounded-2xl p-4 flex flex-col gap-2",
-              },
-              e.createElement(
-                "div",
-                { className: "flex items-start justify-between gap-2" },
-                e.createElement(
-                  "div",
-                  { className: "min-w-0" },
-                  e.createElement(
-                    "p",
-                    { className: "font-bold text-blue-950 text-sm truncate" },
-                    inv.displayName,
-                  ),
-                  e.createElement(
-                    "p",
-                    {
-                      dir: "ltr",
-                      className: "text-xs text-slate-500 text-right",
-                    },
-                    inv.phone,
-                  ),
-                  e.createElement(
-                    "p",
-                    { className: "text-xs text-slate-600 mt-1" },
-                    (inv.playerNames || []).join(", "),
-                  ),
-                ),
-                e.createElement(
-                  "span",
-                  {
-                    className:
-                      "shrink-0 text-xs rounded-full px-2 py-1 " +
-                      (st === "open"
-                        ? "bg-amber-100 text-amber-700"
-                        : st === "used"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-100 text-slate-500"),
-                  },
-                  INVITE_STATUS_LABELS[st],
-                ),
-              ),
-              st === "open" &&
-                e.createElement(
-                  "div",
-                  { className: "flex gap-2" },
-                  e.createElement(
-                    "button",
-                    {
-                      onClick: () =>
-                        window.open(
-                          inviteWhatsappUrl(inv, inv.id),
-                          "_blank",
-                          "noopener",
-                        ),
-                      className:
-                        "flex-1 bg-emerald-50 text-emerald-700 text-sm font-semibold rounded-xl py-2",
-                    },
-                    "שליחה שוב בוואטסאפ",
-                  ),
-                  e.createElement(
-                    "button",
-                    {
-                      onClick: () =>
-                        window.confirm("לבטל את ההזמנה?") &&
-                        revokeInvite(inv.id).catch((x) =>
-                          window.alert("הביטול נכשל: " + x.message),
-                        ),
-                      className:
-                        "px-4 bg-slate-100 text-slate-600 text-sm rounded-xl",
-                    },
-                    "ביטול",
-                  ),
-                ),
-              st === "used" &&
-                e.createElement(
-                  "p",
-                  { className: "text-xs text-slate-400" },
-                  "מומשה · מחובר ל-",
-                  (inv.playerIds || []).map(playerName).join(", "),
-                ),
-            );
-          }),
-          isAdmin &&
-            e.createElement(
-              "p",
-              { className: "text-xs text-slate-400 text-center mt-2" },
-              "סה״כ קישורי הורה-שחקן פעילים: ",
-              links.length,
-            ),
-        )
-      : e.createElement(LinksTab, {
-          users: users,
-          players: players,
-          links: links,
-          currentUserId: currentUserId,
-        }),
-    modal &&
-      e.createElement(NewInviteModal, {
-        players: players,
-        prefill: modal.prefill,
-        currentUserId: currentUserId,
-        isAdmin: isAdmin,
-        onClose: () => setModal(null),
-        onCreated: () => {
-          modal.requestId &&
-            setAccessRequestStatus(
-              modal.requestId,
-              "approved",
-              currentUserId,
-            ).catch(() => {});
-        },
-      }),
-  );
-}
-
-// ===== ניהול קישורים בין אנשים לכרטיסי שחקן (מנהל בלבד) =====
-function NewLinkModal({
-  users: users,
-  players: players,
-  links: links,
-  onClose: onClose,
-  currentUserId: currentUserId,
-}) {
-  let [uq, setUq] = b(""),
-    [pq, setPq] = b(""),
-    [uid, setUid] = b(""),
-    [pid, setPid] = b(""),
-    [rel, setRel] = b("parent"),
-    [busy, setBusy] = b(!1),
-    [err, setErr] = b(""),
-    shownUsers = users
-      .filter((u) => !uq.trim() || String(u.name || "").includes(uq.trim()))
-      .slice(0, 12),
-    activePlayers = players.filter((p) => !p.deleted),
-    shownPlayers = activePlayers
-      .filter((p) => !pq.trim() || String(p.name || "").includes(pq.trim()))
-      .slice(0, 12),
-    exists = links.some((l) => l.uid === uid && l.playerId === pid),
-    ok = uid && pid && !exists,
-    submit = async () => {
-      (setBusy(!0), setErr(""));
-      try {
-        (await De(S(P, "links", linkDocId(uid, pid)), {
-          uid: uid,
-          playerId: pid,
-          relation: rel,
-          inviteToken: "",
-          createdBy: currentUserId || "",
-          createdAt: new Date().toISOString(),
-        }),
-          onClose());
-      } catch (e2) {
-        (setErr("הקישור נכשל: " + (e2.message || e2)), setBusy(!1));
-      }
-    },
-    picker = (label, q, setQ, items, sel, setSel, labelOf) =>
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement("label", { className: "text-xs text-slate-500" }, label),
-        e.createElement("input", {
-          value: q,
-          onChange: (x) => setQ(x.target.value),
-          placeholder: "חיפוש",
-          className:
-            "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none focus:border-emerald-400",
-        }),
-        e.createElement(
-          "div",
-          {
-            className:
-              "max-h-40 overflow-y-auto border border-slate-100 rounded-lg",
-          },
-          ...items.map((it) =>
-            e.createElement(
-              "button",
-              {
-                key: it.id,
-                onClick: () => setSel(it.id),
-                className:
-                  "w-full text-right px-3 py-2 text-sm border-b border-slate-50 " +
-                  (sel === it.id ? "bg-emerald-50 text-emerald-700 font-semibold" : "text-slate-700"),
-              },
-              labelOf(it),
-            ),
-          ),
-          items.length === 0 &&
-            e.createElement(
-              "p",
-              { className: "text-xs text-slate-400 px-3 py-2" },
-              "לא נמצאו תוצאות",
-            ),
-        ),
-      );
-  return e.createElement(
-    "div",
-    {
-      className: "fixed inset-0 bg-black/40 flex items-end justify-center z-50",
-      onClick: onClose,
-    },
-    e.createElement(
-      "div",
-      {
-        dir: "rtl",
-        onClick: (x) => x.stopPropagation(),
-        className:
-          "bg-white w-full max-w-md rounded-t-2xl p-5 flex flex-col gap-3 max-h-[90vh] overflow-y-auto",
-      },
-      e.createElement(
-        "div",
-        { className: "flex items-center justify-between" },
-        e.createElement(
-          "button",
-          { onClick: onClose, className: "text-slate-400" },
-          e.createElement(T, { className: "w-5 h-5" }),
-        ),
-        e.createElement(
-          "h3",
-          { className: "font-bold text-blue-950" },
-          "קישור ידני",
-        ),
-      ),
-      e.createElement(
-        "p",
-        { className: "text-xs text-slate-500 leading-relaxed" },
-        "קישור נותן למשתמש לראות בפורטל את כרטיס השחקן ואת הנוכחות שלו. כך גם אתה יכול לקשר את עצמך לשחקן ולראות בדיוק מה ההורים רואים.",
-      ),
-      picker(
-        "מי מקבל גישה",
-        uq,
-        setUq,
-        shownUsers,
-        uid,
-        setUid,
-        (u) => (u.name || u.id) + (u.role ? " · " + u.role : ""),
-      ),
-      picker("לאיזה שחקן", pq, setPq, shownPlayers, pid, setPid, (p) => p.name),
-      e.createElement(
-        "div",
-        { className: "flex flex-col gap-1" },
-        e.createElement(
-          "label",
-          { className: "text-xs text-slate-500" },
-          "הקשר",
-        ),
-        e.createElement(
-          "select",
-          {
-            value: rel,
-            onChange: (x) => setRel(x.target.value),
-            className:
-              "border border-slate-200 rounded-lg py-2.5 px-3 text-sm text-right outline-none",
-          },
-          e.createElement("option", { value: "parent" }, "הורה"),
-          e.createElement("option", { value: "self" }, "השחקן עצמו"),
-          e.createElement("option", { value: "family" }, "בן משפחה"),
-        ),
-      ),
-      exists &&
-        e.createElement(
-          "p",
-          { className: "text-xs text-amber-600" },
-          "הקישור הזה כבר קיים",
-        ),
-      err && e.createElement("p", { className: "text-red-600 text-xs" }, err),
-      e.createElement(
-        "button",
-        {
-          onClick: submit,
-          disabled: busy || !ok,
-          className:
-            "bg-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl py-3.5",
-        },
-        busy ? "מקשר…" : "יצירת הקישור",
-      ),
-    ),
-  );
-}
-function LinksTab({
-  users: users,
-  players: players,
-  links: links,
-  currentUserId: currentUserId,
-}) {
-  let [modal, setModal] = b(!1),
-    nameOfUser = (id) => {
-      let u = users.find((x) => x.id === id);
-      return u ? u.name || u.id : "משתמש שנמחק";
-    },
-    nameOfPlayer = (id) => {
-      let p = players.find((x) => x.id === id);
-      return p ? p.name : "שחקן שנמחק";
-    },
-    cut = async (l) => {
-      if (
-        !window.confirm(
-          `לנתק את ${nameOfUser(l.uid)} מ${nameOfPlayer(l.playerId)}? הוא יפסיק לראות את הכרטיס והנוכחות בפורטל.`,
-        )
-      )
-        return;
-      try {
-        await deleteLink(l.uid, l.playerId);
-      } catch (e2) {
-        window.alert("הניתוק נכשל: " + e2.message);
-      }
-    };
-  return e.createElement(
-    e.Fragment,
-    null,
-    e.createElement(
-      "button",
-      {
-        onClick: () => setModal(!0),
-        className:
-          "bg-emerald-500 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2",
-      },
-      e.createElement(K, { className: "w-4 h-4" }),
-      "קישור ידני",
-    ),
-    links.length === 0 &&
-      e.createElement(
-        "p",
-        { className: "text-sm text-slate-400 text-center py-8" },
-        "אין עדיין קישורים. הורה שמימש הזמנה יופיע כאן אוטומטית.",
-      ),
-    ...links
-      .slice()
-      .sort((a, c) => nameOfUser(a.uid).localeCompare(nameOfUser(c.uid), "he"))
-      .map((l) =>
-        e.createElement(
-          "div",
-          {
-            key: l.id,
-            className:
-              "bg-white rounded-2xl p-4 flex items-center justify-between gap-3",
-          },
-          e.createElement(
-            "div",
-            { className: "min-w-0" },
-            e.createElement(
-              "p",
-              { className: "font-bold text-blue-950 text-sm truncate" },
-              nameOfUser(l.uid),
-            ),
-            e.createElement(
-              "p",
-              { className: "text-xs text-slate-500 truncate" },
-              (RELATION_LABELS[l.relation] || "הורה") +
-                " של " +
-                nameOfPlayer(l.playerId),
-            ),
-          ),
-          e.createElement(
-            "button",
-            {
-              onClick: () => cut(l),
-              className:
-                "shrink-0 px-3 py-2 bg-slate-100 text-slate-600 text-xs rounded-xl",
-            },
-            "ניתוק",
-          ),
-        ),
-      ),
-    modal &&
-      e.createElement(NewLinkModal, {
-        users: users,
-        players: players,
-        links: links,
-        currentUserId: currentUserId,
-        onClose: () => setModal(!1),
-      }),
-  );
-}

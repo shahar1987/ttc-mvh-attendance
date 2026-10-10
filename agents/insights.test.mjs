@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collect, weeklyReport } from "./insights.mjs";
+import { collect, weeklyReport, tokenDead } from "./insights.mjs";
 
 const NOW = new Date("2026-10-11T06:00:00Z");
 
@@ -28,4 +28,10 @@ test("weekly report", () => {
   assert.match(r, /הכי טוב: אינסטגרם.*"פוסט 30"/);
   assert.match(r, /17:00/, "שעון ישראל");
   assert.equal(weeklyReport([], NOW), "השבוע לא עלו פוסטים, אז אין מה למדוד.");
+});
+
+test("tokenDead: a revoked Meta token means reconnect, other errors do not", () => {
+  assert.equal(tokenDead(Object.assign(new Error("Error validating access token: The session has been invalidated"), { code: 190 })), true);
+  assert.equal(tokenDead(new Error("Error validating access token")), true);
+  assert.equal(tokenDead(Object.assign(new Error("metric deprecated"), { code: 100 })), false);
 });
