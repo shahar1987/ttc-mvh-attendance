@@ -78,6 +78,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
   if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok", instagram_business_account: { id: "ig0", username: "cortado_snir" } }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "ttcmhr" } }] });
+  if (url.includes("graph.facebook.com/v24.0/debug_token")) return json({ data: { expires_at: 0, is_valid: true } });
   if (url.includes("/content_publishing_limit")) return json({ data: [{ quota_usage: 1, config: { quota_total: 100 } }] });
   if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
     social.push({ url, body: JSON.parse(init.body) });
@@ -356,6 +357,22 @@ assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("l
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
 assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@ttcmhr/);
 assert.equal(docs.get("agentReports/social").pages.find((p) => p.igName === "ttcmhr").token, "ptok", "דף המועדון נשמר עם הטוקן שלו גם כשקורטדו (עם אינסטגרם משלו) ראשון ברשימה");
+{
+  // 🔒 חיבור קבוע (משתמש מערכת): נשמר רק דף המועדון, וחיבור אישי מאוחר יותר לא דורס אותו
+  const setKey = (label, key) => { const b = docs.get("agentReports/bot"); b.keys = { ...(b.keys || {}), [label]: { key, exp: Date.now() + 60000 } }; };
+  assert.equal((await worker.fetch(new Request("https://x/meta/permanent?k=nope"), env, {})).status, 403);
+  setKey("metaperm", "pk1");
+  assert.match(await (await worker.fetch(new Request("https://x/meta/permanent?k=pk1"), env, {})).text(), /משתמשי מערכת/);
+  const form = new FormData(); form.set("token", "systok");
+  const done = await (await worker.fetch(new Request("https://x/meta/permanent?k=pk1", { method: "POST", body: form }), env, {})).text();
+  assert.match(done, /חיבור קבוע: המועדון \+ אינסטגרם @ttcmhr\. הטוקן לא פג/);
+  const club = () => docs.get("agentReports/social").pages.filter((p) => p.id === "pg1");
+  assert.deepEqual(club().map((p) => p.permanent), [true]);
+  setKey("meta", "mk2");
+  await worker.fetch(new Request("https://x/meta/callback?code=c&state=mk2"), env, {});
+  assert.deepEqual(club().map((p) => p.permanent), [true], "חיבור אישי לא דורס את החיבור הקבוע ולא מכפיל את הדף");
+  assert.ok(docs.get("agentReports/social").pages.some((p) => p.id === "pg0"), "קורטדו נשאר כמו שהיה");
+}
 assert.match(await callTool("כן תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /עוד לא פורסם/, "כן בתוך הבקשה עצמה לא מפרסם");
 assert.equal(social.length, 0);
 assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@ttcmhr\) ✓/);
