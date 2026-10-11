@@ -253,7 +253,7 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
   const out = [], watch = {};
   for (const [id, gs] of byCoach) {
     const c = users.find((u) => u.id === id);
-    if (!c || !isValidPhone(c.phone || "")) continue;
+    if (!c || !isValidPhone(c.phone || "")) { out.push(`${c?.name || "מאמן"}: אין טלפון שמור`); continue; }
     const first = String(c.name || "").trim().split(/\s+/)[0] || "";
     const plan = gs.map((g) => `${g.name}${g.startTime ? ` ב-${g.startTime}` : ""}`).join(", ");
     const fallback = `בוקר טוב ${first}! ☀️ תזכורת: היום יש אימון — ${plan}. שיהיה יום מעולה 🏓`;
@@ -276,5 +276,11 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
     }
   }
   if (Object.keys(watch).length) await watchReads(store, watch, now);
+  // הבעלים רוצה לדעת בכל פעם שהתזכורת יצאה, ולמי
+  if (out.length) {
+    const bot = (await store.get("agentReports/bot")) || {};
+    const list = out.join(", ");
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `☀️ שלחתי את תזכורת הבוקר לאימון: ${list}`, template: "agent_alert", templateParam: `תזכורת הבוקר לאימון נשלחה: ${list}` });
+  }
   return `morning: ${out.join(", ") || "no coaches today"}`;
 }
