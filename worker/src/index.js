@@ -389,7 +389,8 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
       }
       // "שמרתי תזכורת" בלי remind_me — אותו דבר: תזכורת פעם אחת, ואם שוב לא — אומרים לבעלים את האמת
       if (CLAIMS_REMINDER.test(answer) && !reminders.length) {
-        if (remindNudged) return { answer: "⚠️ לא הצלחתי לשמור את התזכורת, אז היא *לא* תגיע. תכתוב לי שוב מתי ועל מה, ואשמור.", userTurn, used };
+        // גם על "תעדכן אותי כשהוא יפתח" (11.10) — אין תזכורת שיכולה לעשות את זה, אז לא אומרים "לא הצלחתי, תכתוב שוב"
+        if (remindNudged) return { answer: "⚠️ לא שמרתי שום תזכורת או התראה, אז לא יגיע ממני עדכון על זה. תזכורת אני יכולה לשמור רק לשעה מסוימת: תכתוב לי מתי ועל מה.", userTurn, used };
         remindNudged = true;
         contents.push({ role: "model", parts }, { role: "user", parts: [{ text: "[מערכת] לא קראת ל-remind_me, אז שום תזכורת לא נשמרה. קרא/י עכשיו ל-remind_me עם at ו-text, או ענה/י בלי לטעון ששמרת." }] });
         continue;
