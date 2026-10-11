@@ -38,8 +38,9 @@ test("tokenDead: a revoked Meta token means reconnect, other errors do not", () 
 
 test("collect: without pages_read_user_content, FB drops comments; if FB fails entirely IG still comes through", async () => {
   const noComments = async (u) => {
-    if (u.includes("/pg/posts") && u.includes("comments")) throw Object.assign(new Error("(#10) requires pages_read_user_content"), { code: 10 });
-    if (u.includes("/pg/posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000", reactions: { summary: { total_count: 5 } } }] };
+    if (u.includes("/pg/posts") && u.includes("comments")) throw Object.assign(new Error("x"), { code: 10 });
+    if (u.includes("/pg/published_posts") && u.includes("comments")) throw Object.assign(new Error("(#10) requires pages_read_user_content"), { code: 10 });
+    if (u.includes("/pg/published_posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000", reactions: { summary: { total_count: 5 } } }] };
     if (u.includes("/ig/media")) return { data: [] };
     throw new Error("unexpected " + u);
   };
@@ -47,7 +48,7 @@ test("collect: without pages_read_user_content, FB drops comments; if FB fails e
   assert.deepEqual(a.map((p) => [p.platform, p.likes, p.comments]), [["facebook", 5, 0]]);
 
   const fbDown = async (u) => {
-    if (u.includes("/pg/posts")) throw Object.assign(new Error("(#10) no access"), { code: 10 });
+    if (u.includes("/pg/")) throw Object.assign(new Error("(#10) no access"), { code: 10 });
     if (u.includes("/ig/media")) return { data: [{ id: "i1", timestamp: "2026-10-09T15:00:00+0000", like_count: 3 }] };
     return { data: [] };
   };
