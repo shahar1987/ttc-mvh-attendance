@@ -3,6 +3,7 @@
 //   2. הנתונים תקינים (lib/checks.mjs)
 //   3. אף תהליך אוטומטי ב-GitHub לא נכשל ביממה האחרונה
 // מדווח לשולה רק כשמופיעה בעיה חדשה, כדי שהתראה תמיד תהיה שווה קריאה.
+import { existsSync } from "node:fs";
 import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
 import { addDays, israelToday } from "./lib/analysis.mjs";
 import { dataChecks } from "./lib/checks.mjs";
@@ -61,7 +62,8 @@ if (process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY) {
   if (res.ok) {
     const latest = new Map();
     for (const r of (await res.json()).workflow_runs || []) if (!latest.has(r.name)) latest.set(r.name, r); // החדשה ראשונה
-    const names = [...latest.values()].filter((r) => r.conclusion === "failure").map((r) => r.name);
+    // תהליך שהקובץ שלו נמחק (בדיקה חד-פעמית שהוסרה) לא ירוץ שוב, אז הכישלון האחרון שלו לא רלוונטי
+    const names = [...latest.values()].filter((r) => r.conclusion === "failure" && (!r.path || existsSync(new URL(`../${r.path}`, import.meta.url)))).map((r) => r.name);
     if (names.length) add("workflow-failed", "high", `תהליכים אוטומטיים שהריצה האחרונה שלהם נכשלה: ${names.join(", ")}`);
   }
 }
