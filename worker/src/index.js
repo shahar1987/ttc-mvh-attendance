@@ -7,7 +7,7 @@
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
-import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink } from "./meta.js";
+import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
@@ -246,6 +246,10 @@ async function handle(m, env) {
       return;
     }
     // "תחברי מחדש את פייסבוק" — ההודעה של סוכן הנתונים אומרת לכתוב בדיוק את זה, אז עונים בלי Gemini (שלא ייתקע)
+    if (/חיבור קבוע/.test(text) && /פייסבוק|אינסטגרם|מטא|meta/i.test(text)) {
+      await reply(`קישור לחיבור הקבוע של פייסבוק ואינסטגרם (בתוקף 30 דקות). ההוראות בדף עצמו:\n${await metaPermanentLink(store, ORIGIN || bot.workerUrl)}`);
+      return;
+    }
     if (RECONNECT_META.test(text)) {
       await reply(`קישור לחיבור מחדש של פייסבוק ואינסטגרם (בתוקף 30 דקות):\n${await metaLink(store, ORIGIN || bot.workerUrl)}`);
       return;
