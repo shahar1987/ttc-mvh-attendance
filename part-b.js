@@ -43,11 +43,6 @@ const APP_PERMISSIONS = [
     desc: "הוספה, עריכה וארכוב של קבוצות ושחקנים, וייבוא שחקנים",
   },
   {
-    key: "deletePlayers",
-    label: "מחיקת שחקנים",
-    desc: "כפתור \"מחיקת שחקן מהמערכת\" בכרטיס השחקן, בקבוצות שהוא מאמן",
-  },
-  {
     key: "competitions",
     label: "תחרויות ודירוג",
     desc: "מערכת התחרויות של המועדון",
@@ -4560,7 +4555,8 @@ function Q() {
           allowedGroupIds: r
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),
-          canDelete: canDo(s, "deletePlayers"),
+          // כל מאמן מוחק שחקנים בקבוצות שלו; הסינון לפי קבוצה בכרטיס השחקן
+          canDelete: !0,
           onClose: () => setPlayerModal(null),
         }),
       waPlayer &&
