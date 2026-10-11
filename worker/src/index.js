@@ -7,7 +7,7 @@
 import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
-import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost } from "./meta.js";
+import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
@@ -188,6 +188,8 @@ async function validSignature(raw, header, secret) {
   return diff === 0;
 }
 
+export const RECONNECT_META = /(תחבר[יו]?|לחבר|חבר[יו]?)\s+מחדש\s+(את\s+)?ה?(פייסבוק|אינסטגרם)/;
+
 async function handle(m, env) {
   const wa = waConfig(env);
   let store = null;
@@ -241,6 +243,11 @@ async function handle(m, env) {
     if (["איפוס", "התחלה חדשה", "reset"].includes(text)) {
       await store.merge("agentReports/bot", { history: [] });
       await reply("איפסתי את השיחה. מתחילים מחדש 🙂");
+      return;
+    }
+    // "תחברי מחדש את פייסבוק" — ההודעה של סוכן הנתונים אומרת לכתוב בדיוק את זה, אז עונים בלי Gemini (שלא ייתקע)
+    if (RECONNECT_META.test(text)) {
+      await reply(`קישור לחיבור מחדש של פייסבוק ואינסטגרם (בתוקף 30 דקות):\n${await metaLink(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
     at("חשיבה על התשובה (Gemini)");
