@@ -47,6 +47,7 @@ jobs:
       OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLUB_PHONE: ${{ vars.CLUB_PHONE }} # הטלפון הציבורי של המועדון לשורת הסיום בפוסטים — משתנה, לא בקוד
     steps:
       - uses: actions/checkout@v5
 

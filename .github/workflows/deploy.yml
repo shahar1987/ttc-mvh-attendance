@@ -23,24 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # סורק את כל הקבצים בריפו (git ls-files), לא רשימה ידנית — קובץ חדש לא יחמוק.
-      # מחוץ לסריקה: תמונות/גופנים/בינאריים (grep -I מדלג גם על כל בינארי אחר),
-      # קובצי lock (גיבובים ארוכים), ונתוני גופנים של סקיל צד-שלישי ב-.claude/skills/*/scripts/data
-      # (מדדי גופן מספריים, לא מידע אישי). מותרים: מספר הדוגמה 050-1234567 ומספרי בדיקה
-      # מזויפים בולטים (רצף 1234567/7654321/1111111/1112222 או אפסים).
+      # אותו סקריפט רץ גם בבדיקות של PR (checks.yml) וב-agents npm test
       - name: Privacy guard - no real phone numbers in the source
-        run: |
-          MATCHES=$(git ls-files -z \
-            | grep -zvE '\.(png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|otf|pyc)$|(^|/)package-lock\.json$|^\.claude/skills/[^/]+/scripts/data/' \
-            | xargs -0 -r grep -nIoE '(\+?972[- ]?5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' 2>/dev/null \
-            | grep -vE ':(\+?972|0)5[0-9]-?(1234567|7654321|1111111|1112222|0{5}[0-9]{2})$' || true)
-          if [ -n "$MATCHES" ]; then
-            echo "ERROR: phone-number-like values found in source files:"
-            echo "$MATCHES"
-            echo "Personal data must live only in Firestore, never in the source code."
-            exit 1
-          fi
-          echo "Privacy guard passed - no phone numbers in source."
+        run: bash scripts/privacy-guard.sh
 
       - uses: actions/setup-node@v5
         with:
