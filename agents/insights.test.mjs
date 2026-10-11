@@ -35,3 +35,25 @@ test("tokenDead: a revoked Meta token means reconnect, other errors do not", () 
   assert.equal(tokenDead(new Error("Error validating access token")), true);
   assert.equal(tokenDead(Object.assign(new Error("metric deprecated"), { code: 100 })), false);
 });
+
+test("collect: without pages_read_user_content, FB drops comments; if FB fails entirely IG still comes through", async () => {
+  const noComments = async (u) => {
+    if (u.includes("/pg/posts") && u.includes("comments")) throw Object.assign(new Error("(#10) requires pages_read_user_content"), { code: 10 });
+    if (u.includes("/pg/posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000", reactions: { summary: { total_count: 5 } } }] };
+    if (u.includes("/ig/media")) return { data: [] };
+    throw new Error("unexpected " + u);
+  };
+  const a = await collect({ id: "pg", ig: "ig", token: "t" }, NOW, noComments);
+  assert.deepEqual(a.map((p) => [p.platform, p.likes, p.comments]), [["facebook", 5, 0]]);
+
+  const fbDown = async (u) => {
+    if (u.includes("/pg/posts")) throw Object.assign(new Error("(#10) no access"), { code: 10 });
+    if (u.includes("/ig/media")) return { data: [{ id: "i1", timestamp: "2026-10-09T15:00:00+0000", like_count: 3 }] };
+    return { data: [] };
+  };
+  const b = await collect({ id: "pg", ig: "ig", token: "t" }, NOW, fbDown);
+  assert.deepEqual(b.map((p) => p.platform), ["instagram"]);
+
+  const dead = async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); };
+  await assert.rejects(collect({ id: "pg", ig: "ig", token: "t" }, NOW, dead), /access token/);
+});

@@ -26,11 +26,18 @@ export async function collect(page, now = new Date(), get = getJson) {
   const since = new Date(now.getTime() - DAYS * 864e5);
   const t = page.token;
   const posts = [];
-  const base = "id,message,created_time,permalink_url,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),attachments{media_type}";
+  const base = "id,message,created_time,permalink_url,shares,reactions.summary(total_count).limit(0),attachments{media_type}";
+  const withComments = `${base},comments.summary(total_count).limit(0)`;
+  // comments דורש pages_read_user_content (Meta חסמה מ-11.10) — בלי ההרשאה מוותרים על ספירת התגובות בפייסבוק
   const fb = await firstOk(
-    [`${base},insights.metric(post_impressions_unique)`, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
+    [`${withComments},insights.metric(post_impressions_unique)`, withComments, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
     get,
-  );
+  ).catch((e) => {
+    if (tokenDead(e)) throw e;
+    // פייסבוק נכשל מסיבה אחרת (הרשאה/שינוי של Meta) — אינסטגרם עדיין נאסף, לא מפילים את הריצה
+    console.error(`insights: facebook skipped (${e.code ?? "?"})`);
+    return { data: [] };
+  });
   for (const p of fb.data || []) {
     posts.push({
       platform: "facebook", id: p.id, at: new Date(p.created_time).toISOString(), link: p.permalink_url || "",
