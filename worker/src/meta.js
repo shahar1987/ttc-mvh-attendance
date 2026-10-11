@@ -9,7 +9,7 @@ import { israelToUtc } from "./time.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
-const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
+const SCOPES = "pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
 export const metaLink = async (store, origin) => `${origin}/meta/start?k=${await issueKey(store, "meta")}`;
 const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?t=${await sign(env, `media:${id}`)}`;
 
