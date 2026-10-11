@@ -7,6 +7,7 @@ import { sign, issueKey, checkKey, dropKey } from "./google.js";
 import { waConfig } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
+import { clubPage } from "../../agents/lib/club.mjs";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
@@ -77,8 +78,8 @@ export const META_TOOL_DEFS = [
   },
 ];
 
-// הדף של המועדון: זה שמחובר לאינסטגרם (@ttcmhr). קורטדו מחובר גם — אסור לפרסם אליו.
-export const clubPage = (social) => { const ps = social?.pages || []; return ps.find((p) => p.ig) || ps[0]; };
+// הדף של המועדון לפי מזהה קבוע (agents/lib/club.mjs). קורטדו מחובר גם, גם עם אינסטגרם — אסור לפרסם אליו.
+export { clubPage };
 
 // "2026-10-11T17:00" בשעון ישראל → Date (UTC). פונקציה אחת משותפת (time.js), נשארת מיוצאת גם מכאן.
 export { israelToUtc };

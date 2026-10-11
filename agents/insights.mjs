@@ -26,12 +26,12 @@ export async function collect(page, now = new Date(), get = getJson) {
   const since = new Date(now.getTime() - DAYS * 864e5);
   const t = page.token;
   const posts = [];
-  const base = "id,message,created_time,permalink_url,shares,reactions.summary(total_count).limit(0),attachments{media_type}";
-  const withComments = `${base},comments.summary(total_count).limit(0)`;
-  // comments דורש pages_read_user_content (Meta חסמה מ-11.10) — בלי ההרשאה מוותרים על ספירת התגובות בפייסבוק
+  const base = "id,message,created_time,permalink_url,shares,attachments{media_type}";
+  // לייקים ותגובות דורשים pages_read_user_content (נבדק 11.10: בלי ההרשאה Meta מחזירה #10 רק על שני השדות האלה).
+  // כשההרשאה תתווסף באפליקציה ב-Meta — הצירוף המלא יעבוד מעצמו; עד אז נאספים הפוסטים והשיתופים.
+  const full = `${base},reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)`;
   const fb = await firstOk(
-    ["posts", "published_posts"].flatMap((edge) => [`${withComments},insights.metric(post_impressions_unique)`, withComments, base]
-      .map((f) => `${GRAPH}/${page.id}/${edge}?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`)),
+    [full, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
     get,
   ).catch((e) => {
     if (tokenDead(e)) throw e;
@@ -45,7 +45,8 @@ export async function collect(page, now = new Date(), get = getJson) {
       type: String(p.attachments?.data?.[0]?.media_type || "text").toLowerCase(),
       text: (p.message || "").slice(0, 80),
       reach: p.insights?.data?.[0]?.values?.[0]?.value ?? null,
-      likes: p.reactions?.summary?.total_count || 0, comments: p.comments?.summary?.total_count || 0, shares: p.shares?.count || 0, saves: null,
+      // null = לא ידוע (חסרה הרשאה), לא אפס
+      likes: p.reactions ? p.reactions.summary?.total_count || 0 : null, comments: p.comments ? p.comments.summary?.total_count || 0 : null, shares: p.shares?.count || 0, saves: null,
     });
   }
   if (page.ig) {
@@ -83,7 +84,7 @@ export function weeklyReport(posts, now = new Date()) {
   const best = [...week].sort((a, b) => engagement(b) - engagement(a))[0];
   const lines = [
     `השבוע עלו ${week.length} פוסטים (פייסבוק ${fb}, אינסטגרם ${week.length - fb})${reach ? `, חשיפה כוללת ${reach}` : ""}.`,
-    `הכי טוב: ${best.platform === "facebook" ? "פייסבוק" : "אינסטגרם"}, ${ilDay(best.at)} ${ilHour(best.at)}:00 — "${best.text.split("\n")[0].slice(0, 50)}" (${best.likes} לייקים, ${best.comments} תגובות${best.saves ? `, ${best.saves} שמירות` : ""}).`,
+    `הכי טוב: ${best.platform === "facebook" ? "פייסבוק" : "אינסטגרם"}, ${ilDay(best.at)} ${ilHour(best.at)}:00 — "${best.text.split("\n")[0].slice(0, 50)}" (${best.likes ?? "?"} לייקים, ${best.comments ?? "?"} תגובות${best.saves ? `, ${best.saves} שמירות` : ""}).`,
   ];
   const by = (key) => {
     const g = {};
@@ -107,8 +108,9 @@ async function main() {
   const { firestore, heartbeat, reportMissingKey } = await import("./lib/firebase.mjs");
   const db = firestore();
   const social = (await db.collection("agentReports").doc("social").get()).data() || {};
-  const page = (social.pages || []).find((p) => p.ig) || social.pages?.[0];
-  if (!page?.token) return console.log("insights: page not connected");
+  const { clubPage } = await import("./lib/club.mjs");
+  const page = clubPage(social);
+  if (!page?.token) return console.log("insights: club page not connected");
   let posts;
   try {
     posts = await collect(page);

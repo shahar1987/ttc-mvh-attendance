@@ -36,16 +36,15 @@ test("tokenDead: a revoked Meta token means reconnect, other errors do not", () 
   assert.equal(tokenDead(Object.assign(new Error("metric deprecated"), { code: 100 })), false);
 });
 
-test("collect: without pages_read_user_content, FB drops comments; if FB fails entirely IG still comes through", async () => {
-  const noComments = async (u) => {
-    if (u.includes("/pg/posts") && u.includes("comments")) throw Object.assign(new Error("x"), { code: 10 });
-    if (u.includes("/pg/published_posts") && u.includes("comments")) throw Object.assign(new Error("(#10) requires pages_read_user_content"), { code: 10 });
-    if (u.includes("/pg/published_posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000", reactions: { summary: { total_count: 5 } } }] };
+test("collect: without pages_read_user_content, FB drops likes/comments (unknown, not 0); if FB fails entirely IG still comes through", async () => {
+  const noUserContent = async (u) => {
+    if (u.includes("/pg/posts") && /reactions|comments/.test(u)) throw Object.assign(new Error("(#10) requires pages_read_user_content"), { code: 10 });
+    if (u.includes("/pg/posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000", shares: { count: 2 } }] };
     if (u.includes("/ig/media")) return { data: [] };
     throw new Error("unexpected " + u);
   };
-  const a = await collect({ id: "pg", ig: "ig", token: "t" }, NOW, noComments);
-  assert.deepEqual(a.map((p) => [p.platform, p.likes, p.comments]), [["facebook", 5, 0]]);
+  const a = await collect({ id: "pg", ig: "ig", token: "t" }, NOW, noUserContent);
+  assert.deepEqual(a.map((p) => [p.platform, p.likes, p.comments, p.shares]), [["facebook", null, null, 2]]);
 
   const fbDown = async (u) => {
     if (u.includes("/pg/")) throw Object.assign(new Error("(#10) no access"), { code: 10 });
@@ -57,6 +56,16 @@ test("collect: without pages_read_user_content, FB drops comments; if FB fails e
 
   const dead = async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); };
   await assert.rejects(collect({ id: "pg", ig: "ig", token: "t" }, NOW, dead), /access token/);
+});
+
+test("clubPage: picks the club by id/IG even when Cortado (with its own Instagram) comes first; never falls back to another page", async () => {
+  const { clubPage } = await import("./lib/club.mjs");
+  const cortado = { id: "1320814337776686", igName: "cortado_snir", ig: "c", token: "c" };
+  const club = { id: "129474751033574", igName: "ttcmhr", ig: "k", token: "k" };
+  assert.equal(clubPage({ pages: [cortado, club] }), club);
+  assert.equal(clubPage({ pages: [club, cortado] }), club);
+  assert.equal(clubPage({ pages: [cortado] }), null, "רק קורטדו מחובר — לא נוגעים בו");
+  assert.equal(clubPage({}), null);
 });
 
 test("Meta problems don't fail the run: IG error is skipped, reconnect reminder at most every 3 days", async () => {
