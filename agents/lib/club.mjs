@@ -4,3 +4,6 @@
 export const CLUB_PAGE_ID = "129474751033574";
 export const CLUB_IG = "ttcmhr";
 export const clubPage = (social) => (social?.pages || []).find((p) => p.id === CLUB_PAGE_ID || p.igName === CLUB_IG) || null;
+// הטלפון הציבורי של המועדון — מופיע בכל פוסט ופלייר. ב-GitHub אין OWNER_PHONE (הסודות של הוואטסאפ רק ב-worker),
+// ולכן שורת הסיום יצאה בלי מספר.
+export const CLUB_PHONE = "050-4999149";
