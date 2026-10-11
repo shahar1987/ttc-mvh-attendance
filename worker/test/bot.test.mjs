@@ -636,8 +636,9 @@ assert.equal(docs.get("agentReports/latest").handledKeys.length, 1);
 
 // 8. סימון נוכחות: שם קצר, תאריך או קבוצה שלא נכתבו בהודעה — רק עם "כן" נפרד
 assert.match(await tools("ד הגיע היום למתחילים").mark_attendance({ group: "מתחילים", present: ["ד"] }), /שם קצר מדי/);
+const d3Before = JSON.stringify(docs.get(`attendance/${D3}_g1_p2`)); // D3 can hit a fixture date (2026-10-01/02)
 assert.match(await tools("נועה הגיעה למתחילים").mark_attendance({ group: "מתחילים", date: D3, present: ["נועה"] }), /לא נשמר עדיין/, "תאריך אחר שלא נכתב");
-assert.equal(docs.get(`attendance/${D3}_g1_p2`), undefined);
+assert.equal(JSON.stringify(docs.get(`attendance/${D3}_g1_p2`)), d3Before);
 assert.match(await tools("נועה הגיעה היום").mark_attendance({ group: "מתחילים", present: ["נועה"] }), /לא נשמר עדיין/, "קבוצה שלא נכתבה");
 assert.match(await tools("נועה הגיעה היום למתחילים").mark_attendance({ group: "מתחילים", present: ["נועה"] }), /נועה לוי: נוכח/, "הכל כתוב — מיידי");
 assert.equal(docs.get(`attendance/${TODAY}_g1_p2`).status, "Present");
