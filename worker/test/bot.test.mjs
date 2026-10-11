@@ -828,6 +828,11 @@ assert.equal(h7b.status, 503, "סוד חסר → 503");
 assert.deepEqual((await h7b.json()).missing, ["GEMINI_API_KEY"]);
 
 // 17. outbox מהסוכנים: נשלח לבעלים, יוצא מהתור רק מה שנשלח, ונכנס ל-outbox (מפה) להקשר
+{
+  const { RECONNECT_META } = await import("../src/index.js");
+  for (const t of ["תחברי מחדש את פייסבוק", "תחברי מחדש את הפייסבוק", "לחבר מחדש פייסבוק", "חבר מחדש את האינסטגרם"]) assert.ok(RECONNECT_META.test(t), t);
+  for (const t of ["תפרסמי בפייסבוק", "מה מחדש בפייסבוק?"]) assert.ok(!RECONNECT_META.test(t), t);
+}
 const { deliverOutbox } = await import("../src/index.js");
 put("agentReports/bot", { outboxQueue: [{ id: "o1", from: "scan", at: "2026-10-05T05:00:00.000Z", text: "🔎 דוח בוקר\n3 ממתינים" }, { id: "o2", from: "bugcheck", at: "2026-10-05T05:01:00.000Z", text: "🐞 הכל תקין" }] });
 const n17 = sent.length;
