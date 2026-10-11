@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collect, weeklyReport, tokenDead } from "./insights.mjs";
+import { collect, weeklyReport, tokenDead, shouldRemind } from "./insights.mjs";
 
 const NOW = new Date("2026-10-11T06:00:00Z");
 
@@ -57,4 +57,15 @@ test("collect: without pages_read_user_content, FB drops comments; if FB fails e
 
   const dead = async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); };
   await assert.rejects(collect({ id: "pg", ig: "ig", token: "t" }, NOW, dead), /access token/);
+});
+
+test("Meta problems don't fail the run: IG error is skipped, reconnect reminder at most every 3 days", async () => {
+  const igDown = async (u) => {
+    if (u.includes("/pg/")) return { data: [] };
+    throw Object.assign(new Error("(#10) ig permission"), { code: 10 });
+  };
+  assert.deepEqual(await collect({ id: "pg", ig: "ig", token: "t" }, NOW, igDown), []);
+  assert.equal(shouldRemind(undefined, NOW), true);
+  assert.equal(shouldRemind("2026-10-10T06:00:00Z", NOW), false, "יום אחרי — לא שוב");
+  assert.equal(shouldRemind("2026-10-08T06:00:00Z", NOW), true, "אחרי 3 ימים — מזכירים");
 });

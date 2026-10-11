@@ -49,7 +49,11 @@ export async function collect(page, now = new Date(), get = getJson) {
     });
   }
   if (page.ig) {
-    const ig = await get(`${GRAPH}/${page.ig}/media?fields=id,caption,timestamp,media_type,like_count,comments_count,permalink&limit=50&access_token=${t}`);
+    const ig = await get(`${GRAPH}/${page.ig}/media?fields=id,caption,timestamp,media_type,like_count,comments_count,permalink&limit=50&access_token=${t}`).catch((e) => {
+      if (tokenDead(e)) throw e;
+      console.error(`insights: instagram skipped (${e.code ?? "?"})`);
+      return { data: [] };
+    });
     for (const m of (ig.data || []).filter((m) => new Date(m.timestamp) >= since)) {
       const ins = await firstOk(["reach,saved,shares", "reach,saved"].map((x) => `${GRAPH}/${m.id}/insights?metric=${x}&access_token=${t}`), get).catch(() => ({ data: [] }));
       const v = (name) => ins.data?.find((d) => d.name === name)?.values?.[0]?.value ?? null;
@@ -95,6 +99,8 @@ export function weeklyReport(posts, now = new Date()) {
 
 // 190 = טוקן לא תקף (פג, בוטל, הוחלפה סיסמה)
 export const tokenDead = (e) => e?.code === 190 || /access token/i.test(e?.message || "");
+export const REMIND_EVERY_DAYS = 3;
+export const shouldRemind = (lastIso, now = new Date()) => !lastIso || now - new Date(lastIso) >= REMIND_EVERY_DAYS * 864e5;
 export const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים. הפוסטים שמתוזמנים ב-Metricool לא מושפעים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
 
 async function main() {
@@ -109,14 +115,21 @@ async function main() {
   } catch (e) {
     if (!tokenDead(e)) throw e;
     // הטוקן מת (החלפת סיסמה / Meta ביטלה) — רק הבעלים יכול לחבר מחדש. אומרים לו מה לעשות, פעם אחת, וההתראה הכללית מדלגת
+    // לא מכשילים את הריצה (אחרת מגיעה עוד התראת "סוכן נכשל" כל בוקר) ומזכירים לחבר מחדש לכל היותר פעם ב-3 ימים
     console.error("insights: Meta token invalid — owner must reconnect");
-    const { tellOwner } = await import("./lib/owner.mjs");
-    await tellOwner(db, { agent: "insights", text: RECONNECT }).catch((err) => console.error(err.message));
+    const ref = db.collection("agentReports").doc("insights");
+    const last = (await ref.get()).data()?.reconnectToldAt;
+    if (shouldRemind(last)) {
+      const { tellOwner } = await import("./lib/owner.mjs");
+      await tellOwner(db, { agent: "insights", text: RECONNECT }).catch((err) => console.error(err.message));
+      await ref.set({ reconnectToldAt: new Date().toISOString() }, { merge: true });
+    }
     await reportMissingKey(db, "insights", "META_TOKEN").catch((err) => console.error(err.message));
-    process.exitCode = 1;
+    await heartbeat(db, "insights");
     return;
   }
-  await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts });
+  // reconnectToldAt: null — החיבור עובד, אז בפעם הבאה שיתנתק מזכירים מיד
+  await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts, reconnectToldAt: null });
   console.log(`insights: ${posts.length} posts`);
   await heartbeat(db, "insights");
 }
