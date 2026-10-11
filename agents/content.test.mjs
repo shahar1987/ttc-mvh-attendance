@@ -19,10 +19,11 @@ test("tidy: no @ on Facebook, closing + credit once, tags only on Instagram", ()
   assert.equal(tidy(facebook, "972501234567").facebook, facebook, "לא מוסיף פעמיים");
 });
 
-test("tidy: model-written closing without a phone is replaced, default phone is the club's", () => {
-  const { facebook } = tidy("בואו 🏓\n\nאימון ניסיון חינם לכולם, בכל מועד! לפרטים והצטרפות: \n" + CREDIT);
+test("tidy: model-written closing without a phone is replaced; no phone configured → no empty colon", () => {
+  const { facebook } = tidy("בואו 🏓\n\nאימון ניסיון חינם לכולם, בכל מועד! לפרטים והצטרפות: \n" + CREDIT, "972501234567");
   assert.equal(facebook.match(/אימון ניסיון חינם/g).length, 1);
-  assert.match(facebook, /לפרטים והצטרפות: 050-4999149\n/);
+  assert.match(facebook, /לפרטים והצטרפות: 050-1234567\n/);
+  assert.match(tidy("בואו", "").facebook, /לפרטים והצטרפות: בהודעה פרטית לדף\n/);
   assert.equal(facebook.split(CREDIT).length, 2);
 });
 

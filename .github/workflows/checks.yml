@@ -1,0 +1,28 @@
+name: Checks
+
+# אותן בדיקות שה-build מריץ אחרי מיזוג — כאן הן רצות על כל PR, לפני המיזוג,
+# כדי ש-main לא יאדים שוב על מספר טלפון בקוד או על בדיקה שבורה.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Privacy guard - no real phone numbers in the source
+        run: bash scripts/privacy-guard.sh
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Agents tests
+        working-directory: agents
+        run: npm ci --no-audit --no-fund && npm test
+      - name: Worker tests
+        working-directory: worker
+        run: npm ci --no-audit --no-fund && npm test

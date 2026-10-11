@@ -7,6 +7,7 @@ import { israelToday, addDays } from "./lib/analysis.mjs";
 import { sensitiveDay } from "./lib/sensitive.mjs";
 import { weeklyReport } from "./insights.mjs";
 import { clubPage, CLUB_PHONE, SCHEDULE_SHEET } from "./lib/club.mjs";
+import { gemini } from "./lib/gemini.mjs";
 
 // תיוג באינסטגרם בלבד. בפייסבוק @ דרך ה-API נשאר טקסט מת — שם כותבים את השמות במילים.
 // המועצה והמתנ"ס תמיד; קריית שמונה וגליל עליון רק בפוסט על רמת כורזים.
@@ -75,7 +76,8 @@ const training = ([group, place, hours]) => `${group} ב${place} ${hours}`;
 // סידור טיוטה מהמודל: פייסבוק בלי @, קרדיט ושורת סיום תמיד, אינסטגרם = אותו טקסט + תיוגים
 // שורת סיום/קרדיט שהמודל כתב בעצמו (לפעמים בלי טלפון) נמחקות ותמיד נכתבות מחדש
 export function tidy(text, phone = CLUB_PHONE, tags = IG_TAGS) {
-  const closing = `אימון ניסיון חינם לכולם, בכל מועד! לפרטים והצטרפות: ${localPhone(phone)}`;
+  // בלי טלפון (המשתנה CLUB_PHONE חסר) — שורת סיום שעדיין עובדת, לא "לפרטים: " ריק
+  const closing = `אימון ניסיון חינם לכולם, בכל מועד! לפרטים והצטרפות: ${localPhone(phone) || "בהודעה פרטית לדף"}`;
   const body = String(text || "")
     .split("\n")
     .filter((l) => !l.includes("אימון ניסיון חינם") && !l.includes(CREDIT))
@@ -105,28 +107,10 @@ async function performance(page) {
 
 // Gemini כשיש מפתח (חינמי); אחרת Claude עם המפתח שכבר קיים בריפו (אותו מפתח של סוכן הרעיונות)
 async function draftsJson(system, user) {
-  if (process.env.GEMINI_API_KEY) return gemini(system, user);
+  if (process.env.GEMINI_API_KEY) return gemini(system, user, { json: true });
   const { ask } = await import("./lib/claude.mjs");
   const t = await ask(system + "\nהחזר JSON בלבד, בלי גדרות קוד.", user);
   return JSON.parse(t.replace(/^```(json)?\s*|\s*```$/g, "").trim());
-}
-
-async function gemini(system, user) {
-  let err;
-  for (const model of ["gemini-flash-latest", "gemini-flash-lite-latest"]) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.8, responseMimeType: "application/json" },
-      }),
-    });
-    if (r.ok) return JSON.parse((await r.json()).candidates[0].content.parts.map((p) => p.text || "").join(""));
-    err = new Error(`${model}: ${r.status}`);
-  }
-  throw err;
 }
 
 const SYSTEM = `את כותבת התוכן של מועדון טניס שולחן מבואות החרמון ע"ש רוני גלבוע (גליל עליון).
