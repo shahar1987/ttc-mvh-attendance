@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { israelToday, addDays } from "./lib/analysis.mjs";
 import { sensitiveDay } from "./lib/sensitive.mjs";
 import { weeklyReport } from "./insights.mjs";
+import { clubPage } from "./lib/club.mjs";
 
 // תיוג באינסטגרם בלבד. בפייסבוק @ דרך ה-API נשאר טקסט מת — שם כותבים את השמות במילים.
 export const IG_TAGS = "@matnas.mvhr @mevoothahermon @kiryat8 @galil.elion";
@@ -101,7 +102,7 @@ async function main() {
   const [social, last, insights, bot] = await Promise.all([doc("social"), doc("content"), doc("insights"), doc("bot")]);
   // הנתונים היומיים (insights.mjs) כשיש; אחרת 15 הפוסטים האחרונים מהדף כמו קודם
   const fresh = insights.posts && Date.now() - new Date(insights.updatedAt) < 3 * 864e5;
-  const perf = fresh ? insights.posts.map(({ platform, at, type, text, reach, likes, comments, shares, saves }) => ({ platform, at, type, text, reach, likes, comments, shares, saves })) : await performance((social.pages || []).find((p) => p.ig) || social.pages?.[0]);
+  const perf = fresh ? insights.posts.map(({ platform, at, type, text, reach, likes, comments, shares, saves }) => ({ platform, at, type, text, reach, likes, comments, shares, saves })) : await performance(clubPage(social));
   const rules = (bot.postRules || []).map((r) => r.rule);
 
   const user = `המועדים: ${JSON.stringify(slots.map((s) => `${s.date} ${s.time}`))}

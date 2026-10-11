@@ -77,7 +77,7 @@ globalThis.fetch = async (url, init = {}) => {
     return json({ data: [{ name: "agent_alert", language: "he" }] });
   }
   if (url.includes("graph.facebook.com/v24.0/oauth/access_token")) return json({ access_token: url.includes("fb_exchange_token") ? "long" : "short" });
-  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok" }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "club" } }] });
+  if (url.includes("graph.facebook.com/v24.0/me/accounts")) return json({ data: [{ id: "pg0", name: "קפה", access_token: "ctok", instagram_business_account: { id: "ig0", username: "cortado_snir" } }, { id: "pg1", name: "המועדון", access_token: "ptok", instagram_business_account: { id: "ig1", username: "ttcmhr" } }] });
   if (url.includes("/content_publishing_limit")) return json({ data: [{ quota_usage: 1, config: { quota_total: 100 } }] });
   if (/graph\.facebook\.com\/v24\.0\/(pg1|ig1)\//.test(url)) {
     social.push({ url, body: JSON.parse(init.body) });
@@ -354,11 +354,11 @@ const mk = new URL(metaLink).searchParams.get("k");
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?t=nope"), env, {})).status, 403, "תמונה בלי חתימה — חסום");
 assert.match((await worker.fetch(new Request(metaLink), env, {})).headers.get("location"), /instagram_content_publish/);
 assert.equal((await worker.fetch(new Request("https://x/meta/callback?code=c&state=bad"), env, {})).status, 403);
-assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@club/);
-assert.equal(docs.get("agentReports/social").pages.find((p) => p.ig).token, "ptok", "דף המועדון נשמר עם הטוקן שלו גם כשקורטדו ראשון ברשימה");
+assert.match(await (await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).text(), /@ttcmhr/);
+assert.equal(docs.get("agentReports/social").pages.find((p) => p.igName === "ttcmhr").token, "ptok", "דף המועדון נשמר עם הטוקן שלו גם כשקורטדו (עם אינסטגרם משלו) ראשון ברשימה");
 assert.match(await callTool("כן תפרסמי", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /עוד לא פורסם/, "כן בתוך הבקשה עצמה לא מפרסם");
 assert.equal(social.length, 0);
-assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@club\) ✓/);
+assert.match(await callTool("כן", { name: "publish_post", args: { platform: "both", text: "אימון מחר", image: "777" } }), /פייסבוק.*✓.*אינסטגרם \(@ttcmhr\) ✓/);
 assert.match(social[0].body.url, /^https:\/\/x\/meta\/media\/777\?t=\w+$/);
 assert.equal((await worker.fetch(new Request(`https://x/meta/callback?code=c&state=${mk}`), env, {})).status, 403, "מפתח חיבור חד-פעמי: אחרי שימוש — חסום");
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
