@@ -30,7 +30,8 @@ export async function collect(page, now = new Date(), get = getJson) {
   const withComments = `${base},comments.summary(total_count).limit(0)`;
   // comments דורש pages_read_user_content (Meta חסמה מ-11.10) — בלי ההרשאה מוותרים על ספירת התגובות בפייסבוק
   const fb = await firstOk(
-    [`${withComments},insights.metric(post_impressions_unique)`, withComments, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
+    ["posts", "published_posts"].flatMap((edge) => [`${withComments},insights.metric(post_impressions_unique)`, withComments, base]
+      .map((f) => `${GRAPH}/${page.id}/${edge}?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`)),
     get,
   ).catch((e) => {
     if (tokenDead(e)) throw e;
