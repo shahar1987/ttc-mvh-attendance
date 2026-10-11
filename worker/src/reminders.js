@@ -201,8 +201,11 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
     }
   }
   if (Object.keys(watch).length) await watchReads(store, watch, now);
+  if (out.length && !problems.length) {
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📋 שלחתי סיכום אימון למאמנים: ${out.join(", ")}`, template: "agent_alert", templateParam: `סיכום אימון נשלח: ${out.join(", ")}` });
+  }
   if (problems.length) {
-    const msg = `📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${problems.join("\n")}`;
+    const msg = `📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${out.length ? `נשלח: ${out.join(", ")}\n` : ""}${problems.join("\n")}`;
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: `סיכום אימון לא נשלח ל-${problems.length} מאמנים. אפשר להשיב כדי לקבל פרטים` });
   }

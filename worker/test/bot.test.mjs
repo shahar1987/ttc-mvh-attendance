@@ -278,7 +278,8 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal(await coachSummaries(env, db(env), waConfig(env), early), "nothing due");
   const n2 = sent.length;
   assert.match(await coachSummaries(env, db(env), waConfig(env), sunday), /בוגרים — יוסי ✓/);
-  const tpl = sent.slice(n2).filter((b) => b.type === "template");
+  assert.match(JSON.stringify(sent.slice(n2).at(-1)), /סיכום אימון.*בוגרים — יוסי ✓/, "הבעלים מקבל אישור ששלחנו");
+  const tpl = sent.slice(n2).filter((b) => b.type === "template" && b.template.name === "club_message");
   assert.equal(tpl.length, 1, "נוער לא מולאה — אין סיכום (התזכורת מטפלת בה)");
   assert.equal(tpl[0].to, "972501234567");
   assert.equal(tpl[0].template.name, "club_message");
