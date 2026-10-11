@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { israelToday, addDays } from "./lib/analysis.mjs";
 import { sensitiveDay } from "./lib/sensitive.mjs";
 import { weeklyReport } from "./insights.mjs";
-import { clubPage, CLUB_PHONE } from "./lib/club.mjs";
+import { clubPage, CLUB_PHONE, SCHEDULE_SHEET } from "./lib/club.mjs";
 
 // תיוג באינסטגרם בלבד. בפייסבוק @ דרך ה-API נשאר טקסט מת — שם כותבים את השמות במילים.
 // המועצה והמתנ"ס תמיד; קריית שמונה וגליל עליון רק בפוסט על רמת כורזים.
@@ -14,7 +14,7 @@ export const IG_TAGS = "@matnas.mvhr @mevoothahermon";
 const KORAZIM_TAGS = "@kiryat8 @galil.elion";
 export const igTags = (place) => (place === "רמת כורזים" ? `${IG_TAGS} ${KORAZIM_TAGS}` : IG_TAGS);
 export const CREDIT = 'בשיתוף מתנ"ס אזורי מבואות החרמון והמועצה האזורית מבואות החרמון';
-// shortcut: עותק של הגיליון "לוז אימונים 2026" בדרייב (לסוכנים ב-GitHub אין גישה לגוגל) — כשהגיליון משתנה, לעדכן כאן.
+// הלו"ז נקרא כל שבוע מהגיליון "לוז אימונים 2026" (liveTrainings). זה רק גיבוי כשהגיליון לא נגיש — עותק מ-11.10.2026.
 // לפי יום בשבוע (0 = ראשון). ליגה (שלישי/רביעי בכורזים) לא כאן — זה לא אימון שמזמינים אליו.
 export const TRAININGS = {
   0: [["מתחילים", "שאר ישוב", "16:30-17:30"], ["מתקדמים", "שאר ישוב", "17:30-19:00"], ["נבחרת תחרותית", "שאר ישוב", "19:00-21:00"]],
@@ -30,8 +30,45 @@ const PHOTO = "תמונה אמיתית מתיקיית המדיה בדרייב";
 export const localPhone = (p) => String(p || "").replace(/\D/g, "").replace(/^972/, "0").replace(/^(\d{3})(\d{7})$/, "$1-$2");
 
 // מועדי הפרסום של השבוע שמתחיל ב-sunday (YYYY-MM-DD), בלי 7.10, יום כיפור ויום הזיכרון
-export const weekSlots = (sunday) =>
-  SLOTS.map((s) => ({ ...s, date: addDays(sunday, s.dow), options: TRAININGS[s.dow + 1] })).filter((s) => !sensitiveDay(s.date));
+export const weekSlots = (sunday, trainings = TRAININGS) =>
+  SLOTS.map((s) => ({ ...s, date: addDays(sunday, s.dow), options: trainings[s.dow + 1] || [] })).filter((s) => s.options.length && !sensitiveDay(s.date));
+
+// CSV של הגיליון → { יום בשבוע: [[קבוצה, מקום, שעות]] }. שורת "יום X" פותחת יום; שורת אימון = מספר בעמודה A.
+// עמודות: A מס', B שעות, C קבוצה, D מיקום, G סטטוס. בלי ליגה ובלי מה שלא "פעיל".
+export function parseSchedule(csv) {
+  const rows = [];
+  let row = [], cell = "", q = false;
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i];
+    if (q) c === '"' ? (csv[i + 1] === '"' ? ((cell += '"'), i++) : (q = false)) : (cell += c);
+    else if (c === '"') q = true;
+    else if (c === ",") row.push(cell), (cell = "");
+    else if (c === "\n") row.push(cell), rows.push(row), (row = []), (cell = "");
+    else if (c !== "\r") cell += c;
+  }
+  rows.push([...row, cell]);
+  const out = {};
+  let dow = -1;
+  for (const [a = "", hours = "", group = "", place = "", , , status = ""] of rows) {
+    const day = DAYS.indexOf(a.trim().replace(/^יום /, ""));
+    if (day >= 0) dow = day;
+    else if (dow >= 0 && /^\d+$/.test(a.trim()) && /^\d/.test(hours) && status.trim() === "פעיל" && !group.includes("ליגה"))
+      (out[dow] ||= []).push([group.trim().replace("מתקמים", "מתקדמים"), place.trim(), hours.trim()]);
+  }
+  return out;
+}
+
+// הלו"ז העדכני מהגיליון; null אם הוא לא נגיש (לא משותף בקישור / אין רשת) — אז משתמשים ב-TRAININGS
+async function liveTrainings() {
+  try {
+    const r = await fetch(`https://docs.google.com/spreadsheets/d/${SCHEDULE_SHEET}/export?format=csv`);
+    if (!r.ok) return console.log(`schedule sheet: ${r.status}`), null;
+    const t = parseSchedule(await r.text());
+    return Object.keys(t).length ? t : null;
+  } catch (e) {
+    return console.log(`schedule sheet: ${e.message}`), null;
+  }
+}
 
 const training = ([group, place, hours]) => `${group} ב${place} ${hours}`;
 
@@ -124,7 +161,8 @@ async function main() {
   }
   const today = israelToday();
   const sunday = addDays(today, -new Date(today + "T00:00:00Z").getUTCDay());
-  const slots = weekSlots(sunday).filter((s) => s.date >= today);
+  const live = await liveTrainings();
+  const slots = weekSlots(sunday, live || TRAININGS).filter((s) => s.date >= today);
   if (!slots.length) return console.log("no slots left this week");
   const doc = (n) => db.collection("agentReports").doc(n).get().then((d) => d.data() || {});
   const [social, last, insights, bot] = await Promise.all([doc("social"), doc("content"), doc("insights"), doc("bot")]);
@@ -146,6 +184,7 @@ async function main() {
   const text =
     report +
     `📣 *טיוטות הפרסום לשבוע*\n\n` +
+    (live ? "" : `⚠️ לא הצלחתי לקרוא את הגיליון "לוז אימונים 2026" (צריך שיתוף "כל מי שיש לו הקישור — צפייה"), אז השעות מהעותק השמור מ-11.10. לבדוק שהן עדיין נכונות.\n\n`) +
     drafts.map((d, i) => `*${i + 1}. ${day(d.at)} ${d.at.slice(11)}* — ${d.topic}\n📍 ${d.training}\n${d.facebook}\n🖼 ${d.image}${d.image === PHOTO ? "\n⚠️ ילדים בתמונה = לפרסם רק עם הסכמת הורים" : ""}\n🏷 באינסטגרם נוספים: ${d.tags}`).join("\n\n") +
     `\n\nלאשר: לשלוח תמונה ולכתוב "פרסם 2" (או "פרסם 2 בלי אינסטגרם"). אפשר לבקש שינוי לפני.`;
   await tellOwner(db, { agent: "content", text, templateParam: `${drafts.length} טיוטות פוסטים לשבוע מחכות לאישור שלך` });
