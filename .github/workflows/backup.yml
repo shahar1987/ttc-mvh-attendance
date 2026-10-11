@@ -131,13 +131,3 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           node alert.mjs
-
-      - name: Open an issue if the backup failed
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue create \
-            --title "❌ הגיבוי הלילי נכשל" \
-            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }}

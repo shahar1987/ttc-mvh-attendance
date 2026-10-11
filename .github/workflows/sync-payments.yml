@@ -63,15 +63,3 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           node alert.mjs
-
-      # לא מתריעים על כישלון בבדיקת ה-10 דקות — אחרת ייווצרו עשרות התראות ביום.
-      # בלי "|| true": אם Issues כבויים בריפו השלב הזה ייכשל בגלוי
-      - name: Open an issue if the sync failed
-        if: failure() && github.event.schedule != '*/10 * * * *'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue create \
-            --title "❌ סנכרון קובץ התשלומים מהדרייב נכשל" \
-            --body "ריצה שנכשלה: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --assignee ${{ github.repository_owner }}
