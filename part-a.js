@@ -3438,6 +3438,8 @@ function at({
         ),
       i &&
         CD &&
+        // מי שאינו מנהל מוחק רק שחקנים בקבוצות שהוא מאמן
+        (!l || l.includes(a.groupId)) &&
         e.createElement(
           "button",
           {
