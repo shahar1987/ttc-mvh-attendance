@@ -89,20 +89,41 @@ export const COACH_ADMIN_TOOL_DEFS = [
       "מפעיל או מכבה את שולה למדריך מהאפליקציה (לפי שם). מדריך מופעל יכול לכתוב לשולה ולקבל עזרה רק בנוכחות של הקבוצות שלו. on=false מכבה. בלי name — מחזיר את רשימת המופעלים.",
     input_schema: { type: "object", properties: { name: { type: "string" }, on: { type: "boolean" } }, additionalProperties: false },
   },
+  {
+    name: "coach_messages",
+    description:
+      "עוצר או מחזיר את ההודעות האוטומטיות למדריך (לפי שם): בוקר טוב, תזכורת למלא נוכחות וסיכום אימון. למשל מאמן מחליף — נשאר משויך לקבוצות באפליקציה. on=false עוצר, on=true מחזיר. בלי name — מחזיר את רשימת מי שלא מקבל.",
+    input_schema: { type: "object", properties: { name: { type: "string" }, on: { type: "boolean" } }, additionalProperties: false },
+  },
 ];
+
+function findCoach(users, groups, name) {
+  const coaches = users.filter((u) => groups.some((g) => !g.deleted && coachIds(g).includes(u.id)));
+  const q = String(name).trim();
+  const exact = coaches.filter((u) => u.name === q);
+  const hits = exact.length ? exact : coaches.filter((u) => (u.name || "").includes(q));
+  if (hits.length !== 1) return hits.length ? `כמה מדריכים מתאימים: ${hits.map((u) => u.name).join(", ")}` : `לא נמצא מדריך "${name}". המדריכים: ${coaches.map((u) => u.name).join(", ")}`;
+  return hits[0];
+}
 
 export function makeCoachAdminTools({ store, lastOwnerText, turn }) {
   return {
+    async coach_messages({ name, on = false }) {
+      const [users, groups, cur] = await Promise.all([store.list("users"), store.list("groups"), store.get(DOC)]);
+      const quiet = (cur || {}).quiet || [];
+      if (!String(name || "").trim()) return `לא מקבלים הודעות אוטומטיות: ${users.filter((u) => quiet.includes(u.id)).map((u) => u.name).join(", ") || "אף אחד"}`;
+      const u = findCoach(users, groups, name);
+      if (typeof u === "string") return u;
+      // בלי "כן" נוסף: הפיך באותה פקודה, ולא שולח כלום לאף אחד
+      await store.update(DOC, (c) => ({ quiet: on ? (c.quiet || []).filter((x) => x !== u.id) : [...new Set([...(c.quiet || []), u.id])] }));
+      return on ? `${u.name} יקבל שוב בוקר טוב, תזכורות וסיכומי אימון.` : `הפסקתי לשלוח ל${u.name} בוקר טוב, תזכורות וסיכומי אימון. הוא נשאר משויך לקבוצות באפליקציה.`;
+    },
     async coach_access({ name, on = true }) {
       const [users, groups, cur] = await Promise.all([store.list("users"), store.list("groups"), store.get(DOC)]);
       const ids = (cur || {}).ids || [];
       if (!String(name || "").trim()) return `מופעלים: ${users.filter((u) => ids.includes(u.id)).map((u) => u.name).join(", ") || "אף אחד"}`;
-      const coaches = users.filter((u) => groups.some((g) => !g.deleted && coachIds(g).includes(u.id)));
-      const q = String(name).trim();
-      const exact = coaches.filter((u) => u.name === q);
-      const hits = exact.length ? exact : coaches.filter((u) => (u.name || "").includes(q));
-      if (hits.length !== 1) return hits.length ? `כמה מדריכים מתאימים: ${hits.map((u) => u.name).join(", ")}` : `לא נמצא מדריך "${name}". המדריכים: ${coaches.map((u) => u.name).join(", ")}`;
-      const u = hits[0];
+      const u = findCoach(users, groups, name);
+      if (typeof u === "string") return u;
       if (on && !isValidPhone(u.phone || "")) return `ל${u.name} אין טלפון תקין באפליקציה. צריך לעדכן אותו שם קודם.`;
       if (!(await confirmed(store, "coach_access", { id: u.id, on }, lastOwnerText, turn)))
         return `לא בוצע עדיין. לשאול את הבעלים: "${on ? "להפעיל" : "לכבות"} את שולה ל${u.name}?" ואחרי "כן" לקרוא שוב עם אותם פרטים.`;

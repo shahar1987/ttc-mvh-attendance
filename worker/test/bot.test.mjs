@@ -324,6 +324,11 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   const n4 = sent.length;
   await morningGreetings(env, db(env), waConfig(env), gem, am(5));
   assert.equal(sent.slice(n4).find((b) => b.type === "template").template.components[0].parameters[0].text, "בוקר טוב יוסי! ☀️ תזכורת: היום יש אימון — נוער, בוגרים ב-16:00. שיהיה יום מעולה 🏓");
+  // מאמן מחליף שהבעלים השתיק (agentReports/coaches.quiet) — לא מקבל ולא מופיע כבעיה
+  docs.get("agentReports/bot").morningGreetings = "";
+  put("agentReports/coaches", { quiet: ["u2"] });
+  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(5)), "morning: יוסי ✓");
+  docs.delete("agentReports/coaches");
   docs.delete("cancellations/c1");
 }
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
@@ -1061,6 +1066,13 @@ console.log("google-via-claude ok");
   await coachCall("נועה הגיעה היום למתחילים", { name: "mark_attendance", args: { group: "מתחילים", present: ["נועה"] } });
   assert.equal(docs.get(`attendance/${TODAY}_g1_p2`).markedBy, "shula-whatsapp:c1");
   assert.equal(docs.get("agentReports/coach_c1").history.length, 8, "היסטוריה נפרדת למדריך (4 הודעות)");
+  // 🔕 מאמן מחליף: עוצרים לו את ההודעות האוטומטיות בפקודה אחת, ומחזירים באותה דרך
+  assert.match(await callTool("תפסיקי לשלוח לרונית", { name: "coach_messages", args: { name: "רונית", on: false } }), /הפסקתי לשלוח לרונית מדריכה/);
+  assert.deepEqual(docs.get("agentReports/coaches").quiet, ["c2"]);
+  assert.deepEqual(docs.get("agentReports/coaches").ids, ["c1"], "לא נוגע במדריכים המופעלים");
+  assert.match(await callTool("מי לא מקבל?", { name: "coach_messages", args: {} }), /לא מקבלים הודעות אוטומטיות: רונית מדריכה/);
+  assert.match(await callTool("תחזירי לרונית", { name: "coach_messages", args: { name: "רונית", on: true } }), /יקבל שוב/);
+  assert.deepEqual(docs.get("agentReports/coaches").quiet, []);
   assert.ok(!(docs.get("agentReports/bot").history || []).some((h) => h.text.includes("נועה הגיעה היום")), "לא נכנס לשיחה של הבעלים");
 }
 console.log("coach mode ok");
