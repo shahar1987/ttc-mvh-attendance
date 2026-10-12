@@ -1,0 +1,37 @@
+name: Message to coaches
+
+# הודעה חופשית מהבעלים למדריכים המופעלים בבוט (agentReports/coaches.ids), בתבנית club_message.
+# Claude בפרויקט מפעיל את זה כשהבעלים מבקש. לקובץ מהדרייב — קישור שיתוף בתוך הטקסט.
+# הקלט לא מודפס ביומן (agents/send.mjs קורא אותו מקובץ האירוע).
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: "שם המדריך (או חלק ממנו), או 'כולם'"
+        required: true
+      text:
+        description: "נוסח ההודעה (שורה אחת; קישור לקובץ בתוך הטקסט)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: agents
+        run: npm ci --no-audit --no-fund
+      - name: Send
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+        run: node send.mjs
