@@ -301,24 +301,34 @@ const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, .
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
 async function gemini(env, body, trace = []) {
   let lastErr;
-  for (const model of [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))]) {
-    const t0 = Date.now();
-    // מודל שנתקע (2026-10-09/10: 60–120 שניות על "טופל") — עוברים לבא בתור במקום לשרוף את כל הזמן של ההודעה
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(Number(env.GEMINI_TIMEOUT_MS) || 40000),
-    }).catch((e) => ({ ok: false, status: e.name === "TimeoutError" ? "timeout" : e.message }));
-    trace.push(`${model} ${Math.round((Date.now() - t0) / 1000)}s ${r.status}`);
-    if (r.ok) {
-      const c = (await r.json())?.candidates?.[0];
-      const parts = c?.content?.parts || [];
-      parts.finishReason = c?.finishReason || "";
-      return parts;
+  let models = [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))];
+  // 503/500 = עומס רגעי אצל גוגל (2026-10-12 08:30: שני המודלים הראשונים 429 מכסה, והשלישי 503 — הבעלים קיבל "503, נסה שוב").
+  // אחרי סבב שנכשל: מחכים ומנסים שוב רק את המודלים שהחזירו 5xx. 429 (מכסה) וקיפאון לא חוזרים — לא יעזור / ישרוף זמן.
+  for (const wait of [0, 3000, 8000].map((ms) => ms * (env.GEMINI_RETRY_SCALE ?? 1))) {
+    if (!models.length) break;
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    const busy = [];
+    for (const model of models) {
+      const t0 = Date.now();
+      // מודל שנתקע (2026-10-09/10: 60–120 שניות על "טופל") — עוברים לבא בתור במקום לשרוף את כל הזמן של ההודעה
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(Number(env.GEMINI_TIMEOUT_MS) || 40000),
+      }).catch((e) => ({ ok: false, status: e.name === "TimeoutError" ? "timeout" : e.message }));
+      trace.push(`${model} ${Math.round((Date.now() - t0) / 1000)}s ${r.status}`);
+      if (r.ok) {
+        const c = (await r.json())?.candidates?.[0];
+        const parts = c?.content?.parts || [];
+        parts.finishReason = c?.finishReason || "";
+        return parts;
+      }
+      lastErr = new Error(`Gemini של גוגל לא זמין כרגע (${model}: ${r.status})`);
+      if (r.status === 401 || r.status === 403) throw lastErr; // מפתח לא תקין — אין טעם לנסות מודל אחר
+      if (r.status >= 500) busy.push(model);
     }
-    lastErr = new Error(`${model}: ${r.status}`);
-    if (r.status === 401 || r.status === 403) break; // מפתח לא תקין — אין טעם לנסות מודל אחר
+    models = busy;
   }
   throw lastErr;
 }

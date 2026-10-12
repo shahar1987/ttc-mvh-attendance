@@ -69,6 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
     const next = geminiQueue.shift();
+    if (next?.status) return json({ error: { code: next.status } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
     if (next === "hang") return new Promise((_, no) => init.signal?.addEventListener("abort", () => no(init.signal.reason))); // Gemini שלא עונה לעולם (עד שמבטלים)
     return json({ candidates: [next?.finishReason ? { content: { parts: next.parts }, finishReason: next.finishReason } : { content: { parts: next } }] });
   }
@@ -552,6 +553,20 @@ await webhook("טופל");
 env.GEMINI_TIMEOUT_MS = "";
 assert.equal(texts().at(-1), "מהמודל הבא");
 assert.match(docs.get("agentReports/bot").log.at(-1).gem.join(), /timeout.*200/);
+
+// 14ג3. בוקר טיפוסי: שני מודלים 429 (מכסה), השלישי 503 (עומס) — מחכים ומנסים שוב רק אותו, והבעלים מקבל תשובה ולא "503"
+env.GEMINI_RETRY_SCALE = 0;
+geminiQueue.push({ status: 429 }, { status: 429 }, { status: 503 }, [{ text: "אחרי ניסיון חוזר" }]);
+await webhook("מה קורה");
+assert.equal(texts().at(-1), "אחרי ניסיון חוזר");
+assert.match(docs.get("agentReports/bot").log.at(-1).gem.join(), /lite-latest \d+s 503,gemini-flash-lite-latest \d+s 200$/);
+// עומס שלא עובר — הודעה ברורה, בלי לנסות שוב מודלים שבמכסה
+geminiQueue.push({ status: 429 }, { status: 429 }, { status: 503 }, { status: 503 }, { status: 503 });
+const calls503 = geminiCalls.length;
+await webhook("ועכשיו?");
+assert.equal(geminiCalls.length - calls503, 5);
+assert.match(texts().at(-1), /Gemini של גוגל לא זמין כרגע/);
+delete env.GEMINI_RETRY_SCALE;
 
 // 14ד. תזכורת לבעלים: "שמרתי" בלי remind_me — תזכורת לכלי, ואם שוב לא — אומרים את האמת. עם הכלי — נשמר, האישור נכתב מה-worker, וה-cron שולח.
 geminiQueue.push([{ text: "שמרתי לך התרעה ל-15:45 👍" }], [{ text: "בסדר, אזכיר לך." }]);
