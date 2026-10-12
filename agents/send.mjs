@@ -1,4 +1,5 @@
-// ✉️ הודעה חופשית מהבעלים למדריכים המופעלים (agentReports/coaches.ids), דרך התבנית club_message.
+// ✉️ הודעה חופשית מהבעלים למדריכים, דרך התבנית club_message. מדריך = מופעל בבוט (agentReports/coaches.ids)
+// או משויך לקבוצה פעילה באפליקציה (כמו שהתזכורות האוטומטיות מוצאות אותו).
 // מופעל ידנית מ-GitHub (send-coach.yml) — כך Claude בפרויקט שולח כשהבעלים מבקש.
 // to = שם (או חלק משם) של מדריך מופעל, או "כולם". text = הנוסח; קישור לקובץ (למשל מהדרייב) פשוט בתוך הטקסט.
 // הקלט נקרא מקובץ האירוע ולא מ-env, כדי שלא יודפס ביומן הציבורי. היומן מדפיס רק מספרים.
@@ -29,7 +30,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const wa = waConfig(process.env);
   if (!wa) throw new Error("missing WhatsApp secrets");
   const db = firestore();
-  const ids = (await db.collection("agentReports").doc("coaches").get()).data()?.ids || [];
+  const groups = (await loadAll(db, "groups")).filter((g) => !g.deleted && g.isActive !== false);
+  const ids = [
+    ...((await db.collection("agentReports").doc("coaches").get()).data()?.ids || []),
+    ...groups.flatMap((g) => [g.coachId, ...(Array.isArray(g.coachIds) ? g.coachIds : [])]).filter(Boolean),
+  ];
   const targets = pickCoaches(await loadAll(db, "users"), ids, to);
   let sent = 0;
   for (const t of targets) {

@@ -50,7 +50,7 @@
 
 - 🤖 **הבוט** (`worker/`, Cloudflare): הסוכן הראשי. עונה רק ל-`OWNER_PHONE`. שולח הודעות להורים רק אחרי "שלח" מפורש.
 - 🔎 **סורק יומי** (`agents/scan.mjs`), 🐞 **בודק באגים** (`agents/bugcheck.mjs`), 💡 **רעיונות** (`agents/ideas.mjs`), 📣 **סוכן הפרסום** (`agents/content.mjs`, טיוטות פוסטים שבועיות לאישור), 🛡️ **מפקח** (`agents/supervisor.mjs`) — GitHub Actions ב-`.github/workflows/agents.yml`.
-- ✉️ **הודעה למדריכים** (`.github/workflows/send-coach.yml`, הפעלה ידנית עם `to` ו-`text`): כשהבעלים מבקש מ-Claude לשלוח למדריך מופעל תזכורת או קישור לקובץ.
+- ✉️ **הודעה למדריכים** (`.github/workflows/send-coach.yml`, הפעלה ידנית עם `to` ו-`text`): כשהבעלים מבקש מ-Claude לשלוח למדריך (מופעל בבוט או משויך לקבוצה) תזכורת או קישור לקובץ.
 - התוצאות נשמרות ב-Firestore באוסף `agentReports` (חסום לאפליקציה בכלל האחרון של `firestore.rules`).
 - הלוגיקה של "ממתין להודעה" ב-`agents/lib/analysis.mjs` מועתקת מ-`pendingAbsenceMsgs`/`absenceAlerts` ב-`part-a.js`. **שינוי שם — לשנות גם כאן.**
 - בדיקות: `cd agents && npm test` (כולל שומר הפרטיות `scripts/privacy-guard.sh` — אותו אחד שחוסם את ה-build). להריץ לפני כל דחיפה; ב-PR הן רצות אוטומטית (`checks.yml`).
