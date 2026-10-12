@@ -279,7 +279,8 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal(await coachSummaries(env, db(env), waConfig(env), early), "nothing due");
   const n2 = sent.length;
   assert.match(await coachSummaries(env, db(env), waConfig(env), sunday), /בוגרים — יוסי ✓/);
-  const tpl = sent.slice(n2).filter((b) => b.type === "template");
+  assert.match(JSON.stringify(sent.slice(n2).at(-1)), /סיכום אימון.*בוגרים — יוסי ✓/, "הבעלים מקבל אישור ששלחנו");
+  const tpl = sent.slice(n2).filter((b) => b.type === "template" && b.template.name === "club_message");
   assert.equal(tpl.length, 1, "נוער לא מולאה — אין סיכום (התזכורת מטפלת בה)");
   assert.equal(tpl[0].to, "972501234567");
   assert.equal(tpl[0].template.name, "club_message");
@@ -307,9 +308,10 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(4)), "too early", "07:00 — מוקדם");
   geminiQueue.push([{ text: "בוקר טוב יוסי! 😎 היום נוער ובוגרים ב-16:00, יאללה!" }]);
   const n3 = sent.length;
-  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(5)), "morning: יוסי ✓", "רון בלי טלפון, ערב בוטל");
-  const m = sent.slice(n3).filter((b) => b.type === "template");
+  assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(5)), "morning: יוסי ✓, רון: אין טלפון שמור", "רון בלי טלפון, ערב בוטל");
+  const m = sent.slice(n3).filter((b) => b.type === "template" && b.template.name === "club_message");
   assert.equal(m.length, 1);
+  assert.match(JSON.stringify(sent.slice(n3).at(-1)), /תזכורת הבוקר לאימון.*יוסי ✓, רון: אין טלפון שמור/, "הבעלים מקבל אישור למי נשלח");
   assert.equal(m[0].template.components[0].parameters[0].text, "בוקר טוב יוסי! 😎 היום נוער ובוגרים ב-16:00, יאללה!");
   assert.equal(await morningGreetings(env, db(env), waConfig(env), gem, am(6)), "done today");
   // Gemini השמיט שעה — נוסח קבוע עם כל הפרטים
