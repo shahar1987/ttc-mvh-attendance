@@ -6,12 +6,12 @@
   <title>נוכחות מועדון טניס שולחן מבואות החרמון</title>
 
   <link rel="manifest" href="./manifest.json" />
-  <meta name="theme-color" content="#1B2A41" />
+  <meta name="theme-color" content="#F2F2F7" />
   <link rel="icon" href="./icon-192.png" />
 
   <!-- iOS needs these to install to the home screen as a real app -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="נוכחות מועדון" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
 
@@ -28,7 +28,31 @@
   <link rel="stylesheet" href="./tailwind.css" />
   <style>
     /* גופן עברי אחד לכל המכשירים; מוטמע בדף עצמו, עובד גם בלי רשת */
-    body { font-family: "Assistant", system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+    /* 12.10: עיצוב בסגנון אפל. באייפון — הגופן של המערכת (SF), בשאר המכשירים — Assistant המוטמע */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Assistant", system-ui, "Segoe UI", Arial, sans-serif;
+      background: #F2F2F7; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+    .text-xl, .text-2xl, .text-3xl { letter-spacing: -0.015em; }
+    /* פס עליון שקוף-חלבי: התוכן נגלל מתחתיו */
+    .glass-bar { background: rgba(242,242,247,.78); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+      box-shadow: 0 .5px 0 rgba(60,60,67,.18); padding-top: calc(.625rem + env(safe-area-inset-top)); }
+    .safe-top { padding-top: calc(1.5rem + env(safe-area-inset-top)); }
+    /* כרטיס לבן על רקע אפור, בלי מסגרת — צל עדין במקום קו */
+    .ios-card { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04); }
+    div.bg-white.border-slate-200, details.bg-white.border-slate-200 { border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04); }
+    /* כפתורים: תגובה ברגע הנגיעה, לא אחרי השחרור */
+    button { transition: transform .12s ease-out, background-color .2s, color .2s, box-shadow .2s, opacity .2s; touch-action: manipulation; }
+    button:not(:disabled):active { transform: scale(.97); }
+    /* כפתור מלא בצבע: ברק עדין למעלה וצל רך מתחת */
+    button[class*="bg-blue-9"], button[class*="bg-blue-8"], button[class*="bg-emerald-6"], button[class*="bg-emerald-7"],
+    button[class*="bg-amber-6"], button[class*="bg-amber-7"], button[class*="bg-red-6"], button[class*="bg-red-7"] {
+      background-image: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.10), 0 6px 16px -6px rgba(27,42,65,.45); }
+    /* חלונות שעולים מלמטה: הרקע מתעמעם והחלון מחליק למעלה */
+    .fixed.inset-0.bg-black\/40.items-end, .fixed.inset-0.bg-black\/50 { animation: dim-in .25s ease-out; }
+    .fixed.inset-0.bg-black\/40.items-end > *, .fixed.inset-0.bg-black\/50 > * { animation: sheet-up .45s cubic-bezier(.32,.72,0,1); }
+    @keyframes dim-in { from { background-color: rgba(0,0,0,0); } }
+    @keyframes sheet-up { from { transform: translateY(40px); opacity: 0; } }
+    .drawer-ease { transition-duration: .4s; transition-timing-function: cubic-bezier(.32,.72,0,1); }
     /* סימון פוקוס למי שמנווט במקלדת (טאבלט עם מקלדת, קורא מסך) */
     :focus-visible { outline: 3px solid #2E7D6B; outline-offset: 2px; box-shadow: 0 0 0 5px #fff; }
     /* 27.9: ברירת המחדל של Tailwind לטקסט מציין-מקום היא 2.5:1 — כמעט בלתי קריא */
