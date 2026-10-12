@@ -5,17 +5,20 @@
 import { readFileSync } from "node:fs";
 import { firestore, loadAll, heartbeat, reportMissingKey } from "./lib/firebase.mjs";
 import { analyze, addDays, israelToday } from "./lib/analysis.mjs";
-import { ask } from "./lib/claude.mjs";
+import { gemini } from "./lib/gemini.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
 const db = firestore();
-// בלי מפתח הסוכן לא יכול לעבוד — נכשלים בקול (ריצה אדומה + הודעה לשולה) ולא "מצליחים" בשקט
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("ideas did not run: ANTHROPIC_API_KEY is missing (Settings → Secrets and variables → Actions)");
-  await tellOwner(db, { agent: "ideas", text: "💡 סוכן הרעיונות לא רץ: חסר מפתח ANTHROPIC_API_KEY ב-GitHub" }).catch((e) => console.error(e.message));
-  await reportMissingKey(db, "ideas", "ANTHROPIC_API_KEY").catch((e) => console.error(e.message));
+// Gemini כשיש מפתח (חינמי, קיים ב-GitHub); אחרת Claude. כמו בסוכן הפרסום — מספיק אחד מהם.
+// ANTHROPIC_API_KEY לא מוגדר ב-GitHub, ולכן בלי Gemini הסוכן נכשל כל ראשון.
+// בלי אף מפתח נכשלים בקול (ריצה אדומה + הודעה לשולה) ולא "מצליחים" בשקט
+if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+  console.error("ideas did not run: no GEMINI_API_KEY or ANTHROPIC_API_KEY (Settings → Secrets and variables → Actions)");
+  await tellOwner(db, { agent: "ideas", text: "💡 סוכן הרעיונות לא רץ: חסר מפתח (GEMINI_API_KEY או ANTHROPIC_API_KEY) ב-GitHub" }).catch((e) => console.error(e.message));
+  await reportMissingKey(db, "ideas", "GEMINI_API_KEY|ANTHROPIC_API_KEY").catch((e) => console.error(e.message));
   process.exit(1);
 }
+const ask = process.env.GEMINI_API_KEY ? gemini : (await import("./lib/claude.mjs")).ask;
 const today = israelToday();
 const [players, groups, attendance] = await Promise.all([
   loadAll(db, "players"),
