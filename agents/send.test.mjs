@@ -10,7 +10,7 @@ const users = [
 const ids = ["a", "b"];
 
 test("picks one approved coach by partial name", () => {
-  assert.deepEqual(pickCoaches(users, ids, "אבי"), [{ id: "a", phone: "972500000001" }]);
+  assert.deepEqual(pickCoaches(users, ids, "אבי"), [{ id: "a", name: "אבי כהן", phone: "972500000001" }]);
 });
 test("never sends to a coach who is not approved", () => {
   assert.throws(() => pickCoaches(users, ids, "אבי לוי"));

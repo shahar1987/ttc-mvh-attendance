@@ -907,6 +907,14 @@ assert.equal(texts().at(-1), "נוסף בינתיים");
 put("agentReports/bot", { outboxQueue: [{ id: "o8", from: "scan", key: "scan_late", at: "2026-10-05T05:00:00.000Z", text: "עם מפתח" }] });
 assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
 assert.equal(bot().outbox.scan_late.text, "עם מפתח");
+// פריט עם to — יוצא לנמען בתבנית שלו (agents/send.mjs למדריכים), לא לבעלים, ונכנס למעקב קריאה
+put("agentReports/bot", { outboxQueue: [{ id: "o9", from: "send-coach", key: "send-coach", to: "972500000009", who: "מדריך בדיקה", at: "2026-10-05T05:00:00.000Z", text: "תוכנית אימונים\nhttps://drive.google.com/x", template: "club_message", templateParam: "תוכנית אימונים https://drive.google.com/x" }] });
+assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
+const t18 = sent.at(-1);
+assert.equal(t18.to, "972500000009");
+assert.equal(t18.template.name, "club_message");
+assert.equal(t18.template.components[0].parameters[0].text, "תוכנית אימונים https://drive.google.com/x");
+assert.ok(Object.values(bot().readWatch || {}).some((w) => w.who === "מדריך בדיקה"));
 // סוכן שכתב בטעות מערך לשדה outbox — מטופל כמו התור, ו-outbox חוזר להיות מפה
 put("agentReports/bot", { outbox: [{ id: "o3", from: "ideas", at: "2026-10-05T06:00:00.000Z", text: "💡 רעיון" }] });
 assert.equal(await deliverOutbox(env, store, waConfig(env)), "outbox: 1");
