@@ -28,6 +28,7 @@ const out = (path, o) => ({ name: `projects/p/databases/(default)/documents/${pa
 const geminiQueue = [];
 const google = [];
 const geminiCalls = [];
+const geminiUrls = [];
 const sent = [];
 const social = [];
 const templatesPosted = [];
@@ -68,6 +69,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (url.includes("generativelanguage")) {
     geminiCalls.push(JSON.parse(init.body));
+    geminiUrls.push(url);
     const next = geminiQueue.shift();
     if (next?.status) return json({ error: { code: next.status } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
     if (next === "hang") return new Promise((_, no) => init.signal?.addEventListener("abort", () => no(init.signal.reason))); // Gemini שלא עונה לעולם (עד שמבטלים)
@@ -213,6 +215,7 @@ assert.equal(last[1].inlineData.mimeType, "image/jpeg");
 // 7. המפקח: OK = שקט, בעיה = הודעה לבעלים + נכנס ל-outbox
 geminiQueue.push([{ text: "OK" }]);
 assert.equal(await review(env), "ok");
+assert.match(geminiUrls.at(-1), /gemini-flash-lite-latest/, "הבדיקה הלילית על המודל הזול");
 geminiQueue.push([{ text: "1. ביקש פלאייר — שולה לא החזירה טיוטה" }]);
 assert.equal(await review(env), "sent");
 assert.match(texts().at(-1), /המפקח על שולה[\s\S]*לא החזירה טיוטה/);

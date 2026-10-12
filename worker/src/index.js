@@ -17,6 +17,8 @@ import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
+// טקסט פשוט בלי כלים (בוקר טוב למאמנים, הבדיקה הלילית) — המודל הזול קודם. השיחות עם הבעלים נשארות על הרגיל (החלטת הבעלים 12.10)
+const LITE = "gemini-flash-lite-latest";
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];
 const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
 const DEADLINE_MS = 22000; // (בבדיקות: env.DEADLINE_MS) לפני ה-30 שניות של Cloudflare, עם מרווח לשליחת הודעת השגיאה
@@ -299,9 +301,9 @@ export function unanswered(bot, now = Date.now()) {
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
-async function gemini(env, body, trace = []) {
+async function gemini(env, body, trace = [], first = env.GEMINI_MODEL) {
   let lastErr;
-  let models = [...new Set([env.GEMINI_MODEL, ...MODELS].filter(Boolean))];
+  let models = [...new Set([first, ...MODELS].filter(Boolean))];
   // 503/500 = עומס רגעי אצל גוגל (2026-10-12 08:30: שני המודלים הראשונים 429 מכסה, והשלישי 503 — הבעלים קיבל "503, נסה שוב").
   // אחרי סבב שנכשל: מחכים ומנסים שוב רק את המודלים שהחזירו 5xx. 429 (מכסה) וקיפאון לא חוזרים — לא יעזור / ישרוף זמן.
   for (const wait of [0, 3000, 8000].map((ms) => ms * (env.GEMINI_RETRY_SCALE ?? 1))) {
@@ -536,7 +538,7 @@ async function everyQuarter(env) {
     stalePost(store).then((text) => text && tell(store, wa, "post-reminder", text, text)),
     remindCoaches(env, store, wa),
     coachSummaries(env, store, wa),
-    morningGreetings(env, store, wa, gemini),
+    morningGreetings(env, store, wa, (e, b) => gemini(e, b, [], LITE)),
     coachReminderTest(env, store, wa),
     deliverOutbox(env, store, wa),
     dispatchWorkflows(env, store),
@@ -571,7 +573,7 @@ export async function review(env) {
     systemInstruction: { parts: [{ text: REVIEW }] },
     contents: [{ role: "user", parts: [{ text: transcript }] }],
     generationConfig: { maxOutputTokens: 1000, temperature: 0.2 },
-  });
+  }, [], LITE);
   const verdict = parts.map((p) => p.text || "").join("").trim();
   const at = new Date().toISOString();
   await store.merge("agentReports/bot", { lastReview: { at, verdict } });
