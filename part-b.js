@@ -2899,11 +2899,11 @@ function dt({
       "aside",
       {
         dir: "rtl",
-        className: `fixed top-0 right-0 h-full w-72 bg-white z-50 shadow-xl flex flex-col transition-transform duration-200 ${t ? "translate-x-0" : "translate-x-full"}`,
+        className: `fixed top-0 right-0 h-full w-72 bg-white z-50 shadow-xl flex flex-col transition-transform drawer-ease ${t ? "translate-x-0" : "translate-x-full"}`,
       },
       e.createElement(
         "div",
-        { className: "bg-blue-950 text-white px-5 py-5" },
+        { className: "bg-slate-50 text-blue-950 px-5 pt-6 pb-4 safe-top" },
         e.createElement(
           "div",
           { className: "text-sm font-bold leading-snug" },
@@ -2911,12 +2911,12 @@ function dt({
         ),
         e.createElement(
           "div",
-          { className: "text-xs text-blue-300 mt-0.5" },
+          { className: "text-xs text-slate-500 mt-0.5" },
           W,
         ),
         e.createElement(
           "div",
-          { className: "text-xs text-blue-200 mt-2" },
+          { className: "text-sm text-slate-600 mt-2" },
           n,
           " \xB7 ",
           a ? "מנהל" : VW ? "צופה" : "מאמן",
@@ -2934,7 +2934,7 @@ function dt({
               {
                 key: sec.label,
                 onClick: () => (on || i(items[0].key), s()),
-                className: `w-full px-5 py-4 flex items-center gap-3 justify-start text-right ${on ? "bg-emerald-50 text-emerald-700" : "text-slate-600"}`,
+                className: `w-[calc(100%-1rem)] mx-2 rounded-xl px-4 py-4 flex items-center gap-3 justify-start text-right ${on ? "bg-emerald-50 text-emerald-700" : "text-slate-600 active:bg-slate-100"}`,
               },
               e.createElement(sec.icon, { className: "w-5 h-5 shrink-0" }),
               e.createElement("span", { className: "font-semibold text-base" }, sec.label),
@@ -3714,7 +3714,7 @@ function re({
           "div",
           {
             key: p.id,
-            className: `rounded-2xl px-2 py-1 flex flex-col gap-1 ${absent ? "bg-red-50" : "bg-blue-50"}`,
+            className: `rounded-2xl px-2 py-1 flex flex-col gap-1 transition-colors duration-200 ${absent ? "bg-red-50" : "bg-white ios-card"}`,
           },
           e.createElement(
             "div",
@@ -4041,7 +4041,7 @@ function mt({
               {
                 key: r.id,
                 onClick: () => onSelectGroup(r.id),
-                className: `rounded-2xl px-4 py-4 flex items-center gap-3 text-right active:scale-[0.99] transition-transform ${y || cx ? "bg-white border border-slate-200" : "bg-blue-50"}`,
+                className: `rounded-2xl px-4 py-4 flex items-center gap-3 text-right active:scale-[0.99] transition-transform ${y || cx ? "bg-white border border-slate-200" : "bg-white ios-card"}`,
               },
               e.createElement(
                 "div",
@@ -4201,6 +4201,7 @@ function Q() {
     [pendingDate, setPendingDate] = b(null),
     [pendingNonce, setPendingNonce] = b(0),
     profileRef = e.useRef(null),
+    screenRef = e.useRef(null),
     [x, h] = b(!1),
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
@@ -4243,6 +4244,12 @@ function Q() {
       } catch (e2) {}
     };
   profileRef.current = s || null;
+  // מעבר רך בין מסכים: התוכן החדש עולה בעדינות למקומו. לא מרכיבים את המסך מחדש — סימונים שלא נשמרו נשארים.
+  j(() => {
+    let el = screenRef.current;
+    if (!el || !el.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate([{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.32,.72,0,1)" });
+  }, [m, attGroupId]);
   useCoachFieldsHealer(!!s && isAdminRole(s), i, l);
   // דוח על טווח שמתחיל לפני חלון ההאזנה של המנהל — טוענים את החלק הישן פעם אחת
   let olderOn = staffMode && !coachGroupIds;
@@ -4424,19 +4431,19 @@ function Q() {
         "header",
         {
           className:
-            "sticky top-0 z-30 bg-blue-950 text-white px-4 py-3.5 flex items-center gap-3",
+            "sticky top-0 z-30 glass-bar text-blue-950 px-4 py-2.5 flex items-center gap-3 no-print",
         },
         e.createElement("img", {
           src: "./logo.png",
           alt: "",
-          className: "w-9 h-9 rounded-lg bg-white/95 p-0.5 shrink-0 order-last",
+          className: "w-10 h-10 rounded-xl bg-white p-0.5 shrink-0 order-last shadow-sm",
         }),
         e.createElement(
           "button",
           {
             onClick: () => h(!0),
             className:
-              "text-white shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center",
+              "text-blue-900 shrink-0 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:bg-slate-200",
             "aria-label": "תפריט",
           },
           e.createElement(Pe, { className: "w-6 h-6" }),
@@ -4446,13 +4453,13 @@ function Q() {
           { className: "text-right flex-1 min-w-0" },
           e.createElement(
             "div",
-            { className: "text-sm font-bold leading-tight truncate" },
+            { className: "text-xl font-bold leading-tight tracking-tight truncate" },
             // הכותרת נגזרת מאותה רשימת תפריט (STAFF_MENU_ITEMS) — מקור אמת אחד לשמות המסכים
             STAFF_MENU_ITEMS.find((it) => it.key === m)?.label || X,
           ),
           e.createElement(
             "div",
-            { className: "text-xs text-blue-300 truncate" },
+            { className: "text-sm text-slate-500 truncate" },
             s.name,
             " \xB7 ",
             r ? "מנהל" : vw ? "צופה" : "מאמן",
@@ -4467,6 +4474,9 @@ function Q() {
           { className: "bg-red-100 border-b border-red-300 px-4 py-2 text-center" },
           e.createElement("p", { className: "text-xs text-red-800 leading-snug" }, dataError),
         ),
+      e.createElement(
+        "div",
+        { ref: screenRef },
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
@@ -4533,6 +4543,7 @@ function Q() {
           onOpenPayments: canDo(s, "payments") ? () => goToScreen("payments") : null,
           loadError: !!aError,
         }),
+      ),
       e.createElement(dt, {
         open: x,
         onClose: () => h(!1),

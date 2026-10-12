@@ -758,7 +758,7 @@ function QuotaAlertsCard({ alerts: t }) {
     "div",
     {
       className:
-        "bg-white rounded-xl border-2 border-blue-300 overflow-hidden",
+        "bg-white rounded-2xl ios-card overflow-hidden",
     },
     e.createElement(
       "div",
@@ -2833,7 +2833,7 @@ function AlertsCard({
   return e.createElement(
     "div",
     {
-      className: "bg-white rounded-xl border-2 border-amber-300 overflow-hidden",
+      className: "bg-white rounded-2xl ios-card overflow-hidden",
     },
     e.createElement(
       "div",
@@ -2948,7 +2948,7 @@ function AbsenceMsgCard({ items: t, onWhatsapp: s, currentUserId: a }) {
   };
   return e.createElement(
     "div",
-    { className: "bg-white rounded-xl border-2 border-sky-300 overflow-hidden" },
+    { className: "bg-white rounded-2xl ios-card overflow-hidden" },
     e.createElement(
       "div",
       { className: "bg-sky-50 px-4 py-3 flex items-center gap-2" },
@@ -3071,7 +3071,7 @@ function MissingDaysCard({ items: t, users: US, showCoach: SC, onAction: OA, act
   if (t.length === 0) return null;
   return e.createElement(
     "div",
-    { className: "bg-white rounded-xl border-2 border-orange-300 overflow-hidden" },
+    { className: "bg-white rounded-2xl ios-card overflow-hidden" },
     e.createElement(
       "div",
       { className: "bg-orange-50 px-4 py-3 flex items-center gap-2" },
