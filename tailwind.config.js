@@ -6,8 +6,10 @@ module.exports = {
   content: ["./bundle.js", "./index.html"],
   theme: {
     extend: {
+      // פינות מעוגלות קצת יותר, כמו באייפון
+      borderRadius: { xl: "14px", "2xl": "20px" },
       fontFamily: {
-        sans: ['"Assistant"', "system-ui", "-apple-system", '"Segoe UI"', "Arial", "sans-serif"],
+        sans: ["-apple-system", "BlinkMacSystemFont", '"Assistant"', "system-ui", '"Segoe UI"', "Arial", "sans-serif"],
       },
       colors: {
         // ירוק "הגיע" / פעולה ראשית
@@ -64,9 +66,9 @@ module.exports = {
         },
         // אפורים עם נטייה ירקרקה — רקע, מסגרות וטקסט משני
         slate: {
-          50: "#F4F6F5",
-          100: "#EDF0EF",
-          200: "#D9DFDE",
+          50: "#F2F2F7",
+          100: "#E9E9EE",
+          200: "#DCDCE1",
           300: "#B7C1BF",
           400: "#606E77",
           500: "#4F5D66",
