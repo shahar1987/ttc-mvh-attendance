@@ -1,3 +1,8 @@
+// בהיר וחד: נקודה צבעונית קבועה לכל קבוצה, כדי לזהות אותה במבט
+const GROUP_DOTS = ["bg-blue-600", "bg-emerald-600", "bg-amber-600", "bg-red-600", "bg-violet-600"];
+function groupDot(id) {
+  return GROUP_DOTS[String(id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) % GROUP_DOTS.length];
+}
 function roleKey(v) {
   let r = v && typeof v === "object" ? v.role : v;
   return (typeof r === "string" ? r : "").trim().toLowerCase();
@@ -4046,7 +4051,7 @@ function mt({
               e.createElement(
                 "div",
                 { className: "flex-1 min-w-0" },
-                e.createElement("div", { className: "text-lg font-bold text-blue-950 truncate" }, r.name),
+                e.createElement("div", { className: "text-lg font-bold text-blue-950 truncate flex items-center gap-2" }, e.createElement("span", { className: `inline-block w-2.5 h-2.5 rounded-full shrink-0 ${groupDot(r.id)}` }), r.name),
                 e.createElement("div", { className: "text-sm text-slate-600 truncate" }, r.startTime ? r.startTime + "-" + r.endTime : q(r), " \xB7 ", countIn(r), " שחקנים"),
               ),
               y || cx
