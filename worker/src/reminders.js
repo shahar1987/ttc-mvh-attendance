@@ -33,6 +33,8 @@ const israelNow = (now) => {
 };
 const toMin = (t) => (/^\d{1,2}:\d{2}$/.test(t || "") ? Number(t.split(":")[0]) * 60 + Number(t.split(":")[1]) : null);
 export const coachIds = (g) => [...new Set([g.coachId, ...(Array.isArray(g.coachIds) ? g.coachIds : [])].filter(Boolean))];
+// מאמנים שהבעלים ביקש לא לשלוח להם הודעות אוטומטיות (למשל מחליף) — נשארים משויכים בקבוצה. coach_messages ב-coaches.js
+const quietIds = async (store) => ((await store.get("agentReports/coaches")) || {}).quiet || [];
 
 export async function remindCoaches(env, store, wa, now = new Date()) {
   const today = israelToday(now);
@@ -44,14 +46,14 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
   );
   if (!groups.length) return "nothing due";
 
-  const [players, users, recs] = await Promise.all([store.list("players"), store.list("users"), store.where("attendance", "date", today)]);
+  const [players, users, recs, quiet] = await Promise.all([store.list("players"), store.list("users"), store.where("attendance", "date", today), quietIds(store)]);
   const marked = new Set(recs.map((a) => a.groupId));
   const lines = [];
   const targets = [];
   for (const g of groups) {
     const hasPlayers = players.some((p) => p.groupId === g.id && p.isActive && !p.deleted);
     if (!hasPlayers || marked.has(g.id)) continue;
-    for (const id of coachIds(g)) {
+    for (const id of coachIds(g).filter((x) => !quiet.includes(x))) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
       if (!isValidPhone(c.phone || "")) lines.push(`• ${g.name} — ${c.name}: אין טלפון שמור`);
       else targets.push({ g, c, phone: normalizePhone(c.phone) });
@@ -168,7 +170,7 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
   const recs = await store.where("attendance", "date", today);
   const due = groups.filter((g) => recs.some((a) => a.groupId === g.id));
   if (!due.length) return "not marked yet";
-  const [players, users] = await Promise.all([store.list("players"), store.list("users")]);
+  const [players, users, quiet] = await Promise.all([store.list("players"), store.list("users"), quietIds(store)]);
   const nameOf = (id) => (players.find((p) => p.id === id)?.name || "").trim() || "?";
   const ids = due.map((g) => g.id);
   // מסמנים לפני השליחה (כמו remindCoaches) — כישלון לא יגרום לסיכום כפול כל רבע שעה
@@ -188,7 +190,7 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
       away.length && `לא הגיעו: ${away.map((a) => nameOf(a.playerId)).join(", ")}`,
       contact.length ? `ליצור קשר: ${contact.join(", ")}` : away.length && "כל מי שלא הגיע כבר קיבל הודעה",
     ].filter(Boolean).join(" · ").slice(0, 900);
-    for (const id of coachIds(g)) {
+    for (const id of coachIds(g).filter((x) => !quiet.includes(x))) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
       if (!isValidPhone(c.phone || "")) { problems.push(`• ${g.name} — ${c.name}: אין טלפון שמור`); continue; }
       try {
@@ -247,12 +249,12 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
   if (min < MORNING_MIN) return "too early";
   const claimed = await store.update("agentReports/bot", (cur) => (cur.morningGreetings === today ? null : { morningGreetings: today }));
   if (!claimed) return "done today";
-  const [groups, users, cancellations] = await Promise.all([store.list("groups"), store.list("users"), store.where("cancellations", "date", today)]);
+  const [groups, users, cancellations, quiet] = await Promise.all([store.list("groups"), store.list("users"), store.where("cancellations", "date", today), quietIds(store)]);
   const todays = groups
     .filter((g) => !g.deleted && g.isActive !== false && Array.isArray(g.days) && g.days.includes(dow) && !cancellations.some((c) => c.groupId === g.id))
     .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
   const byCoach = new Map();
-  for (const g of todays) for (const id of coachIds(g)) byCoach.set(id, [...(byCoach.get(id) || []), g]);
+  for (const g of todays) for (const id of coachIds(g).filter((x) => !quiet.includes(x))) byCoach.set(id, [...(byCoach.get(id) || []), g]);
   const out = [], watch = {};
   for (const [id, gs] of byCoach) {
     const c = users.find((u) => u.id === id);
