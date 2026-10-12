@@ -1002,6 +1002,13 @@ geminiQueue.push([{ text: "בלי תור" }]);
 await webhook("התור נפל", env.OWNER_PHONE, "q2");
 assert.equal(texts().at(-1), "בלי תור", "תור שנכשל — עונים ישירות");
 delete env.MESSAGES;
+// רמת כורזים → שולה מציעה להעביר לדניאל; לא שואלת כשאין כורזים או כשדניאל כבר מוזכר
+{
+  const { offerKorazim, KORAZIM_ASK } = await import("../src/messages.js");
+  assert.ok(offerKorazim("באימון ברמת כורזים לצלם ילדים").endsWith(KORAZIM_ASK));
+  assert.equal(offerKorazim("האימון בשאר ישוב בוטל"), "האימון בשאר ישוב בוטל");
+  assert.equal(offerKorazim("נשלח לדניאל ✓ (רמת כורזים)"), "נשלח לדניאל ✓ (רמת כורזים)");
+}
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);

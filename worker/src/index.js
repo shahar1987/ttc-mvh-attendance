@@ -11,7 +11,7 @@ import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stal
 import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
@@ -52,7 +52,8 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 אישור פוסטר/פלייר מקלוד: כשתשובה מקלוד שואלת "מאשר את ... כגרסה הסופית?" והבעלים עונה "כן"/"מאשר" — להעביר מיד ל-ask_claude: "הבעלים אישר את <שם הקובץ> כגרסה הסופית. למחוק מהתיקייה את שאר הטיוטות שלו." (הבעלים לא מוחק טיוטות בעצמו.)
 בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה).
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
-הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message מיד ולהעביר לו את הקישורים שחזרו, כל אחד בשורה. ההודעות יוצאות מהמספר שלו כשהוא לוחץ "שלח" בכל קישור, אז לא צריך לבקש ממנו "כן" לפני. לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
+הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message ולהעביר לו בדיוק מה שחזר. למאמנים (לפי שם, או "מאמנים" לכולם) את שולחת בעצמך מהמספר שלך, ואחר כך אומרת לו מי קיבל. אם הוא הכתיב נוסח ("תשלחי לדור: ...") — שולחים מיד. אם ביקש שתנסחי ("תגידי למאמנים ש...") — קודם להראות לו את הנוסח ולמי, לשאול "לשלוח?", ולשלוח רק אחרי "כן". להורים ולמספרים אחרים חוזרים קישורים, כל אחד בשורה, והוא לוחץ "שלח". לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
+רמת כורזים — דניאל מנהל אותה: כשאת שולחת לבעלים משהו שקשור לרמת כורזים (משימה, בקשה, תזכורת, מידע), לסיים ב"${KORAZIM_ASK}". רק אחרי "כן" שלו — send_message עם to ["דניאל"] ונוסח קצר שפונה לדניאל, רק עם החלק של רמת כורזים. בלי "כן" לא שולחים לדניאל.
 תזכורות לבעלים עצמו ("תזכירי לי", "תשלחי לי התראה ב-"): לקרוא ל-remind_me מיד ולהעביר לו מה שהכלי החזיר. אין לך דרך אחרת להזכיר לו — בלי הכלי לא לכתוב "שמרתי"/"אזכיר לך".
 מדריכים (coach_access): כשהבעלים מבקש "תפעילי את שולה ל..." — לקרוא ל-coach_access ולהעביר לו מה שחזר, כולל הצעדים ב-Meta. מדריך מופעל מדבר איתך בשיחה נפרדת ורואה רק את הקבוצות שלו.
 הודעות קוליות מגיעות אלייך כתמלול — לענות על התוכן כרגיל.
@@ -255,7 +256,8 @@ async function handle(m, env) {
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem);
+    const { answer: raw, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem);
+    const answer = offerKorazim(raw);
     at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
@@ -487,7 +489,7 @@ export async function deliverOutbox(env, store, wa) {
       const ok = [];
       for (const x of items) {
         try {
-          const text = String(x.text || "").slice(0, 3500);
+          const text = offerKorazim(String(x.text || "").slice(0, 3500));
           const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: x.template || "agent_alert", templateParam: String(x.templateParam || text.split("\n")[0]).replace(/\s+/g, " ").slice(0, 900) });
           if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
           x.how = how;
