@@ -8,8 +8,8 @@ import { db } from "./firestore.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
-import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings } from "./reminders.js";
+import { waConfig, sendText, sendTemplate, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings, watchReads } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -487,6 +487,8 @@ const summary = (lines) => lines.join(" ").replace(/https?:\S+/g, "").replace(/\
 // 📬 הודעות מהסוכנים ב-GitHub Actions (אין להם סודות וואטסאפ): הם כותבים ל-agentReports/bot.outboxQueue
 // ({id, at, from, key?, text, template?, templateParam?} — key = המפתח ב-outbox להקשר (ברירת מחדל from); template כמו בשליחה הישירה של הסוכנים, ברירת מחדל agent_alert),
 // וה-worker שולח לבעלים ומוציא מהתור רק את מה שנשלח.
+// פריט עם to (טלפון) ו-who (שם) יוצא לנמען הזה בתבנית שלו, לא לבעלים — כך agents/send.mjs שולח למדריכים.
+// רק service account כותב ל-agentReports (חוקי Firestore חוסמים את האפליקציה), ולכן to לא מגיע מבחוץ.
 export async function deliverOutbox(env, store, wa) {
   // אם סוכן כתב בטעות מערך ל-outbox (שהוא מפה) — מעבירים את הפריטים לתור ומחזירים את outbox למפה ריקה
   await store.update("agentReports/bot", (cur) =>
@@ -501,6 +503,14 @@ export async function deliverOutbox(env, store, wa) {
       for (const x of items) {
         try {
           const text = String(x.text || "").slice(0, 3500);
+          if (x.to) {
+            const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)]);
+            // הבעלים יקבל "✓✓ קרא" כשהמדריך פותח, כמו בשליחה מהבוט
+            if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
+            x.how = "direct";
+            ok.push(keyOf(x));
+            continue;
+          }
           const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: x.template || "agent_alert", templateParam: String(x.templateParam || text.split("\n")[0]).replace(/\s+/g, " ").slice(0, 900) });
           if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
           x.how = how;

@@ -26,6 +26,7 @@
 סוג: פיצ'ר קטן (לא נוגע בנוכחות ולא בחוקים; קורא users ו-agentReports/coaches)
 - בונה: .github/workflows/send-coach.yml (הפעלה ידנית: to, text) ← agents/send.mjs. רק מדריכים שב-agentReports/coaches.ids, בתבנית club_message. קובץ = קישור בתוך הטקסט. היומן מדפיס רק מספרים.
 - בודק: agents/send.test.mjs, שומר הפרטיות.
+- תיקון (אותו יום): אין סודות וואטסאפ ב-GitHub, והריצה הראשונה נכשלה. עכשיו send.mjs כותב לתור agentReports/bot.outboxQueue עם to/who, וה-worker שולח מה-cron (עד רבע שעה) ומוסיף מעקב קריאה. בדיקה ב-worker/test/bot.test.mjs.
 
 ## [שוחרר] 2026-10-12 — להפסיק לשלוח הודעות אוטומטיות למאמן מחליף
 סוג: פיצ'ר קטן (לא נוגע ב-attendance)
