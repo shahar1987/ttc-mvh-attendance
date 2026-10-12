@@ -98,7 +98,10 @@ jobs:
 
       - name: Assemble the site with a cache-busting version
         run: |
-          VERSION="${GITHUB_SHA::8}"
+          # הגרסה נגזרת מתוכן האפליקציה ולא מהקומיט: רוב הדחיפות ל-main נוגעות רק ב-agents/ או worker/,
+          # ואם sw.js משתנה בכל אחת מהן — כל מכשיר מקבל "יש גרסה חדשה" בלי ששום דבר במסך השתנה
+          VERSION=$(cat site/app.js site/tailwind.css index.html sw.js manifest.json logo.png | sha256sum | cut -c1-8)
+          echo "app version: $VERSION"
           sed "s|./app.js|./app.js?v=$VERSION|g; s|./tailwind.css|./tailwind.css?v=$VERSION|g" index.html > site/index.html
           sed "s|__BUILD_VERSION__|$VERSION|g" sw.js > site/sw.js
           cp manifest.json site/manifest.json
