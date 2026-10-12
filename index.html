@@ -35,6 +35,12 @@
     /* פס עליון שקוף-חלבי: התוכן נגלל מתחתיו */
     .glass-bar { background: rgba(242,242,247,.78); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
       box-shadow: 0 .5px 0 rgba(60,60,67,.18); padding-top: calc(.625rem + env(safe-area-inset-top)); }
+    /* בהיר וחד: כותרות כבדות (משקל 800 מהגופן המוטמע), וזוהר כחול עדין מאחורי הפס העליון */
+    h1 { font-weight: 800; letter-spacing: -0.02em; }
+    .glass-bar { position: sticky; overflow: hidden; }
+    .glass-bar::before { content: ""; position: absolute; inset-inline-end: -60px; top: -90px; width: 240px; height: 240px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(124,196,255,.55), rgba(124,196,255,0) 70%); pointer-events: none; }
+    .glass-bar > * { position: relative; }
     .safe-top { padding-top: calc(1.5rem + env(safe-area-inset-top)); }
     /* כרטיס לבן על רקע אפור, בלי מסגרת — צל עדין במקום קו */
     .ios-card { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04); }
