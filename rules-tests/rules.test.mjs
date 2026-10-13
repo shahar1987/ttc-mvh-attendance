@@ -19,6 +19,9 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d, 'users/coachA'),  { role: 'Coach', name: 'מאמן א', permissions: ['access', 'competitions'] });
   await setDoc(doc(d, 'users/coachB'),  { role: 'Coach', name: 'מאמן ב', permissions: ['competitions'] });
   await setDoc(doc(d, 'users/viewer1'), { role: 'Viewer', name: 'צופה', permissions: ['reports'] });
+  // מאמן חדש שעוד לא נקבעו לו הרשאות פרטניות, ומאמן שהמנהל הוריד לו את התחרויות
+  await setDoc(doc(d, 'users/coachNew'),  { role: 'Coach', name: 'מאמן חדש' });
+  await setDoc(doc(d, 'users/coachNoComp'), { role: 'Coach', name: 'מאמן בלי תחרויות', permissions: [] });
   await setDoc(doc(d, 'users/parent1'), { role: 'Member', name: 'הורה', phone: '0500000009' });
   await setDoc(doc(d, 'users/parent2'), { role: 'Member', name: 'הורה אחר' });
 
@@ -85,7 +88,7 @@ await t('לא קורא יותר את כרטיס הילד המקושר', () => as
 await t('לא קורא יותר את הנוכחות של הילד המקושר', () => assertFails(getDocs(query(collection(as('parent1'), 'attendance'), where('playerId', 'in', ['p1'])))));
 await t('לא קורא את הקישורים של עצמו', () => assertFails(getDocs(query(collection(as('parent1'), 'links'), where('uid', '==', 'parent1')))));
 await t('כן קורא קבוצות והודעות', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'groups'))); await assertSucceeds(getDocs(collection(as('parent1'), 'cancellations'))); });
-await t('כן קורא ומנהל תחרויות', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'tournaments'))); await assertSucceeds(setDoc(doc(as('parent1'), 'tournaments/t9'), { name: 'חדש' })); });
+await t('כן קורא תחרויות, אבל לא כותב (Member בלי הרשאת תחרויות)', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'tournaments'))); await assertFails(setDoc(doc(as('parent1'), 'tournaments/t9'), { name: 'חדש' })); });
 
 console.log('\n— מאמן —');
 await t('לא מושך אליו רשומת נוכחות של קבוצה אחרת', () => assertFails(updateDoc(doc(as('coachA'), A2), { groupId: 'gA', status: 'Present' })));
@@ -102,6 +105,7 @@ console.log('\n— צופה —');
 await t('כן קורא שחקנים ונוכחות', async () => { await assertSucceeds(getDocs(collection(as('viewer1'), 'players'))); await assertSucceeds(getDocs(collection(as('viewer1'), 'attendance'))); });
 await t('לא כותב נוכחות', () => assertFails(setDoc(doc(as('viewer1'), 'attendance/2026-09-20_gA_p1'), { playerId: 'p1', groupId: 'gA', date: '2026-09-20', status: 'Present' })));
 await t('לא מוחק תחרות (אין לו הרשאת תחרויות)', () => assertFails(deleteDoc(doc(as('viewer1'), 'tournaments/t1'))));
+await t('לא כותב תחרות בלי הרשאת תחרויות', () => assertFails(setDoc(doc(as('viewer1'), 'tournaments/tV'), { name: 'x' })));
 
 console.log('\n— פורטל ההורים הוסר: אין הרשמה ואין בקשות גישה —');
 await t('לא קורא הזמנה לפני התחברות', () => assertFails(getDoc(doc(anon(), 'invites/tok_open'))));
@@ -199,17 +203,21 @@ await t('מנהל לא משנה groupId של רשומה', () => assertFails(upda
 console.log('\n— תחרויות —');
 const tbody = (uid, extra = {}) => ({ name: 'אליפות', date: '2026-10-01', system: 'groups', phase: 'setup', playersCount: 0, rev: 0, client: 'c1',
   state: JSON.stringify({ settings: { name: 'אליפות' }, players: [], phase: 'setup' }), updatedAt: Date.now(), updatedBy: uid, updatedByName: 'x', ...extra });
-await t('הורה יוצר תחרות חדשה (pushCloud(true), merge)', () => assertSucceeds(setDoc(doc(as('parent1'), 'tournaments/tNew'), tbody('parent1', { createdBy: 'parent1' }), { merge: true })));
+await t('הורה (Member) לא יוצר תחרות חדשה', () => assertFails(setDoc(doc(as('parent1'), 'tournaments/tNew'), tbody('parent1', { createdBy: 'parent1' }), { merge: true })));
 await t('מאמן מעדכן תחרות קיימת (merge)', () => assertSucceeds(setDoc(doc(as('coachB'), 'tournaments/tNew'), tbody('coachB', { rev: 5, phase: 'live' }), { merge: true })));
-await t('תחרות ישנה בלי state מתעדכנת', () => assertSucceeds(setDoc(doc(as('parent1'), 'tournaments/t1'), { name: 'שם חדש' }, { merge: true })));
+await t('תחרות ישנה בלי state מתעדכנת (מאמן עם הרשאת תחרויות)', () => assertSucceeds(setDoc(doc(as('coachA'), 'tournaments/t1'), { name: 'שם חדש' }, { merge: true })));
 await t('state גדול (~500KB) עובר — אין מגבלת גודל', () => assertSucceeds(setDoc(doc(as('coachA'), 'tournaments/tBig'), tbody('coachA', { state: 'א'.repeat(250000) }), { merge: true })));
-await t('בדיקת החיבור (zz-connection-test, ping) עובדת', () => assertSucceeds(setDoc(doc(as('parent1'), 'tournaments/zz-connection-test'), { ping: Date.now(), by: 'parent1' }, { merge: true })));
+await t('בדיקת החיבור (zz-connection-test, ping) עובדת למאמן עם הרשאה', () => assertSucceeds(setDoc(doc(as('coachA'), 'tournaments/zz-connection-test'), { ping: Date.now(), by: 'coachA' }, { merge: true })));
 await t('state שאינו מחרוזת נחסם', () => assertFails(setDoc(doc(as('parent1'), 'tournaments/tNew'), { state: { evil: true } }, { merge: true })));
 await t('זר בלי פרופיל לא כותב תחרות', () => assertFails(setDoc(doc(stranger(), 'tournaments/tX'), tbody('randomGoogleUser'))));
 await t('הורה לא מוחק, בעל הרשאת תחרויות כן', async () => {
   await assertFails(deleteDoc(doc(as('parent1'), 'tournaments/tNew')));
   await assertSucceeds(deleteDoc(doc(as('coachB'), 'tournaments/tNew')));
 });
+
+await t('מאמן חדש בלי הרשאות פרטניות כותב תחרות (ברירת המחדל של התפקיד)', () => assertSucceeds(setDoc(doc(as('coachNew'), 'tournaments/tC'), tbody('coachNew'), { merge: true })));
+await t('מאמן שהוסרה לו הרשאת תחרויות לא כותב', () => assertFails(setDoc(doc(as('coachNoComp'), 'tournaments/tC2'), tbody('coachNoComp'), { merge: true })));
+await t('מנהל כותב תחרות', () => assertSucceeds(setDoc(doc(as('admin1'), 'tournaments/tA'), tbody('admin1'), { merge: true })));
 
 console.log('\n— מנהל —');
 await t('קורא הכל ומוחק', async () => {
