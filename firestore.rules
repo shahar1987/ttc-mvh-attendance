@@ -86,6 +86,17 @@ service cloud.firestore {
       return false;
     }
 
+    // גישה לתחרויות — אותו היגיון כמו userPermissions() ב-part-b.js:
+    // מנהל, או הרשאת "competitions" מפורשת, או — למי שעוד לא נקבעו לו
+    // הרשאות פרטניות — ברירת המחדל של התפקיד, שלמאמן ולצופה כוללת תחרויות.
+    // בלי הסעיף האחרון מאמן חדש רואה את התחרויות באפליקציה אבל נחסם בשמירה.
+    function canCompete() {
+      return hasPerm('competitions')
+        || (hasProfile()
+            && !(me().get('permissions', null) is list)
+            && me().get('role', '').trim().lower() in ['coach', 'viewer']);
+    }
+
     // ---------- משתמשים ----------
     // כל אחד קורא את הפרופיל של עצמו — בלי זה האפליקציה לא יכולה לדעת מי הוא.
     // רשימת המשתמשים, עם שמות וטלפונים, נפתחת לצוות בלבד.
@@ -270,7 +281,8 @@ service cloud.firestore {
     // ממנה עלולה לחסום שמירה אמיתית באמצע תחרות.
     match /tournaments/{id} {
       allow read: if hasProfile();
-      allow create, update: if hasProfile()
+      // רק מי שיש לו גישה לתחרויות באפליקציה (canCompete). חשבון Member לא כותב.
+      allow create, update: if canCompete()
         && request.resource.data.get('state', '') is string;
       allow delete: if hasPerm('competitions');
     }
