@@ -214,8 +214,9 @@ service cloud.firestore {
     // attendance ו-players.
 
     // ---------- בדיקת תשלומים ----------
+    // נתוני תשלומים — רק למי שרואה את מסך "מי לא משלם" (PaymentsScreen נפתח רק עם הרשאת payments)
     match /paymentMappings/{id} {
-      allow read: if isTeam();
+      allow read: if hasPerm('payments');
       allow write: if hasPerm('payments');
     }
 
@@ -241,8 +242,8 @@ service cloud.firestore {
     // כל משתמש מחובר יכול לכתוב רישום, רק מנהל קורא.
     // אסור לערוך או למחוק — יומן שאפשר לשנות חסר ערך.
     match /auditLog/{id} {
-      allow create: if hasProfile()
-        && request.resource.data.get('who', '') == request.auth.uid;
+      // שום קוד לא כותב ליומן הזה (נבדק 13.10.2026) — סגור לכתיבה כדי שאי אפשר יהיה לזייף בו רשומות
+      allow create: if false;
       allow read: if isAdmin();
       allow update, delete: if false;
     }
@@ -264,7 +265,7 @@ service cloud.firestore {
     // paymentSyncIgnores, זריעות). נקראים במסכי הצוות, נכתבים על ידי המנהל
     // או בעל הרשאת התשלומים; סקריפטי ה-Admin SDK עוקפים את הכללים ממילא.
     match /system/{id} {
-      allow read: if isTeam();
+      allow read: if hasPerm('payments');
       allow write: if hasPerm('payments');
     }
     match /adminTasks/{id} {

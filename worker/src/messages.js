@@ -7,7 +7,7 @@ import { waLink, sendTemplate } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
-import { confirmed, findGroup } from "./tools.js";
+import { confirmed, findGroup, ownerWrote } from "./tools.js";
 import { drainQueue } from "./queue.js";
 import { watchReads } from "./reminders.js";
 
@@ -91,7 +91,7 @@ export const MESSAGE_TOOL_DEFS = [
   },
 ];
 
-export function makeMessageTools({ store, wa, lastOwnerText = "", turn }) {
+export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRecent = lastOwnerText }) {
   return {
     async preview_recipients({ to }) {
       const { recipients, problems } = await resolve(store, to);
@@ -102,11 +102,16 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn }) {
       const { recipients, problems } = await resolve(store, to);
       if (!recipients.length) return `לא נשלח: אין נמענים. ${problems.join("; ")}`;
       const note = problems.length ? ` (דילגתי: ${problems.join("; ")})` : "";
+      // שעה לא תקינה או שכבר עברה — שגיאה מפורשת, לא קישורים מיידיים שהבעלים לא ביקש עכשיו
+      if (at && !validLocal(at)) return `לא נשלח ולא תוזמן: השעה "${at}" לא תקינה (צריך YYYY-MM-DDTHH:MM שעון ישראל).`;
+      const due = at && israelToUtcIso(at);
+      if (at && due <= new Date().toISOString()) return `לא נשלח ולא תוזמן: ${at.replace("T", " ")} כבר עבר. לשליחה עכשיו — לקרוא שוב בלי at.`;
+      // הודעה שיוצאת משולה למאמנים: מיד אם הבעלים כתב את הנוסח בעצמו, אחרת רק אחרי "כן" נפרד
+      // (מגן מטקסט שהוזרק דרך שם של קבוצה/שחקן). קישורים להורים — הבעלים לוחץ בעצמו, אין צורך.
+      if (recipients.some((r) => r.staff) && !ownerWrote(text, ownerRecent)
+        && !(await confirmed(store, "message", { to, text, at: at || "" }, lastOwnerText, turn)))
+        return `לא נשלח עדיין. להציג לבעלים את הנוסח ואת הנמענים (${recipients.map((r) => r.name).join(", ")}) ולשאול "לשלוח?". אחרי "כן" — לקרוא שוב עם אותם פרטים בדיוק.`;
       if (at) {
-        // שעה לא תקינה או שכבר עברה — שגיאה מפורשת, לא קישורים מיידיים שהבעלים לא ביקש עכשיו
-        if (!validLocal(at)) return `לא נשלח ולא תוזמן: השעה "${at}" לא תקינה (צריך YYYY-MM-DDTHH:MM שעון ישראל).`;
-        const due = israelToUtcIso(at);
-        if (due <= new Date().toISOString()) return `לא נשלח ולא תוזמן: ${at.replace("T", " ")} כבר עבר. לשליחה עכשיו — לקרוא שוב בלי at.`;
         const id = Math.random().toString(36).slice(2, 7);
         await store.update("agentReports/bot", (bot) => ({ scheduled: [...(bot.scheduled || []), { id, due, at, text, recipients }] }));
         return `תוזמן ל-${at.replace("T", " ")} (מזהה ${id}) ל: ${recipients.map((r) => r.name).join(", ")}${note}`;
