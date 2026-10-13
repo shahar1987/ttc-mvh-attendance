@@ -81,12 +81,20 @@ export async function dispatchWorkflows(env, store) {
 export async function failedRuns(env, store) {
   const repo = env.GH_REPO || "shahar1987/ttc-mvh-attendance";
   const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
-  const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs?status=failure&per_page=50&created=>=${since}`, {
+  const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=100&created=>=${since}`, {
     headers: { accept: "application/vnd.github+json", "user-agent": "shula-whatsapp-worker", ...(env.GH_DISPATCH_TOKEN ? { authorization: `Bearer ${env.GH_DISPATCH_TOKEN}` } : {}) },
   });
   if (r.status === 403 || r.status === 429) return { lines: [], ids: null }; // מכסה — ננסה ברבע השעה הבא
   if (!r.ok) throw new Error(`GitHub runs: ${r.status}`);
-  const runs = (await r.json()).workflow_runs || [];
+  // מדווחים רק על מה שעדיין שבור ב-main: הריצה האחרונה של אותו workflow ב-main נכשלה.
+  // ענפי ניסיון של Claude (נמחקים אחרי שעבדו) וכישלון שתוקן כבר בריצה ירוקה אחריו — לא מגיעים לבעלים.
+  const newest = new Map();
+  for (const x of (await r.json()).workflow_runs || []) {
+    if (x.head_branch !== "main" || x.event === "pull_request") continue;
+    const cur = newest.get(x.workflow_id);
+    if (!cur || x.created_at > cur.created_at) newest.set(x.workflow_id, x);
+  }
+  const runs = [...newest.values()].filter((x) => x.status === "completed" && x.conclusion === "failure");
   const seen = new Set(((await store.get("agentReports/bot")) || {}).reportedRuns || []);
   const fresh = runs.filter((x) => !seen.has(x.id));
   return { lines: fresh.map((x) => `• ${x.name}: ${x.html_url}`), ids: fresh.length ? runs.map((x) => x.id) : null };

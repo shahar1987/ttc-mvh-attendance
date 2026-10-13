@@ -968,7 +968,12 @@ assert.match(await (await import("node:fs/promises")).readFile(new URL("../wrang
 
 // 19. ריצה שנכשלה ב-GitHub: מדווחת בוואטסאפ פעם אחת בלבד
 const { failedRuns } = await import("../src/dispatch.js");
-globalThis.ghRuns = [{ id: 7, name: "Build and deploy", html_url: "https://github.com/x/runs/7" }];
+const run = (id, workflow_id, head_branch, conclusion, created_at, name = "Build and deploy") => ({ id, workflow_id, head_branch, event: "push", status: "completed", conclusion, created_at, name, html_url: `https://github.com/x/runs/${id}` });
+// ענף ניסיון שנכשל, וכישלון ב-main שכבר תוקן בריצה ירוקה אחריו — שקט
+globalThis.ghRuns = [run(1, 50, "publish-rules-once", "failure", "2026-10-13T04:34:00Z", "Publish Firestore rules"), run(2, 51, "main", "failure", "2026-10-13T04:00:00Z", "Agents"), run(3, 51, "main", "success", "2026-10-13T05:00:00Z", "Agents")];
+assert.deepEqual(await failedRuns(env, store), { lines: [], ids: null }, "רעש: ענף זמני או כישלון שכבר תוקן");
+// עדיין שבור ב-main (הריצה האחרונה נכשלה) — מדווחים
+globalThis.ghRuns = [run(6, 52, "main", "success", "2026-10-13T03:00:00Z"), run(7, 52, "main", "failure", "2026-10-13T04:00:00Z")];
 let fr = await failedRuns(env, store);
 assert.deepEqual(fr, { lines: ["• Build and deploy: https://github.com/x/runs/7"], ids: [7] });
 put("agentReports/bot", { reportedRuns: [7] });
