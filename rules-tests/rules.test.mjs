@@ -20,6 +20,7 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d, 'users/coachB'),  { role: 'Coach', name: 'מאמן ב', permissions: ['competitions'] });
   await setDoc(doc(d, 'users/viewer1'), { role: 'Viewer', name: 'צופה', permissions: ['reports'] });
   // מאמן חדש שעוד לא נקבעו לו הרשאות פרטניות, ומאמן שהמנהל הוריד לו את התחרויות
+  await setDoc(doc(d, 'users/payer'), { role: 'Viewer', name: 'גזבר', permissions: ['payments'] });
   await setDoc(doc(d, 'users/coachNew'),  { role: 'Coach', name: 'מאמן חדש' });
   await setDoc(doc(d, 'users/coachNoComp'), { role: 'Coach', name: 'מאמן בלי תחרויות', permissions: [] });
   await setDoc(doc(d, 'users/parent1'), { role: 'Member', name: 'הורה', phone: '0500000009' });
@@ -218,6 +219,14 @@ await t('הורה לא מוחק, בעל הרשאת תחרויות כן', async (
 await t('מאמן חדש בלי הרשאות פרטניות כותב תחרות (ברירת המחדל של התפקיד)', () => assertSucceeds(setDoc(doc(as('coachNew'), 'tournaments/tC'), tbody('coachNew'), { merge: true })));
 await t('מאמן שהוסרה לו הרשאת תחרויות לא כותב', () => assertFails(setDoc(doc(as('coachNoComp'), 'tournaments/tC2'), tbody('coachNoComp'), { merge: true })));
 await t('מנהל כותב תחרות', () => assertSucceeds(setDoc(doc(as('admin1'), 'tournaments/tA'), tbody('admin1'), { merge: true })));
+
+console.log('\n— תשלומים ויומן —');
+await t('מאמן בלי הרשאת תשלומים לא קורא מסמכי מערכת', () => assertFails(getDoc(doc(as('coachA'), 'system/paymentSync'))));
+await t('מאמן בלי הרשאת תשלומים לא קורא מיפוי תשלומים', () => assertFails(getDocs(collection(as('coachA'), 'paymentMappings'))));
+await t('צופה בלי הרשאת תשלומים לא קורא מיפוי תשלומים', () => assertFails(getDocs(collection(as('viewer1'), 'paymentMappings'))));
+await t('בעל הרשאת תשלומים קורא את מסך התשלומים', async () => { await assertSucceeds(getDoc(doc(as('payer'), 'system/paymentSync'))); await assertSucceeds(getDocs(collection(as('payer'), 'paymentMappings'))); });
+await t('מנהל קורא את נתוני התשלומים', () => assertSucceeds(getDocs(collection(as('admin1'), 'paymentMappings'))));
+await t('אי אפשר לכתוב ליומן הפעולות', () => assertFails(setDoc(doc(as('coachA'), 'auditLog/x1'), { who: 'coachA', what: 'מזויף' })));
 
 console.log('\n— מנהל —');
 await t('קורא הכל ומוחק', async () => {

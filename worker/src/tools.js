@@ -8,7 +8,19 @@ import { DELETE } from "./firestore.js";
 const AGENTS = ["scan", "bugcheck", "ideas", "supervisor", "content"];
 const MAX_SEND = 40;
 // הודעות להורים יוצאות רק כששולה אישרה במילים שלה, בהודעה האחרונה שכתבה
-export const APPROVAL = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
+const APPROVE_RE = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
+// "לא, אל תשלח עדיין" מכיל "תשלח" — שלילה או תנאי מבטלים את האישור (עדיף לשאול שוב מאשר לשלוח בטעות)
+const DENY_RE = /(^|\s)(לא|אל|טרם|עוד לא|אם כן|רגע|חכה|חכי|תחכה|תחכי)(\s|$|[.!,?])/;
+export const APPROVAL = { test: (t) => APPROVE_RE.test(t || "") && !DENY_RE.test(t || "") };
+
+// הבעלים כתב בעצמו את רוב המילים של הטקסט (בהודעה הזאת או באחרונות) — אז זה לא תוכן שהוזרק
+// דרך שם של שחקן/קבוצה או תשובה חיצונית. מילה עם אות-תחילית (ה/ו/ל/ב/ש) נחשבת גם בלעדיה.
+export function ownerWrote(text, ownerText) {
+  const words = String(text || "").match(/[\p{L}\p{N}]{2,}/gu) || [];
+  const o = String(ownerText || "");
+  if (!words.length) return false;
+  return words.filter((w) => o.includes(w) || (w.length > 3 && o.includes(w.slice(1)))).length / words.length >= 0.5;
+}
 
 // אישור בשני שלבים לפעולה שיוצאת החוצה: הקריאה הראשונה שומרת טיוטה ולא עושה כלום. רק אם הבעלים ענה "כן"
 // בהודעה *אחרת* (לא באותה הודעה שבה ביקש — "תשלחי למאמנים..." מכיל "תשלחי") ועם אותם פרטים בדיוק — מאשרים.
@@ -154,7 +166,11 @@ function pick(report, numbers) {
 // שער לכתיבת נוכחות: כל שם/מספר חייב להופיע בהודעה הגולמית של הבעלים. אם לא (למשל "סמני את כולם", או טקסט
 // שהוזרק דרך שם שחקן) — אישור דו-שלבי כמו בפרסום. ככה הכתבה רגילה של הבעלים נשארת מיידית.
 // רשימה ריקה (= "כולם") אף פעם לא נחשבת כמופיעה בהודעה — תמיד אישור דו-שלבי.
-const inOwnerText = (items, ownerText) => items.length > 0 && items.every((x) => String(x).trim() && String(ownerText || "").includes(String(x).trim()));
+// מספר — רק כמספר שלם ("1" לא נמצא בתוך "12"); שם — לפחות 2 אותיות
+const inOwnerText = (items, ownerText) => items.length > 0 && items.every((x) => {
+  const v = String(x).trim(), o = String(ownerText || "");
+  return /^\d+$/.test(v) ? new RegExp(`(^|\\D)${v}(\\D|$)`).test(o) : v.length >= 2 && o.includes(v);
+});
 
 // התאריך הוזכר בהודעה של הבעלים: היום, אתמול/שלשום, או התאריך עצמו (2026-10-01 / 1.10 / 1/10)
 function dateInOwnerText(d, ownerText, today = israelToday()) {
