@@ -30,8 +30,10 @@ export async function collect(page, now = new Date(), get = getJson) {
   // לייקים ותגובות דורשים pages_read_user_content (נבדק 11.10: בלי ההרשאה Meta מחזירה #10 רק על שני השדות האלה).
   // כשההרשאה תתווסף באפליקציה ב-Meta — הצירוף המלא יעבוד מעצמו; עד אז נאספים הפוסטים והשיתופים.
   const full = `${base},reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)`;
+  // חשיפה (אנשים שונים) לכל פוסט; אם Meta הורידה את המדד — ממשיכים בלעדיו
+  const reach = "insights.metric(post_impressions_unique){values}";
   const fb = await firstOk(
-    [full, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
+    [`${full},${reach}`, `${base},${reach}`, full, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
     get,
   ).catch((e) => {
     if (tokenDead(e)) throw e;
@@ -56,17 +58,35 @@ export async function collect(page, now = new Date(), get = getJson) {
       return { data: [] };
     });
     for (const m of (ig.data || []).filter((m) => new Date(m.timestamp) >= since)) {
-      const ins = await firstOk(["reach,saved,shares", "reach,saved"].map((x) => `${GRAPH}/${m.id}/insights?metric=${x}&access_token=${t}`), get).catch(() => ({ data: [] }));
+      const ins = await firstOk(["reach,saved,shares,views", "reach,saved,shares", "reach,saved"].map((x) => `${GRAPH}/${m.id}/insights?metric=${x}&access_token=${t}`), get).catch(() => ({ data: [] }));
       const v = (name) => ins.data?.find((d) => d.name === name)?.values?.[0]?.value ?? null;
       posts.push({
         platform: "instagram", id: m.id, at: new Date(m.timestamp).toISOString(), link: m.permalink || "",
         type: String(m.media_type || "").toLowerCase().replace("carousel_album", "album"),
         text: (m.caption || "").slice(0, 80),
-        reach: v("reach"), likes: m.like_count || 0, comments: m.comments_count || 0, shares: v("shares") || 0, saves: v("saved"),
+        reach: v("reach"), views: v("views"), likes: m.like_count || 0, comments: m.comments_count || 0, shares: v("shares") || 0, saves: v("saved"),
       });
     }
   }
   return posts.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+// לדשבורד: עוקבים בשתי הרשתות ופוסטים שמתוזמנים בדף הפייסבוק עצמו. קריאה בלבד; מה שנכשל נשאר null (לא ידוע, לא אפס).
+export async function account(page, get = getJson) {
+  const t = page.token;
+  const safe = (u) => get(u).catch((e) => {
+    if (tokenDead(e)) throw e;
+    return null;
+  });
+  const fb = await safe(`${GRAPH}/${page.id}?fields=followers_count,fan_count&access_token=${t}`);
+  const ig = page.ig ? await safe(`${GRAPH}/${page.ig}?fields=followers_count&access_token=${t}`) : null;
+  const sched = await safe(`${GRAPH}/${page.id}/scheduled_posts?fields=id,message,scheduled_publish_time&limit=50&access_token=${t}`);
+  return {
+    followers: { facebook: fb?.followers_count ?? fb?.fan_count ?? null, instagram: ig?.followers_count ?? null },
+    scheduled: sched
+      ? (sched.data || []).map((s) => ({ at: new Date(Number(s.scheduled_publish_time) * 1000).toISOString(), text: (s.message || "").slice(0, 80) })).sort((a, b) => a.at.localeCompare(b.at))
+      : null,
+  };
 }
 
 const engagement = (p) => p.likes + p.comments + p.shares + (p.saves || 0);
@@ -111,9 +131,10 @@ async function main() {
   const { clubPage } = await import("./lib/club.mjs");
   const page = clubPage(social);
   if (!page?.token) return console.log("insights: club page not connected");
-  let posts;
+  let posts, acc;
   try {
     posts = await collect(page);
+    acc = await account(page);
   } catch (e) {
     if (!tokenDead(e)) throw e;
     // הטוקן מת (החלפת סיסמה / Meta ביטלה) — רק הבעלים יכול לחבר מחדש. אומרים לו מה לעשות, פעם אחת, וההתראה הכללית מדלגת
@@ -131,7 +152,7 @@ async function main() {
     return;
   }
   // reconnectToldAt: null — החיבור עובד, אז בפעם הבאה שיתנתק מזכירים מיד
-  await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts, reconnectToldAt: null });
+  await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts, ...acc, reconnectToldAt: null });
   console.log(`insights: ${posts.length} posts`);
   await heartbeat(db, "insights");
 }
