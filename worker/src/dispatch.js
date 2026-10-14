@@ -91,8 +91,11 @@ export async function failedRuns(env, store) {
   const newest = new Map();
   for (const x of (await r.json()).workflow_runs || []) {
     if (x.head_branch !== "main" || x.event === "pull_request") continue;
-    const cur = newest.get(x.workflow_id);
-    if (!cur || x.created_at > cur.created_at) newest.set(x.workflow_id, x);
+    // ריצה מתוזמנת לא מכסה על ריצה מתוזמנת אחרת: ל-agents.yml ול-sync-payments.yml יש גם cron של */10 דקות
+    // שמצליח תמיד, והוא היה מסתיר כישלון של המפקח או של הסנכרון היומי. לכן כל ריצה מתוזמנת נשפטת לבדה.
+    const key = x.event === "schedule" ? x.id : x.workflow_id;
+    const cur = newest.get(key);
+    if (!cur || x.created_at > cur.created_at) newest.set(key, x);
   }
   const runs = [...newest.values()].filter((x) => x.status === "completed" && x.conclusion === "failure");
   const seen = new Set(((await store.get("agentReports/bot")) || {}).reportedRuns || []);

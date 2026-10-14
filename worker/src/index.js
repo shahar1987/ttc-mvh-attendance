@@ -267,7 +267,7 @@ async function handle(m, env) {
     // ההיסטוריה היא טקסט בלבד — בלי השורה הזאת שולה לא יודעת בהודעה הבאה אילו כלים באמת הפעילה
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
-      history: [...(cur.history || []), { role: "user", text: userTurn, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
+      history: [...(cur.history || []), { role: "user", text: userTurn, owner: text, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
       log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
@@ -344,12 +344,11 @@ const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעב�
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
 async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = []) {
-  // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — בלי תשובות מקלוד ובלי הודעות הסוכנים
-  // (תור שהתחיל בהודעות הסוכנים נשמר כ"...ההודעה החדשה של הבעלים:" + הטקסט שלו — לוקחים רק את החלק שלו)
+  // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
+  // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
+  // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
-  const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user")
-    .map((h) => String(h.text)).map((t) => (t.includes(OWNER_MARK) ? t.split(OWNER_MARK).pop() : t.startsWith(EXTERNAL) ? "" : t))
-    .filter(Boolean).slice(-3), text].join("\n");
+  const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
   const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות

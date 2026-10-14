@@ -3728,7 +3728,7 @@ function re({
               "button",
               {
                 onClick: () => C(p.id, absent ? "Present" : "Absent"),
-                disabled: !u,
+                disabled: !u || g,
                 "aria-pressed": absent,
                 className: `flex-1 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
               },
