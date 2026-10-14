@@ -14,6 +14,7 @@ import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, sta
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
+import { dashboardRoute, dashboardUrl } from "./dashboard.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
@@ -109,6 +110,7 @@ export default {
       const to = (((await db(env).get("agentReports/links")) || {}).links || {})[url.pathname.slice(3)]?.url;
       return to?.startsWith("https://wa.me/") ? Response.redirect(to, 302) : new Response("הקישור פג (נשמר 7 ימים)", { status: 404 });
     }
+    if (url.pathname === "/dashboard") return dashboardRoute(req, env, db(env));
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
@@ -251,6 +253,11 @@ async function handle(m, env) {
     // "תחברי מחדש את פייסבוק" — ההודעה של סוכן הנתונים אומרת לכתוב בדיוק את זה, אז עונים בלי Gemini (שלא ייתקע)
     if (/חיבור קבוע/.test(text) && /פייסבוק|אינסטגרם|מטא|meta/i.test(text)) {
       await reply(`קישור לחיבור הקבוע של פייסבוק ואינסטגרם (בתוקף 30 דקות). ההוראות בדף עצמו:\n${await metaPermanentLink(store, ORIGIN || bot.workerUrl)}`);
+      return;
+    }
+    // "דשבורד" — קישור קבוע ופרטי לדשבורד הפרסום (worker/src/dashboard.js), בלי Gemini
+    if (/^דשבורד/.test(text.trim())) {
+      await reply(`📊 דשבורד הפרסום (קישור פרטי, מתעדכן כל לילה מפייסבוק ומאינסטגרם):\n${await dashboardUrl(env, ORIGIN || bot.workerUrl)}`);
       return;
     }
     if (RECONNECT_META.test(text)) {

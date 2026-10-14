@@ -56,7 +56,7 @@ export function dashboardHtml(insights, pending, now = new Date()) {
   const byType = (xs) => {
     const g = {};
     for (const p of withReach(xs)) (g[TYPE[p.type] || p.type] ||= []).push(p.reach);
-    return Object.entries(g).map(([k, rs]) => ({ name: esc(k), v: avg(rs), note: `${rs.length} פוסטים` })).sort((a, b) => b.v - a.v);
+    return Object.entries(g).map(([k, rs]) => ({ name: esc(k), v: avg(rs), note: rs.length === 1 ? "פוסט אחד" : `${rs.length} פוסטים` })).sort((a, b) => b.v - a.v);
   };
   const chart = (head, rows, cls) => `<div class="panel chart${cls}"><h3>${head}</h3>${rows.length ? `<div class="bars">${bars(rows)}</div>` : `<p class="empty">אין עדיין נתוני חשיפה. הם יופיעו אחרי הריצה הלילית הבאה.</p>`}</div>`;
 
