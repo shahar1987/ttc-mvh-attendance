@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collect, weeklyReport, tokenDead, shouldRemind } from "./insights.mjs";
+import { collect, account, weeklyReport, tokenDead, shouldRemind } from "./insights.mjs";
 
 const NOW = new Date("2026-10-11T06:00:00Z");
 
@@ -77,4 +77,21 @@ test("Meta problems don't fail the run: IG error is skipped, reconnect reminder 
   assert.equal(shouldRemind(undefined, NOW), true);
   assert.equal(shouldRemind("2026-10-10T06:00:00Z", NOW), false, "יום אחרי — לא שוב");
   assert.equal(shouldRemind("2026-10-08T06:00:00Z", NOW), true, "אחרי 3 ימים — מזכירים");
+});
+
+test("account: followers + FB scheduled posts, read-only; a missing field is null, a dead token throws", async () => {
+  const urls = [];
+  const get = async (u) => {
+    urls.push(u);
+    if (u.includes("/pg?fields=followers_count")) return { followers_count: 584 };
+    if (u.includes("/ig?fields=followers_count")) throw Object.assign(new Error("no permission"), { code: 10 });
+    if (u.includes("/pg/scheduled_posts")) return { data: [{ message: "ב", scheduled_publish_time: "1792400000" }, { message: "א", scheduled_publish_time: "1792300000" }] };
+    throw new Error("unexpected " + u);
+  };
+  const a = await account({ id: "pg", ig: "ig", token: "t" }, get);
+  assert.deepEqual(a.followers, { facebook: 584, instagram: null });
+  assert.deepEqual(a.scheduled.map((s) => s.text), ["א", "ב"], "לפי הסדר");
+  assert.ok(urls.every((u) => !u.includes("publish?") && !u.includes("/feed")), "קריאה בלבד");
+  const dead = async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); };
+  await assert.rejects(account({ id: "pg", token: "t" }, dead));
 });
