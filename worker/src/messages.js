@@ -11,6 +11,11 @@ import { confirmed, findGroup, ownerWrote } from "./tools.js";
 import { drainQueue } from "./queue.js";
 import { watchReads } from "./reminders.js";
 
+// רמת כורזים מנוהלת בידי דניאל (הבעלים, 12.10.2026): כל מה ששולה שולחת לבעלים על רמת כורזים — היא מציעה להעביר לדניאל,
+// ושולחת לו (send_message) רק אחרי "כן" של הבעלים. מי שכבר מזכיר את דניאל (למשל "נשלח לדניאל ✓") לא נשאל שוב.
+export const KORAZIM_ASK = "↪️ זה קשור לרמת כורזים. להעביר לדניאל?";
+export const offerKorazim = (text) => (/כורזים/.test(text) && !/דניאל/.test(text) ? `${text}\n\n${KORAZIM_ASK}` : text);
+
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
 
