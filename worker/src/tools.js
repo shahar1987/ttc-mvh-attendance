@@ -40,6 +40,20 @@ export async function confirmed(store, kind, payload, ownerText, turn) {
   return ok;
 }
 
+// "כן" על בקשה שכבר הוצגה לבעלים, גם כשהמודל ניסח אותה מחדש בתור הבא (13.10: שלוש פעמים "כן" ושוב "להעביר לקלוד?",
+// כי המפתח של confirmed הוא הנוסח המדויק). מחזיר את מה שהבעלים ראה ואישר — לא את הנוסח החדש.
+export async function approvedShown(store, kind, ownerText, turn) {
+  if (!APPROVAL.test(ownerText || "")) return null;
+  let shown = null;
+  await store.update("agentReports/bot", (bot) => {
+    const p = bot.pending?.[kind];
+    if (!p?.key || p.turn === turn || Date.now() - Date.parse(p.askedAt || p.at || 0) >= CONFIRM_TTL_MS) return null;
+    shown = JSON.parse(p.key);
+    return { pending: { ...bot.pending, [kind]: null } };
+  });
+  return shown;
+}
+
 // "שלחתי" מהבעלים — אחרי שלחץ על קישורי ההיעדרות
 export const SENT_CONFIRM = /(שלחתי|שלחנו|נשלחו|נשלח הכל)/;
 const NOT_SENT = /(לא|עוד לא|טרם)\s+(שלחתי|שלחנו|נשלחו|נשלח)/;
