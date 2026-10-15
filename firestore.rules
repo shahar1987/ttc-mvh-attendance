@@ -7,7 +7,7 @@ rules_version = '2';
 //
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
-// accessRequests, reminders, adminTasks, system, auditLog, tournaments. אוסף שלא מופיע
+// accessRequests, reminders, adminTasks, system, auditLog, tournaments, campGoals. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -286,6 +286,26 @@ service cloud.firestore {
       allow create, update: if canCompete()
         && request.resource.data.get('state', '') is string;
       allow delete: if hasPerm('competitions');
+    }
+
+    // ---------- יעדי מחנה וינגייט ----------
+    // אתר נפרד (shahar1987.github.io/camp-goals), לא קשור לאפליקציית הנוכחות.
+    // התשובות של הילדים — רק המנהל קורא וכותב, מהאייפד שלו.
+    match /campGoals/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // טופס מידות תלבושת ליגה (shahar1987.github.io/ttc-uniform-sizes).
+    // הורים רק שולחים מילוי; רק המנהל קורא, משייך לשחקן ומוחק.
+    match /uniformResponses/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['first','last','shirt','pants','at'])
+        && request.resource.data.first is string && request.resource.data.first.size() > 0 && request.resource.data.first.size() <= 40
+        && request.resource.data.last is string && request.resource.data.last.size() <= 40
+        && request.resource.data.shirt is string && request.resource.data.shirt.size() <= 20
+        && request.resource.data.pants is string && request.resource.data.pants.size() <= 20
+        && request.resource.data.at == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['player']);
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
