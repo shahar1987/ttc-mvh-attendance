@@ -27,6 +27,8 @@ async function live() {
   return { ruleset: rel.rulesetName, content: f.content };
 }
 
+// errors go to the step summary / annotations too — the raw log is not always reachable
+process.on("unhandledRejection", e => { const m = String(e?.message || e); console.log(`::error::${m}`); if (process.env.GITHUB_STEP_SUMMARY) writeFileSync(process.env.GITHUB_STEP_SUMMARY, `❌ ${m}\n`, { flag: "a" }); process.exit(1); });
 const mode = process.argv[2];
 if (mode === "pull") {
   const { ruleset, content } = await live();
