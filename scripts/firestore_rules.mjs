@@ -40,8 +40,7 @@ if (mode === "pull") {
   const cur = await live();
   if (cur.content === content) { console.log("live rules already match firestore.rules — nothing to deploy"); process.exit(0); }
   const source = { files: [{ name: "firestore.rules", content }] };
-  const t = await call("POST", `${P}:test`, { source });
-  if (t.issues?.some(i => i.severity === "ERROR")) throw new Error("rules have errors: " + t.issues.map(i => `${i.sourcePosition?.line}: ${i.description}`).join("; "));
+  // syntax is checked by rulesets.create itself (it rejects invalid source), and by the emulator tests before this step
   const rs = await call("POST", `${P}/rulesets`, { source });
   await call("PATCH", `${P}/releases/cloud.firestore`, { release: { name: `${P}/releases/cloud.firestore`, rulesetName: rs.name }, updateMask: "rulesetName" });
   console.log(`deployed ${rs.name} (was ${cur.ruleset})`);
