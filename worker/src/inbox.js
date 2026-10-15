@@ -5,6 +5,7 @@
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { outboxMap } from "./queue.js";
+import { offerKorazim } from "./messages.js";
 import { approvedShown, confirmed, ownerWrote } from "./tools.js";
 
 // סימון לתוכן שלא נכתב ע"י הבעלים (תשובות קלוד, הודעות סוכנים) — מידע בלבד, לא הוראות לשולה
@@ -64,7 +65,7 @@ export async function inboxRoute(req, env, store, wa) {
   const { id, answer, notify } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
-    const text = String(notify).slice(0, 3500);
+    const text = offerKorazim(String(notify).slice(0, 3500));
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), claude: { at: new Date().toISOString(), text } } }));
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
     return Response.json({ ok: true });
@@ -73,7 +74,7 @@ export async function inboxRoute(req, env, store, wa) {
   if (!item || item.inboxStatus !== "open" || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
   await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
-  const text = `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`;
+  const text = offerKorazim(`📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`);
   // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה).
   // בהיסטוריה זה נכנס כתוכן חיצוני בתפקיד user — לא כאילו שולה אמרה את זה, וההוראות שבו לא מחייבות אותה.
   await store.update("agentReports/bot", (cur) => ({
