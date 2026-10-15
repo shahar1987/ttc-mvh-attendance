@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, addDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import fs from 'fs';
 
 // emulators:exec מגדיר את FIRESTORE_EMULATOR_HOST; ברירת המחדל לפי firebase.json
@@ -235,6 +235,24 @@ await t('קורא הכל ומוחק', async () => {
   await assertSucceeds(getDocs(collection(as('admin1'), 'accessRequests')));
   await assertSucceeds(deleteDoc(doc(as('admin1'), 'tournaments/t9')));
   await assertSucceeds(updateDoc(doc(as('admin1'), 'users/coachB'), { permissions: ['competitions', 'access'] }));
+});
+
+console.log('\n— מידות תלבושת (אתר נפרד) —');
+const uni = { first: 'נועה', last: 'כהן', shirt: 'M', pants: 'L', at: serverTimestamp() };
+await t('הורה שולח מילוי בלי התחברות', () => assertSucceeds(addDoc(collection(anon(), 'uniformResponses'), uni)));
+await t('הורה לא יכול להוסיף שדות אחרים', () => assertFails(addDoc(collection(anon(), 'uniformResponses'), { ...uni, player: 'נועה כהן' })));
+await t('הורה לא קורא תשובות של אחרים', () => assertFails(getDocs(collection(anon(), 'uniformResponses'))));
+await t('מאמן רגיל לא קורא תשובות', () => assertFails(getDocs(collection(as('coachA'), 'uniformResponses'))));
+await t('מנהל קורא, עורך מידות, מוסיף ומוחק', async () => {
+  await assertSucceeds(getDocs(collection(as('admin1'), 'uniformResponses')));
+  const ref = await addDoc(collection(as('admin1'), 'uniformResponses'), { ...uni, player: 'נועה כהן', by: 'coach' });
+  await assertSucceeds(updateDoc(ref, { shirt: 'S', player: 'נועה כהן' }));
+  await assertSucceeds(deleteDoc(ref));
+});
+await t('רשימת השחקנים: רק מנהל', async () => {
+  await assertSucceeds(setDoc(doc(as('admin1'), 'uniformConfig/roster'), { players: [{ name: 'נועה כהן', group: 'ליגה א' }] }));
+  await assertFails(getDoc(doc(anon(), 'uniformConfig/roster')));
+  await assertFails(setDoc(doc(as('coachA'), 'uniformConfig/roster'), { players: [] }));
 });
 
 console.log('\n— אוסף לא מוכר —');
