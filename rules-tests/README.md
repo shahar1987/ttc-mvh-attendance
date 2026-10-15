@@ -15,4 +15,4 @@ npm test
 בכל דחיפה שנוגעת ב-`firestore.rules`.
 
 **חשוב:** בדיקה ירוקה אומרת שהקובץ תקין — היא לא מפרסמת כלום.
-הפרסום בפועל נעשה ידנית בקונסולה: Firestore Database ⟵ Rules ⟵ Publish.
+אחרי שהבדיקות עוברות, אותו workflow פורס את הקובץ לפרויקט אוטומטית (`scripts/firestore_rules.mjs deploy`).
