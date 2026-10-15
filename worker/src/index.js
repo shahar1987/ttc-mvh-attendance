@@ -443,7 +443,19 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
     );
     contents.push({ role: "user", parts: results });
   }
-  return { answer: askedClaude ? "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ." : "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn, used };
+  if (askedClaude) return { answer: "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ.", userTurn, used };
+  // נגמרו הסבבים בלי תשובה (13.10: "כל השחקנים של דפנה שלח לדור" — פעמיים "תנסח שוב"). סבב אחרון בלי כלים:
+  // מה נמצא עד עכשיו ושאלה אחת על מה שחסר, במקום לבקש מהבעלים לנסח מחדש.
+  contents.push({ role: "user", parts: [{ text: "[מערכת] נגמרו הצעדים לתור הזה. בלי כלים: כתבי לבעלים בקצרה מה מצאת ומה כבר בוצע, ושאלה אחת ממוקדת על מה שחסר כדי לסיים." }] });
+  const last = await gemini(env, {
+    systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+    contents,
+    tools: [{ functionDeclarations: FUNCTION_DECLS }],
+    toolConfig: { functionCallingConfig: { mode: "NONE" } },
+    generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
+  }, trace).catch(() => []);
+  const final = last.map((p) => p.text || "").join("").trim();
+  return { answer: final || "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?", userTurn, used };
 }
 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
