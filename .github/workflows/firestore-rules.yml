@@ -1,25 +1,34 @@
-name: Firestore rules tests
+name: Firestore rules
 
-# כללי האבטחה מתפרסמים ידנית בקונסולה, ולכן אין כאן שום פריסה — רק בדיקה
-# שהקובץ תקין תחבירית ושההגנות שבו באמת עובדות, לפני שמעתיקים אותו לקונסולה.
+# firestore.rules בריפו הוא המקור. כל push ל-main שמשנה אותו: בדיקות באמולטור,
+# ואם עברו — פריסה אוטומטית לפרויקט (scripts/firestore_rules.mjs).
+# "משיכה" (Run workflow → pull) מעתיקה את הכללים החיים מהקונסולה לתוך הריפו —
+# להריץ אחרי כל עריכה ידנית בקונסולה, אחרת הפריסה הבאה תדרוס אותה.
 on:
   push:
     paths:
       - 'firestore.rules'
       - 'rules-tests/**'
+      - 'scripts/firestore_rules.mjs'
       - '.github/workflows/firestore-rules.yml'
   pull_request:
     paths:
       - 'firestore.rules'
       - 'rules-tests/**'
-      - '.github/workflows/firestore-rules.yml'
   workflow_dispatch:
+    inputs:
+      action:
+        description: "pull = להעתיק את הכללים החיים לריפו · deploy = לפרוס את הקובץ שבריפו"
+        type: choice
+        options: [pull, deploy]
+        default: deploy
 
 permissions:
   contents: read
 
 jobs:
   test:
+    if: github.event_name != 'workflow_dispatch' || inputs.action == 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,3 +50,63 @@ jobs:
       - name: Run the security rules tests
         working-directory: rules-tests
         run: npm test
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: firestore-rules
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      # push שלא נגע בקובץ הכללים (למשל רק בבדיקות) לא פורס כלום
+      - name: Did firestore.rules change?
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || git diff --name-only HEAD~1 HEAD | grep -qx 'firestore.rules'; then
+            echo "yes=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.changed.outputs.yes == '1'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - if: steps.changed.outputs.yes == '1'
+        run: npm install --no-audit --no-fund --no-save google-auth-library@9
+
+      - if: steps.changed.outputs.yes == '1'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/firestore_rules.mjs deploy
+
+  pull:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'pull'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - run: npm install --no-audit --no-fund --no-save google-auth-library@9
+
+      - env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/firestore_rules.mjs pull
+
+      - name: Commit the live rules
+        run: |
+          git config user.name "firestore-rules bot"
+          git config user.email "actions@github.com"
+          git add firestore.rules
+          git diff --cached --quiet && { echo "הריפו כבר זהה לכללים החיים"; exit 0; }
+          git commit -m "firestore.rules: הכללים החיים מהקונסולה"
+          git push
