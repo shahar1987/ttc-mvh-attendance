@@ -290,9 +290,24 @@ service cloud.firestore {
 
     // ---------- יעדי מחנה וינגייט ----------
     // אתר נפרד (shahar1987.github.io/camp-goals), לא קשור לאפליקציית הנוכחות.
-    // התשובות של הילדים — רק המנהל קורא וכותב, מהאייפד שלו.
+    // ילדים נכנסים מהקישור בלי התחברות: קוראים רק את settings (שלב + רשימת שמות)
+    // וכותבים רק את התשובה שלהם. קריאת התשובות, עריכה ומחיקה — רק המנהל.
     match /campGoals/{docId} {
+      function kidAnswerOk() {
+        let d = request.resource.data;
+        return docId.matches('p[0-9a-f]{1,8}')
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 30
+          && d.get('goal', '') is string && d.get('goal', '').size() <= 30
+          && d.get('endGoal', '') is string && d.get('endGoal', '').size() <= 30
+          && d.get('achieved', 'yes') in ['yes', 'no']
+          && d.get('progress', 1) is int && d.get('progress', 1) >= 1 && d.get('progress', 1) <= 5;
+      }
       allow read, write: if isAdmin();
+      allow get: if docId == 'settings';
+      allow create: if kidAnswerOk()
+        && request.resource.data.keys().hasOnly(['name','goal','startAt','endGoal','achieved','progress','endAt']);
+      allow update: if kidAnswerOk()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','goal','startAt','endGoal','achieved','progress','endAt']);
     }
 
     // טופס מידות תלבושת ליגה (shahar1987.github.io/ttc-uniform-sizes).
