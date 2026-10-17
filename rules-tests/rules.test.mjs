@@ -283,6 +283,14 @@ await t('מנהל קורא, עורך ומוחק', async () => {
 });
 
 console.log('\n— אוסף לא מוכר —');
+await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
+  await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));
+  await assertSucceeds(getDoc(doc(anon(), 'tournamentsPublic/t1')));
+  await assertFails(getDocs(collection(anon(), 'tournamentsPublic')));
+  await assertFails(setDoc(doc(anon(), 'tournamentsPublic/t1'), { state: '{}' }));
+  await assertFails(setDoc(doc(as('parent1'), 'tournamentsPublic/t1'), { state: '{}' }));
+  await assertFails(deleteDoc(doc(as('coachNoComp'), 'tournamentsPublic/t1')));
+});
 await t('חסום לחלוטין', () => assertFails(setDoc(doc(as('admin1'), 'somethingNew/x'), { a: 1 })));
 
 console.log(`\n${pass} עברו, ${fail} נכשלו`);
