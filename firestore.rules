@@ -287,6 +287,14 @@ service cloud.firestore {
         && request.resource.data.get('state', '') is string;
       allow delete: if hasPerm('competitions');
     }
+    // עותק לצפייה של תחרות (קישור פתוח, בלי התחברות). האפליקציה כותבת אותו
+    // רק כשמסמנים "קישור צפייה" בהגדרות, עם שמות מקוצרים (שם פרטי ואות).
+    match /tournamentsPublic/{id} {
+      allow get: if true;
+      allow create, update: if canCompete()
+        && request.resource.data.get('state', '') is string;
+      allow delete: if hasPerm('competitions');
+    }
 
     // ---------- יעדי מחנה וינגייט ----------
     // אתר נפרד (shahar1987.github.io/camp-goals), לא קשור לאפליקציית הנוכחות.
