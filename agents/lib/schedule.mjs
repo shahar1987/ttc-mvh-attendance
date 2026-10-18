@@ -3,7 +3,7 @@
 //   scan — כל בוקר (05:00 UTC, כלומר 07:00/08:00 בישראל). GitHub מאחר לפעמים בשעות,
 //          ולכן מתריעים רק אם עד 16:00 שעון ישראל אין סריקה מהיום.
 //   bugcheck — כל לילה; מתריעים אחרי 30 שעות בלי ריצה.
-//   ideas, content — ראשון ב-09:00 בישראל; מתריעים רק אחרי ראשון 12:00 אם הריצה המוצלחת האחרונה
+//   ideas — ראשון ב-09:00 בישראל (content רץ רק ידנית מ-18.10.2026, ולכן לא נבדק); מתריעים רק אחרי ראשון 12:00 אם הריצה המוצלחת האחרונה
 //          לפני אותו ראשון. לא מתריעים כשאין סימן חיים בכלל (עוד לא רץ אף פעם — למשל ראשון הראשון
 //          אחרי השחרור), ולא כשהסוכן עצמו דיווח על מפתח חסר (missingKeyAt) — הוא כבר שלח הודעה
 //          משלו, וכך מפתח חסר = הודעה אחת בשבוע.
@@ -34,7 +34,6 @@ export function scheduleProblems(health = {}, bot = {}, now = new Date()) {
   const due = lastWeeklyDue(now);
   const weeklyLate = (h) => h && !(h.missingKeyAt && h.missingKeyAt > (h.at || "")) && dayOf(h.at) < due;
   if (weeklyLate(health.ideas)) problems.push("סוכן הרעיונות לא רץ השבוע");
-  if (weeklyLate(health.content)) problems.push("סוכן הפרסום לא רץ השבוע");
   if (recurringCronError(health, bot, now)) problems.push("משימה מתוזמנת של הבוט נכשלת שוב ושוב (הפרטים ב-agentReports/bot.lastCronError)");
   return problems;
 }
