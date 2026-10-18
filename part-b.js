@@ -3187,11 +3187,15 @@ function re({
     // שחקנים שסומנו "הגיע" אוטומטית בפתיחת היום ועוד לא נגעו בהם
     autoRef = e.useRef(new Set()),
     isDirty = () => dirtyRef.current === dayKey,
+    dayKeyRef = e.useRef(dayKey),
     // מחזיר Promise<boolean>: בלי סימונים פתוחים — מיד true
     confirmLeave = () =>
       isDirty()
         ? askConfirm("יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?", { yes: "כן, לצאת בלי לשמור", no: "להישאר" })
         : Promise.resolve(!0);
+  dayKeyRef.current = dayKey;
+  // "נשמר במכשיר" שייך ליום שנשמר — לא נשאר כשעוברים ליום או לקבוצה אחרים
+  j(() => setSavedNote(""), [dayKey]);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
@@ -3287,8 +3291,10 @@ function re({
       try {
         // לפני שכותבים — מה באמת שמור בשרת ליום הזה. בלי זה מסך שלא התעדכן
         // (ויפי חלש, מאמן אחר שמר, ההאזנה נפלה) דרס "לא הגיע" אמיתי ב"הגיע".
-        let srvDay = null;
-        try {
+        let srvDay = null,
+          // אופליין ידוע: לא מחכים 4+6 שניות על "שומר…" — ישר למסלול "נשמר במכשיר"
+          off = navigator.onLine === !1;
+        if (!off) try {
           let snap = await Promise.race([
             fsGetDocsFromServer(
               fsQuery(M(P, "attendance"), fsWhere("groupId", "==", t.id), fsWhere("date", "==", m)),
@@ -3358,16 +3364,35 @@ function re({
         let committed = p.commit(),
           srv = committed.then(() => "server");
         srv.catch(() => {});
-        let how = await Promise.race([
-          srv,
-          new Promise((res) => setTimeout(() => res("local"), 6000)),
-        ]);
-        how === "local"
-          ? (setSavedNote("נשמר במכשיר · יישלח לשרת כשהרשת תחזור"),
-            committed.catch((err) =>
-              N("השמירה לשרת נכשלה: " + err.message + " — צריך לפתוח את היום ולשמור שוב."),
-            ))
-          : setSavedNote("");
+        let how = off
+          ? "local"
+          : await Promise.race([
+              srv,
+              new Promise((res) => setTimeout(() => res("local"), 6000)),
+            ]);
+        if (how === "local") {
+          setSavedNote("נשמר במכשיר · יישלח לשרת כשהרשת תחזור");
+          // 18.10: עד שהשרת מאשר שומרים עותק של הסימונים. כשהשרת דוחה, Firestore מוחק את
+          // הרישומים מהמסך והיום היה נפתח מחדש עם כולם "הגיע" — עכשיו הסימונים חוזרים לעריכה.
+          let keep = { marks: { ...x }, touched: new Set(touchedRef.current), auto: new Set(autoRef.current) },
+            myKey = dayKey;
+          committed.then(
+            () => dayKeyRef.current === myKey && setSavedNote(""),
+            (err) => {
+              setSavedNote("");
+              if (dayKeyRef.current !== myKey || dirtyRef.current != null) {
+                N("השמירה לשרת נכשלה: " + err.message + " — צריך לפתוח את היום ולשמור שוב.");
+                return;
+              }
+              dirtyRef.current = myKey;
+              touchedRef.current = keep.touched;
+              autoRef.current = keep.auto;
+              h(keep.marks);
+              f(!0);
+              N("השמירה לשרת נכשלה: " + err.message + " — הסימונים חזרו למסך, צריך לשמור שוב.");
+            },
+          );
+        } else setSavedNote("");
         (dirtyRef.current = null),
           touchedRef.current.clear(),
           h(saved),
