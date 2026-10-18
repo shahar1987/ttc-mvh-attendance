@@ -136,14 +136,20 @@ service cloud.firestore {
     // שם הילד, טלפון ההורה והשיוך לקבוצה. רשימת כל השחקנים היא לצוות בלבד,
     // ולמי שהמנהל פתח לו במפורש הרשאת "תחרויות" (הייבוא באפליקציית התחרויות).
     // הורה קורא רק את הכרטיסים של הילדים שקושרו אליו.
-    // הרשאת payments נכללת בעריכה כי מסך "מי לא משלם" מסמן notPaying ומתקן שמות.
+    // הרשאת payments נכללת בעריכה כי מסך "מי לא משלם" מסמן notPaying ומתקן שמות —
+    // רק השדות האלה, ולא קבוצה, טלפון וכו' של כל שחקן במועדון (18.10).
+    function paymentFieldsOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['notPaying', 'notPayingSource', 'paymentSettledAt', 'name']);
+    }
     match /players/{playerId} {
       allow get: if isTeam() || hasPerm('competitions') || isLinkedToPlayer(playerId);
       allow list: if isTeam() || hasPerm('competitions');
       allow create: if hasPerm('manageGroups')
         || isCoachOfGroup(request.resource.data.get('groupId', ''));
       // מאמן עורך רק שחקן שכבר בקבוצה שלו, ואינו מעביר אותו לקבוצה אחרת
-      allow update: if hasPerm('manageGroups') || hasPerm('payments')
+      allow update: if hasPerm('manageGroups')
+        || (hasPerm('payments') && paymentFieldsOnly())
         || (isCoachOfGroup(resource.data.get('groupId', ''))
             && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
       allow delete: if isAdmin();

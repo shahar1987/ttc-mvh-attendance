@@ -72,7 +72,8 @@ const STAFF_MENU_ITEMS = [
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
   { key: "reports", label: "דוחות", short: "דוחות מפורטים", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
-  { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups" },
+  // ייבוא כותב שחקנים — צופה לא רואה אותו גם אם יש לו הרשאת ניהול קבוצות (שאר המסכים שלו לקריאה בלבד)
+  { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups", noViewer: !0 },
   {
     key: "tournaments",
     label: "תחרויות",
@@ -94,7 +95,9 @@ const MENU_SECTIONS = [
 function menuItemVisible(it, isAdmin, isViewer, profile) {
   return it.adminOnly
     ? isAdmin
-    : it.perm
+    : it.noViewer && isViewer
+      ? !1
+      : it.perm
       ? canDo(profile, it.perm) || (it.viewerToo && isViewer)
       : !0;
 }
@@ -1087,7 +1090,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("check", u),
             disabled: taskBusy === u.id,
             className:
-              "text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
           },
           "בדיקה",
         ),
@@ -1098,7 +1101,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
               onClick: () => runAccountTask("set-password", u),
               disabled: taskBusy === u.id,
               className:
-                "text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+                "text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
             },
             "סיסמה חדשה",
           ),
@@ -1108,7 +1111,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("reset-access", u),
             disabled: taskBusy === u.id,
             className:
-              "text-xs font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
           },
           "איפוס גישה",
         ),
@@ -1661,7 +1664,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             e.createElement(
               "p",
               { className: "text-xs text-slate-400 px-1 leading-relaxed" },
-              "שכח סיסמה? \"איפוס גישה\" מוחק את החשבון שלו, ואז שולחים הזמנה חדשה מגישת הורים והוא בוחר סיסמה מחדש.",
+              "שכח סיסמה? \"סיסמה חדשה\" קובע לו סיסמה. \"איפוס גישה\" מוחק את החשבון שלו, ואז מוסיפים אותו מחדש במסך הזה.",
             ),
           )
         : null;
@@ -1757,7 +1760,7 @@ function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, on
         "button",
         {
           onClick: () => onDelete(row.id),
-          className: "min-w-[36px] min-h-[36px] rounded-full bg-red-50 flex items-center justify-center shrink-0",
+          className: "min-w-[44px] min-h-[44px] rounded-full bg-red-50 flex items-center justify-center shrink-0",
           "aria-label": "מחק מיפוי",
         },
         e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
@@ -2272,21 +2275,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           reasonText(p.id),
         ]),
       );
-      let csv = rows
-          .map((r) =>
-            r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(","),
-          )
-          .join("\r\n"),
-        // BOM — בלעדיו אקסל פותח עברית כג'יבריש
-        blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }),
-        url = URL.createObjectURL(blob),
-        link = document.createElement("a");
-      link.href = url;
-      link.download = `לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // downloadCsv: csvEscape (תא שמתחיל ב-= לא הופך לנוסחה באקסל), BOM, ושחרור הקישור באיחור (ספארי)
+      downloadCsv(`לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`, rows[0], rows.slice(1));
     };
   // 10.10: המסך סודר מחדש. למעלה שני מספרים גדולים (לא שילמו / שילמו) שהם גם הסינון,
   // מתחתם הרשימה עצמה. כל מה שאינו הרשימה — הצעות לבדיקה, סנכרון, מיפוי — מקופל.
@@ -3126,6 +3116,9 @@ function re({
     m = selDate,
     isPast = m !== today,
     o = l.some((p) => p.groupId === t.id && p.date === m),
+    // 18.10: יום שהקבוצה לא מתאמנת בו לא נפתח כשכולם "הגיעו" — לחיצה אחת שמרה נוכחות ליום בלי אימון.
+    // קבוצה בלי ימים מוגדרים נחשבת מתאמנת בכל יום, כמו קודם.
+    trainsOn = !Y(t) || t.days.includes(new Date(m + "T00:00:00").getDay()),
     existingDayRecords = () => l.filter((p) => p.groupId === t.id && p.date === m),
     staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
     confirmOverwrite = () => {
@@ -3149,7 +3142,7 @@ function re({
     undoCancel = async () => {
       if (
         !(await askConfirm(
-          "להחזיר את האימון? אחרי ההחזרה יהיה צריך לרשום נוכחות מחדש.",
+          "להחזיר את האימון? היום יחזור להיספר בחישובי הנוכחות, וכל נוכחות שכבר נרשמה לו תחזור כמו שהייתה.",
           { yes: "כן, להחזיר את האימון", no: "חזרה" },
         ))
       )
@@ -3184,11 +3177,15 @@ function re({
     // שחקנים שסומנו "הגיע" אוטומטית בפתיחת היום ועוד לא נגעו בהם
     autoRef = e.useRef(new Set()),
     isDirty = () => dirtyRef.current === dayKey,
+    dayKeyRef = e.useRef(dayKey),
     // מחזיר Promise<boolean>: בלי סימונים פתוחים — מיד true
     confirmLeave = () =>
       isDirty()
         ? askConfirm("יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?", { yes: "כן, לצאת בלי לשמור", no: "להישאר" })
         : Promise.resolve(!0);
+  dayKeyRef.current = dayKey;
+  // "נשמר במכשיר" שייך ליום שנשמר — לא נשאר כשעוברים ליום או לקבוצה אחרים
+  j(() => setSavedNote(""), [dayKey]);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
@@ -3247,7 +3244,7 @@ function re({
       // יום שעדיין אין לו רישום נפתח כשכולם מסומנים "הגיע" — המאמן מתקן רק
       // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
       // עשר הקשות. השחקנים נכנסים ל-touched כדי שהשמירה תכתוב אותם.
-      prefill = !o && !RO;
+      prefill = !o && !RO && trainsOn;
     // אין עריכה פתוחה — מתחילים את רשימת ה-touched מחדש. בלי זה, כשרישומים של
     // היום מגיעים ממכשיר אחר אחרי מילוי אוטומטי, נשארו ב-touched שחקנים שערכם
     // עכשיו ריק, והשמירה ניסתה למחוק אותם — מחיקה מותרת רק למנהל, וכל השמירה נדחתה.
@@ -3284,8 +3281,10 @@ function re({
       try {
         // לפני שכותבים — מה באמת שמור בשרת ליום הזה. בלי זה מסך שלא התעדכן
         // (ויפי חלש, מאמן אחר שמר, ההאזנה נפלה) דרס "לא הגיע" אמיתי ב"הגיע".
-        let srvDay = null;
-        try {
+        let srvDay = null,
+          // אופליין ידוע: לא מחכים 4+6 שניות על "שומר…" — ישר למסלול "נשמר במכשיר"
+          off = navigator.onLine === !1;
+        if (!off) try {
           let snap = await Promise.race([
             fsGetDocsFromServer(
               fsQuery(M(P, "attendance"), fsWhere("groupId", "==", t.id), fsWhere("date", "==", m)),
@@ -3355,16 +3354,35 @@ function re({
         let committed = p.commit(),
           srv = committed.then(() => "server");
         srv.catch(() => {});
-        let how = await Promise.race([
-          srv,
-          new Promise((res) => setTimeout(() => res("local"), 6000)),
-        ]);
-        how === "local"
-          ? (setSavedNote("נשמר במכשיר · יישלח לשרת כשהרשת תחזור"),
-            committed.catch((err) =>
-              N("השמירה לשרת נכשלה: " + err.message + " — צריך לפתוח את היום ולשמור שוב."),
-            ))
-          : setSavedNote("");
+        let how = off
+          ? "local"
+          : await Promise.race([
+              srv,
+              new Promise((res) => setTimeout(() => res("local"), 6000)),
+            ]);
+        if (how === "local") {
+          setSavedNote("נשמר במכשיר · יישלח לשרת כשהרשת תחזור");
+          // 18.10: עד שהשרת מאשר שומרים עותק של הסימונים. כשהשרת דוחה, Firestore מוחק את
+          // הרישומים מהמסך והיום היה נפתח מחדש עם כולם "הגיע" — עכשיו הסימונים חוזרים לעריכה.
+          let keep = { marks: { ...x }, touched: new Set(touchedRef.current), auto: new Set(autoRef.current) },
+            myKey = dayKey;
+          committed.then(
+            () => dayKeyRef.current === myKey && setSavedNote(""),
+            (err) => {
+              setSavedNote("");
+              if (dayKeyRef.current !== myKey || dirtyRef.current != null) {
+                N("השמירה לשרת נכשלה: " + err.message + " — צריך לפתוח את היום ולשמור שוב.");
+                return;
+              }
+              dirtyRef.current = myKey;
+              touchedRef.current = keep.touched;
+              autoRef.current = keep.auto;
+              h(keep.marks);
+              f(!0);
+              N("השמירה לשרת נכשלה: " + err.message + " — הסימונים חזרו למסך, צריך לשמור שוב.");
+            },
+          );
+        } else setSavedNote("");
         (dirtyRef.current = null),
           touchedRef.current.clear(),
           h(saved),
@@ -3378,8 +3396,25 @@ function re({
         r(!1);
       }
     },
+    // תג "2 היעדרויות" בשורה — אותו סינון כמו בכרטיס "דורש תשומת לב" (absenceAlerts): לא אחרי "טופל",
+    // ולא על היעדרות ביום שאינו יום האימון של השחקן. מחושב פעם אחת ולא בכל הקשה.
+    alertDates = e.useMemo(() => {
+      let o2 = {};
+      absenceAlerts(n, [], l).forEach((r2) => (o2[r2.player.id] = r2.dates));
+      return o2;
+    }, [a, l, t.id]),
     I = n.filter((p) => x[p.id] === "Present").length,
     unmarked = n.filter((p) => !x[p.id]).length,
+    // יום בלי אימון ועוד לא סומן כלום: במקום "מי לא הגיע" — הסבר וכפתור למקרה שבכל זאת היה אימון
+    offDayEmpty = u && !trainsOn && !o && n.length > 0 && unmarked === n.length,
+    fillAll = () => {
+      dirtyRef.current = dayKey;
+      let add = {};
+      n.forEach((w) => {
+        x[w.id] || ((add[w.id] = "Present"), touchedRef.current.add(w.id), autoRef.current.add(w.id));
+      });
+      h((k) => ({ ...k, ...add }));
+    },
     backBtn =
       i &&
       e.createElement(
@@ -3402,7 +3437,7 @@ function re({
         className:
           "mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap",
       },
-      showDatePicker || isPast
+      showDatePicker || isPast || offDayEmpty
         ? e.createElement(
             e.Fragment,
             null,
@@ -3423,6 +3458,7 @@ function re({
               className:
                 "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
             }),
+            (m !== defDay || showDatePicker) &&
             e.createElement(
               "button",
               {
@@ -3430,7 +3466,8 @@ function re({
                   confirmLeave().then((ok) => ok &&
                     ((dirtyRef.current = null),
                     touchedRef.current.clear(),
-                    setSelDate(today),
+                    // היום של המסך מתחלף ב-04:00 (attDefaultDay), לא בחצות
+                    setSelDate(defDay),
                     setShowDatePicker(!1)));
                 },
                 className: "text-xs font-semibold text-blue-900",
@@ -3446,7 +3483,7 @@ function re({
                 "flex items-center gap-1.5 text-sm font-semibold text-blue-900 min-h-[44px]",
             },
             e.createElement(ge, { className: "w-3.5 h-3.5" }),
-            "עדכון נוכחות ליום שלא מולא",
+            RO ? "צפייה ביום אחר" : "עדכון נוכחות ליום שלא מולא",
           ),
     );
   if (cancelled)
@@ -3527,8 +3564,33 @@ function re({
     { className: "flex flex-col gap-4" },
     backBtn,
     // 29.9: כיוון "רק מי שחסר" — כולם נפתחים כהגיעו, והמסך שואל שאלה אחת
+    offDayEmpty &&
+      e.createElement(
+        "div",
+        { className: "px-1 text-right flex flex-col gap-2" },
+        e.createElement(
+          "h2",
+          { className: "text-2xl font-bold text-blue-950 leading-tight" },
+          isPast ? `אין אימון ב־${Ke(m)}` : "אין אימון היום",
+        ),
+        e.createElement(
+          "p",
+          { className: "text-sm text-slate-600" },
+          `ימי האימון של הקבוצה: ${q(t)}. אפשר לבחור למטה תאריך אחר.`,
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: fillAll,
+            className:
+              "self-start bg-white border border-slate-300 text-blue-900 rounded-xl px-4 min-h-[44px] text-sm font-semibold active:scale-[0.98] transition-transform",
+          },
+          "היה אימון בכל זאת — לסמן את כולם הגיעו",
+        ),
+      ),
     u &&
       n.length > 0 &&
+      !offDayEmpty &&
       e.createElement(
         "div",
         { className: "px-1 text-right" },
@@ -3558,7 +3620,9 @@ function re({
             ? isPast
               ? "נשמר ✓"
               : "נשמר להיום ✓"
-            : "טרם נשמר",
+            : RO
+              ? "לא מולא"
+              : "טרם נשמר",
         ),
         e.createElement(
           "div",
@@ -3619,7 +3683,7 @@ function re({
       },
       n.map((p) => {
         let w = x[p.id] || null,
-          k = Qe(l, p.id),
+          k = alertDates[p.id] || null,
           savedRec = l.find(
             (v) => v.groupId === t.id && v.date === m && v.playerId === p.id,
           ),
@@ -3820,6 +3884,7 @@ function re({
     u &&
       unmarked > 0 &&
       n.length > 0 &&
+      !offDayEmpty &&
       e.createElement(
         "p",
         { className: "text-xs text-amber-700 text-right leading-relaxed" },
@@ -3838,9 +3903,9 @@ function re({
             "button",
             {
               onClick: A,
-              disabled: g || n.length === 0,
+              disabled: g || n.length === 0 || offDayEmpty,
               className:
-                "w-full bg-blue-600 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
+                "w-full bg-blue-700 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
             },
             g
               ? "שומר…"
@@ -4062,7 +4127,7 @@ function mt({
                   )
                 : e.createElement(
                     "span",
-                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-600 text-white font-bold flex items-center" },
+                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-700 text-white font-bold flex items-center" },
                     "מילוי",
                   ),
             );
@@ -4188,8 +4253,10 @@ function Q() {
     staffMode = !!s && !isMemberRole(s),
     { data: l } = L("users", null, t?.uid, staffMode),
     { data: i, loading: iLoading } = L("groups", null, t?.uid, staffMode),
+    // מאמן עם הרשאת דוחות או ניהול קבוצות רואה מסכים של כל המועדון — הוא טוען הכל, כמו מנהל
+    // (החוקים מתירים לצוות לקרוא הכל). אחרת הדשבורד והדוחות הראו "לא דווח" ו-0 שחקנים בשאר הקבוצות.
     coachGroupIds =
-      s && !isAdminRole(s) && !isViewerRole(s)
+      s && !isAdminRole(s) && !isViewerRole(s) && !canDo(s, "reports") && !canDo(s, "manageGroups")
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid, staffMode),
@@ -4497,6 +4564,7 @@ function Q() {
           onOpenGroupDate: goToGroupDate,
           cancellations,
           readOnly: vw,
+          isAdmin: r,
         }),
       (canDo(s, "manageGroups") || vw) &&
         m === "groups" &&
@@ -4525,6 +4593,7 @@ function Q() {
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
       canDo(s, "manageGroups") &&
+        !vw &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
       m === "attendance" &&
@@ -4568,7 +4637,7 @@ function Q() {
           players: c,
           player: playerModal.player,
           defaultGroupId: playerModal.groupId,
-          allowedGroupIds: r
+          allowedGroupIds: r || canDo(s, "manageGroups")
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),
           // כל מאמן מוחק שחקנים בקבוצות שלו; הסינון לפי קבוצה בכרטיס השחקן
