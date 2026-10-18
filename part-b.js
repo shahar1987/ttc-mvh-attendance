@@ -3918,7 +3918,7 @@ function re({
               onClick: A,
               disabled: g || n.length === 0 || offDayEmpty,
               className:
-                "w-full bg-blue-600 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
+                "w-full bg-blue-700 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
             },
             g
               ? "שומר…"
@@ -4140,7 +4140,7 @@ function mt({
                   )
                 : e.createElement(
                     "span",
-                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-600 text-white font-bold flex items-center" },
+                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-700 text-white font-bold flex items-center" },
                     "מילוי",
                   ),
             );
