@@ -4645,7 +4645,7 @@ function Q() {
           players: c,
           player: playerModal.player,
           defaultGroupId: playerModal.groupId,
-          allowedGroupIds: r
+          allowedGroupIds: r || canDo(s, "manageGroups")
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),
           // כל מאמן מוחק שחקנים בקבוצות שלו; הסינון לפי קבוצה בכרטיס השחקן

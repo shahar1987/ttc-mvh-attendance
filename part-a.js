@@ -3152,7 +3152,8 @@ function at({
   players: PL,
 }) {
   let i = !!a,
-    c = l ? t.filter((v) => l.includes(v.id)) : t,
+    // מעבר שחקן בין קבוצות מותר בחוקים רק עם הרשאת ניהול קבוצות — בלעדיה בעריכה מוצגת רק הקבוצה הנוכחית
+    c = l ? t.filter((v) => (i ? v.id === a.groupId : l.includes(v.id))) : t,
     [n, m] = b(a?.name || ""),
     [o, x] = b(a?.groupId || DG || c[0]?.id || ""),
     [h, u] = b(a?.parentName || ""),
