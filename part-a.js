@@ -438,6 +438,14 @@ function startOfWeekStr() {
 function startOfYearStr() {
   return `${new Date().getFullYear()}-01-01`;
 }
+// מכסה שנתית סופרת מ-1.1, אבל מנהל וצופה מאזינים רק ל-4 חודשים אחרונים (ATT_HISTORY_FROM).
+// כשיש לשחקן כלשהו מכסה שנתית — טוענים את החלק החסר פעם אחת, כמו דוח על טווח ישן.
+function useYearAttendance(players) {
+  let need = players.some((p) => p.isActive && !p.deleted && p.yearlyTarget > 0);
+  j(() => {
+    need && startOfYearStr() < ATT_HISTORY_FROM && requestOlderAttendance(startOfYearStr());
+  }, [need]);
+}
 function quotaAlerts(players, groups, attendance) {
   let wk = startOfWeekStr(),
     mo = firstOfMonthStr(),
@@ -1933,6 +1941,7 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
   );
 }
 function ReportQuota({ players, groups, attendance }) {
+  useYearAttendance(players);
   let alerts = quotaAlerts(players, groups, attendance),
     exportCsv = () => {
       let headers = ["שחקן", "קבוצה", "תקופה", "בפועל", "מכסה"],
@@ -2286,6 +2295,7 @@ function st({
   readOnly: RO,
   isAdmin: IA,
 }) {
+  useYearAttendance(a);
   let [o, x] = b(null),
     [h, u] = b(!1),
     quotaAl = quotaAlerts(a, s, l),
