@@ -2,7 +2,7 @@
 // קבוצה שהתאמנה היום (groups.days), שהאימון שלה נגמר לפני חצי שעה לפחות, ואין לה אף רשומת נוכחות להיום:
 // הבוט שולח לכל מאמן שלה את התבנית coach_attendance_reminder עם קישור שפותח ישר את הקבוצה, והבעלים מקבל סיכום.
 // מאמן שהשליחה אליו נכשלה (למשל התבנית לא אושרה) — הבעלים מקבל עבורו קישור wa.me כמו פעם, ושולח בעצמו.
-import { addDays, israelToday, normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
+import { addDays, israelToday, normalizePhone, isValidPhone, analyze } from "../../agents/lib/analysis.mjs";
 import { waLink, notifyOwner, sendTemplate } from "../../agents/lib/whatsapp.mjs";
 import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
@@ -288,4 +288,53 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `☀️ שלחתי את תזכורת הבוקר לאימון: ${list}`, template: "agent_alert", templateParam: `תזכורת הבוקר לאימון נשלחה: ${list}` });
   }
   return `morning: ${out.join(", ") || "no coaches today"}`;
+}
+
+// 📨 הודעות היעדרות שהמאמן עוד לא שלח להורים (18.10, שולה: "שיציק להם עד שישלחו"): כל בוקר מ-10:00, חוץ משבת,
+// כל מאמן שיש בקבוצות שלו הודעות כאלה מקבל תזכורת עם המספר וקישור לרשימה — עד שהרשימה שלו מתרוקנת.
+// אותה רשימה כמו במסך המאמן (analyze ← pendingAbsenceMsgs/absenceAlerts). פעם אחת ביום (מסומן לפני השליחה).
+// כבוי עד ששולה מאשרת את הנוסח: PARENT_MSG_NAG = "on" ב-wrangler.toml.
+const NAG_MIN = 10 * 60;
+export async function parentMsgNag(env, store, wa, now = new Date()) {
+  if (env.PARENT_MSG_NAG !== "on") return "nag off";
+  const today = israelToday(now);
+  const { dow, min } = israelNow(now);
+  if (dow === 6 || min < NAG_MIN) return "not now";
+  const claimed = await store.update("agentReports/bot", (cur) => (cur.parentMsgNag === today ? null : { parentMsgNag: today }));
+  if (!claimed) return "done today";
+  // shortcut: קורא את כל הנוכחות פעם ביום; כשהעונה תגדל מאוד — שאילתת טווח תאריכים (8 שבועות אחורה)
+  const [players, groups, users, attendance, quiet] = await Promise.all([store.list("players"), store.list("groups"), store.list("users"), store.list("attendance"), quietIds(store)]);
+  const { pending } = analyze({ players, groups, attendance, today });
+  const byCoach = new Map();
+  for (const x of pending) {
+    const g = groups.find((v) => v.id === x.groupId);
+    if (!g || g.deleted || g.isActive === false) continue;
+    for (const id of coachIds(g).filter((c) => !quiet.includes(c))) {
+      const m = byCoach.get(id) || new Map();
+      byCoach.set(id, m.set(g, (m.get(g) || 0) + 1));
+    }
+  }
+  const out = [], watch = {};
+  for (const [id, gs] of byCoach) {
+    const c = users.find((u) => u.id === id);
+    if (!c || !isValidPhone(c.phone || "")) { out.push(`${c?.name || "מאמן"}: אין טלפון שמור`); continue; }
+    const n = [...gs.values()].reduce((a, b) => a + b, 0);
+    const first = String(c.name || "").trim().split(/\s+/)[0] || "";
+    const link = gs.size === 1 ? `${APP_URL}#group=${[...gs.keys()][0].id}` : APP_URL;
+    const text = `בוקר טוב ${first}, ${n === 1 ? "יש הודעת היעדרות אחת" : `יש ${n} הודעות היעדרות`} שעוד לא נשלחו (${[...gs.keys()].map((g) => g.name).join(", ")}). אפשר לשלוח מכאן בלחיצה: ${link}`;
+    try {
+      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+      if (wamid) watch[wamid] = { who: c.name, what: "תזכורת הודעות היעדרות", at: now.toISOString() };
+      out.push(`${c.name} (${n}) ✓`);
+    } catch (e) {
+      out.push(`${c.name}: נכשל (${e.message})`);
+    }
+  }
+  if (Object.keys(watch).length) await watchReads(store, watch, now);
+  if (out.length) {
+    const bot = (await store.get("agentReports/bot")) || {};
+    const list = out.join(", ");
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📨 תזכורת למאמנים על הודעות היעדרות שלא נשלחו: ${list}`, template: "agent_alert", templateParam: `תזכורת הודעות היעדרות למאמנים: ${list}` });
+  }
+  return `nag: ${out.join(", ") || "nothing pending"}`;
 }

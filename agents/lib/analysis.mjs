@@ -135,6 +135,34 @@ export function dropoutRisk(hist, today) {
 const pct = (x) => `${Math.round(x * 100)}%`;
 
 // הסריקה המלאה. מחזירה את כל מה שהדוח צריך, כולל טלפון (נשמר רק ב-Firestore, לא ביומן).
+// היעדרות שלא שולחים עליה הודעה להורים (18.10, שולה: רוב הרשימה הייתה רעש):
+// יום שהוא לא יום האימון של השחקן, או שחקן שכמעט לא מגיע — הוא ברשימת "לא מגיעים", והודעה על כל אימון
+// שהוא מפספס מיותרת. ימי האימון: מה שהמדריך רשם, ואם לא רשם — ימים בשבוע שבהם השחקן הגיע לפחות פעמיים
+// ולפחות ל-40% מהאימונים של הקבוצה ב-8 השבועות שלפני ההיעדרות. אין מספיק נתונים — לא מדלגים.
+// מועתק מ-part-a.js (שינוי — לשנות גם שם). analysis-equivalence.test.mjs משווה.
+export function skipAbsenceMsg(p, groupId, attendance, date) {
+  let wd = (d) => new Date(d + "T12:00:00Z").getUTCDay(),
+    from = new Date(Date.parse(date + "T12:00:00Z") - 56 * 864e5).toISOString().slice(0, 10),
+    held = {},
+    came = {};
+  attendance.forEach((a) => {
+    if (a.groupId !== groupId || !a.date || a.date < from || a.date >= date) return;
+    if (p.joinDate && a.date < p.joinDate) return;
+    let k = wd(a.date);
+    (held[k] = held[k] || new Set()).add(a.date);
+    a.playerId === p.id && a.status === "Present" && (came[k] = came[k] || new Set()).add(a.date);
+  });
+  let n = (o) => Object.values(o).reduce((x, v) => x + v.size, 0),
+    nHeld = n(held);
+  if (nHeld >= 4 && n(came) / nHeld <= 0.2) return !0;
+  let days =
+    Array.isArray(p.trainingDays) && p.trainingDays.length > 0
+      ? p.trainingDays
+      : Object.keys(held)
+          .map(Number)
+          .filter((k) => came[k] && came[k].size >= 2 && came[k].size / held[k].size >= 0.4);
+  return days.length > 0 && !days.includes(wd(date));
+}
 export function analyze({ players, groups, attendance, today }) {
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const playerById = new Map(players.map((p) => [p.id, p]));
@@ -166,6 +194,7 @@ export function analyze({ players, groups, attendance, today }) {
     if (!dates) continue;
     repeatDates.set(p.id, dates);
     if (p.alertHandledDate && p.alertHandledDate >= dates[0]) continue;
+    if (skipAbsenceMsg(p, p.groupId, attendance, dates[0])) continue;
     repeat.push(item(p, groupById.get(p.groupId), "repeat", dates[0], { dates }));
   }
 
@@ -184,6 +213,7 @@ export function analyze({ players, groups, attendance, today }) {
     if (p.alertHandledDate && p.alertHandledDate >= a.date) continue;
     const two = repeatDates.get(p.id);
     if (two && two.includes(a.date)) continue;
+    if (skipAbsenceMsg(p, a.groupId, attendance, a.date)) continue;
     single.push(item(p, groupById.get(a.groupId), "absence", a.date, { groupId: a.groupId }));
   }
 
