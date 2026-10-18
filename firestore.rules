@@ -7,7 +7,7 @@ rules_version = '2';
 //
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
-// accessRequests, reminders, adminTasks, system, auditLog, tournaments, campGoals. אוסף שלא מופיע
+// accessRequests, reminders, adminTasks, system, auditLog, tournaments. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -300,28 +300,6 @@ service cloud.firestore {
       allow create, update: if canCompete()
         && request.resource.data.get('state', '') is string;
       allow delete: if hasPerm('competitions');
-    }
-
-    // ---------- יעדי מחנה וינגייט ----------
-    // אתר נפרד (shahar1987.github.io/camp-goals), לא קשור לאפליקציית הנוכחות.
-    // ילדים נכנסים מהקישור בלי התחברות: קוראים רק את settings (שלב + רשימת שמות)
-    // וכותבים רק את התשובה שלהם. קריאת התשובות, עריכה ומחיקה — רק המנהל.
-    match /campGoals/{docId} {
-      function kidAnswerOk() {
-        let d = request.resource.data;
-        return docId.matches('p[0-9a-f]{1,8}')
-          && d.name is string && d.name.size() > 0 && d.name.size() <= 30
-          && d.get('goal', '') is string && d.get('goal', '').size() <= 30
-          && d.get('endGoal', '') is string && d.get('endGoal', '').size() <= 30
-          && d.get('achieved', 'yes') in ['yes', 'no']
-          && d.get('progress', 1) is int && d.get('progress', 1) >= 1 && d.get('progress', 1) <= 5;
-      }
-      allow read, write: if isAdmin();
-      allow get: if docId == 'settings';
-      allow create: if kidAnswerOk()
-        && request.resource.data.keys().hasOnly(['name','goal','startAt','endGoal','achieved','progress','endAt']);
-      allow update: if kidAnswerOk()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','goal','startAt','endGoal','achieved','progress','endAt']);
     }
 
     // טופס מידות תלבושת ליגה (shahar1987.github.io/ttc-uniform-sizes).

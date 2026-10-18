@@ -269,33 +269,6 @@ await t('רשימת השחקנים: רק מנהל', async () => {
   await assertFails(setDoc(doc(as('coachA'), 'uniformConfig/roster'), { players: [] }));
 });
 
-console.log('\n— מטרות מחנה (אתר נפרד) —');
-await t('ילד בלי התחברות קורא שלב ורשימת שמות', async () => {
-  await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), 'campGoals/settings'), { phase: 'start', names: ['נועה כהן'] }));
-  await assertSucceeds(getDoc(doc(anon(), 'campGoals/settings')));
-});
-await t('ילד כותב מטרה ואחר כך סיום (merge)', async () => {
-  await assertSucceeds(setDoc(doc(anon(), 'campGoals/p1a2b'), { name: 'נועה כהן', goal: 'עקיפה', startAt: Date.now() }, { merge: true }));
-  await assertSucceeds(setDoc(doc(anon(), 'campGoals/p1a2b'), { name: 'נועה כהן', endGoal: 'עקיפה', achieved: 'yes', progress: 4, endAt: Date.now() }, { merge: true }));
-});
-await t('ילד לא קורא תשובות', async () => {
-  await assertFails(getDocs(collection(anon(), 'campGoals')));
-  await assertFails(getDoc(doc(anon(), 'campGoals/p1a2b')));
-});
-await t('ילד לא משנה שלב, לא מוחק ולא מוסיף שדות', async () => {
-  await assertFails(setDoc(doc(anon(), 'campGoals/settings'), { phase: 'end', names: [] }));
-  await assertFails(deleteDoc(doc(anon(), 'campGoals/p1a2b')));
-  await assertFails(setDoc(doc(anon(), 'campGoals/p99'), { name: 'x', goal: 'y', admin: true }));
-  await assertFails(setDoc(doc(anon(), 'campGoals/p99'), { name: 'x', progress: 9 }));
-  await assertFails(setDoc(doc(anon(), 'campGoals/zzz'), { name: 'x', goal: 'y' }));
-});
-await t('מנהל קורא, עורך ומוחק', async () => {
-  await assertSucceeds(getDocs(collection(as('admin1'), 'campGoals')));
-  await assertSucceeds(setDoc(doc(as('admin1'), 'campGoals/settings'), { phase: 'end', names: ['נועה כהן'] }));
-  await assertSucceeds(deleteDoc(doc(as('admin1'), 'campGoals/p1a2b')));
-  await assertFails(getDocs(collection(as('coachA'), 'campGoals')));
-});
-
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
   await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));
