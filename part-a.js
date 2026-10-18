@@ -438,6 +438,14 @@ function startOfWeekStr() {
 function startOfYearStr() {
   return `${new Date().getFullYear()}-01-01`;
 }
+// מכסה שנתית סופרת מ-1.1, אבל מנהל וצופה מאזינים רק ל-4 חודשים אחרונים (ATT_HISTORY_FROM).
+// כשיש לשחקן כלשהו מכסה שנתית — טוענים את החלק החסר פעם אחת, כמו דוח על טווח ישן.
+function useYearAttendance(players) {
+  let need = players.some((p) => p.isActive && !p.deleted && p.yearlyTarget > 0);
+  j(() => {
+    need && startOfYearStr() < ATT_HISTORY_FROM && requestOlderAttendance(startOfYearStr());
+  }, [need]);
+}
 function quotaAlerts(players, groups, attendance) {
   let wk = startOfWeekStr(),
     mo = firstOfMonthStr(),
@@ -617,7 +625,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
       if (
         hasAttendance &&
         !(await askConfirm(
-          "כבר נשמרה נוכחות להיום לקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
+          "כבר נשמרה נוכחות ליום הזה בקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
           { yes: "כן, לבטל את האימון", no: "חזרה" },
         ))
       )
@@ -725,7 +733,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
             className:
               "text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
           },
-          "שים לב: כבר נשמרה נוכחות להיום. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
+          "שים לב: כבר נשמרה נוכחות ליום הזה. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
         ),
       err &&
         e.createElement("p", { className: "text-xs text-red-600 text-right" }, err),
@@ -1022,13 +1030,6 @@ async function qe(t) {
   }
 }
 // תג "2 היעדרויות" בשורת מילוי הנוכחות. משתמש בדיוק באותו חישוב של כרטיס
-// ההתראות (lastTwoAbsences): רשומה אחת לכל תאריך, נוכחות גוברת על היעדרות,
-// והיום הנוכחי לא נספר. קודם היה כאן חישוב נפרד שספר כל רשומה בנפרד — שחקן
-// עם שתי רשומות באותו יום (למשל אחרי מעבר קבוצה) סומן בטעות.
-// מחזיר את שני התאריכים עצמם (או null), כדי שאפשר יהיה להציג אותם בתג.
-function Qe(t, s) {
-  return lastTwoAbsences(t, s);
-}
 // אחוז הנוכחות של הקבוצה בחודש הנוכחי (כמו "נוכחות ממוצעת החודש" בכרטיס שמעל)
 function Ze(t, s, a) {
   let month = E().slice(0, 7),
@@ -1169,11 +1170,12 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
     // בטבלה האימון האחרון מוצג ראשון (ליד השם), כדי שלא יהיה צריך לגלול הצידה
     // כדי לראות מה היה היום. החישובים וה-CSV נשארים בסדר כרונולוגי.
     shownDates = dates.slice().reverse(),
+    // שחקן שעבר קבוצה נשאר בטבלה של הקבוצה הקודמת עם ההיסטוריה שלו שם (כמו ב"השוואת קבוצות")
     groupPlayers = players
       .filter(
         (p) =>
-          p.groupId === groupId &&
-          (p.isActive || groupAttendance.some((rec) => rec.playerId === p.id)),
+          (p.groupId === groupId && p.isActive) ||
+          groupAttendance.some((rec) => rec.playerId === p.id),
       )
       .sort((a, c) => a.name.localeCompare(c.name, "he")),
     cellStatus = (playerId, date) => {
@@ -1940,6 +1942,7 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
   );
 }
 function ReportQuota({ players, groups, attendance }) {
+  useYearAttendance(players);
   let alerts = quotaAlerts(players, groups, attendance),
     exportCsv = () => {
       let headers = ["שחקן", "קבוצה", "תקופה", "בפועל", "מכסה"],
@@ -2291,7 +2294,9 @@ function st({
   onOpenGroupDate,
   cancellations: CX,
   readOnly: RO,
+  isAdmin: IA,
 }) {
+  useYearAttendance(a);
   let [o, x] = b(null),
     [h, u] = b(!1),
     quotaAl = quotaAlerts(a, s, l),
@@ -2410,7 +2415,8 @@ function st({
     }),
     // 18.10: הודעות להורים יורדות מהדשבורד של המנהלת — הן אצל המאמנים (CoachHome), והבוט מזכיר להם כל בוקר
     e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
-    !RO &&
+    // רק למנהל: רישום התזכורת (reminders) חסום בחוקים לכל השאר, והוספת שחקן יש למאמן במסך הסימון
+    IA &&
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-3" },
@@ -2792,7 +2798,7 @@ function WhatsappModal({
               {
                 key: v,
                 onClick: () => pickGender(v),
-                className: `min-h-[36px] px-3 rounded-lg text-xs font-semibold border transition-colors ${gen === v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                className: `min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${gen === v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
               },
               v === "m" ? "בן" : "בת",
             ),
@@ -3159,7 +3165,8 @@ function at({
   players: PL,
 }) {
   let i = !!a,
-    c = l ? t.filter((v) => l.includes(v.id)) : t,
+    // מעבר שחקן בין קבוצות מותר בחוקים רק עם הרשאת ניהול קבוצות — בלעדיה בעריכה מוצגת רק הקבוצה הנוכחית
+    c = l ? t.filter((v) => (i ? v.id === a.groupId : l.includes(v.id))) : t,
     [n, m] = b(a?.name || ""),
     [o, x] = b(a?.groupId || DG || c[0]?.id || ""),
     [h, u] = b(a?.parentName || ""),
@@ -3516,7 +3523,8 @@ function parseRoster(text) {
       name = cells[0],
       phone = cells[1] || "",
       parentName = cells[2] || "";
-    if (!name) return;
+    // שורת כותרת של CSV (כמו בייצוא שלנו) — לא שחקן
+    if (!name || /^שם( השחקן)?$/.test(name)) return;
     if (!current) {
       errors.push(`שורה ${idx + 1}: "${name}" מופיע לפני שהוגדרה קבוצה`);
       return;
@@ -3545,10 +3553,13 @@ function ImportScreen({ groups: t, players: s }) {
       (p.name || "").trim() + "@" + (groupNameById[p.groupId] || "").trim(),
     );
   });
-  let rows = parsed.rows.map((r) => ({
-      ...r,
-      status: existing.has(r.name + "@" + r.groupName) ? "exists" : "new",
-    })),
+  // שם שמופיע פעמיים באותה הדבקה (באותה קבוצה) נוצר פעם אחת
+  let rows = parsed.rows.map((r) => {
+      let key = r.name + "@" + r.groupName,
+        st = existing.has(key) ? "exists" : "new";
+      existing.add(key);
+      return { ...r, status: st };
+    }),
     newRows = rows.filter((r) => r.status === "new"),
     knownGroups = new Set(t.map((g) => (g.name || "").trim())),
     newGroups = [...new Set(rows.map((r) => r.groupName))].filter(
