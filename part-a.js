@@ -3523,7 +3523,8 @@ function parseRoster(text) {
       name = cells[0],
       phone = cells[1] || "",
       parentName = cells[2] || "";
-    if (!name) return;
+    // שורת כותרת של CSV (כמו בייצוא שלנו) — לא שחקן
+    if (!name || /^שם( השחקן)?$/.test(name)) return;
     if (!current) {
       errors.push(`שורה ${idx + 1}: "${name}" מופיע לפני שהוגדרה קבוצה`);
       return;
@@ -3552,10 +3553,13 @@ function ImportScreen({ groups: t, players: s }) {
       (p.name || "").trim() + "@" + (groupNameById[p.groupId] || "").trim(),
     );
   });
-  let rows = parsed.rows.map((r) => ({
-      ...r,
-      status: existing.has(r.name + "@" + r.groupName) ? "exists" : "new",
-    })),
+  // שם שמופיע פעמיים באותה הדבקה (באותה קבוצה) נוצר פעם אחת
+  let rows = parsed.rows.map((r) => {
+      let key = r.name + "@" + r.groupName,
+        st = existing.has(key) ? "exists" : "new";
+      existing.add(key);
+      return { ...r, status: st };
+    }),
     newRows = rows.filter((r) => r.status === "new"),
     knownGroups = new Set(t.map((g) => (g.name || "").trim())),
     newGroups = [...new Set(rows.map((r) => r.groupName))].filter(
