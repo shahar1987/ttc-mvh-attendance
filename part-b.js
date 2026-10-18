@@ -2275,21 +2275,8 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           reasonText(p.id),
         ]),
       );
-      let csv = rows
-          .map((r) =>
-            r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(","),
-          )
-          .join("\r\n"),
-        // BOM — בלעדיו אקסל פותח עברית כג'יבריש
-        blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }),
-        url = URL.createObjectURL(blob),
-        link = document.createElement("a");
-      link.href = url;
-      link.download = `לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // downloadCsv: csvEscape (תא שמתחיל ב-= לא הופך לנוסחה באקסל), BOM, ושחרור הקישור באיחור (ספארי)
+      downloadCsv(`לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`, rows[0], rows.slice(1));
     };
   // 10.10: המסך סודר מחדש. למעלה שני מספרים גדולים (לא שילמו / שילמו) שהם גם הסינון,
   // מתחתם הרשימה עצמה. כל מה שאינו הרשימה — הצעות לבדיקה, סנכרון, מיפוי — מקופל.
