@@ -4577,6 +4577,7 @@ function Q() {
           onOpenGroupDate: goToGroupDate,
           cancellations,
           readOnly: vw,
+          isAdmin: r,
         }),
       (canDo(s, "manageGroups") || vw) &&
         m === "groups" &&

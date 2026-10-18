@@ -2284,6 +2284,7 @@ function st({
   onOpenGroupDate,
   cancellations: CX,
   readOnly: RO,
+  isAdmin: IA,
 }) {
   let [o, x] = b(null),
     [h, u] = b(!1),
@@ -2403,7 +2404,8 @@ function st({
     }),
     // 18.10: הודעות להורים יורדות מהדשבורד של המנהלת — הן אצל המאמנים (CoachHome), והבוט מזכיר להם כל בוקר
     e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
-    !RO &&
+    // רק למנהל: רישום התזכורת (reminders) חסום בחוקים לכל השאר, והוספת שחקן יש למאמן במסך הסימון
+    IA &&
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-3" },
