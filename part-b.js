@@ -3810,6 +3810,8 @@ function re({
                   className: `flex-1 text-lg font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
                 },
                 p.name,
+                p.trial &&
+                  e.createElement("span", { className: "ms-2 align-middle text-xs font-semibold text-blue-800 bg-blue-50 rounded-full px-2 py-0.5" }, "ניסיון"),
               ),
               absent
                 ? e.createElement("span", { className: "text-sm font-bold text-red-700 shrink-0" }, "לא הגיע")
@@ -3866,6 +3868,17 @@ function re({
               "הוספת שחקן",
             )
           : e.createElement("span", null),
+        AP &&
+          e.createElement(
+            "button",
+            {
+              onClick: () => AP(t, !0),
+              className:
+                "col-span-2 order-last bg-white border border-blue-200 text-blue-800 rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+            },
+            e.createElement(K, { className: "w-4 h-4" }),
+            "ילד בניסיון",
+          ),
         e.createElement(
           "button",
           {
@@ -3890,7 +3903,11 @@ function re({
         { className: "text-xs text-amber-700 text-right leading-relaxed" },
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
-    e.createElement(GroupInsights, { group: t, players: n, attendance: l }),
+    e.createElement(GroupInsights, {
+      group: t,
+      players: n.filter((p) => !p.trial),
+      attendance: n.some((p) => p.trial) ? l.filter((r) => !n.some((p) => p.trial && p.id === r.playerId)) : l,
+    }),
     !RO &&
     e.createElement(
       "div",
@@ -3932,6 +3949,8 @@ function mt({
   groups: s,
   players: a,
   attendance: l,
+  rosterPlayers: RP,
+  rosterAttendance: RA,
   users: US,
   isAdmin: i,
   onEditPlayer: EP,
@@ -4034,8 +4053,8 @@ function mt({
           e.createElement(re, {
             group: h,
             profile: t,
-            players: a,
-            attendance: l,
+            players: RP || a,
+            attendance: RA || l,
             users: US,
             onBack: o ? null : () => onSelectGroup(null),
             onEditPlayer: EP,
@@ -4265,6 +4284,10 @@ function Q() {
     [olderFrom, setOlderFrom] = b(null),
     [olderAtt, setOlderAtt] = b([]),
     n = excludeCancelled(olderAtt.length ? olderAtt.concat(rawAttendance) : rawAttendance, cancellations),
+    // ילד בניסיון (trial) מופיע רק במסך הסימון ובספר הטלפונים; הדשבורד, הדוחות, הקבוצות והתשלומים לא רואים אותו
+    trialIds = new Set(c.filter((p) => p.trial).map((p) => p.id)),
+    statPlayers = trialIds.size ? c.filter((p) => !trialIds.has(p.id)) : c,
+    statAtt = trialIds.size ? n.filter((r) => !trialIds.has(r.playerId)) : n,
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
@@ -4278,8 +4301,8 @@ function Q() {
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
     g = ut(),
-    openAddPlayer = (group) =>
-      setPlayerModal({ player: null, groupId: group?.id || null }),
+    openAddPlayer = (group, trial) =>
+      setPlayerModal({ player: null, groupId: group?.id || null, trial: !!trial }),
     openEditPlayer = (player) => setPlayerModal({ player }),
     openWhatsapp = (player, mode, groupId, date) =>
       setWaPlayer({
@@ -4554,8 +4577,8 @@ function Q() {
         e.createElement(st, {
           users: l,
           groups: i,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
           onOpenAddPlayer: openAddPlayer,
           currentUserId: s.id,
           onEditPlayer: openEditPlayer,
@@ -4568,7 +4591,7 @@ function Q() {
         }),
       (canDo(s, "manageGroups") || vw) &&
         m === "groups" &&
-        e.createElement(it, { groups: i, users: l, players: c, readOnly: vw }),
+        e.createElement(it, { groups: i, users: l, players: statPlayers, readOnly: vw }),
       canDo(s, "phonebook") &&
         m === "phonebook" &&
         e.createElement(lt, {
@@ -4581,14 +4604,14 @@ function Q() {
         e.createElement(ReportsScreen, {
           groups: i,
           users: l,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
           cancellations,
           readOnly: vw,
         }),
       canDo(s, "payments") &&
         m === "payments" &&
-        e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: vw }),
+        e.createElement(PaymentsScreen, { players: statPlayers, groups: i, readOnly: vw }),
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
@@ -4600,8 +4623,10 @@ function Q() {
         e.createElement(mt, {
           profile: s,
           groups: i,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
+          rosterPlayers: c,
+          rosterAttendance: n,
           users: l,
           isAdmin: r,
           onEditPlayer: vw ? null : openEditPlayer,
@@ -4637,6 +4662,7 @@ function Q() {
           players: c,
           player: playerModal.player,
           defaultGroupId: playerModal.groupId,
+          trial: playerModal.trial,
           allowedGroupIds: r || canDo(s, "manageGroups")
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),

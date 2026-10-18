@@ -338,3 +338,43 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
   }
   return `nag: ${out.join(", ") || "nothing pending"}`;
 }
+
+// 🆕 ילדים בניסיון (players.trial) — פעם ביום מ-10:00, חוץ משבת.
+// מי שהגיע פעמיים: שולה נשאלת פעם אחת "להשאיר קבוע?" ועונה לבוט (הכלי trial_decision, לפי המספר ברשימה).
+// מי שלא הגיע 21 יום (מאז האימון האחרון, או מההצטרפות אם עוד לא הגיע) — יוצא מהרשימה לבד, וההיסטוריה נשמרת.
+const TRIAL_DROP_DAYS = 21;
+export async function trialCheck(store, wa, now = new Date()) {
+  const today = israelToday(now);
+  const { dow, min } = israelNow(now);
+  if (dow === 6 || min < NAG_MIN) return "not now";
+  const claimed = await store.update("agentReports/bot", (cur) => (cur.trialCheck === today ? null : { trialCheck: today }));
+  if (!claimed) return "done today";
+  const trials = (await store.list("players")).filter((p) => p.trial && p.isActive && !p.deleted);
+  if (!trials.length) return "trials: 0";
+  const [groups, attendance, bot] = await Promise.all([store.list("groups"), store.list("attendance"), store.get("agentReports/bot")]);
+  const items = bot?.trialAsk?.items || [];
+  const fresh = [], dropped = [], dropIds = new Set();
+  for (const p of trials) {
+    const came = attendance.filter((a) => a.playerId === p.id && a.status === "Present").map((a) => a.date).sort();
+    const since = came.at(-1) || String(p.joinDate || "").slice(0, 10) || today;
+    const label = `${(p.name || "").trim()} (${groups.find((g) => g.id === p.groupId)?.name || ""})`;
+    if (addDays(since, TRIAL_DROP_DAYS) <= today) {
+      await store.merge(`players/${p.id}`, { isActive: false, endDate: today });
+      dropped.push(label);
+      dropIds.add(p.id);
+    } else if (came.length >= 2 && !items.some((x) => x.id === p.id)) {
+      fresh.push({ n: Math.max(0, ...items.map((x) => x.n), ...fresh.map((x) => x.n)) + 1, id: p.id, label, visits: came.length });
+    }
+  }
+  if (fresh.length || dropIds.size)
+    await store.update("agentReports/bot", (cur) => ({ trialAsk: { items: [...(cur.trialAsk?.items || []), ...fresh].filter((x) => !dropIds.has(x.id)) } }));
+  const lines = [
+    ...(fresh.length ? ["🆕 *ילדים בניסיון שחזרו* — להשאיר קבועים? אפשר לענות למשל \"כן ל-1\" או \"לא ל-2\":", ...fresh.map((x) => `${x.n}. ${x.label} — ${x.visits} אימונים`)] : []),
+    ...(dropped.length ? [`👋 יצאו מהרשימה (לא הגיעו ${TRIAL_DROP_DAYS} יום): ${dropped.join(", ")}`] : []),
+  ];
+  if (lines.length) {
+    const text = lines.join("\n");
+    await notifyOwner(wa, { lastOwnerMsgAt: bot?.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 400) });
+  }
+  return `trials: ask ${fresh.length}, dropped ${dropped.length}`;
+}
