@@ -1170,11 +1170,12 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
     // בטבלה האימון האחרון מוצג ראשון (ליד השם), כדי שלא יהיה צריך לגלול הצידה
     // כדי לראות מה היה היום. החישובים וה-CSV נשארים בסדר כרונולוגי.
     shownDates = dates.slice().reverse(),
+    // שחקן שעבר קבוצה נשאר בטבלה של הקבוצה הקודמת עם ההיסטוריה שלו שם (כמו ב"השוואת קבוצות")
     groupPlayers = players
       .filter(
         (p) =>
-          p.groupId === groupId &&
-          (p.isActive || groupAttendance.some((rec) => rec.playerId === p.id)),
+          (p.groupId === groupId && p.isActive) ||
+          groupAttendance.some((rec) => rec.playerId === p.id),
       )
       .sort((a, c) => a.name.localeCompare(c.name, "he")),
     cellStatus = (playerId, date) => {
