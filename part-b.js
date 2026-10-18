@@ -1664,7 +1664,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             e.createElement(
               "p",
               { className: "text-xs text-slate-400 px-1 leading-relaxed" },
-              "שכח סיסמה? \"איפוס גישה\" מוחק את החשבון שלו, ואז שולחים הזמנה חדשה מגישת הורים והוא בוחר סיסמה מחדש.",
+              "שכח סיסמה? \"סיסמה חדשה\" קובע לו סיסמה. \"איפוס גישה\" מוחק את החשבון שלו, ואז מוסיפים אותו מחדש במסך הזה.",
             ),
           )
         : null;
