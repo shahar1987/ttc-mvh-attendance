@@ -4263,8 +4263,10 @@ function Q() {
     staffMode = !!s && !isMemberRole(s),
     { data: l } = L("users", null, t?.uid, staffMode),
     { data: i, loading: iLoading } = L("groups", null, t?.uid, staffMode),
+    // מאמן עם הרשאת דוחות או ניהול קבוצות רואה מסכים של כל המועדון — הוא טוען הכל, כמו מנהל
+    // (החוקים מתירים לצוות לקרוא הכל). אחרת הדשבורד והדוחות הראו "לא דווח" ו-0 שחקנים בשאר הקבוצות.
     coachGroupIds =
-      s && !isAdminRole(s) && !isViewerRole(s)
+      s && !isAdminRole(s) && !isViewerRole(s) && !canDo(s, "reports") && !canDo(s, "manageGroups")
         ? i.filter((g) => isGroupCoach(g, s.id)).map((g) => g.id)
         : null,
     { data: c, loading: cLoading } = L("players", coachGroupIds, t?.uid, staffMode),
