@@ -8,6 +8,10 @@ import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
 
 const GRACE_MIN = 30;
+// הסימון הוא בדיקת בטיחות בתחילת האימון (שולה, 18.10): מזכירים 10 דקות אחרי ההתחלה, כשעוד אפשר לברר מי חסר.
+// קבוצה בלי startTime — כמו פעם, חצי שעה אחרי הסוף.
+const START_GRACE_MIN = 10;
+const remindAt = (g) => (toMin(g.startTime) !== null ? toMin(g.startTime) + START_GRACE_MIN : toMin(g.endTime) !== null ? toMin(g.endTime) + GRACE_MIN : null);
 // הקישור פותח את האפליקציה ישר על מסך הסימון של הקבוצה (part-b.js קורא את #group=)
 const APP_URL = "https://shahar1987.github.io/ttc-mvh-attendance/";
 
@@ -42,7 +46,7 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
   const bot = (await store.get("agentReports/bot")) || {};
   const done = bot.coachReminders?.date === today ? bot.coachReminders.groups : [];
   const groups = (await store.list("groups")).filter(
-    (g) => !g.deleted && g.isActive !== false && Array.isArray(g.days) && g.days.includes(dow) && toMin(g.endTime) !== null && min >= toMin(g.endTime) + GRACE_MIN && !done.includes(g.id),
+    (g) => !g.deleted && g.isActive !== false && Array.isArray(g.days) && g.days.includes(dow) && remindAt(g) !== null && min >= remindAt(g) && !done.includes(g.id),
   );
   if (!groups.length) return "nothing due";
 
