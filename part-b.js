@@ -72,7 +72,8 @@ const STAFF_MENU_ITEMS = [
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
   { key: "reports", label: "דוחות", short: "דוחות מפורטים", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
-  { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups" },
+  // ייבוא כותב שחקנים — צופה לא רואה אותו גם אם יש לו הרשאת ניהול קבוצות (שאר המסכים שלו לקריאה בלבד)
+  { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups", noViewer: !0 },
   {
     key: "tournaments",
     label: "תחרויות",
@@ -94,7 +95,9 @@ const MENU_SECTIONS = [
 function menuItemVisible(it, isAdmin, isViewer, profile) {
   return it.adminOnly
     ? isAdmin
-    : it.perm
+    : it.noViewer && isViewer
+      ? !1
+      : it.perm
       ? canDo(profile, it.perm) || (it.viewerToo && isViewer)
       : !0;
 }
@@ -4602,6 +4605,7 @@ function Q() {
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
       canDo(s, "manageGroups") &&
+        !vw &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
       m === "attendance" &&
