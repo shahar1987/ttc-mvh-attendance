@@ -225,6 +225,20 @@ await t('מאמן בלי הרשאת תשלומים לא קורא מסמכי מע
 await t('מאמן בלי הרשאת תשלומים לא קורא מיפוי תשלומים', () => assertFails(getDocs(collection(as('coachA'), 'paymentMappings'))));
 await t('צופה בלי הרשאת תשלומים לא קורא מיפוי תשלומים', () => assertFails(getDocs(collection(as('viewer1'), 'paymentMappings'))));
 await t('בעל הרשאת תשלומים קורא את מסך התשלומים', async () => { await assertSucceeds(getDoc(doc(as('payer'), 'system/paymentSync'))); await assertSucceeds(getDocs(collection(as('payer'), 'paymentMappings'))); });
+
+console.log('\n— עריכת שחקן: הרשאת תשלומים ומעבר קבוצה (18.10) —');
+await env.withSecurityRulesDisabled(async (c) => {
+  await setDoc(doc(c.firestore(), 'groups/gC'), { name: 'קבוצה ג', coachId: 'coachA', coachIds: ['coachA'] });
+  await setDoc(doc(c.firestore(), 'players/p9'), { name: 'ילד ט', groupId: 'gB', parentPhone: '0500000011', notPaying: true });
+});
+await t('תשלומים: מסמן ששילם ומתקן שם (מסך "מי לא משלם")', async () => {
+  await assertSucceeds(updateDoc(doc(as('payer'), 'players/p9'), { notPaying: false, notPayingSource: 'manual' }));
+  await assertSucceeds(updateDoc(doc(as('payer'), 'players/p9'), { name: 'ילד ט׳', notPaying: false, notPayingSource: 'manual', paymentSettledAt: '2026-10-18T10:00:00Z' }));
+});
+await t('תשלומים: לא מעביר שחקן לקבוצה אחרת', () => assertFails(updateDoc(doc(as('payer'), 'players/p9'), { groupId: 'gA' })));
+await t('תשלומים: לא משנה טלפון הורה', () => assertFails(updateDoc(doc(as('payer'), 'players/p9'), { parentPhone: '0500000012' })));
+await t('מאמן של שתי קבוצות לא מעביר שחקן ביניהן (האפליקציה מסתירה את הבחירה)', () => assertFails(updateDoc(doc(as('coachA'), 'players/p3'), { groupId: 'gC' })));
+await t('מאמן עדיין עורך שחקן בקבוצה שלו', () => assertSucceeds(updateDoc(doc(as('coachA'), 'players/p3'), { parentName: 'הורה ג' })));
 await t('מנהל קורא את נתוני התשלומים', () => assertSucceeds(getDocs(collection(as('admin1'), 'paymentMappings'))));
 await t('אי אפשר לכתוב ליומן הפעולות', () => assertFails(setDoc(doc(as('coachA'), 'auditLog/x1'), { who: 'coachA', what: 'מזויף' })));
 
