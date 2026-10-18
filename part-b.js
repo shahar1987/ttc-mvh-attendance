@@ -3406,6 +3406,13 @@ function re({
         r(!1);
       }
     },
+    // תג "2 היעדרויות" בשורה — אותו סינון כמו בכרטיס "דורש תשומת לב" (absenceAlerts): לא אחרי "טופל",
+    // ולא על היעדרות ביום שאינו יום האימון של השחקן. מחושב פעם אחת ולא בכל הקשה.
+    alertDates = e.useMemo(() => {
+      let o2 = {};
+      absenceAlerts(n, [], l).forEach((r2) => (o2[r2.player.id] = r2.dates));
+      return o2;
+    }, [a, l, t.id]),
     I = n.filter((p) => x[p.id] === "Present").length,
     unmarked = n.filter((p) => !x[p.id]).length,
     // יום בלי אימון ועוד לא סומן כלום: במקום "מי לא הגיע" — הסבר וכפתור למקרה שבכל זאת היה אימון
@@ -3683,7 +3690,7 @@ function re({
       },
       n.map((p) => {
         let w = x[p.id] || null,
-          k = Qe(l, p.id),
+          k = alertDates[p.id] || null,
           savedRec = l.find(
             (v) => v.groupId === t.id && v.date === m && v.playerId === p.id,
           ),
