@@ -22,7 +22,7 @@ function extract(src, name) {
 
 function appFunctions(today) {
   const src = readFileSync(APP, "utf8");
-  const code = ["lastTwoAbsences", "absenceAlerts", "pendingAbsenceMsgs"].map((n) => extract(src, n)).join("\n");
+  const code = ["skipAbsenceMsg", "lastTwoAbsences", "absenceAlerts", "pendingAbsenceMsgs"].map((n) => extract(src, n)).join("\n");
   // E() באפליקציה מחזיר את התאריך של היום; groupCoachLabel לא משנה את הרשימה
   return new Function("E", "groupCoachLabel", `${code}\nreturn { absenceAlerts, pendingAbsenceMsgs };`)(() => today, () => null);
 }
@@ -38,12 +38,12 @@ const players = [
   P("repeat3"), // שלוש היעדרויות: התראה על שתיים, השלישית בודדת
   P("handled", { alertHandledDate: d(3) }),
   P("handledOld", { alertHandledDate: d(9) }),
-  P("moved", { groupId: "g2" }), // עבר קבוצה — ההיעדרות נשארת בקבוצה הישנה
+  P("moved", { groupId: "g2", joinDate: d(3) }), // עבר קבוצה — ההיעדרות נשארת בקבוצה הישנה
   P("sameDay"), // נוכח ונעדר באותו יום בשתי קבוצות
   P("inactive", { isActive: false }),
   P("deleted", { deleted: true }),
   P("sent"),
-  P("todayAbs"),
+  P("todayAbs", { joinDate: d(2) }), // חדש — בלי joinDate הוא "כמעט לא מגיע" מול שאר הנתונים
   P("todayPlusOld"), // היום + אתמול: היום לא נספר בהתראה
   P("old"), // מחוץ לחלון השבוע
   P("presentLast"),
