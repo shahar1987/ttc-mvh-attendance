@@ -2798,7 +2798,7 @@ function WhatsappModal({
               {
                 key: v,
                 onClick: () => pickGender(v),
-                className: `min-h-[36px] px-3 rounded-lg text-xs font-semibold border transition-colors ${gen === v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
+                className: `min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${gen === v ? "bg-blue-900 text-white border-blue-900" : "bg-white text-slate-500 border-slate-200"}`,
               },
               v === "m" ? "בן" : "בת",
             ),

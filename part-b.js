@@ -1090,7 +1090,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("check", u),
             disabled: taskBusy === u.id,
             className:
-              "text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-blue-900 bg-blue-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
           },
           "בדיקה",
         ),
@@ -1101,7 +1101,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
               onClick: () => runAccountTask("set-password", u),
               disabled: taskBusy === u.id,
               className:
-                "text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+                "text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
             },
             "סיסמה חדשה",
           ),
@@ -1111,7 +1111,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             onClick: () => runAccountTask("reset-access", u),
             disabled: taskBusy === u.id,
             className:
-              "text-xs font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 disabled:opacity-50",
+              "text-xs font-semibold text-amber-800 bg-amber-50 rounded-lg px-2 min-h-[44px] disabled:opacity-50",
           },
           "איפוס גישה",
         ),
@@ -1760,7 +1760,7 @@ function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, on
         "button",
         {
           onClick: () => onDelete(row.id),
-          className: "min-w-[36px] min-h-[36px] rounded-full bg-red-50 flex items-center justify-center shrink-0",
+          className: "min-w-[44px] min-h-[44px] rounded-full bg-red-50 flex items-center justify-center shrink-0",
           "aria-label": "מחק מיפוי",
         },
         e.createElement(Se, { className: "w-4 h-4 text-red-500" }),
