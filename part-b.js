@@ -3126,6 +3126,9 @@ function re({
     m = selDate,
     isPast = m !== today,
     o = l.some((p) => p.groupId === t.id && p.date === m),
+    // 18.10: יום שהקבוצה לא מתאמנת בו לא נפתח כשכולם "הגיעו" — לחיצה אחת שמרה נוכחות ליום בלי אימון.
+    // קבוצה בלי ימים מוגדרים נחשבת מתאמנת בכל יום, כמו קודם.
+    trainsOn = !Y(t) || t.days.includes(new Date(m + "T00:00:00").getDay()),
     existingDayRecords = () => l.filter((p) => p.groupId === t.id && p.date === m),
     staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
     confirmOverwrite = () => {
@@ -3247,7 +3250,7 @@ function re({
       // יום שעדיין אין לו רישום נפתח כשכולם מסומנים "הגיע" — המאמן מתקן רק
       // את הנעדרים ושומר. ברוב האימונים רוב השחקנים מגיעים, אז זה חוסך
       // עשר הקשות. השחקנים נכנסים ל-touched כדי שהשמירה תכתוב אותם.
-      prefill = !o && !RO;
+      prefill = !o && !RO && trainsOn;
     // אין עריכה פתוחה — מתחילים את רשימת ה-touched מחדש. בלי זה, כשרישומים של
     // היום מגיעים ממכשיר אחר אחרי מילוי אוטומטי, נשארו ב-touched שחקנים שערכם
     // עכשיו ריק, והשמירה ניסתה למחוק אותם — מחיקה מותרת רק למנהל, וכל השמירה נדחתה.
@@ -3380,6 +3383,16 @@ function re({
     },
     I = n.filter((p) => x[p.id] === "Present").length,
     unmarked = n.filter((p) => !x[p.id]).length,
+    // יום בלי אימון ועוד לא סומן כלום: במקום "מי לא הגיע" — הסבר וכפתור למקרה שבכל זאת היה אימון
+    offDayEmpty = u && !trainsOn && !o && n.length > 0 && unmarked === n.length,
+    fillAll = () => {
+      dirtyRef.current = dayKey;
+      let add = {};
+      n.forEach((w) => {
+        x[w.id] || ((add[w.id] = "Present"), touchedRef.current.add(w.id), autoRef.current.add(w.id));
+      });
+      h((k) => ({ ...k, ...add }));
+    },
     backBtn =
       i &&
       e.createElement(
@@ -3402,7 +3415,7 @@ function re({
         className:
           "mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap",
       },
-      showDatePicker || isPast
+      showDatePicker || isPast || offDayEmpty
         ? e.createElement(
             e.Fragment,
             null,
@@ -3423,6 +3436,7 @@ function re({
               className:
                 "border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-emerald-400",
             }),
+            (m !== defDay || showDatePicker) &&
             e.createElement(
               "button",
               {
@@ -3527,8 +3541,33 @@ function re({
     { className: "flex flex-col gap-4" },
     backBtn,
     // 29.9: כיוון "רק מי שחסר" — כולם נפתחים כהגיעו, והמסך שואל שאלה אחת
+    offDayEmpty &&
+      e.createElement(
+        "div",
+        { className: "px-1 text-right flex flex-col gap-2" },
+        e.createElement(
+          "h2",
+          { className: "text-2xl font-bold text-blue-950 leading-tight" },
+          isPast ? `אין אימון ב־${Ke(m)}` : "אין אימון היום",
+        ),
+        e.createElement(
+          "p",
+          { className: "text-sm text-slate-600" },
+          `ימי האימון של הקבוצה: ${q(t)}. אפשר לבחור למטה תאריך אחר.`,
+        ),
+        e.createElement(
+          "button",
+          {
+            onClick: fillAll,
+            className:
+              "self-start bg-white border border-slate-300 text-blue-900 rounded-xl px-4 min-h-[44px] text-sm font-semibold active:scale-[0.98] transition-transform",
+          },
+          "היה אימון בכל זאת — לסמן את כולם הגיעו",
+        ),
+      ),
     u &&
       n.length > 0 &&
+      !offDayEmpty &&
       e.createElement(
         "div",
         { className: "px-1 text-right" },
@@ -3820,6 +3859,7 @@ function re({
     u &&
       unmarked > 0 &&
       n.length > 0 &&
+      !offDayEmpty &&
       e.createElement(
         "p",
         { className: "text-xs text-amber-700 text-right leading-relaxed" },
@@ -3838,7 +3878,7 @@ function re({
             "button",
             {
               onClick: A,
-              disabled: g || n.length === 0,
+              disabled: g || n.length === 0 || offDayEmpty,
               className:
                 "w-full bg-blue-600 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
             },
