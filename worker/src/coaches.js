@@ -1,7 +1,7 @@
 // 🏓 מצב מדריך: מדריכים שהבעלים הפעיל מדברים עם שולה בוואטסאפ, אבל רק על הקבוצות שלהם.
 // אין להם גישה לשום דבר אחר: לא גוגל, לא פרסום, לא הודעות בשם המועדון, לא קלוד ולא הסוכנים.
 // מי מופעל: agentReports/coaches.ids (מזהי users, לא טלפונים — הריפו ציבורי). הטלפון והקבוצות נלקחים מהאפליקציה.
-import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
+import { normalizePhone, isValidPhone, israelToday } from "../../agents/lib/analysis.mjs";
 import { sendText, typing } from "../../agents/lib/whatsapp.mjs";
 import { TOOL_DEFS, makeTools, confirmed } from "./tools.js";
 import { coachIds } from "./reminders.js";
@@ -13,17 +13,37 @@ const SYSTEM = (c) => `את שולה, העוזרת בוואטסאפ של מוע�
 עברית תמיד, בקצרה, בסגנון וואטסאפ. עד 10 שורות.
 את עוזרת לו/ה רק בקבוצות שלו/ה: ${c.groups.map((g) => g.name).join(", ") || "אין קבוצות משויכות"}. נתונים רק מהכלים; אם אין — אומרים שאין.
 סימון נוכחות: לוודא קבוצה + תאריך + שמות לפני שמירה. אם כלי מחזיר "לא נשמר עדיין" — להציג לו/ה בדיוק מה יישמר ולשאול "לשמור?".
+כשהמדריך/ה מספר/ת איך היה האימון, מה עבד או מה לשפר — לשמור בכלי session_note במילים שלו/ה ולענות בקצרה "תודה, העברתי לשחר 🙏".
 כל בקשה אחרת (מייל, יומן, פרסום, הודעות להורים, קבוצות של מדריכים אחרים, שינויים באפליקציה) — לומר בנימוס שזה לא אצלך ושיפנה לשחר.
 אסור לחשוף מידע על הבעלים, על מדריכים אחרים או על קבוצות אחרות.`;
 
-// המדריך שכתב, אם הוא מופעל ויש לו טלפון תקין באפליקציה. אחרת null (= מתעלמים מההודעה)
-export async function coachFor(store, from) {
+// המדריך שכתב, אם הוא מופעל ויש לו טלפון תקין באפליקציה. אחרת null (= מתעלמים מההודעה).
+// any: גם מדריך שלא הופעל, אם הוא משויך לקבוצה פעילה (כדי לשמור סיכום אימון שהוא כתב). enabled אומר אם הופעל.
+export async function coachFor(store, from, { any = false } = {}) {
   const ids = ((await store.get(DOC)) || {}).ids || [];
-  if (!ids.length) return null;
+  if (!ids.length && !any) return null;
   const [users, groups] = await Promise.all([store.list("users"), store.list("groups")]);
-  const u = users.find((x) => ids.includes(x.id) && isValidPhone(x.phone || "") && normalizePhone(x.phone) === from);
+  const mineOf = (id) => groups.filter((g) => !g.deleted && g.isActive !== false && coachIds(g).includes(id));
+  const u = users.find((x) => (ids.includes(x.id) || (any && mineOf(x.id).length)) && isValidPhone(x.phone || "") && normalizePhone(x.phone) === from);
   if (!u) return null;
-  return { id: u.id, name: u.name || "מדריך", groups: groups.filter((g) => !g.deleted && g.isActive !== false && coachIds(g).includes(u.id)) };
+  return { id: u.id, name: u.name || "מדריך", groups: mineOf(u.id), enabled: ids.includes(u.id) };
+}
+
+// 📝 סיכום אימון שמדריך כתב — נשמר לפי תאריך, והסורק של הבוקר (agents/scan.mjs) שולח אותו לבעלים
+export async function addCoachNote(store, coach, text, msgId, now = new Date()) {
+  await store.update(`agentReports/coachNotes-${israelToday(now)}`, (cur) =>
+    (cur.notes || []).some((n) => n.msgId === msgId)
+      ? null
+      : { notes: [...(cur.notes || []), { at: now.toISOString(), msgId, coachId: coach.id, coach: coach.name, groups: coach.groups.map((g) => g.name), text: String(text).slice(0, 1500) }] },
+  );
+}
+
+// מדריך שלא הופעל ועונה להודעה של שולה (למשל לסיכום האימון) — שומרים כסיכום אימון ומודים לו
+export async function saveNoteFromCoach(m, store, wa, coach) {
+  const text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "").trim();
+  if (!text) return;
+  await addCoachNote(store, coach, text, m.id);
+  await sendText(wa, m.from, "תודה! העברתי לשחר 🙏");
 }
 
 // שיחה עם מדריך: היסטוריה נפרדת לכל מדריך (agentReports/coach_<id>), רק כלי הנוכחות של הקבוצות שלו
@@ -44,8 +64,12 @@ export async function handleCoach(m, env, store, wa, coach, gemini) {
   const tools = {
     ...Object.fromEntries(COACH_TOOLS.filter((n) => n !== "list_groups").map((n) => [n, all[n]])),
     list_groups: async () => JSON.stringify(coach.groups.map((g) => g.name)),
+    session_note: async ({ text: note }) => (await addCoachNote(store, coach, note || text, m.id), "נשמר. שחר יקבל את זה בדוח הבוקר."),
   };
-  const decls = TOOL_DEFS.filter((d) => COACH_TOOLS.includes(d.name)).map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+  const decls = [
+    ...TOOL_DEFS.filter((d) => COACH_TOOLS.includes(d.name)).map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters })),
+    { name: "session_note", description: "שומר סיכום אימון שהמדריך כתב (איך היה, מה עבד, מה לשפר) כדי שיגיע לבעלים בדוח הבוקר", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
+  ];
   const contents = [...hist.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })), { role: "user", parts: [{ text }] }];
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
   let answer = "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?";

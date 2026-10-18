@@ -1,7 +1,7 @@
 // הרצה: node --test agents/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues, topActions } from "./lib/analysis.mjs";
+import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues, topActions, coachNotesText } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const today = "2026-09-30";
@@ -244,4 +244,11 @@ test("top actions: at most 3, most urgent first, each with what to do", () => {
   assert.match(adult[1], /הודעה אישית: "שלח 1"/);
   assert.ok(!adult.join(" ").includes("להורים"));
   assert.match(fullReportText(r), /🎯 הכי חשוב היום:\n• ד \(ילדים א\)/);
+});
+
+test("coach notes text in the morning report", () => {
+  // 📝 סיכומי מדריכים בדוח הבוקר
+  assert.equal(coachNotesText([]), "");
+  assert.match(coachNotesText([{ coach: "דני", groups: ["מתחילים"], text: "עבדנו על הגשה, היה מעולה" }]), /📝 מה המדריכים כתבו אתמול:\n• דני \(מתחילים\): עבדנו על הגשה/);
+  assert.ok(coachNotesText([{ coach: "x", text: "א".repeat(2000) }]).length < 1300, "ארוך מדי נחתך");
 });

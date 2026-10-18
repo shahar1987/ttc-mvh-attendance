@@ -15,7 +15,7 @@ import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWe
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
-import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
+import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
 const MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"];
@@ -174,14 +174,16 @@ export default {
   },
 };
 
-// הבעלים — השיחה המלאה. מספר אחר — רק אם הוא מדריך מופעל; אחרת מתעלמים בשקט. לא זורק לעולם.
+// הבעלים — השיחה המלאה. מדריך מופעל — שיחה על הקבוצות שלו. מדריך שלא הופעל — מה שכתב נשמר כסיכום אימון.
+// כל מספר אחר — מתעלמים בשקט. לא זורק לעולם.
 async function route(m, env) {
   if (m.from === String(env.OWNER_PHONE || "").replace(/\D/g, "")) return handle(m, env);
   const store = db(env), wa = waConfig(env);
   let coach = null;
   try {
-    coach = await coachFor(store, m.from);
-    if (coach) await handleCoach(m, env, store, wa, coach, gemini);
+    coach = await coachFor(store, m.from, { any: true });
+    if (coach?.enabled) await handleCoach(m, env, store, wa, coach, gemini);
+    else if (coach) await saveNoteFromCoach(m, store, wa, coach);
   } catch (e) {
     if (coach) await sendText(wa, m.from, "משהו השתבש אצלי, נסה שוב עוד דקה.").catch(() => {});
     await store.merge("agentReports/bot", { lastCoachError: { at: new Date().toISOString(), message: String(e.message || e).slice(0, 300) } }).catch(() => {});
