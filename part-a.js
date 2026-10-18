@@ -358,6 +358,34 @@ function lastTwoAbsences(attendance, playerId) {
   if (recs[0].status !== "Absent" || recs[1].status !== "Absent") return null;
   return [recs[0].date, recs[1].date];
 }
+// היעדרות שלא שולחים עליה הודעה להורים (18.10, שולה: רוב הרשימה הייתה רעש):
+// יום שהוא לא יום האימון של השחקן, או שחקן שכמעט לא מגיע — הוא ברשימת "לא מגיעים", והודעה על כל אימון
+// שהוא מפספס מיותרת. ימי האימון: מה שהמדריך רשם, ואם לא רשם — ימים בשבוע שבהם השחקן הגיע לפחות פעמיים
+// ולפחות ל-40% מהאימונים של הקבוצה ב-8 השבועות שלפני ההיעדרות. אין מספיק נתונים — לא מדלגים.
+// מועתק ל-agents/lib/analysis.mjs (שינוי — לשנות גם שם).
+function skipAbsenceMsg(p, groupId, attendance, date) {
+  let wd = (d) => new Date(d + "T12:00:00Z").getUTCDay(),
+    from = new Date(Date.parse(date + "T12:00:00Z") - 56 * 864e5).toISOString().slice(0, 10),
+    held = {},
+    came = {};
+  attendance.forEach((a) => {
+    if (a.groupId !== groupId || !a.date || a.date < from || a.date >= date) return;
+    if (p.joinDate && a.date < p.joinDate) return;
+    let k = wd(a.date);
+    (held[k] = held[k] || new Set()).add(a.date);
+    a.playerId === p.id && a.status === "Present" && (came[k] = came[k] || new Set()).add(a.date);
+  });
+  let n = (o) => Object.values(o).reduce((x, v) => x + v.size, 0),
+    nHeld = n(held);
+  if (nHeld >= 4 && n(came) / nHeld <= 0.2) return !0;
+  let days =
+    Array.isArray(p.trainingDays) && p.trainingDays.length > 0
+      ? p.trainingDays
+      : Object.keys(held)
+          .map(Number)
+          .filter((k) => came[k] && came[k].size >= 2 && came[k].size / held[k].size >= 0.4);
+  return days.length > 0 && !days.includes(wd(date));
+}
 function absenceAlerts(players, groups, attendance, allowedGroupIds) {
   let out = [];
   players.forEach((p) => {
@@ -366,6 +394,7 @@ function absenceAlerts(players, groups, attendance, allowedGroupIds) {
     let dates = lastTwoAbsences(attendance, p.id);
     if (!dates) return;
     if (p.alertHandledDate && p.alertHandledDate >= dates[0]) return;
+    if (skipAbsenceMsg(p, p.groupId, attendance, dates[0])) return;
     out.push({
       player: p,
       group: groups.find((g) => g.id === p.groupId) || null,
@@ -738,6 +767,7 @@ function pendingAbsenceMsgs(players, groups, users, attendance) {
     if (p.alertHandledDate && p.alertHandledDate >= a.date) return;
     let two = lastTwoAbsences(attendance, p.id);
     if (two && two.includes(a.date)) return;
+    if (skipAbsenceMsg(p, a.groupId, attendance, a.date)) return;
     let g = groups.find((v) => v.id === a.groupId) || null;
     out.push({
       player: p,
@@ -2264,9 +2294,7 @@ function st({
 }) {
   let [o, x] = b(null),
     [h, u] = b(!1),
-    alerts = absenceAlerts(a, s, l, null),
     quotaAl = quotaAlerts(a, s, l),
-    pendingMsgs = pendingAbsenceMsgs(a, s, t, l),
     pastMissing = missingAttendanceDays(s, l, CX),
     f = a.filter((d) => d.isActive && !d.deleted),
     uniqueActiveCount = countUniqueActivePlayers(a),
@@ -2315,7 +2343,6 @@ function st({
       }
     };
   let [dashErr, setDashErr] = b("");
-  useLocalAlertNotice(alerts, "נוכחות מועדון");
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-5" },
@@ -2381,18 +2408,7 @@ function st({
               ? onOpenGroupDate(o2.group.id, o2.date)
               : onOpenGroup(o2.group.id),
     }),
-    !RO &&
-      e.createElement(AlertsCard, {
-        alerts,
-        onWhatsapp: WA,
-        onEdit: EP,
-      }),
-    !RO &&
-      e.createElement(AbsenceMsgCard, {
-        items: pendingMsgs,
-        onWhatsapp: WA,
-        currentUserId: c,
-      }),
+    // 18.10: הודעות להורים יורדות מהדשבורד של המנהלת — הן אצל המאמנים (CoachHome), והבוט מזכיר להם כל בוקר
     e.createElement(QuotaAlertsCard, { alerts: quotaAl }),
     !RO &&
     e.createElement(

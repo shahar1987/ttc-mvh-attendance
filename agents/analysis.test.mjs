@@ -135,3 +135,22 @@ test("today's absence is pending (like the app)", () => {
   const r = analyze({ players: [P("a")], groups, attendance: [A("a", today, "Absent")], today });
   assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), [`absence:${today}`]);
 });
+
+test("skipAbsenceMsg: not the player's day, or a player who almost never comes", async () => {
+  const { skipAbsenceMsg } = await import("./lib/analysis.mjs");
+  // קבוצה בשני (2026-09-07...) ובחמישי (2026-09-10...), 4 שבועות
+  const mondays = ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"];
+  const thursdays = ["2026-09-10", "2026-09-17", "2026-09-24", "2026-10-01"];
+  const R = (playerId, date, status) => ({ playerId, date, status, groupId: "g" });
+  const att = [...mondays, ...thursdays].map((d) => R("other", d, "Present"));
+  mondays.forEach((d) => att.push(R("mon", d, "Present")));
+  thursdays.forEach((d) => att.push(R("mon", d, "Absent")));
+  att.push(R("rare", mondays[0], "Present"));
+  const p = (id, extra = {}) => ({ id, groupId: "g", ...extra });
+  assert.equal(skipAbsenceMsg(p("mon"), "g", att, "2026-10-08"), true, "Thursday is not his day (inferred)");
+  assert.equal(skipAbsenceMsg(p("mon"), "g", att, "2026-10-05"), false, "Monday is his day");
+  assert.equal(skipAbsenceMsg(p("other"), "g", att, "2026-10-08"), false, "comes on both days");
+  assert.equal(skipAbsenceMsg(p("rare"), "g", att, "2026-10-05"), true, "almost never comes");
+  assert.equal(skipAbsenceMsg(p("other", { trainingDays: [1] }), "g", att, "2026-10-08"), true, "days the coach set win over inferred ones");
+  assert.equal(skipAbsenceMsg(p("new"), "g", [], "2026-10-08"), false, "no data: keep the message");
+});

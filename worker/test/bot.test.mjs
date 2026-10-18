@@ -331,6 +331,22 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   docs.delete("agentReports/coaches");
   docs.delete("cancellations/c1");
 }
+// 📨 תזכורת בוקר למאמן על הודעות היעדרות שלא נשלחו: כבויה בלי PARENT_MSG_NAG, לא לפני 10:00 ולא בשבת, פעם ביום
+{
+  const { parentMsgNag } = await import("../src/reminders.js");
+  const on = { ...env, PARENT_MSG_NAG: "on" };
+  const mon = (h) => new Date(`2026-10-05T${h}:00:00Z`);
+  assert.equal(await parentMsgNag(env, db(env), waConfig(env), mon("08")), "nag off");
+  assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("06")), "not now", "09:00 — מוקדם");
+  assert.equal(await parentMsgNag(on, db(env), waConfig(env), new Date("2026-10-10T08:00:00Z")), "not now", "שבת");
+  const n5 = sent.length;
+  assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /^nag: .*יוסי \(\d+\) ✓/);
+  const m = sent.slice(n5).filter((b) => b.type === "template" && b.template.name === "club_message" && b.to === "972501234567");
+  assert.equal(m.length, 1);
+  assert.match(m[0].template.components[0].parameters[0].text, /^בוקר טוב יוסי, .*היעדרות.* שעוד לא נשלחו \(.*בוגרים.*\)\. אפשר לשלוח מכאן בלחיצה: https:\/\/shahar1987/);
+  assert.match(JSON.stringify(sent.slice(n5).at(-1)), /תזכורת למאמנים על הודעות היעדרות/, "הבעלים מקבל סיכום");
+  assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("09")), "done today");
+}
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {
   const { shortLinks } = await import("../src/reminders.js");
