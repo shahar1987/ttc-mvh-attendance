@@ -272,6 +272,14 @@ assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(docs.get("agentReports/bot").outbox.reminders.text, /נשלחה תזכורת/, "הסיכום נשמר לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+// קבוצה עם startTime: התזכורת יוצאת 10 דקות אחרי ההתחלה, בלי לחכות לסוף (18:00 בישראל; התחיל 17:45, נגמר 21:00)
+put("groups/g7", { name: "מוקדם", days: [0], startTime: "17:45", endTime: "21:00", coachId: "u1" });
+put("players/p7", { name: "p7", groupId: "g7", isActive: true });
+assert.match(await remindCoaches(env, db(env), waConfig(env), sunday), /מוקדם — יוסי: נשלחה תזכורת ✓/);
+put("groups/g8", { name: "עוד לא", days: [0], startTime: "17:55", endTime: "21:00", coachId: "u1" });
+put("players/p8", { name: "p8", groupId: "g8", isActive: true });
+assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "התחיל לפני 5 דקות — עוד לא");
+for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.delete(p);
 // 📋 סיכום אימון למאמן: רק לקבוצה שמולאה (בוגרים), עם מי הגיע / לא הגיע / ליצור קשר, ופעם אחת בלבד
 {
   const { coachSummaries } = await import("../src/reminders.js");
