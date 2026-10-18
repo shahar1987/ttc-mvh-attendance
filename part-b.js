@@ -3152,7 +3152,7 @@ function re({
     undoCancel = async () => {
       if (
         !(await askConfirm(
-          "להחזיר את האימון? אחרי ההחזרה יהיה צריך לרשום נוכחות מחדש.",
+          "להחזיר את האימון? היום יחזור להיספר בחישובי הנוכחות, וכל נוכחות שכבר נרשמה לו תחזור כמו שהייתה.",
           { yes: "כן, להחזיר את האימון", no: "חזרה" },
         ))
       )
@@ -3476,7 +3476,8 @@ function re({
                   confirmLeave().then((ok) => ok &&
                     ((dirtyRef.current = null),
                     touchedRef.current.clear(),
-                    setSelDate(today),
+                    // היום של המסך מתחלף ב-04:00 (attDefaultDay), לא בחצות
+                    setSelDate(defDay),
                     setShowDatePicker(!1)));
                 },
                 className: "text-xs font-semibold text-blue-900",
@@ -3492,7 +3493,7 @@ function re({
                 "flex items-center gap-1.5 text-sm font-semibold text-blue-900 min-h-[44px]",
             },
             e.createElement(ge, { className: "w-3.5 h-3.5" }),
-            "עדכון נוכחות ליום שלא מולא",
+            RO ? "צפייה ביום אחר" : "עדכון נוכחות ליום שלא מולא",
           ),
     );
   if (cancelled)
@@ -3629,7 +3630,9 @@ function re({
             ? isPast
               ? "נשמר ✓"
               : "נשמר להיום ✓"
-            : "טרם נשמר",
+            : RO
+              ? "לא מולא"
+              : "טרם נשמר",
         ),
         e.createElement(
           "div",

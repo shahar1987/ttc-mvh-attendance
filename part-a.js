@@ -617,7 +617,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
       if (
         hasAttendance &&
         !(await askConfirm(
-          "כבר נשמרה נוכחות להיום לקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
+          "כבר נשמרה נוכחות ליום הזה בקבוצה זו. אחרי ביטול האימון היום לא ייספר בשום חישוב. להמשיך?",
           { yes: "כן, לבטל את האימון", no: "חזרה" },
         ))
       )
@@ -725,7 +725,7 @@ function CancelTrainingModal({ group, date, hasAttendance, onConfirm, onClose })
             className:
               "text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right leading-relaxed",
           },
-          "שים לב: כבר נשמרה נוכחות להיום. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
+          "שים לב: כבר נשמרה נוכחות ליום הזה. אחרי הביטול היום לא ייספר בשום חישוב (ביטול הביטול מחזיר אותו).",
         ),
       err &&
         e.createElement("p", { className: "text-xs text-red-600 text-right" }, err),
