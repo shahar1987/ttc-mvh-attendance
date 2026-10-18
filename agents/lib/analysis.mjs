@@ -50,7 +50,8 @@ export function isValidPhone(value) {
   return /^972\d{8,9}$/.test(normalizePhone(value));
 }
 
-const active = (p) => p && p.isActive && !p.deleted;
+// ילד בניסיון (trial) לא נכנס להתראות, להודעות להורים ולרשימת הסיכון — כמו באפליקציה
+const active = (p) => p && p.isActive && !p.deleted && !p.trial;
 
 // רשומה אחת לכל יום לכל שחקן; נוכחות גוברת על היעדרות. מהחדש לישן.
 export function playerHistory(attendance, playerId, today) {

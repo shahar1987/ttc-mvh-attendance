@@ -347,6 +347,27 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.match(JSON.stringify(sent.slice(n5).at(-1)), /תזכורת למאמנים על הודעות היעדרות/, "הבעלים מקבל סיכום");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("09")), "done today");
 }
+// 🆕 ילדים בניסיון: מי שהגיע פעמיים — שאלה לבעלים; מי שלא הגיע 21 יום — יוצא לבד; "כן ל-1" הופך לקבוע
+{
+  const { trialCheck } = await import("../src/reminders.js");
+  put("players/tr1", { name: "ניסיון א", groupId: "g3", isActive: true, trial: true, joinDate: "2026-09-28" });
+  put("players/tr2", { name: "ניסיון ב", groupId: "g3", isActive: true, trial: true, joinDate: "2026-09-01" });
+  put("attendance/2026-09-29_g3_tr1", { date: "2026-09-29", groupId: "g3", playerId: "tr1", status: "Present" });
+  put("attendance/2026-10-01_g3_tr1", { date: "2026-10-01", groupId: "g3", playerId: "tr1", status: "Present" });
+  const day = new Date("2026-10-05T08:00:00Z");
+  assert.equal(await trialCheck(db(env), waConfig(env), new Date("2026-10-05T06:00:00Z")), "not now");
+  const n0 = sent.length;
+  assert.equal(await trialCheck(db(env), waConfig(env), day), "trials: ask 1, dropped 1");
+  assert.match(JSON.stringify(sent.slice(n0)), /1\. ניסיון א \(נוער\) — 2 אימונים.*יצאו מהרשימה.*ניסיון ב/);
+  assert.equal(docs.get("players/tr2").isActive, false, "לא הגיע 21 יום — יצא");
+  assert.equal(docs.get("players/tr1").trial, true);
+  assert.equal(await trialCheck(db(env), waConfig(env), day), "done today");
+  assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /עכשיו שחקנים קבועים: 1\. ניסיון א/);
+  assert.equal(docs.get("players/tr1").trial, false);
+  assert.deepEqual(docs.get("agentReports/bot").trialAsk.items, []);
+  assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /לא ברשימת/);
+  for (const p of ["players/tr1", "players/tr2", "attendance/2026-09-29_g3_tr1", "attendance/2026-10-01_g3_tr1"]) docs.delete(p);
+}
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {
   const { shortLinks } = await import("../src/reminders.js");
