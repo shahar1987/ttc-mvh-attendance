@@ -1,0 +1,19 @@
+name: Fill player data (one-off)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fill-player-data.yml']
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - run: npm install firebase-admin@12.7.0 --no-audit --no-fund
+      - env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/fill_player_data.mjs
