@@ -1,7 +1,7 @@
 // הרצה: node --test agents/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, dropoutRisk, addDays, fullReportText } from "./lib/analysis.mjs";
+import { analyze, dropoutRisk, addDays, fullReportText, coachNotesText } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const today = "2026-09-30";
@@ -154,3 +154,9 @@ test("skipAbsenceMsg: not the player's day, or a player who almost never comes",
   assert.equal(skipAbsenceMsg(p("other", { trainingDays: [1] }), "g", att, "2026-10-08"), true, "days the coach set win over inferred ones");
   assert.equal(skipAbsenceMsg(p("new"), "g", [], "2026-10-08"), false, "no data: keep the message");
 });
+
+// 📝 סיכומי מדריכים בדוח הבוקר
+assert.equal(coachNotesText([]), "");
+assert.match(coachNotesText([{ coach: "דני", groups: ["מתחילים"], text: "עבדנו על הגשה, היה מעולה" }]), /📝 מה המדריכים כתבו אתמול:\n• דני \(מתחילים\): עבדנו על הגשה/);
+assert.ok(coachNotesText([{ coach: "x", text: "א".repeat(2000) }]).length < 1300, "ארוך מדי נחתך");
+console.log("coach notes text ok");

@@ -5,7 +5,7 @@
 //
 // פרטיות: הריפו ציבורי והיומן גלוי, ולכן מודפסים רק מספרים.
 import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
-import { analyze, addDays, israelToday, oneLineSummary, fullReportText } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, oneLineSummary, fullReportText, coachNotesText } from "./lib/analysis.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
 const db = firestore();
@@ -21,7 +21,11 @@ const [players, groups, attendance] = await Promise.all([
 console.log(`loaded ${players.length} players, ${groups.length} groups, ${attendance.length} attendance records`);
 
 const report = analyze({ players, groups, attendance, today });
-const doc = { ...report, createdAt: new Date().toISOString(), text: fullReportText(report) };
+// 📝 מה המדריכים כתבו אתמול (worker/src/coaches.js שומר לפי תאריך)
+// shortcut: מה שנכתב אחרי חצות ולפני הדוח מגיע רק בדוח של מחר; לאחד ימים אם זה מפריע
+const notes = (await db.collection("agentReports").doc(`coachNotes-${addDays(today, -1)}`).get()).data()?.notes || [];
+console.log("coach notes", notes.length);
+const doc = { ...report, createdAt: new Date().toISOString(), text: fullReportText(report) + coachNotesText(notes) };
 await db.collection("agentReports").doc("latest").set(doc);
 await db.collection("agentReports").doc(`scan-${today}`).set(doc);
 console.log("summary", JSON.stringify(report.summary));
@@ -30,6 +34,6 @@ await tellOwner(db, {
   agent: "scan",
   text: doc.text,
   template: "agent_daily_report",
-  templateParam: oneLineSummary(report),
+  templateParam: oneLineSummary(report) + (notes.length ? ` · ${notes.length} סיכומי מדריכים` : ""),
 });
 await heartbeat(db, "scan", { summary: report.summary });

@@ -1104,8 +1104,17 @@ console.log("google-via-claude ok");
   put("groups/g2", { coachIds: ["c2"] });
   const coach = "972541234567";
   const before = sent.length;
-  await webhook("היי", coach);
-  assert.equal(sent.length, before, "מדריך שלא הופעל — מתעלמים");
+  await webhook("היי", "972500000077");
+  assert.equal(sent.length, before, "מספר שאינו מדריך — מתעלמים");
+  // 📝 מדריך שלא הופעל עונה לסיכום האימון — נשמר כסיכום ומקבל תודה, בלי Gemini
+  const gc = geminiCalls.length;
+  await webhook("היה אימון טוב, עבדנו על הגשות", coach, "note1");
+  await webhook("היה אימון טוב, עבדנו על הגשות", coach, "note1"); // אותה הודעה פעמיים — נשמרת פעם אחת
+  const notes = docs.get(`agentReports/coachNotes-${TODAY}`).notes;
+  assert.equal(notes.length, 1);
+  assert.deepEqual([notes[0].coach, notes[0].groups, notes[0].text], ["יוסי מדריך", ["מתחילים שאר ישוב"], "היה אימון טוב, עבדנו על הגשות"]);
+  assert.equal(texts().at(-1), "תודה! העברתי לשחר 🙏");
+  assert.equal(geminiCalls.length, gc, "לא עובר למודל");
 
   assert.match(await callTool("תפעילי את שולה ליוסי", { name: "coach_access", args: { name: "יוסי מד" } }), /לא בוצע עדיין/);
   assert.equal(docs.has("agentReports/coaches"), false);
@@ -1119,7 +1128,7 @@ console.log("google-via-claude ok");
   };
   assert.deepEqual(JSON.parse(await coachCall("אילו קבוצות יש לי?", { name: "list_groups", args: {} })), ["מתחילים שאר ישוב"]);
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name).sort();
-  assert.deepEqual(decls, ["get_attendance", "get_weather", "list_groups", "mark_attendance"], "למדריך אין כלים של הבעלים");
+  assert.deepEqual(decls, ["get_attendance", "get_weather", "list_groups", "mark_attendance", "session_note"], "למדריך אין כלים של הבעלים");
   assert.match(geminiCalls.at(-1).systemInstruction.parts[0].text, /יוסי מדריך/);
   assert.equal(sent.at(-1).to, coach);
   assert.equal(texts().at(-1), "תשובה למדריך");
@@ -1127,7 +1136,9 @@ console.log("google-via-claude ok");
   assert.match(await coachCall("תפרסמי פוסט", { name: "publish_post", args: {} }), /אין לך הרשאה/);
   await coachCall("נועה הגיעה היום למתחילים", { name: "mark_attendance", args: { group: "מתחילים", present: ["נועה"] } });
   assert.equal(docs.get(`attendance/${TODAY}_g1_p2`).markedBy, "shula-whatsapp:c1");
-  assert.equal(docs.get("agentReports/coach_c1").history.length, 8, "היסטוריה נפרדת למדריך (4 הודעות)");
+  await coachCall("היה מעולה היום, לשפר חזרות", { name: "session_note", args: { text: "היה מעולה היום, לשפר חזרות" } });
+  assert.equal(docs.get(`agentReports/coachNotes-${TODAY}`).notes.at(-1).text, "היה מעולה היום, לשפר חזרות", "מדריך מופעל — נשמר דרך הכלי");
+  assert.equal(docs.get("agentReports/coach_c1").history.length, 10, "היסטוריה נפרדת למדריך (5 הודעות)");
   // 🔕 מאמן מחליף: עוצרים לו את ההודעות האוטומטיות בפקודה אחת, ומחזירים באותה דרך
   assert.match(await callTool("תפסיקי לשלוח לרונית", { name: "coach_messages", args: { name: "רונית", on: false } }), /הפסקתי לשלוח לרונית מדריכה/);
   assert.deepEqual(docs.get("agentReports/coaches").quiet, ["c2"]);

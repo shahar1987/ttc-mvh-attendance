@@ -287,3 +287,11 @@ export function fullReportText(r, max = 15) {
   if (r.pending.length) lines.push('לשליחת ההודעות: "שלח הכל", או "שלח 1,3".');
   return lines.join("\n").trim();
 }
+
+// 📝 סיכומי האימון שהמדריכים כתבו לשולה — נוסף לדוח הבוקר. אין סיכומים — כלום.
+export function coachNotesText(notes, max = 1200) {
+  if (!notes.length) return "";
+  const lines = notes.map((n) => `• ${n.coach}${n.groups?.length ? ` (${n.groups.join(", ")})` : ""}: ${n.text}`);
+  const body = lines.join("\n");
+  return `\n\n📝 מה המדריכים כתבו אתמול:\n${body.length > max ? body.slice(0, max) + "…" : body}`;
+}
