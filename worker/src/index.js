@@ -17,7 +17,8 @@ import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { dashboardRoute, dashboardUrl } from "./dashboard.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
-const MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-flash-lite-latest"];
+// הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
+const MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"];
 // טקסט פשוט בלי כלים (בוקר טוב למאמנים, הבדיקה הלילית) — המודל הזול קודם. השיחות עם הבעלים נשארות על הרגיל (החלטת הבעלים 12.10)
 const LITE = "gemini-flash-lite-latest";
 const REQUIRED = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "META_APP_SECRET", "WEBHOOK_VERIFY_TOKEN", "GEMINI_API_KEY", "FIREBASE_SERVICE_ACCOUNT"];

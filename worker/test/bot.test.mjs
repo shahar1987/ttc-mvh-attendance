@@ -598,7 +598,7 @@ env.GEMINI_RETRY_SCALE = 0;
 geminiQueue.push({ status: 429 }, { status: 429 }, { status: 503 }, [{ text: "אחרי ניסיון חוזר" }]);
 await webhook("מה קורה");
 assert.equal(texts().at(-1), "אחרי ניסיון חוזר");
-assert.match(docs.get("agentReports/bot").log.at(-1).gem.join(), /lite-latest \d+s 503,gemini-flash-lite-latest \d+s 200$/);
+assert.match(docs.get("agentReports/bot").log.at(-1).gem.join(), /3.8-flash \d+s 503,gemini-3.8-flash \d+s 200$/);
 // עומס שלא עובר — הודעה ברורה, בלי לנסות שוב מודלים שבמכסה
 geminiQueue.push({ status: 429 }, { status: 429 }, { status: 503 }, { status: 503 }, { status: 503 });
 const calls503 = geminiCalls.length;
