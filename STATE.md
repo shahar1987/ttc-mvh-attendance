@@ -22,6 +22,14 @@
 - שלום: ...
 ```
 
+## [ממתין ל"כן"] 2026-10-20 — כניסה עם גוגל בלוח המועדון: רישום גולשים והתאמה לשחקנים
+סוג: ✨ פיצ'ר + 🔒 חוקי Firestore (שני אוספים חדשים; האוספים הקיימים וחוזה השמירה של attendance לא השתנו)
+מסלול: ענף claude/board-members ← PR ← אישור שלום (שלום אישר את התוכנית 20.10, "כן") ← שחרור
+- ארכיטקט: לוח המועדון (ריפו נפרד, ציבורי) מתחבר ל-Firebase Auth של הפרויקט הזה. לגולש אין users/{uid}, ולכן hasProfile() חוסם לו כל אוסף אחר. הוא כותב רק boardMembers/{uid} של עצמו. ההתאמה לשחקן — באוסף נפרד boardMemberMatches שרק השרת כותב.
+- בונה: firestore.rules — boardMembers (כתיבה/קריאה/מחיקה של המסמך שלך בלבד, שדות name/email/phone/photo/consent/createdAt/updatedAt, נייד ישראלי, consent=true, זמנים = request.time; מנהל קורא/מעדכן/מוחק הכל) ו-boardMemberMatches (מנהל קורא, אף לקוח לא כותב). scripts/match_board_members.mjs + .github/workflows/board-members.yml (כל שעה ב-:17): נרמול טלפון כמו בסנכרון התשלומים, השוואה ל-parentPhone/phone/mobile, ונרשם חדש שלא נמצא — הודעה לשולה בתור של הבוט (agentReports/bot.outboxQueue). ביומן רק מספרים. part-b.js: מסך מנהל "נרשמו באפליקציית המועדון" בלשונית ליד ניהול הרשאות (רשימה, סינון "רק מי שלא נמצא", מחיקה עם אישור); המאזינים רק כשהמסך פתוח.
+- בודק: node --check + esbuild (938KB) + privacy-guard; agents 49/49 (כולל board-members.test.mjs: שקילות normalisePhone מול sync_payments.mjs). rules-tests: 15 בדיקות חדשות; האמולטור לא רץ בסביבה של Claude (הורדת ה-jar חסומה) — רצות ב-PR (firestore-rules.yml).
+- שלום: לאשר PR (החוקים נפרסים אוטומטית במיזוג). בקונסולת Firebase: Authentication ⟵ Sign-in method ⟵ Google ⟵ Enable, ולוודא ש-shahar1987.github.io מופיע ב-Authorized domains.
+
 ## [ממתין ל"כן"] 2026-10-18 — תיקוני בדיקת QA של אפליקציית הנוכחות (A1–A9 ותיקוני B קטנים)
 סוג: 🐞 באגים + 🔒 שינוי אחד בחוקי Firestore (A7). חוזה השמירה של attendance לא השתנה.
 מסלול: ענף claude/training-days-parent-messages-6j4tai ← PR ← אישור שלום (נפרד לחוקים) ← שחרור

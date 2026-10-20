@@ -269,6 +269,54 @@ await t('רשימת השחקנים: רק מנהל', async () => {
   await assertFails(setDoc(doc(as('coachA'), 'uniformConfig/roster'), { players: [] }));
 });
 
+console.log('\n— נרשמים בלוח המועדון (כניסה עם גוגל, בלי פרופיל) —');
+const boardAs = (uid) => env.authenticatedContext(uid, { email: `${uid}@example.com` }).firestore();
+const bm = (uid, extra = {}) => ({ name: 'גולש', email: `${uid}@example.com`, phone: '050-1234567', consent: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
+await t('גולש יוצר את המסמך של עצמו', () => assertSucceeds(setDoc(doc(boardAs('bm1'), 'boardMembers/bm1'), bm('bm1'))));
+await t('גולש קורא את המסמך של עצמו ומעדכן אותו', async () => {
+  await assertSucceeds(getDoc(doc(boardAs('bm1'), 'boardMembers/bm1')));
+  await assertSucceeds(updateDoc(doc(boardAs('bm1'), 'boardMembers/bm1'), { phone: ' +972501234567 ', updatedAt: serverTimestamp() }));
+});
+await t('לא משנה את createdAt בעדכון', () => assertFails(updateDoc(doc(boardAs('bm1'), 'boardMembers/bm1'), { createdAt: 'x', updatedAt: serverTimestamp() })));
+await t('לא יוצר מסמך בשם של מישהו אחר', () => assertFails(setDoc(doc(boardAs('bm1'), 'boardMembers/bm2'), bm('bm1'))));
+await t('לא מוסיף שדה שלא ברשימה', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { role: 'Admin' }))));
+await t('לא שומר טלפון שאינו נייד ישראלי', async () => {
+  await assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { phone: '04-6951234' })));
+  await assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { phone: '050123' })));
+  await assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { phone: '050-1234567 ext 9999' })));
+});
+await t('לא שומר בלי הסכמה', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { consent: false }))));
+await t('לא שומר אימייל שאינו של החשבון', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { email: 'other@example.com' }))));
+await t('לא שומר שם ארוך מ-80', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { name: 'א'.repeat(81) }))));
+await t('לא קורא מסמך של גולש אחר ולא את הרשימה', async () => {
+  await assertFails(getDoc(doc(boardAs('bm2'), 'boardMembers/bm1')));
+  await assertFails(getDocs(collection(boardAs('bm1'), 'boardMembers')));
+});
+await t('גולש בלי פרופיל לא קורא שחקנים, משתמשים או נוכחות', async () => {
+  await assertFails(getDocs(collection(boardAs('bm1'), 'players')));
+  await assertFails(getDoc(doc(boardAs('bm1'), 'players/p1')));
+  await assertFails(getDocs(collection(boardAs('bm1'), 'users')));
+  await assertFails(getDocs(collection(boardAs('bm1'), 'attendance')));
+});
+await t('לא כותב ולא קורא את תוצאת ההתאמה', async () => {
+  await assertFails(setDoc(doc(boardAs('bm1'), 'boardMemberMatches/bm1'), { status: 'matched', playerIds: ['p1'] }));
+  await assertFails(getDoc(doc(boardAs('bm1'), 'boardMemberMatches/bm1')));
+  await assertFails(setDoc(doc(as('admin1'), 'boardMemberMatches/bm1'), { status: 'matched', playerIds: ['p1'] }));
+});
+await t('מאמן לא קורא את הנרשמים', () => assertFails(getDocs(collection(as('coachA'), 'boardMembers'))));
+await t('מנהל קורא הכל, מעדכן ומוחק', async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'boardMemberMatches/bm1'), { status: 'matched', playerIds: ['p1'] }));
+  await assertSucceeds(getDocs(collection(as('admin1'), 'boardMembers')));
+  await assertSucceeds(getDocs(collection(as('admin1'), 'boardMemberMatches')));
+  await assertSucceeds(updateDoc(doc(as('admin1'), 'boardMembers/bm1'), { name: 'מתוקן' }));
+});
+await t('גולש מוחק את עצמו (זכות להישכח), לא אחר', async () => {
+  await assertSucceeds(setDoc(doc(boardAs('bm4'), 'boardMembers/bm4'), bm('bm4')));
+  await assertFails(deleteDoc(doc(boardAs('bm4'), 'boardMembers/bm1')));
+  await assertSucceeds(deleteDoc(doc(boardAs('bm4'), 'boardMembers/bm4')));
+  await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardMembers/bm1')));
+});
+
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
   await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));
