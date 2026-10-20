@@ -59,7 +59,17 @@ test("owner is told once per not-found member", () => {
 });
 
 test("owner message carries name and phone on its first line (the template parameter)", () => {
-  const first = ownerText({ name: "גולש", phone: "050-1234567" }).split("\n")[0];
+  const first = ownerText([{ name: "גולש", phone: "050-1234567" }]).split("\n")[0];
+  assert.match(first, /^🆕 1 נרשמו/);
   assert.match(first, /גולש/);
   assert.match(first, /050-1234567/);
+});
+
+test("one combined owner message: first 10, then …ועוד N", () => {
+  const many = Array.from({ length: 13 }, (_, i) => ({ name: `גולש${i}`, phone: "050-1234567" }));
+  const t = ownerText(many);
+  assert.match(t, /^🆕 13 נרשמו/);
+  assert.match(t, /גולש9 /);
+  assert.doesNotMatch(t, /גולש10 /);
+  assert.match(t, /…ועוד 3/);
 });
