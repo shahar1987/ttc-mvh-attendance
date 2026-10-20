@@ -24,6 +24,7 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d, 'users/coachNew'),  { role: 'Coach', name: 'מאמן חדש' });
   await setDoc(doc(d, 'users/coachNoComp'), { role: 'Coach', name: 'מאמן בלי תחרויות', permissions: [] });
   await setDoc(doc(d, 'users/parent1'), { role: 'Member', name: 'הורה', phone: '0500000009' });
+  await setDoc(doc(d, 'users/poster'), { role: 'Coach', name: 'מפרסם', permissions: ['boardPosts'] });
   await setDoc(doc(d, 'users/parent2'), { role: 'Member', name: 'הורה אחר' });
 
   await setDoc(doc(d, 'groups/gA'), { name: 'קבוצה א', coachId: 'coachA', coachIds: ['coachA'] });
@@ -399,6 +400,40 @@ await t('מנהל קורא ומוחק', async () => {
   await assertSucceeds(getDocs(collection(as('admin1'), 'pushTokens')));
   await assertSucceeds(deleteDoc(doc(as('admin1'), `pushTokens/${TOK}`)));
 });
+
+console.log('\n— עדכונים בלוח המועדון (boardPosts) —');
+const bp = (uid, extra = {}) => ({ title: 'אימון בוטל', text: 'אין אימון היום', banner: false, pin: false, hidden: false,
+  link: '', linkText: '', date: '2026-10-20', author: uid, authorName: 'מפרסם', updatedAt: serverTimestamp(), createdAt: serverTimestamp(), ...extra });
+await t('מי שקיבל boardPosts מפרסם ועורך', async () => {
+  await assertSucceeds(setDoc(doc(as('poster'), 'boardPosts/b1'), bp('poster', { link: 'https://example.org/x', linkText: 'פרטים' })));
+  await assertSucceeds(updateDoc(doc(as('poster'), 'boardPosts/b1'), { pin: true, author: 'poster', authorName: 'מפרסם', updatedAt: serverTimestamp() }));
+});
+await t('גולש לא מחובר קורא', async () => {
+  await assertSucceeds(getDoc(doc(anon(), 'boardPosts/b1')));
+  await assertSucceeds(getDocs(collection(anon(), 'boardPosts')));
+});
+await t('בלי ההרשאה — נחסם', async () => {
+  await assertFails(setDoc(doc(as('coachB'), 'boardPosts/b2'), bp('coachB')));
+  await assertFails(setDoc(doc(anon(), 'boardPosts/b2'), bp('x')));
+  await assertFails(deleteDoc(doc(as('coachB'), 'boardPosts/b1')));
+});
+await t('מנהל מפרסם ומוחק', async () => {
+  await assertSucceeds(setDoc(doc(as('admin1'), 'boardPosts/b3'), bp('admin1')));
+  await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardPosts/b3')));
+});
+await t('שדה נוסף / קישור לא https / כותרת ריקה — נחסם', async () => {
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { push: true })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { link: 'http://example.org' })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { link: 'javascript:alert(1)' })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { title: '' })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { date: '20.10.2026' })));
+});
+await t('התחזות לכותב אחר או שינוי createdAt — נחסם', async () => {
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b5'), bp('admin1')));
+  await assertFails(updateDoc(doc(as('poster'), 'boardPosts/b1'), { author: 'admin1', updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(as('poster'), 'boardPosts/b1'), { createdAt: serverTimestamp(), author: 'poster', updatedAt: serverTimestamp() }));
+});
+await t('מי שקיבל boardPosts מוחק', () => assertSucceeds(deleteDoc(doc(as('poster'), 'boardPosts/b1'))));
 
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
