@@ -1,6 +1,7 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import fs from 'fs';
+import { createHash } from 'crypto';
 
 // emulators:exec מגדיר את FIRESTORE_EMULATOR_HOST; ברירת המחדל לפי firebase.json
 const [emuHost, emuPort] = (process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8181').split(':');
@@ -315,17 +316,17 @@ await t('לא כותב ולא קורא את תוצאת ההתאמה', async () =
   await assertFails(setDoc(doc(as('admin1'), 'boardMemberMatches/bm1'), { status: 'matched', playerIds: ['p1'] }));
 });
 await t('מאמן לא קורא את הנרשמים', () => assertFails(getDocs(collection(as('coachA'), 'boardMembers'))));
-await t('מנהל קורא הכל, מעדכן ומוחק', async () => {
+await t('מנהל במערכת הנוכחות לא קורא ולא משנה את נרשמי הפורטל (רק בעל הלוח)', async () => {
   await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'boardMemberMatches/bm1'), { status: 'matched', playerIds: ['p1'] }));
-  await assertSucceeds(getDocs(collection(as('admin1'), 'boardMembers')));
-  await assertSucceeds(getDocs(collection(as('admin1'), 'boardMemberMatches')));
-  await assertSucceeds(updateDoc(doc(as('admin1'), 'boardMembers/bm1'), { name: 'מתוקן' }));
+  await assertFails(getDocs(collection(as('admin1'), 'boardMembers')));
+  await assertFails(getDocs(collection(as('admin1'), 'boardMemberMatches')));
+  await assertFails(updateDoc(doc(as('admin1'), 'boardMembers/bm1'), { name: 'מתוקן' }));
 });
 await t('גולש מוחק את עצמו (זכות להישכח), לא אחר', async () => {
   await assertSucceeds(setDoc(doc(boardAs('bm4'), 'boardMembers/bm4'), bm('bm4')));
   await assertFails(deleteDoc(doc(boardAs('bm4'), 'boardMembers/bm1')));
   await assertSucceeds(deleteDoc(doc(boardAs('bm4'), 'boardMembers/bm4')));
-  await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardMembers/bm1')));
+  await assertFails(deleteDoc(doc(as('admin1'), 'boardMembers/bm1')));
 });
 await t('הבאת חבר: ref תקין ביצירה, לא אתה עצמך, לא משתנה אחר כך', async () => {
   const R = 'inviterUid0001';
@@ -389,13 +390,13 @@ await t('אין עדכון; מחיקה של שלך בלבד', async () => {
   await assertFails(deleteDoc(doc(boardAs('ev2'), esId('ev1', 1))));
   await assertSucceeds(deleteDoc(doc(boardAs('ev1'), esId('ev1', 2))));
 });
-await t('מנהל קורא ומוחק; ייצוא — מנהל קורא, אף לקוח לא כותב', async () => {
-  await assertSucceeds(getDocs(collection(as('admin1'), 'eventSignups')));
-  await assertSucceeds(getDocs(collection(as('admin1'), 'eventSignupExports')));
+await t('מנהל במערכת הנוכחות לא קורא ולא מוחק הרשמות; אף לקוח לא כותב ייצוא', async () => {
+  await assertFails(getDocs(collection(as('admin1'), 'eventSignups')));
+  await assertFails(getDocs(collection(as('admin1'), 'eventSignupExports')));
   await assertFails(getDocs(collection(boardAs('ev1'), 'eventSignupExports')));
   await assertFails(setDoc(doc(boardAs('ev1'), 'eventSignupExports/crane-2026_ev1_1'), { exportedAt: 'x' }));
   await assertFails(setDoc(doc(as('admin1'), 'eventSignupExports/crane-2026_ev1_1'), { exportedAt: 'x' }));
-  await assertSucceeds(deleteDoc(doc(as('admin1'), esId('ev1', 1))));
+  await assertFails(deleteDoc(doc(as('admin1'), esId('ev1', 1))));
 });
 
 console.log('\n— טוקני התראות של לוח המועדון —');
@@ -416,54 +417,109 @@ await t('קריאה ועדכון — נחסמים לגולש', async () => {
   await assertFails(setDoc(doc(anon(), `pushTokens/${TOK}`), pt()));
   await assertFails(getDocs(collection(as('coachA'), 'pushTokens')));
 });
-await t('מנהל קורא ומוחק', async () => {
-  await assertSucceeds(getDocs(collection(as('admin1'), 'pushTokens')));
-  await assertSucceeds(deleteDoc(doc(as('admin1'), `pushTokens/${TOK}`)));
+await t('מנהל במערכת הנוכחות לא קורא ולא מוחק מכשירים', async () => {
+  await assertFails(getDocs(collection(as('admin1'), 'pushTokens')));
+  await assertFails(deleteDoc(doc(as('admin1'), `pushTokens/${TOK}`)));
 });
 
-console.log('\n— עדכונים בלוח המועדון (boardPosts) —');
+console.log('\n— עדכונים בלוח המועדון (boardPosts) — רק בעל הלוח —');
+const OWNER_EMAIL = 'board-owner@example.com';
+await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'system/boardOwner'),
+  { hash: createHash('sha256').update(OWNER_EMAIL).digest('hex') }));
+const owner = () => env.authenticatedContext('own1', gTok('own1', { email: OWNER_EMAIL })).firestore();
+const ownerUpper = () => env.authenticatedContext('own1', gTok('own1', { email: 'Board-Owner@Example.com' })).firestore();
 const bp = (uid, extra = {}) => ({ title: 'אימון בוטל', text: 'אין אימון היום', banner: false, pin: false, hidden: false,
   link: '', linkText: '', date: '2026-10-20', author: uid, authorName: 'מפרסם', updatedAt: serverTimestamp(), createdAt: serverTimestamp(), ...extra });
-await t('מי שקיבל boardPosts מפרסם ועורך', async () => {
-  await assertSucceeds(setDoc(doc(as('poster'), 'boardPosts/b1'), bp('poster', { link: 'https://example.org/x', linkText: 'פרטים' })));
-  await assertSucceeds(updateDoc(doc(as('poster'), 'boardPosts/b1'), { pin: true, author: 'poster', authorName: 'מפרסם', updatedAt: serverTimestamp() }));
+await t('הבעלים מפרסם ועורך', async () => {
+  await assertSucceeds(setDoc(doc(owner(), 'boardPosts/b1'), bp('own1', { link: 'https://example.org/x', linkText: 'פרטים' })));
+  await assertSucceeds(updateDoc(doc(owner(), 'boardPosts/b1'), { pin: true, author: 'own1', authorName: 'מפרסם', updatedAt: serverTimestamp() }));
 });
 await t('גולש לא מחובר קורא רק גלויים (where hidden == false)', async () => {
   await assertSucceeds(getDoc(doc(anon(), 'boardPosts/b1')));
   await assertSucceeds(getDocs(query(collection(anon(), 'boardPosts'), where('hidden', '==', false))));
   await assertFails(getDocs(collection(anon(), 'boardPosts')));
-  await assertSucceeds(setDoc(doc(as('poster'), 'boardPosts/bh'), bp('poster', { hidden: true })));
+  await assertSucceeds(setDoc(doc(owner(), 'boardPosts/bh'), bp('own1', { hidden: true })));
   await assertFails(getDoc(doc(anon(), 'boardPosts/bh')));
-  await assertSucceeds(getDoc(doc(as('poster'), 'boardPosts/bh')));
-  await assertSucceeds(getDocs(collection(as('poster'), 'boardPosts')));
-  await assertSucceeds(getDocs(collection(as('admin1'), 'boardPosts')));
+  await assertSucceeds(getDoc(doc(owner(), 'boardPosts/bh')));
+  await assertSucceeds(getDocs(collection(owner(), 'boardPosts')));
+  await assertFails(getDoc(doc(as('admin1'), 'boardPosts/bh')));
 });
-await t('בלי ההרשאה — נחסם', async () => {
-  await assertFails(setDoc(doc(as('coachB'), 'boardPosts/b2'), bp('coachB')));
-  await assertFails(setDoc(doc(anon(), 'boardPosts/b2'), bp('x')));
-  await assertFails(setDoc(doc(stranger(), 'boardPosts/b2'), bp('randomGoogleUser')));
-  await assertFails(updateDoc(doc(as('coachB'), 'boardPosts/b1'), { pin: false, author: 'coachB', authorName: 'x', updatedAt: serverTimestamp() }));
-  await assertFails(deleteDoc(doc(as('coachB'), 'boardPosts/b1')));
-});
-await t('מנהל מפרסם ומוחק', async () => {
-  await assertSucceeds(setDoc(doc(as('admin1'), 'boardPosts/b3'), bp('admin1')));
-  await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardPosts/b3')));
+await t('אף אחד אחר לא כותב — גם לא מנהל במערכת הנוכחות או מי שהייתה לו הרשאת boardPosts', async () => {
+  for (const db of [as('admin1'), as('poster'), as('coachB'), anon(), stranger(), boardAs('ev1')]) {
+    await assertFails(setDoc(doc(db, 'boardPosts/b2'), bp('x')));
+    await assertFails(deleteDoc(doc(db, 'boardPosts/b1')));
+  }
+  await assertFails(updateDoc(doc(as('admin1'), 'boardPosts/b1'), { pin: false, author: 'admin1', authorName: 'x', updatedAt: serverTimestamp() }));
 });
 await t('שדה נוסף / קישור לא https / כותרת ריקה — נחסם', async () => {
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { push: true })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { link: 'http://example.org' })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { link: 'javascript:alert(1)' })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { title: '' })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { date: '20.10.2026' })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { date: '9999-12-31' })));
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { title: 'א'.repeat(91) })));
+  for (const bad of [{ push: true }, { link: 'http://example.org' }, { link: 'javascript:alert(1)' }, { title: '' }, { date: '20.10.2026' }, { date: '9999-12-31' }, { title: 'א'.repeat(91) }])
+    await assertFails(setDoc(doc(owner(), 'boardPosts/b4'), bp('own1', bad)));
 });
 await t('התחזות לכותב אחר או שינוי createdAt — נחסם', async () => {
-  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b5'), bp('admin1')));
-  await assertFails(updateDoc(doc(as('poster'), 'boardPosts/b1'), { author: 'admin1', updatedAt: serverTimestamp() }));
-  await assertFails(updateDoc(doc(as('poster'), 'boardPosts/b1'), { createdAt: serverTimestamp(), author: 'poster', updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), 'boardPosts/b5'), bp('admin1')));
+  await assertFails(updateDoc(doc(owner(), 'boardPosts/b1'), { author: 'admin1', updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(owner(), 'boardPosts/b1'), { createdAt: serverTimestamp(), author: 'own1', updatedAt: serverTimestamp() }));
 });
-await t('מי שקיבל boardPosts מוחק', () => assertSucceeds(deleteDoc(doc(as('poster'), 'boardPosts/b1'))));
+await t('הבעלים מוחק', () => assertSucceeds(deleteDoc(doc(owner(), 'boardPosts/b1'))));
+
+console.log('\n— דף הניהול בפורטל (בעל הלוח בלבד) —');
+const IMG = 'data:image/jpeg;base64,' + 'A'.repeat(400000);
+await t('הבעלים קורא נרשמים, התאמות והרשמות לאירועים; גולש אחר לא', async () => {
+  await assertSucceeds(getDocs(collection(owner(), 'boardMembers')));
+  await assertSucceeds(getDocs(collection(ownerUpper(), 'boardMembers')));
+  await assertSucceeds(getDocs(collection(owner(), 'boardMemberMatches')));
+  await assertSucceeds(getDocs(collection(owner(), 'eventSignups')));
+  await assertFails(getDocs(collection(boardAs('ev1'), 'boardMembers')));
+  await assertFails(getDocs(collection(boardAs('ev1'), 'boardMemberMatches')));
+});
+await t('הבעלים קורא ומוחק הרשמה לאירוע, מכשירי התראות ונרשם', async () => {
+  await assertSucceeds(getDocs(collection(owner(), 'eventSignupExports')));
+  await assertSucceeds(getDocs(collection(owner(), 'pushTokens')));
+  await assertSucceeds(deleteDoc(doc(owner(), esId('ev1', 1))));
+  await assertSucceeds(updateDoc(doc(owner(), 'boardMembers/bm1'), { name: 'מתוקן' }));
+  await assertSucceeds(deleteDoc(doc(owner(), 'boardMembers/bm1')));
+});
+await t('אותו אימייל בלי אימות או לא דרך גוגל — לא בעלים', async () => {
+  await assertFails(getDocs(collection(env.authenticatedContext('own2', gTok('own2', { email: OWNER_EMAIL, email_verified: false })).firestore(), 'boardMembers')));
+  await assertFails(getDocs(collection(env.authenticatedContext('own3', gTok('own3', { email: OWNER_EMAIL, firebase: { sign_in_provider: 'password' } })).firestore(), 'boardMembers')));
+});
+await t('הבעלים מפרסם עדכון עם תמונה וחלון קופץ, עורך ומוחק', async () => {
+  await assertSucceeds(setDoc(doc(owner(), 'boardImages/img1'), { data: IMG, createdAt: serverTimestamp() }));
+  await assertSucceeds(getDoc(doc(anon(), 'boardImages/img1')));
+  await assertSucceeds(setDoc(doc(owner(), 'boardPosts/o1'), bp('own1', { img: 'img1', popup: { event: 'crane-2026', heats: ['4 ק״מ'], until: '2026-10-28' } })));
+  await assertSucceeds(getDoc(doc(anon(), 'boardPosts/o1')));
+  await assertSucceeds(updateDoc(doc(owner(), 'boardPosts/o1'), { hidden: true, author: 'own1', authorName: 'מפרסם', updatedAt: serverTimestamp() }));
+  await assertSucceeds(getDocs(collection(owner(), 'boardPosts')));
+  await assertSucceeds(deleteDoc(doc(owner(), 'boardPosts/o1')));
+  await assertSucceeds(deleteDoc(doc(owner(), 'boardImages/img1')));
+});
+await t('תמונה: רק הבעלים, רק data URL של תמונה, לא ענקית, אין רשימה או עדכון', async () => {
+  await assertFails(setDoc(doc(boardAs('ev1'), 'boardImages/x1'), { data: IMG, createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as('poster'), 'boardImages/x1'), { data: IMG, createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), 'boardImages/x2'), { data: 'javascript:alert(1)', createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), 'boardImages/x3'), { data: 'data:image/svg+xml;base64,AAAA', createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), 'boardImages/x4'), { data: 'data:image/jpeg;base64,' + 'A'.repeat(700001), createdAt: serverTimestamp() }));
+  await assertFails(getDocs(collection(anon(), 'boardImages')));
+});
+await t('חלון קופץ לא תקין או שדה זר — נחסם', async () => {
+  for (const bad of [{ popup: { event: 'BAD EVENT', heats: ['x'] } }, { popup: { event: 'crane-2026', heats: [] } }, { popup: { event: 'crane-2026', heats: ['a'], until: 'מחר' } }, { popup: { event: 'crane-2026', heats: ['a'], x: 1 } }, { img: '../x' }, { other: 1 }])
+    await assertFails(setDoc(doc(owner(), 'boardPosts/o2'), bp('own1', bad)));
+});
+await t('בקשת פוש: רק הבעלים יוצר וקורא; אין עריכה', async () => {
+  const pr = { title: 'אימון בוטל', body: 'אין אימון היום', url: '', createdAt: serverTimestamp() };
+  await assertSucceeds(setDoc(doc(owner(), 'pushRequests/p1'), pr));
+  await assertSucceeds(getDoc(doc(owner(), 'pushRequests/p1')));
+  await assertFails(setDoc(doc(boardAs('ev1'), 'pushRequests/p2'), pr));
+  await assertFails(setDoc(doc(as('admin1'), 'pushRequests/p3'), pr));
+  await assertFails(getDoc(doc(boardAs('ev1'), 'pushRequests/p1')));
+  await assertFails(updateDoc(doc(owner(), 'pushRequests/p1'), { title: 'x' }));
+  await assertFails(setDoc(doc(owner(), 'pushRequests/p4'), { ...pr, title: 'x'.repeat(61) }));
+  await assertFails(setDoc(doc(owner(), 'pushRequests/p5'), { ...pr, extra: 1 }));
+});
+await t('בלי מסמך בעלים — אף אחד לא בעלים', async () => {
+  await env.withSecurityRulesDisabled((c) => deleteDoc(doc(c.firestore(), 'system/boardOwner')));
+  await assertFails(getDocs(collection(owner(), 'boardMembers')));
+});
 
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
