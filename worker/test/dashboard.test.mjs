@@ -1,6 +1,6 @@
 // דשבורד הפרסום: קישור חתום בלבד, טקסט של פוסט לא מוזרק ל-HTML, מספר לא ידוע הוא "לא זמין", ואזהרה כשהנתונים ישנים
 import assert from "node:assert/strict";
-import { dashboardHtml, dashboardRoute, dashboardUrl } from "../src/dashboard.js";
+import { dailyDashboard, dashboardHtml, dashboardRoute, dashboardUrl } from "../src/dashboard.js";
 
 const NOW = new Date("2026-10-14T19:00:00Z");
 const insights = {
@@ -35,4 +35,14 @@ assert.equal((await dashboardRoute(new Request("https://w/dashboard?t=bad"), env
 const ok = await dashboardRoute(new Request(await dashboardUrl(env, "https://w")), env, store);
 assert.equal(ok.status, 200);
 assert.match(await ok.text(), /דשבורד פרסום/);
+// קישור יומי: נשלח פעם אחת לכל עדכון של הנתונים, ולא נרשם כשהשליחה נכשלה
+const docs = { "agentReports/insights": { updatedAt: "2026-10-20T05:09:00Z" }, "agentReports/bot": {} };
+const mem = { get: async (p) => docs[p], merge: async (p, v) => (docs[p] = { ...docs[p], ...v }) };
+const sent = [];
+assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => { throw new Error("wa down"); }).catch(() => "failed"), "failed");
+assert.equal(docs["agentReports/bot"].dashboardSentFor, undefined);
+assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(t)), "dashboard: sent");
+assert.match(sent[0], /https:\/\/w\/dashboard\?t=/);
+assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(t)), "dashboard: nothing new");
+assert.equal(sent.length, 1);
 console.log("dashboard ok");
