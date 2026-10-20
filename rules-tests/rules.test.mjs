@@ -516,6 +516,35 @@ await t('בקשת פוש: רק הבעלים יוצר וקורא; אין עריכ
   await assertFails(setDoc(doc(owner(), 'pushRequests/p4'), { ...pr, title: 'x'.repeat(61) }));
   await assertFails(setDoc(doc(owner(), 'pushRequests/p5'), { ...pr, extra: 1 }));
 });
+console.log('\n— מנהלים שבעל הלוח הוסיף —');
+const MGR = 'helper@example.com';
+const mgr = () => env.authenticatedContext('mgr1', gTok('mgr1', { email: MGR })).firestore();
+await t('רק הבעלים מוסיף ומסיר מנהל; מנהל רואה רק את עצמו', async () => {
+  await assertFails(setDoc(doc(mgr(), `boardManagers/${MGR}`), { name: 'עוזר', addedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(as('admin1'), `boardManagers/${MGR}`), { name: 'עוזר', addedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), 'boardManagers/not-an-email'), { name: 'x', addedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), `boardManagers/${MGR}`), { name: 'עוזר', addedAt: serverTimestamp(), role: 'owner' }));
+  await assertSucceeds(setDoc(doc(owner(), `boardManagers/${MGR}`), { name: 'עוזר', addedAt: serverTimestamp() }));
+  await assertSucceeds(getDoc(doc(mgr(), `boardManagers/${MGR}`)));
+  await assertSucceeds(getDocs(collection(owner(), 'boardManagers')));
+  await assertFails(getDocs(collection(mgr(), 'boardManagers')));
+  await assertFails(getDoc(doc(boardAs('ev1'), `boardManagers/${MGR}`)));
+});
+await t('מנהל מפרסם, עורך ומוחק עדכון עם תמונה — ולא יותר', async () => {
+  await assertSucceeds(setDoc(doc(mgr(), 'boardImages/m1'), { data: 'data:image/jpeg;base64,AAAA', createdAt: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(mgr(), 'boardPosts/m1'), bp('mgr1', { img: 'm1', hidden: true })));
+  await assertSucceeds(getDoc(doc(mgr(), 'boardPosts/m1')));
+  await assertSucceeds(updateDoc(doc(mgr(), 'boardPosts/m1'), { hidden: false, author: 'mgr1', authorName: 'עוזר', updatedAt: serverTimestamp() }));
+  await assertSucceeds(deleteDoc(doc(mgr(), 'boardPosts/m1')));
+  await assertFails(getDocs(collection(mgr(), 'boardMembers')));
+  await assertFails(getDocs(collection(mgr(), 'eventSignups')));
+  await assertFails(setDoc(doc(mgr(), 'pushRequests/m1'), { title: 'x', body: '', url: '', createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(mgr(), 'boardPosts/m2'), bp('own1')));
+});
+await t('מנהל שהוסר — חוזר להיות גולש רגיל', async () => {
+  await assertSucceeds(deleteDoc(doc(owner(), `boardManagers/${MGR}`)));
+  await assertFails(setDoc(doc(mgr(), 'boardPosts/m3'), bp('mgr1')));
+});
 await t('בלי מסמך בעלים — אף אחד לא בעלים', async () => {
   await env.withSecurityRulesDisabled((c) => deleteDoc(doc(c.firestore(), 'system/boardOwner')));
   await assertFails(getDocs(collection(owner(), 'boardMembers')));
