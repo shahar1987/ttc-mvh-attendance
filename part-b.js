@@ -1794,8 +1794,20 @@ function BoardMembersScreen({ players, uid }) {
               ),
             );
           }),
+    e.createElement(PushTokensCount, null),
     e.createElement(EventSignupsSection, { uid }),
   );
+}
+
+// כמה מכשירים אישרו התראות בלוח המועדון (pushTokens). ספירה אחת מהשרת כשהמסך נפתח.
+function PushTokensCount() {
+  let [n, setN] = b(null);
+  j(() => {
+    fsCount(M(P, "pushTokens"))
+      .then((r) => setN(r.data().count))
+      .catch(() => setN("?"));
+  }, []);
+  return e.createElement("p", { className: "text-sm text-slate-700 pt-2" }, "מכשירים שאישרו התראות: " + (n ?? "…"));
 }
 
 // הרשמות לאירועים מלוח המועדון (eventSignups). הייצוא לגיליון המארגנים בשרת

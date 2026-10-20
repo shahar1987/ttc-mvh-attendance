@@ -1,0 +1,57 @@
+name: Push to club board
+
+# התראת דחיפה לכל המכשירים שאישרו התראות בלוח המועדון (pushTokens, FCM) — scripts/send_push.mjs.
+# מופעל ידנית או דרך GitHub API (הדשבורד של הבעלים): POST .../actions/workflows/send-push.yml/dispatches
+# עם ref=main ו-inputs { title, body, url }.
+# הקלט לא מודפס ביומן (הסקריפט קורא אותו מקובץ האירוע). ליומן — רק מספרים.
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: "כותרת (עד 60 תווים)"
+        required: true
+      body:
+        description: "טקסט (עד 180 תווים)"
+        required: false
+        default: ""
+      url:
+        description: "קישור בלוח המועדון (ריק = דף הבית של הלוח)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# שתי שליחות לא רצות במקביל
+concurrency:
+  group: send-push
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: agents
+        run: npm ci --no-audit --no-fund
+
+      - name: Send push notification
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/send_push.mjs
+
+      - name: Tell the owner on WhatsApp that the push failed
+        if: failure()
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ALERT_KEY: send-push
+          ALERT_TEXT: "❌ שליחת התראה למכשירים של לוח המועדון נכשלה. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: node alert.mjs

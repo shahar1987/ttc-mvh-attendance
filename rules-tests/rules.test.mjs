@@ -377,6 +377,29 @@ await t('מנהל קורא ומוחק; ייצוא — מנהל קורא, אף ל
   await assertSucceeds(deleteDoc(doc(as('admin1'), esId('ev1', 1))));
 });
 
+console.log('\n— טוקני התראות של לוח המועדון —');
+const TOK = 'fcm_' + 'a1B2-c3:D4_'.repeat(14);
+const pt = (extra = {}) => ({ createdAt: serverTimestamp(), platform: 'android', ...extra });
+await t('גולש לא מחובר שומר טוקן', () => assertSucceeds(setDoc(doc(anon(), `pushTokens/${TOK}`), pt())));
+await t('מזהה לא תקין (קצר / תווים אסורים) — נחסם', async () => {
+  await assertFails(setDoc(doc(anon(), 'pushTokens/short'), pt()));
+  await assertFails(setDoc(doc(anon(), `pushTokens/${TOK.slice(0, 120)}.x`), pt()));
+});
+await t('שדה נוסף או פלטפורמה לא מוכרת — נחסם', async () => {
+  await assertFails(setDoc(doc(anon(), `pushTokens/${TOK}x1`), pt({ name: 'x' })));
+  await assertFails(setDoc(doc(anon(), `pushTokens/${TOK}x2`), pt({ platform: 'tv' })));
+});
+await t('קריאה ועדכון — נחסמים לגולש', async () => {
+  await assertFails(getDoc(doc(anon(), `pushTokens/${TOK}`)));
+  await assertFails(getDocs(collection(anon(), 'pushTokens')));
+  await assertFails(setDoc(doc(anon(), `pushTokens/${TOK}`), pt()));
+  await assertFails(getDocs(collection(as('coachA'), 'pushTokens')));
+});
+await t('מנהל קורא ומוחק', async () => {
+  await assertSucceeds(getDocs(collection(as('admin1'), 'pushTokens')));
+  await assertSucceeds(deleteDoc(doc(as('admin1'), `pushTokens/${TOK}`)));
+});
+
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
   await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));
