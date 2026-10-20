@@ -9,7 +9,7 @@ rules_version = '2';
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
 // boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPublic, boardPosts,
-// boardImages, pushRequests. אוסף שלא מופיע
+// boardImages, pushRequests, boardManagers. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -66,6 +66,12 @@ service cloud.firestore {
       return isGoogleUser()
         && hashing.sha256(request.auth.token.email.lower().toUtf8()).toHexString().lower()
            == get(/databases/$(database)/documents/system/boardOwner).data.hash;
+    }
+
+    // מנהל בלוח: מי שבעל הלוח הוסיף בדף הניהול (boardManagers/{gmail באותיות קטנות}). רק מפרסם ועורך עדכונים.
+    function isBoardManager() {
+      return isGoogleUser()
+        && exists(/databases/$(database)/documents/boardManagers/$(request.auth.token.email.lower()));
     }
 
     // טקסט חופשי שלא נפתח כנוסחה בגיליון (= + - @ או טאב בהתחלה)
@@ -476,24 +482,35 @@ service cloud.firestore {
     match /boardPosts/{id} {
       // הלוח שואל עם where hidden == false; מוסתר — רק לבעלים. כותב רק הבעלים מדף הניהול בפורטל
       // (20.10.2026: הפורטל יצא ממערכת הנוכחות, גם המסך והרשאת boardPosts שם הוסרו)
-      allow get, list: if resource.data.hidden == false || isBoardOwner();
-      allow create: if isBoardOwner() && boardPostValid()
+      allow get, list: if resource.data.hidden == false || isBoardOwner() || isBoardManager();
+      allow create: if (isBoardOwner() || isBoardManager()) && boardPostValid()
         && request.resource.data.createdAt == request.time;
-      allow update: if isBoardOwner() && boardPostValid()
+      allow update: if (isBoardOwner() || isBoardManager()) && boardPostValid()
         && request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isBoardOwner();
+      allow delete: if isBoardOwner() || isBoardManager();
     }
 
     // תמונות לעדכונים בלוח (data URL דחוס, עד ~700KB). כל אחד קורא לפי מזהה; רק הבעלים מעלה ומוחק.
     match /boardImages/{id} {
       allow get: if true;
       allow list, update: if false;
-      allow create: if isBoardOwner() && id.matches('[A-Za-z0-9_-]{1,40}')
+      allow create: if (isBoardOwner() || isBoardManager()) && id.matches('[A-Za-z0-9_-]{1,40}')
         && request.resource.data.keys().hasOnly(['data', 'createdAt'])
         && request.resource.data.data is string
         && request.resource.data.data.size() <= 700000
         && request.resource.data.data.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')
         && request.resource.data.createdAt == request.time;
+      allow delete: if isBoardOwner() || isBoardManager();
+    }
+
+    // מנהלים שבעל הלוח הוסיף (מזהה = כתובת הג'ימייל). הבעלים מנהל; כל מנהל רואה רק את המסמך של עצמו.
+    match /boardManagers/{email} {
+      allow read: if isBoardOwner() || (isGoogleUser() && email == request.auth.token.email.lower());
+      allow create, update: if isBoardOwner()
+        && email.matches('[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}')
+        && request.resource.data.keys().hasOnly(['name', 'addedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.addedAt == request.time;
       allow delete: if isBoardOwner();
     }
 
