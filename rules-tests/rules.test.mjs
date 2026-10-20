@@ -408,13 +408,21 @@ await t('מי שקיבל boardPosts מפרסם ועורך', async () => {
   await assertSucceeds(setDoc(doc(as('poster'), 'boardPosts/b1'), bp('poster', { link: 'https://example.org/x', linkText: 'פרטים' })));
   await assertSucceeds(updateDoc(doc(as('poster'), 'boardPosts/b1'), { pin: true, author: 'poster', authorName: 'מפרסם', updatedAt: serverTimestamp() }));
 });
-await t('גולש לא מחובר קורא', async () => {
+await t('גולש לא מחובר קורא רק גלויים (where hidden == false)', async () => {
   await assertSucceeds(getDoc(doc(anon(), 'boardPosts/b1')));
-  await assertSucceeds(getDocs(collection(anon(), 'boardPosts')));
+  await assertSucceeds(getDocs(query(collection(anon(), 'boardPosts'), where('hidden', '==', false))));
+  await assertFails(getDocs(collection(anon(), 'boardPosts')));
+  await assertSucceeds(setDoc(doc(as('poster'), 'boardPosts/bh'), bp('poster', { hidden: true })));
+  await assertFails(getDoc(doc(anon(), 'boardPosts/bh')));
+  await assertSucceeds(getDoc(doc(as('poster'), 'boardPosts/bh')));
+  await assertSucceeds(getDocs(collection(as('poster'), 'boardPosts')));
+  await assertSucceeds(getDocs(collection(as('admin1'), 'boardPosts')));
 });
 await t('בלי ההרשאה — נחסם', async () => {
   await assertFails(setDoc(doc(as('coachB'), 'boardPosts/b2'), bp('coachB')));
   await assertFails(setDoc(doc(anon(), 'boardPosts/b2'), bp('x')));
+  await assertFails(setDoc(doc(stranger(), 'boardPosts/b2'), bp('randomGoogleUser')));
+  await assertFails(updateDoc(doc(as('coachB'), 'boardPosts/b1'), { pin: false, author: 'coachB', authorName: 'x', updatedAt: serverTimestamp() }));
   await assertFails(deleteDoc(doc(as('coachB'), 'boardPosts/b1')));
 });
 await t('מנהל מפרסם ומוחק', async () => {
@@ -427,6 +435,8 @@ await t('שדה נוסף / קישור לא https / כותרת ריקה — נח�
   await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { link: 'javascript:alert(1)' })));
   await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { title: '' })));
   await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { date: '20.10.2026' })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { date: '9999-12-31' })));
+  await assertFails(setDoc(doc(as('poster'), 'boardPosts/b4'), bp('poster', { title: 'א'.repeat(91) })));
 });
 await t('התחזות לכותב אחר או שינוי createdAt — נחסם', async () => {
   await assertFails(setDoc(doc(as('poster'), 'boardPosts/b5'), bp('admin1')));
