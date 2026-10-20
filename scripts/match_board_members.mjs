@@ -5,7 +5,7 @@
 //      agents/board-members.test.mjs משווה אותה למקור ב-sync_payments.mjs).
 //   2. משווים לטלפונים של כל השחקנים (parentPhone, phone, mobile — כמו buildPhoneIndex שם).
 //   3. כותבים boardMemberMatches/{uid} = { status: "matched"|"not-found", playerIds, checkedAt, notified }.
-//   4. נרשם חדש שלא נמצא — הודעה לבעלים בוואטסאפ דרך התור של הבוט (agentReports/bot.outboxQueue,
+//   4. נרשמים חדשים שלא נמצאו — הודעה אחת לכל הרצה לבעלים בוואטסאפ דרך התור של הבוט (agentReports/bot.outboxQueue,
 //      אותו מנגנון של agents/alert.mjs). ההודעה כוללת שם וטלפון — היא פרטית לבעלים.
 // תוצאה של נרשם שנמחק (מחק את עצמו או נמחק במסך הניהול) נמחקת גם היא.
 //
@@ -58,9 +58,13 @@ export function alreadyNotified(prev, result) {
   return result.status === "not-found" && prev?.status === "not-found" && prev.notified === true;
 }
 
-export function ownerText(member) {
+// הודעה אחת לכל ההרצה (לא אחת לכל נרשם — הגנה מהצפה): עד 10 שמות ואז "…ועוד N"
+export const OWNER_LIST_MAX = 10;
+export function ownerText(members) {
+  const list = members.slice(0, OWNER_LIST_MAX).map((m) => `${m.name || "בלי שם"} · ${m.phone || "בלי טלפון"}`);
+  if (members.length > OWNER_LIST_MAX) list.push(`…ועוד ${members.length - OWNER_LIST_MAX}`);
   return (
-    `🆕 נרשם/ה באפליקציית המועדון ולא נמצא/ה ברשימת השחקנים: ${member.name || "בלי שם"} · ${member.phone || "בלי טלפון"}` +
+    `🆕 ${members.length} נרשמו באפליקציית המועדון ולא נמצאו ברשימת השחקנים: ${list.join(", ")}` +
     `\nאפשר לראות ולמחוק באפליקציית הנוכחות ⟵ הרשאות ⟵ נרשמו באפליקציית המועדון.`
   );
 }
@@ -75,6 +79,8 @@ async function main() {
   const prevById = new Map(matches.map((m) => [m.id, m]));
   const index = phoneIndex(players);
   const n = { checked: 0, matched: 0, notFound: 0, notified: 0, removed: 0 };
+  const toNotify = [];
+  const writes = [];
 
   for (const m of members) {
     const prev = prevById.get(m.id);
@@ -82,14 +88,18 @@ async function main() {
     const result = matchMember(m, index);
     let notified = alreadyNotified(prev, result);
     if (result.status === "not-found" && !notified) {
-      await enqueueOwner(db, { agent: "board-members", text: ownerText(m) });
+      toNotify.push(m);
       notified = true;
       n.notified++;
     }
-    await db.collection("boardMemberMatches").doc(m.id).set({ ...result, checkedAt: new Date(), notified });
+    writes.push([m.id, { ...result, checkedAt: new Date(), notified }]);
     n.checked++;
     result.status === "matched" ? n.matched++ : n.notFound++;
   }
+
+  // קודם ההודעה ואז הסימון notified — אם התור נכשל, ההרצה הבאה תודיע שוב
+  if (toNotify.length) await enqueueOwner(db, { agent: "board-members", text: ownerText(toNotify) });
+  for (const [id, data] of writes) await db.collection("boardMemberMatches").doc(id).set(data);
 
   const live = new Set(members.map((m) => m.id));
   for (const x of matches)
@@ -101,7 +111,7 @@ async function main() {
   // רק מספרים ליומן הציבורי
   console.log(
     `board members: ${members.length} total, ${n.checked} checked (${n.matched} matched, ${n.notFound} not found), ` +
-      `${n.notified} owner alerts queued, ${n.removed} stale results removed`,
+      `${n.notified} not-found in one owner message, ${n.removed} stale results removed`,
   );
 }
 

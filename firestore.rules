@@ -52,6 +52,18 @@ service cloud.firestore {
       return roleIs('admin');
     }
 
+    // גולש אמיתי עם חשבון גוגל מאומת — לא חשבון אנונימי שנוצר בסקריפט (הגנה מהצפה)
+    function isGoogleUser() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // טקסט חופשי שלא נפתח כנוסחה בגיליון (= + - @ או טאב בהתחלה)
+    function noFormula(v) {
+      return !v.matches('[=+@\\t-].*');
+    }
+
     // צוות המועדון: מנהל, מאמן, צופה — כל מי שאינו הורה/שחקן.
     // ההשוואה היא "שונה מ-member" ולא רשימה סגורה, בדיוק כמו isMemberRole
     // שבקוד, כדי שתפקיד שנכתב בטעות לא ינעל משתמש קיים מחוץ למערכת.
@@ -328,8 +340,9 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly(['name', 'email', 'phone', 'photo', 'consent', 'createdAt', 'updatedAt'])
         && d.get('name', null) is string && d.name.size() > 0 && d.name.size() <= 80
-        && (!('email' in d) || (d.email is string && d.email.size() <= 120
-            && d.email == request.auth.token.email))
+        && noFormula(d.name)
+        && d.get('email', null) is string && d.email.size() <= 120
+        && d.get('email', null) == request.auth.token.email
         && d.get('phone', null) is string && d.phone.size() <= 20
         && d.phone.matches('[0-9+ -]+')
         && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
@@ -339,11 +352,11 @@ service cloud.firestore {
     }
     match /boardMembers/{uid} {
       allow read: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == uid
+      allow create: if isGoogleUser() && request.auth.uid == uid
         && boardMemberValid()
         && request.resource.data.get('createdAt', null) == request.time;
       // createdAt לא משתנה בעדכון
-      allow update: if (isSignedIn() && request.auth.uid == uid
+      allow update: if (isGoogleUser() && request.auth.uid == uid
           && boardMemberValid()
           && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null))
         || isAdmin();
@@ -365,6 +378,7 @@ service cloud.firestore {
                                'city', 'phone', 'email', 'shirt', 'byName', 'createdAt'])
         && d.get('uid', null) == request.auth.uid
         && d.get('event', null) is string && d.event.matches('[a-z0-9-]{3,40}')
+        && d.event in ['crane-2026']
         && d.get('n', null) is int && d.n >= 1 && d.n <= 8
         && id == d.event + '_' + request.auth.uid + '_' + string(d.n)
         && d.get('firstName', null) is string && d.firstName.size() > 0 && d.firstName.size() <= 40
@@ -376,14 +390,18 @@ service cloud.firestore {
         && d.get('phone', null) is string && d.phone.size() <= 20
         && d.phone.matches('[0-9+ -]+')
         && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
-        && (!('email' in d) || (d.email is string && d.email == request.auth.token.email))
+        && d.get('email', null) is string && d.get('email', null) == request.auth.token.email
         && d.get('shirt', null) in ['XS', 'S', 'M', 'L', 'XL', 'XXL',
                                     'ילדים 6', 'ילדים 8', 'ילדים 10', 'ילדים 12', 'ילדים 14']
         && d.get('byName', null) is string && d.byName.size() <= 80
+        && noFormula(d.firstName) && noFormula(d.lastName) && noFormula(d.heat)
+        && noFormula(d.city) && noFormula(d.byName)
         && d.get('createdAt', null) == request.time;
     }
     match /eventSignups/{id} {
-      allow create: if isSignedIn() && eventSignupValid(id);
+      // רק מי שכבר הצטרף ללוח (boardMembers) — חשבון גוגל מאומת
+      allow create: if isGoogleUser() && eventSignupValid(id)
+        && exists(/databases/$(database)/documents/boardMembers/$(request.auth.uid));
       allow read, delete: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
       allow update: if false;
     }

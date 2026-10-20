@@ -270,7 +270,8 @@ await t('רשימת השחקנים: רק מנהל', async () => {
 });
 
 console.log('\n— נרשמים בלוח המועדון (כניסה עם גוגל, בלי פרופיל) —');
-const boardAs = (uid) => env.authenticatedContext(uid, { email: `${uid}@example.com` }).firestore();
+const gTok = (uid, extra = {}) => ({ email: `${uid}@example.com`, email_verified: true, firebase: { sign_in_provider: 'google.com' }, ...extra });
+const boardAs = (uid) => env.authenticatedContext(uid, gTok(uid)).firestore();
 const bm = (uid, extra = {}) => ({ name: 'גולש', email: `${uid}@example.com`, phone: '050-1234567', consent: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
 await t('גולש יוצר את המסמך של עצמו', () => assertSucceeds(setDoc(doc(boardAs('bm1'), 'boardMembers/bm1'), bm('bm1'))));
 await t('גולש קורא את המסמך של עצמו ומעדכן אותו', async () => {
@@ -287,6 +288,15 @@ await t('לא שומר טלפון שאינו נייד ישראלי', async () =>
 });
 await t('לא שומר בלי הסכמה', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { consent: false }))));
 await t('לא שומר אימייל שאינו של החשבון', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { email: 'other@example.com' }))));
+await t('חשבון אנונימי או אימייל לא מאומת — נחסם', async () => {
+  await assertFails(setDoc(doc(env.authenticatedContext('bm3', gTok('bm3', { firebase: { sign_in_provider: 'anonymous' } })).firestore(), 'boardMembers/bm3'), bm('bm3')));
+  await assertFails(setDoc(doc(env.authenticatedContext('bm3', gTok('bm3', { email_verified: false })).firestore(), 'boardMembers/bm3'), bm('bm3')));
+});
+await t('בלי אימייל או עם שם שנפתח כנוסחה — נחסם', async () => {
+  const { email, ...noEmail } = bm('bm3');
+  await assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), noEmail));
+  await assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { name: '=cmd' })));
+});
 await t('לא שומר שם ארוך מ-80', () => assertFails(setDoc(doc(boardAs('bm3'), 'boardMembers/bm3'), bm('bm3', { name: 'א'.repeat(81) }))));
 await t('לא קורא מסמך של גולש אחר ולא את הרשימה', async () => {
   await assertFails(getDoc(doc(boardAs('bm2'), 'boardMembers/bm1')));
@@ -320,11 +330,15 @@ await t('גולש מוחק את עצמו (זכות להישכח), לא אחר', 
 console.log('\n— הרשמה לאירועים מלוח המועדון —');
 const es = (uid, n = 1, extra = {}) => ({ event: 'crane-2026', uid, n, firstName: 'נועה', lastName: 'כהן', heat: '5 ק"מ', gender: 'נ', birth: '1.2.2015', city: 'שניר', phone: '050-1234567', email: `${uid}@example.com`, shirt: 'ילדים 10', byName: 'גולש', createdAt: serverTimestamp(), ...extra });
 const esId = (uid, n = 1) => `eventSignups/crane-2026_${uid}_${n}`;
+await env.withSecurityRulesDisabled(async (c) => {
+  for (const u of ['ev1', 'ev2']) await setDoc(doc(c.firestore(), `boardMembers/${u}`), { name: 'גולש', email: `${u}@example.com`, phone: '050-1234567', consent: true });
+});
+await t('גולש גוגל שלא הצטרף ללוח (אין boardMembers) — נחסם', () => assertFails(setDoc(doc(boardAs('ev3'), esId('ev3')), es('ev3'))));
+await t('חשבון אנונימי — נחסם גם כשיש boardMembers', () =>
+  assertFails(setDoc(doc(env.authenticatedContext('ev2', gTok('ev2', { firebase: { sign_in_provider: 'anonymous' } })).firestore(), esId('ev2')), es('ev2'))));
 await t('גולש רושם את עצמו ובן משפחה, וקורא את שלו', async () => {
   await assertSucceeds(setDoc(doc(boardAs('ev1'), esId('ev1', 1)), es('ev1', 1)));
-  // בן משפחה: בלי אימייל (שדה אופציונלי)
-  const { email, ...kid } = es('ev1', 2, { gender: 'ז', birth: '12/11/1980', shirt: 'XL' });
-  await assertSucceeds(setDoc(doc(boardAs('ev1'), esId('ev1', 2)), kid));
+  await assertSucceeds(setDoc(doc(boardAs('ev1'), esId('ev1', 2)), es('ev1', 2, { gender: 'ז', birth: '12/11/1980', shirt: 'XL' })));
   await assertSucceeds(getDoc(doc(boardAs('ev1'), esId('ev1', 1))));
   await assertSucceeds(getDocs(query(collection(boardAs('ev1'), 'eventSignups'), where('uid', '==', 'ev1'))));
 });
@@ -334,9 +348,14 @@ await t('מזהה או uid לא תואמים — נחסם', async () => {
   await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2', 9)), es('ev2', 9)));
   await assertFails(setDoc(doc(boardAs('ev2'), 'eventSignups/crane-2026_ev2_x'), es('ev2', 'x')));
 });
+await t('אירוע שלא ברשימה — נחסם', () => assertFails(setDoc(doc(boardAs('ev2'), 'eventSignups/other-2026_ev2_1'), es('ev2', 1, { event: 'other-2026' }))));
+await t('בלי אימייל — נחסם', async () => {
+  const { email, ...noEmail } = es('ev2');
+  await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2')), noEmail));
+});
 await t('שדה נוסף (כמו ת.ז) — נחסם', () => assertFails(setDoc(doc(boardAs('ev2'), esId('ev2')), es('ev2', 1, { idNumber: '123' }))));
 await t('מגדר, מידה, טלפון, תאריך לידה או אימייל לא תקינים — נחסם', async () => {
-  for (const bad of [{ gender: 'x' }, { shirt: 'XXXL' }, { phone: '04-6951234' }, { phone: '050123' }, { birth: '2015-02-01' }, { birth: 'אתמול' }, { email: 'other@example.com' }, { firstName: '' }])
+  for (const bad of [{ gender: 'x' }, { shirt: 'XXXL' }, { phone: '04-6951234' }, { phone: '050123' }, { birth: '2015-02-01' }, { birth: 'אתמול' }, { email: 'other@example.com' }, { firstName: '' }, { firstName: '=cmd' }, { lastName: '+1' }, { city: '@x' }, { heat: '-5' }, { byName: '\tx' }])
     await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2')), es('ev2', 1, bad)));
 });
 await t('לא קורא הרשמה של אחר ולא את כל הרשימה', async () => {
