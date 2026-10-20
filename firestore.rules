@@ -8,7 +8,7 @@ rules_version = '2';
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
-// boardMembers, boardMemberMatches, eventSignups, eventSignupExports. אוסף שלא מופיע
+// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -409,6 +409,20 @@ service cloud.firestore {
     match /eventSignupExports/{id} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // ---------- התראות דחיפה של לוח המועדון (FCM) ----------
+    // הגולש לא בהכרח מחובר: הדפדפן שומר את טוקן ה-FCM שלו כמזהה המסמך, בלי שום פרט אישי.
+    // setDoc חוזר על אותו טוקן הוא עדכון ונחסם — הלקוח מתעלם מהשגיאה.
+    // השליחה והניקוי של טוקנים מתים — בסקריפט (scripts/send_push.mjs, Admin SDK).
+    match /pushTokens/{token} {
+      allow create: if token.size() >= 100 && token.size() <= 400
+        && token.matches('[A-Za-z0-9_:\\-]+')
+        && request.resource.data.keys().hasOnly(['createdAt', 'platform'])
+        && request.resource.data.get('createdAt', null) == request.time
+        && (!('platform' in request.resource.data)
+            || request.resource.data.platform in ['android', 'ios', 'desktop']);
+      allow read, update, delete: if isAdmin();
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.

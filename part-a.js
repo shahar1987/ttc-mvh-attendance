@@ -46,6 +46,7 @@ import {
   getDoc as fsGetDoc,
   getDocs as fsGetDocs,
   getDocsFromServer as fsGetDocsFromServer,
+  getCountFromServer as fsCount,
   waitForPendingWrites as fsWaitPending,
   terminate as fsTerminate,
   clearIndexedDbPersistence as fsClearCache,
