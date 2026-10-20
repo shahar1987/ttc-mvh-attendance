@@ -439,12 +439,14 @@ service cloud.firestore {
         && (d.link == '' || (d.link.size() <= 300 && d.link.matches('https://.*')))
         && d.linkText is string && d.linkText.size() <= 30
         && d.date is string && d.date.matches('\\d{4}-\\d{2}-\\d{2}')
+        && d.date >= '2025-01-01' && d.date <= '2030-12-31'
         && d.author == request.auth.uid
         && d.authorName is string && d.authorName.size() <= 60
         && d.updatedAt == request.time;
     }
     match /boardPosts/{id} {
-      allow read: if true;
+      // הלוח שואל עם where hidden == false; מוסתר — רק לצוות המורשה
+      allow get, list: if resource.data.hidden == false || isAdmin() || hasPerm('boardPosts');
       allow create: if (isAdmin() || hasPerm('boardPosts')) && boardPostValid()
         && request.resource.data.createdAt == request.time;
       allow update: if (isAdmin() || hasPerm('boardPosts')) && boardPostValid()
