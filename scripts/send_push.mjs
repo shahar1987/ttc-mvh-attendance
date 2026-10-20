@@ -54,9 +54,8 @@ function rawInput() {
   }
 }
 
-async function main() {
-  const data = pushInput(rawInput());
-  const db = firestore();
+// גם scripts/gameday.mjs משתמש בזה. data — אחרי pushInput.
+export async function sendPush(db, data) {
   const tokens = (await loadAll(db, "pushTokens", (q) => q.orderBy("createdAt").limit(MAX_TOKENS))).map((x) => x.id);
   const writer = db.bulkWriter();
 
@@ -76,6 +75,11 @@ async function main() {
   }
   await writer.close();
   console.log(`push: ${tokens.length} tokens, ${n.sent} sent, ${n.failed} failed, ${n.removed} dead tokens removed`);
+  return n;
+}
+
+async function main() {
+  await sendPush(firestore(), pushInput(rawInput()));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)

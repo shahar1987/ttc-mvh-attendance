@@ -8,7 +8,7 @@ rules_version = '2';
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
-// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPosts. אוסף שלא מופיע
+// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPublic, boardPosts. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -338,7 +338,7 @@ service cloud.firestore {
     // הטלפון: אחרי הסרת רווחים ומקפים — נייד ישראלי (05XXXXXXXX / 9725XXXXXXXX / +9725XXXXXXXX).
     function boardMemberValid() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['name', 'email', 'phone', 'photo', 'consent', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'email', 'phone', 'photo', 'consent', 'ref', 'createdAt', 'updatedAt'])
         && d.get('name', null) is string && d.name.size() > 0 && d.name.size() <= 80
         && noFormula(d.name)
         && d.get('email', null) is string && d.email.size() <= 120
@@ -352,13 +352,19 @@ service cloud.firestore {
     }
     match /boardMembers/{uid} {
       allow read: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+      // ref (רשות) — ה-uid של מי שהזמין ("הבאת חבר"). נקבע רק ביצירה, לא אתה עצמך.
       allow create: if isGoogleUser() && request.auth.uid == uid
         && boardMemberValid()
+        && (!('ref' in request.resource.data)
+            || (request.resource.data.ref is string
+                && request.resource.data.ref.matches('[A-Za-z0-9]{10,128}')
+                && request.resource.data.ref != uid))
         && request.resource.data.get('createdAt', null) == request.time;
-      // createdAt לא משתנה בעדכון
+      // createdAt ו-ref לא משתנים בעדכון (גם לא נוספים או נמחקים)
       allow update: if (isGoogleUser() && request.auth.uid == uid
           && boardMemberValid()
-          && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null))
+          && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
+          && request.resource.data.get('ref', null) == resource.data.get('ref', null))
         || isAdmin();
       allow delete: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
     }
@@ -408,6 +414,13 @@ service cloud.firestore {
     // מה כבר הועבר לגיליון — נכתב רק בסקריפט
     match /eventSignupExports/{id} {
       allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---------- נתונים ציבוריים של לוח המועדון ----------
+    // referrals: טבלת "הבאת חבר" של החודש (שם פרטי ואות בלבד). נכתב רק בסקריפט (scripts/referrals.mjs).
+    match /boardPublic/{doc} {
+      allow read: if true;
       allow write: if false;
     }
 

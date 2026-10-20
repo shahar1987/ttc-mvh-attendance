@@ -5,7 +5,7 @@
 //      agents/board-members.test.mjs משווה אותה למקור ב-sync_payments.mjs).
 //   2. משווים לטלפונים של כל השחקנים (parentPhone, phone, mobile — כמו buildPhoneIndex שם).
 //   3. כותבים boardMemberMatches/{uid} = { status: "matched"|"not-found", playerIds, checkedAt, notified }.
-//   4. נרשמים חדשים שלא נמצאו — הודעה אחת לכל הרצה לבעלים בוואטסאפ דרך התור של הבוט (agentReports/bot.outboxQueue,
+//   4. נרשמים חדשים שלא נמצאו, ונרשמים חדשים שהגיעו דרך "הבאת חבר" (ref) — הודעה אחת לכל הרצה לבעלים בוואטסאפ דרך התור של הבוט (agentReports/bot.outboxQueue,
 //      אותו מנגנון של agents/alert.mjs). ההודעה כוללת שם וטלפון — היא פרטית לבעלים.
 // תוצאה של נרשם שנמחק (מחק את עצמו או נמחק במסך הניהול) נמחקת גם היא.
 //
@@ -69,6 +69,19 @@ export function ownerText(members) {
   );
 }
 
+// "הבאת חבר": נרשם חדש (נבדק בפעם הראשונה) שהגיע דרך הזמנה של נרשם קיים
+export function referralJoins(members, prevById) {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  return members
+    .filter((m) => !prevById.has(m.id) && m.ref && m.ref !== m.id && byId.has(m.ref))
+    .map((m) => ({ name: m.name || "בלי שם", by: byId.get(m.ref).name || "בלי שם" }));
+}
+export function referralText(joins) {
+  const list = joins.slice(0, OWNER_LIST_MAX).map((j) => `${j.name} הצטרף/ה דרך ${j.by}`);
+  if (joins.length > OWNER_LIST_MAX) list.push(`…ועוד ${joins.length - OWNER_LIST_MAX}`);
+  return `🤝 ${list.join(", ")}`;
+}
+
 async function main() {
   const db = firestore();
   const [members, matches, players] = await Promise.all([
@@ -81,6 +94,7 @@ async function main() {
   const n = { checked: 0, matched: 0, notFound: 0, notified: 0, removed: 0 };
   const toNotify = [];
   const writes = [];
+  const joins = referralJoins(members, prevById);
 
   for (const m of members) {
     const prev = prevById.get(m.id);
@@ -98,7 +112,8 @@ async function main() {
   }
 
   // קודם ההודעה ואז הסימון notified — אם התור נכשל, ההרצה הבאה תודיע שוב
-  if (toNotify.length) await enqueueOwner(db, { agent: "board-members", text: ownerText(toNotify) });
+  const text = [toNotify.length && ownerText(toNotify), joins.length && referralText(joins)].filter(Boolean).join("\n");
+  if (text) await enqueueOwner(db, { agent: "board-members", text });
   for (const [id, data] of writes) await db.collection("boardMemberMatches").doc(id).set(data);
 
   const live = new Set(members.map((m) => m.id));
@@ -111,7 +126,7 @@ async function main() {
   // רק מספרים ליומן הציבורי
   console.log(
     `board members: ${members.length} total, ${n.checked} checked (${n.matched} matched, ${n.notFound} not found), ` +
-      `${n.notified} not-found in one owner message, ${n.removed} stale results removed`,
+      `${n.notified} not-found and ${joins.length} referred joins in one owner message, ${n.removed} stale results removed`,
   );
 }
 
