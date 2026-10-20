@@ -14,11 +14,12 @@ import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 const admin = createRequire(new URL("../agents/package.json", import.meta.url))("firebase-admin");
 
 export const BOARD_URL = "https://shahar1987.github.io/ttc-club-board/";
-export const MAX_TOKENS = 20000; // מעבר לזה — כנראה הצפה של טוקנים מזויפים
+// לכל היותר 20000, הוותיקים קודם: createdAt נקבע בשרת (request.time), ולכן הצפה של טוקנים
+// מזויפים לא דוחקת החוצה מכשירים אמיתיים שנרשמו לפניה
+export const MAX_TOKENS = 20000;
 const CHUNK = 500;
 const DEAD = new Set([
   "messaging/registration-token-not-registered",
-  "messaging/invalid-argument",
   "messaging/invalid-registration-token",
 ]);
 
@@ -27,8 +28,20 @@ const clean = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, m
 export function pushInput({ title, body, url } = {}) {
   const t = clean(title, 60);
   if (!t) throw new Error("TITLE is empty — nothing sent");
+  return { title: t, body: clean(body, 180), url: boardUrl(url) };
+}
+
+// רק כתובת בלוח המועדון (מקור ונתיב אחרי נרמול), עד 300 תווים; אחרת — דף הבית של הלוח
+export function boardUrl(url) {
   const u = String(url ?? "").trim();
-  return { title: t, body: clean(body, 180), url: u.startsWith(BOARD_URL) && !/\s/.test(u) ? u : BOARD_URL };
+  if (!u || u.length > 300) return BOARD_URL;
+  try {
+    const p = new URL(u);
+    if (p.origin !== "https://shahar1987.github.io" || !p.pathname.startsWith("/ttc-club-board/") || p.pathname.includes("..")) return BOARD_URL;
+    return p.href;
+  } catch {
+    return BOARD_URL;
+  }
 }
 
 function rawInput() {
@@ -44,8 +57,8 @@ function rawInput() {
 async function main() {
   const data = pushInput(rawInput());
   const db = firestore();
-  const tokens = (await loadAll(db, "pushTokens")).map((x) => x.id);
-  if (tokens.length > MAX_TOKENS) throw new Error(`${tokens.length} push tokens (limit ${MAX_TOKENS}) — possible flooding, nothing sent`);
+  const tokens = (await loadAll(db, "pushTokens", (q) => q.orderBy("createdAt").limit(MAX_TOKENS))).map((x) => x.id);
+  const writer = db.bulkWriter();
 
   const n = { sent: 0, failed: 0, removed: 0 };
   for (let i = 0; i < tokens.length; i += CHUNK) {
@@ -58,9 +71,10 @@ async function main() {
     n.sent += res.successCount;
     n.failed += res.failureCount;
     const dead = chunk.filter((_, k) => !res.responses[k].success && DEAD.has(res.responses[k].error?.code));
-    for (const tok of dead) await db.collection("pushTokens").doc(tok).delete();
+    for (const tok of dead) writer.delete(db.collection("pushTokens").doc(tok));
     n.removed += dead.length;
   }
+  await writer.close();
   console.log(`push: ${tokens.length} tokens, ${n.sent} sent, ${n.failed} failed, ${n.removed} dead tokens removed`);
 }
 
