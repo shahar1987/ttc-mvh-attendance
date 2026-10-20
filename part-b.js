@@ -52,12 +52,6 @@ const APP_PERMISSIONS = [
     label: "תחרויות ודירוג",
     desc: "מערכת התחרויות של המועדון",
   },
-  // לא בשום ברירת מחדל של תפקיד — המנהל פותח במפורש
-  {
-    key: "boardPosts",
-    label: "עדכונים באפליקציית המועדון",
-    desc: "פרסום ועריכה של כותרות והודעות בלוח הציבורי של המועדון",
-  },
 ];
 const ALL_PERMISSION_KEYS = APP_PERMISSIONS.map((p) => p.key);
 // ברירת מחדל לפי תפקיד — משמשת רק למשתמשים שעדיין לא הוגדרו להם הרשאות
@@ -78,8 +72,6 @@ const STAFF_MENU_ITEMS = [
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
   { key: "reports", label: "דוחות", short: "דוחות מפורטים", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
-  { key: "boardMembers", label: "נרשמו באפליקציית המועדון", short: "נרשמו בלוח", icon: H, adminOnly: !0 },
-  { key: "boardPosts", label: "עדכונים באפליקציית המועדון", short: "עדכונים בלוח", icon: J, perm: "boardPosts" },
   // ייבוא כותב שחקנים — צופה לא רואה אותו גם אם יש לו הרשאת ניהול קבוצות (שאר המסכים שלו לקריאה בלבד)
   { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups", noViewer: !0 },
   {
@@ -98,8 +90,7 @@ const MENU_SECTIONS = [
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
   { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
-  { label: "הרשאות", icon: Ie, keys: ["permissions", "boardMembers"] },
-  { label: "לוח המועדון", icon: J, keys: ["boardPosts"] },
+  { label: "הרשאות", icon: Ie, keys: ["permissions"] },
 ];
 function menuItemVisible(it, isAdmin, isViewer, profile) {
   return it.adminOnly
@@ -1726,283 +1717,6 @@ const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 9), note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
   { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים? אין עדיין קישור הרשמה" },
 ];
-
-// נרשמו בלוח המועדון (כניסה עם גוגל באתר הציבורי). ההתאמה לשחקן נכתבת בשרת
-// (scripts/match_board_members.mjs, כל שעה). המאזינים פתוחים רק כשהמסך פתוח.
-function BoardMembersScreen({ players, uid }) {
-  let { data: members, loading } = L("boardMembers", null, uid),
-    { data: matches } = L("boardMemberMatches", null, uid),
-    [onlyMissing, setOnlyMissing] = b(!1),
-    [err, setErr] = b(""),
-    matchOf = Object.fromEntries(matches.map((x) => [x.id, x])),
-    nameOf = Object.fromEntries(players.map((p) => [p.id, p.name])),
-    when = (v) => (v && v.toDate ? v.toDate().toLocaleDateString("he-IL") : ""),
-    rows = members
-      .filter((x) => !onlyMissing || matchOf[x.id]?.status === "not-found")
-      .sort((x, y) => (y.createdAt?.toMillis?.() || 0) - (x.createdAt?.toMillis?.() || 0)),
-    remove = async (x) => {
-      if (!(await askConfirm(`למחוק את "${x.name}" מרשימת הנרשמים?`, { yes: "כן, למחוק", danger: !0 }))) return;
-      setErr("");
-      try {
-        await Ee(S(P, "boardMembers", x.id));
-      } catch (er) {
-        setErr("המחיקה נכשלה: " + (er.message || er));
-      }
-    };
-  return e.createElement(
-    "div",
-    { className: "p-4 space-y-3" },
-    e.createElement(
-      "label",
-      { className: "flex items-center gap-2 text-sm text-slate-700 min-h-[44px]" },
-      e.createElement("input", {
-        type: "checkbox",
-        checked: onlyMissing,
-        onChange: (ev) => setOnlyMissing(ev.target.checked),
-        className: "w-5 h-5",
-      }),
-      "רק מי שלא נמצא",
-    ),
-    err && e.createElement("p", { className: "text-sm text-red-600" }, err),
-    loading
-      ? e.createElement("p", { className: "text-sm text-slate-500" }, "טוען…")
-      : rows.length === 0
-        ? e.createElement("p", { className: "text-sm text-slate-500" }, "אין נרשמים להצגה.")
-        : rows.map((x) => {
-            let mt = matchOf[x.id],
-              status = !mt
-                ? e.createElement("span", { className: "text-slate-500" }, "ממתין לבדיקה")
-                : mt.status === "matched"
-                  ? e.createElement(
-                      "span",
-                      { className: "text-emerald-700" },
-                      "נמצא: " + (mt.playerIds || []).map((id) => nameOf[id] || "שחקן שנמחק").join(", "),
-                    )
-                  : e.createElement("span", { className: "text-amber-700 font-semibold" }, "לא נמצא");
-            return e.createElement(
-              "div",
-              { key: x.id, className: "bg-white rounded-xl border border-slate-200 p-3 flex items-start gap-3" },
-              e.createElement(
-                "div",
-                { className: "flex-1 min-w-0 text-sm space-y-0.5" },
-                e.createElement("div", { className: "font-bold text-slate-900 truncate" }, x.name || "בלי שם"),
-                e.createElement("div", { className: "text-slate-600 truncate", dir: "ltr" }, x.email || ""),
-                e.createElement("div", { className: "text-slate-600", dir: "ltr" }, x.phone || ""),
-                e.createElement("div", null, status),
-                e.createElement("div", { className: "text-xs text-slate-500" }, "נרשם: " + when(x.createdAt)),
-              ),
-              e.createElement(
-                "button",
-                {
-                  onClick: () => remove(x),
-                  className: "text-red-600 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center active:bg-red-50",
-                  "aria-label": "מחיקה",
-                },
-                e.createElement(Se, { className: "w-5 h-5" }),
-              ),
-            );
-          }),
-    e.createElement(PushTokensCount, null),
-    e.createElement(EventSignupsSection, { uid }),
-  );
-}
-
-// עדכונים בלוח הציבורי של המועדון (boardPosts). הלוח קורא בלי התחברות, ולכן
-// authorName הוא שם פרטי בלבד. המאזין פעיל רק כשהמסך פתוח.
-const BP_EMPTY = { title: "", text: "", banner: !1, pin: !1, hidden: !1, link: "", linkText: "", date: "" };
-function BoardPostsScreen({ uid, name }) {
-  let { data: posts, loading } = L("boardPosts", null, uid),
-    [f, setF] = b({ ...BP_EMPTY, date: E() }),
-    [editId, setEditId] = b(null),
-    [busy, setBusy] = b(!1),
-    [err, setErr] = b(""),
-    ms = (x) => x.createdAt?.toMillis?.() ?? Date.now(),
-    rows = [...posts].sort((x, y) => (y.pin ? 1 : 0) - (x.pin ? 1 : 0) || ms(y) - ms(x)),
-    who = () => ({ author: uid, authorName: String(name || "").trim().split(/\s+/)[0].slice(0, 60), updatedAt: Oe() }),
-    set = (k) => (ev) => setF({ ...f, [k]: ev.target.type === "checkbox" ? ev.target.checked : ev.target.value }),
-    reset = () => (setF({ ...BP_EMPTY, date: E() }), setEditId(null)),
-    run = async (fn) => {
-      setErr("");
-      setBusy(!0);
-      try {
-        await fn();
-      } catch (er) {
-        setErr("הפעולה נכשלה: " + (er.message || er));
-      }
-      setBusy(!1);
-    },
-    save = () => {
-      let d = { ...f, title: f.title.trim(), text: f.text.trim(), link: f.link.trim(), linkText: f.linkText.trim() };
-      if (!d.title) return setErr("חסרה כותרת");
-      if (d.link && !/^https:\/\//.test(d.link)) return setErr("הקישור חייב להתחיל ב-https://");
-      if (!d.link) d.linkText = "";
-      run(async () => {
-        editId
-          ? await O(S(P, "boardPosts", editId), { ...d, ...who() })
-          : await V(M(P, "boardPosts"), { ...d, ...who(), createdAt: Oe() });
-        reset();
-      });
-    },
-    edit = (x) => {
-      setEditId(x.id);
-      setF(Object.fromEntries(Object.keys(BP_EMPTY).map((k) => [k, x[k] ?? BP_EMPTY[k]])));
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    flip = (x, k) => run(() => O(S(P, "boardPosts", x.id), { [k]: !x[k], ...who() })),
-    remove = async (x) => {
-      if (!(await askConfirm(`למחוק את העדכון "${x.title}"?`, { yes: "כן, למחוק", danger: !0 }))) return;
-      run(async () => {
-        await Ee(S(P, "boardPosts", x.id));
-        editId === x.id && reset();
-      });
-    },
-    inp = "w-full border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none focus:border-emerald-400 bg-white",
-    chk = (k, label) =>
-      e.createElement(
-        "label",
-        { className: "flex items-center gap-2 text-sm text-slate-700 min-h-[44px]" },
-        e.createElement("input", { type: "checkbox", checked: f[k], onChange: set(k), className: "w-5 h-5" }),
-        label,
-      ),
-    btn = "min-h-[44px] px-3 rounded-lg text-sm font-semibold border border-slate-200 bg-white text-slate-700 active:bg-slate-100";
-  return e.createElement(
-    "div",
-    { className: "p-4 space-y-3" },
-    e.createElement("p", { className: "text-sm text-slate-600" }, "מופיע באפליקציה של המועדון תוך כמה שניות"),
-    e.createElement(
-      "div",
-      { className: "bg-white rounded-xl border border-slate-200 p-3 space-y-2" },
-      e.createElement("h3", { className: "font-bold text-slate-900" }, editId ? "עריכת עדכון" : "עדכון חדש"),
-      e.createElement("input", { value: f.title, onChange: set("title"), maxLength: 90, placeholder: "כותרת", className: inp }),
-      e.createElement("textarea", { value: f.text, onChange: set("text"), maxLength: 1200, rows: 4, placeholder: "תוכן ההודעה", className: inp }),
-      chk("banner", "הודעה בפס העליון"),
-      chk("pin", "נעוץ למעלה"),
-      e.createElement("input", { value: f.link, onChange: set("link"), maxLength: 300, placeholder: "קישור (לא חובה) https://…", dir: "ltr", type: "url", className: inp }),
-      f.link && e.createElement("input", { value: f.linkText, onChange: set("linkText"), maxLength: 30, placeholder: "טקסט הכפתור", className: inp }),
-      e.createElement("input", { type: "date", value: f.date, onChange: set("date"), className: inp }),
-      err && e.createElement("p", { className: "text-sm text-red-600" }, err),
-      e.createElement(
-        "div",
-        { className: "flex gap-2" },
-        e.createElement(
-          "button",
-          { onClick: save, disabled: busy || !f.date, className: "flex-1 min-h-[44px] bg-blue-900 text-white font-semibold rounded-xl disabled:opacity-50" },
-          editId ? "שמירת השינויים" : "פרסום",
-        ),
-        editId && e.createElement("button", { onClick: reset, className: btn }, "ביטול"),
-      ),
-    ),
-    loading
-      ? e.createElement("p", { className: "text-sm text-slate-500" }, "טוען…")
-      : rows.length === 0
-        ? e.createElement("p", { className: "text-sm text-slate-500" }, "אין עדכונים עדיין.")
-        : rows.map((x) =>
-            e.createElement(
-              "div",
-              { key: x.id, className: `bg-white rounded-xl border border-slate-200 p-3 space-y-2 ${x.hidden ? "opacity-60" : ""}` },
-              e.createElement(
-                "div",
-                { className: "text-sm space-y-0.5" },
-                e.createElement("div", { className: "font-bold text-slate-900" }, x.title),
-                x.text && e.createElement("div", { className: "text-slate-700 whitespace-pre-line line-clamp-3" }, x.text),
-                e.createElement(
-                  "div",
-                  { className: "text-xs text-slate-500" },
-                  [x.date, x.pin && "נעוץ", x.banner && "בפס העליון", x.hidden && "מוסתר", x.authorName].filter(Boolean).join(" · "),
-                ),
-              ),
-              e.createElement(
-                "div",
-                { className: "flex flex-wrap gap-2" },
-                e.createElement("button", { onClick: () => edit(x), disabled: busy, className: btn }, "עריכה"),
-                e.createElement("button", { onClick: () => flip(x, "pin"), disabled: busy, className: btn }, x.pin ? "ביטול נעיצה" : "נעיצה"),
-                e.createElement("button", { onClick: () => flip(x, "hidden"), disabled: busy, className: btn }, x.hidden ? "הצגה" : "הסתרה"),
-                e.createElement(
-                  "button",
-                  { onClick: () => remove(x), disabled: busy, className: "text-red-600 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center active:bg-red-50", "aria-label": "מחיקה" },
-                  e.createElement(Se, { className: "w-5 h-5" }),
-                ),
-              ),
-            ),
-          ),
-  );
-}
-
-// כמה מכשירים אישרו התראות בלוח המועדון (pushTokens). ספירה אחת מהשרת כשהמסך נפתח.
-function PushTokensCount() {
-  let [n, setN] = b(null);
-  j(() => {
-    fsCount(M(P, "pushTokens"))
-      .then((r) => setN(r.data().count))
-      .catch(() => setN("?"));
-  }, []);
-  return e.createElement("p", { className: "text-sm text-slate-700 pt-2" }, "מכשירים שאישרו התראות: " + (n ?? "…"));
-}
-
-// הרשמות לאירועים מלוח המועדון (eventSignups). הייצוא לגיליון המארגנים בשרת
-// (scripts/export_event_signups.mjs, כל שעה) ומסומן ב-eventSignupExports.
-const EVENT_TITLES = { "crane-2026": "מרוץ העגור" };
-function EventSignupsSection({ uid }) {
-  let { data: signups, loading } = L("eventSignups", null, uid),
-    { data: exported } = L("eventSignupExports", null, uid),
-    [err, setErr] = b(""),
-    done = new Set(exported.map((x) => x.id)),
-    byEvent = {};
-  [...signups]
-    .sort((x, y) => (x.createdAt?.toMillis?.() || 0) - (y.createdAt?.toMillis?.() || 0))
-    .forEach((x) => (byEvent[x.event] ||= []).push(x));
-  let remove = async (x) => {
-    if (!(await askConfirm(`למחוק את ההרשמה של "${x.firstName} ${x.lastName}"?`, { yes: "כן, למחוק", danger: !0 }))) return;
-    setErr("");
-    try {
-      await Ee(S(P, "eventSignups", x.id));
-    } catch (er) {
-      setErr("המחיקה נכשלה: " + (er.message || er));
-    }
-  };
-  return e.createElement(
-    "div",
-    { className: "pt-4 space-y-3" },
-    e.createElement("h3", { className: "font-bold text-slate-900" }, "הרשמות לאירועים"),
-    err && e.createElement("p", { className: "text-sm text-red-600" }, err),
-    loading
-      ? e.createElement("p", { className: "text-sm text-slate-500" }, "טוען…")
-      : signups.length === 0
-        ? e.createElement("p", { className: "text-sm text-slate-500" }, "אין הרשמות.")
-        : Object.entries(byEvent).map(([ev, list]) =>
-            e.createElement(
-              "div",
-              { key: ev, className: "space-y-2" },
-              e.createElement("div", { className: "text-sm font-semibold text-slate-700" }, `${EVENT_TITLES[ev] || ev} · ${list.length}`),
-              list.map((x) =>
-                e.createElement(
-                  "div",
-                  { key: x.id, className: "bg-white rounded-xl border border-slate-200 p-3 flex items-start gap-3" },
-                  e.createElement(
-                    "div",
-                    { className: "flex-1 min-w-0 text-sm space-y-0.5" },
-                    e.createElement("div", { className: "font-bold text-slate-900 truncate" }, `${x.firstName} ${x.lastName}`),
-                    e.createElement("div", { className: "text-slate-600" }, [x.heat, x.gender, x.birth, x.city, "חולצה " + x.shirt].filter(Boolean).join(" · ")),
-                    e.createElement("div", { className: "text-xs text-slate-500" }, "נרשם ע\"י: " + (x.byName || "")),
-                    done.has(x.id)
-                      ? e.createElement("div", { className: "text-xs text-emerald-700" }, "הועבר לגיליון")
-                      : e.createElement("div", { className: "text-xs text-amber-700" }, "עוד לא הועבר לגיליון"),
-                  ),
-                  e.createElement(
-                    "button",
-                    {
-                      onClick: () => remove(x),
-                      className: "text-red-600 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center active:bg-red-50",
-                      "aria-label": "מחיקה",
-                    },
-                    e.createElement(Se, { className: "w-5 h-5" }),
-                  ),
-                ),
-              ),
-            ),
-          ),
-  );
-}
 
 function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, onDelete }) {
   return e.createElement(
@@ -4878,12 +4592,6 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
-      r &&
-        m === "boardMembers" &&
-        e.createElement(BoardMembersScreen, { players: c, uid: t?.uid }),
-      canDo(s, "boardPosts") &&
-        m === "boardPosts" &&
-        e.createElement(BoardPostsScreen, { uid: t?.uid, name: s.name }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&
