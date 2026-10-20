@@ -8,7 +8,7 @@ rules_version = '2';
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
-// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPublic. אוסף שלא מופיע
+// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPublic, boardPosts. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -73,7 +73,7 @@ service cloud.firestore {
 
     // הרשאה פרטנית שהמנהל פותח לכל משתמש בנפרד, במסך "ניהול הרשאות".
     // הערכים: reports, payments, phonebook, manageGroups, competitions,
-    //         sendMessages, access — זהים ל-APP_PERMISSIONS שבקוד.
+    //         sendMessages, access, boardPosts — זהים ל-APP_PERMISSIONS שבקוד.
     function hasPerm(p) {
       return hasProfile() && (
         me().get('role', '').lower() == 'admin' ||
@@ -436,6 +436,35 @@ service cloud.firestore {
         && (!('platform' in request.resource.data)
             || request.resource.data.platform in ['android', 'ios', 'desktop']);
       allow read, update, delete: if isAdmin();
+    }
+
+    // ---------- עדכונים בלוח המועדון הציבורי ----------
+    // הלוח (ריפו נפרד) קורא בלי התחברות. כותב רק מנהל או מי שקיבל boardPosts.
+    function boardPostValid() {
+      let d = request.resource.data;
+      let keys = ['title', 'text', 'banner', 'pin', 'hidden', 'link', 'linkText',
+                  'date', 'author', 'authorName', 'updatedAt', 'createdAt'];
+      return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 90
+        && d.text is string && d.text.size() <= 1200
+        && d.banner is bool && d.pin is bool && d.hidden is bool
+        && d.link is string
+        && (d.link == '' || (d.link.size() <= 300 && d.link.matches('https://.*')))
+        && d.linkText is string && d.linkText.size() <= 30
+        && d.date is string && d.date.matches('\\d{4}-\\d{2}-\\d{2}')
+        && d.date >= '2025-01-01' && d.date <= '2030-12-31'
+        && d.author == request.auth.uid
+        && d.authorName is string && d.authorName.size() <= 60
+        && d.updatedAt == request.time;
+    }
+    match /boardPosts/{id} {
+      // הלוח שואל עם where hidden == false; מוסתר — רק לצוות המורשה
+      allow get, list: if resource.data.hidden == false || isAdmin() || hasPerm('boardPosts');
+      allow create: if (isAdmin() || hasPerm('boardPosts')) && boardPostValid()
+        && request.resource.data.createdAt == request.time;
+      allow update: if (isAdmin() || hasPerm('boardPosts')) && boardPostValid()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin() || hasPerm('boardPosts');
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
