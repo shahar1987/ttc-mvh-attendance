@@ -72,6 +72,7 @@ const STAFF_MENU_ITEMS = [
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
   { key: "reports", label: "דוחות", short: "דוחות מפורטים", icon: ReportsIcon, perm: "reports" },
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
+  { key: "boardMembers", label: "נרשמו באפליקציית המועדון", short: "נרשמו בלוח", icon: H, adminOnly: !0 },
   // ייבוא כותב שחקנים — צופה לא רואה אותו גם אם יש לו הרשאת ניהול קבוצות (שאר המסכים שלו לקריאה בלבד)
   { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups", noViewer: !0 },
   {
@@ -90,7 +91,7 @@ const MENU_SECTIONS = [
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
   { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
-  { label: "הרשאות", icon: Ie, keys: ["permissions"] },
+  { label: "הרשאות", icon: Ie, keys: ["permissions", "boardMembers"] },
 ];
 function menuItemVisible(it, isAdmin, isViewer, profile) {
   return it.adminOnly
@@ -1717,6 +1718,84 @@ const DEFAULT_PAYMENT_MAPPINGS = [
   { mtnsLabel: 'טנ"ש סגל ליגות', groupId: "VyDxCfZhhzTMmDmUj0C1", sessionsPerWeek: 2, price: 290, registrationUrl: hugimUrl(0, 9), note: "בקובץ אין מספר ליד השם — זו האפשרות היחידה" },
   { mtnsLabel: 'טנ"ש סטודנטים דפנה 1', groupId: "6ROF53McGgHRz2VsQG6Z", sessionsPerWeek: 1, note: "לאשר — האם זו אותה קבוצה כמו דפנה בוגרים? אין עדיין קישור הרשמה" },
 ];
+
+// נרשמו בלוח המועדון (כניסה עם גוגל באתר הציבורי). ההתאמה לשחקן נכתבת בשרת
+// (scripts/match_board_members.mjs, כל שעה). המאזינים פתוחים רק כשהמסך פתוח.
+function BoardMembersScreen({ players, uid }) {
+  let { data: members, loading } = L("boardMembers", null, uid),
+    { data: matches } = L("boardMemberMatches", null, uid),
+    [onlyMissing, setOnlyMissing] = b(!1),
+    [err, setErr] = b(""),
+    matchOf = Object.fromEntries(matches.map((x) => [x.id, x])),
+    nameOf = Object.fromEntries(players.map((p) => [p.id, p.name])),
+    when = (v) => (v && v.toDate ? v.toDate().toLocaleDateString("he-IL") : ""),
+    rows = members
+      .filter((x) => !onlyMissing || matchOf[x.id]?.status === "not-found")
+      .sort((x, y) => (y.createdAt?.toMillis?.() || 0) - (x.createdAt?.toMillis?.() || 0)),
+    remove = async (x) => {
+      if (!(await askConfirm(`למחוק את "${x.name}" מרשימת הנרשמים?`, { yes: "כן, למחוק", danger: !0 }))) return;
+      setErr("");
+      try {
+        await Ee(S(P, "boardMembers", x.id));
+      } catch (er) {
+        setErr("המחיקה נכשלה: " + (er.message || er));
+      }
+    };
+  return e.createElement(
+    "div",
+    { className: "p-4 space-y-3" },
+    e.createElement(
+      "label",
+      { className: "flex items-center gap-2 text-sm text-slate-700 min-h-[44px]" },
+      e.createElement("input", {
+        type: "checkbox",
+        checked: onlyMissing,
+        onChange: (ev) => setOnlyMissing(ev.target.checked),
+        className: "w-5 h-5",
+      }),
+      "רק מי שלא נמצא",
+    ),
+    err && e.createElement("p", { className: "text-sm text-red-600" }, err),
+    loading
+      ? e.createElement("p", { className: "text-sm text-slate-500" }, "טוען…")
+      : rows.length === 0
+        ? e.createElement("p", { className: "text-sm text-slate-500" }, "אין נרשמים להצגה.")
+        : rows.map((x) => {
+            let mt = matchOf[x.id],
+              status = !mt
+                ? e.createElement("span", { className: "text-slate-500" }, "ממתין לבדיקה")
+                : mt.status === "matched"
+                  ? e.createElement(
+                      "span",
+                      { className: "text-emerald-700" },
+                      "נמצא: " + (mt.playerIds || []).map((id) => nameOf[id] || "שחקן שנמחק").join(", "),
+                    )
+                  : e.createElement("span", { className: "text-amber-700 font-semibold" }, "לא נמצא");
+            return e.createElement(
+              "div",
+              { key: x.id, className: "bg-white rounded-xl border border-slate-200 p-3 flex items-start gap-3" },
+              e.createElement(
+                "div",
+                { className: "flex-1 min-w-0 text-sm space-y-0.5" },
+                e.createElement("div", { className: "font-bold text-slate-900 truncate" }, x.name || "בלי שם"),
+                e.createElement("div", { className: "text-slate-600 truncate", dir: "ltr" }, x.email || ""),
+                e.createElement("div", { className: "text-slate-600", dir: "ltr" }, x.phone || ""),
+                e.createElement("div", null, status),
+                e.createElement("div", { className: "text-xs text-slate-500" }, "נרשם: " + when(x.createdAt)),
+              ),
+              e.createElement(
+                "button",
+                {
+                  onClick: () => remove(x),
+                  className: "text-red-600 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center active:bg-red-50",
+                  "aria-label": "מחיקה",
+                },
+                e.createElement(Se, { className: "w-5 h-5" }),
+              ),
+            );
+          }),
+  );
+}
 
 function PaymentMappingRow({ row, groups, onDraft, onCommitText, onCommitNow, onDelete }) {
   return e.createElement(
@@ -4592,6 +4671,9 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
+      r &&
+        m === "boardMembers" &&
+        e.createElement(BoardMembersScreen, { players: c, uid: t?.uid }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&
