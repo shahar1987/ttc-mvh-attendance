@@ -22,6 +22,13 @@
 - שלום: ...
 ```
 
+## [ממתין ל"כן"] 2026-10-20 — מעורבות בלוח המועדון: הבאת חבר, פושים ביום משחק, ימי הולדת
+סוג: ✨ פיצ'ר + 🔒 חוקי Firestore (שדה רשות חדש ref ב-boardMembers, אוסף ציבורי חדש boardPublic; attendance לא השתנה). שלום אישר את התוכנית 20.10.
+- בונה: (1) boardMembers.ref — uid של המזמין, [A-Za-z0-9]{10,128}, רק ביצירה, לא שלך, לא משתנה/נוסף/נמחק בעדכון. scripts/referrals.mjs (שלב שלישי ב-board-members.yml) כותב boardPublic/referrals = {month, top:[{name:"שם פרטי + אות׳", count}] עד 10, updatedAt}; boardPublic — קריאה לכולם, כתיבה רק בשרת. match_board_members: נרשם חדש דרך הזמנה — שורה "🤝 X הצטרף/ה דרך Y" באותה הודעה שעתית לשולה. (2) scripts/gameday.mjs + gameday.yml (6:07 UTC וכל שעה ב-:37): data.json הציבורי של הלוח; "היום משחקים! 🏓" פעם ביום (מ-08:00 ועד המשחק הראשון), "תוצאה: …" לכל תוצאה חדשה (עד שבוע אחורה); מצב ב-system/gamedayPush; הרצה ראשונה מסמנת תוצאות קיימות בלי שליחה. send_push.mjs: sendPush משותף.
+- (3) ימי הולדת — לא נבנה: לכרטיס שחקן אין שדה תאריך לידה (players: name, groupId, parentName, parentPhone, יעדים, trainingDays, joinDate, endDate, isActive). לא הומצא שדה ולא הייתה הסבה.
+- בודק: node --check, privacy-guard, agents 66/66 (gameday.test.mjs: בחירה עם תאריך קבוע, הרצה ראשונה, פעם אחת, צד שלנו בתוצאה, טבלת הבאת חבר). rules-tests: 2 בדיקות חדשות; האמולטור רץ ב-PR. part-a/part-b לא השתנו (בלי esbuild).
+- שלום: לאשר PR (החוקים נפרסים במיזוג). בלוח (ריפו נפרד): קישור הזמנה עם ?ref=<uid>, לשמור ref ביצירת boardMembers, להציג boardPublic/referrals.
+
 ## [ממתין ל"כן"] 2026-10-20 — הקשחת התראות הדחיפה (המשך לביקורת אבטחה)
 סוג: 🐞 אבטחה (סקריפט בלבד; בלי שינוי בחוקים או באפליקציה)
 - בונה: send_push.mjs — במקום עצירה מעל 20000 טוקנים: 20000 הוותיקים לפי createdAt (נקבע בשרת, אי אפשר לזייף ותק). מחיקת טוקנים מתים ב-bulkWriter אחד. URL: עד 300 תווים, מקור https://shahar1987.github.io ונתיב /ttc-club-board/ אחרי נרמול, בלי "..". invalid-argument כבר לא נחשב טוקן מת.

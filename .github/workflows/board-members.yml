@@ -6,6 +6,7 @@ name: Board members match
 # דרך התור של הבוט (agentReports/bot.outboxQueue), כמו agents/alert.mjs.
 # שלב שני: הרשמות לאירועים (eventSignups) עוברות לגיליון של המארגנים (scripts/export_event_signups.mjs,
 # scripts/event_sheets.json), ושולה מקבלת הודעה אחת עם הנרשמים החדשים.
+# שלב שלישי: טבלת "הבאת חבר" של החודש למסמך הציבורי boardPublic/referrals (scripts/referrals.mjs).
 #
 # משתמש ב-service account הקיים (FIREBASE_SERVICE_ACCOUNT). אין סוד נוסף.
 #
@@ -48,11 +49,17 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/export_event_signups.mjs
 
+      - name: Referrals leaderboard (boardPublic/referrals)
+        if: success() || failure()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/referrals.mjs
+
       - name: Tell the owner on WhatsApp that the match or export failed
         if: failure()
         working-directory: agents
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           ALERT_KEY: board-members
-          ALERT_TEXT: "❌ התאמת הנרשמים באפליקציית המועדון לשחקנים או העברת ההרשמות לאירועים לגיליון נכשלה. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ALERT_TEXT: "❌ התאמת הנרשמים באפליקציית המועדון לשחקנים, העברת ההרשמות לאירועים לגיליון או טבלת הבאת חבר נכשלה. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: node alert.mjs

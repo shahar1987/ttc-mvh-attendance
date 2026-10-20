@@ -1,0 +1,47 @@
+name: Game day push
+
+# התראות דחיפה ביום משחק לכל המכשירים בלוח המועדון (scripts/gameday.mjs):
+# בבוקר "היום משחקים!" ובמשך היום "תוצאה: …" כשמגיעה תוצאה. הנתונים מ-data.json הציבורי של הלוח.
+# המצב ב-system/gamedayPush, כך שהרצות חוזרות לא שולחות פעמיים.
+# ליומן — רק מספרים.
+on:
+  schedule:
+    - cron: "7 6 * * *"    # ≈09:07 שעון קיץ / 08:07 שעון חורף
+    - cron: "37 * * * *"   # כל שעה — תוצאות (ובוקר שפוספס)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gameday
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: agents
+        run: npm ci --no-audit --no-fund
+
+      - name: Game day and result pushes
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/gameday.mjs
+
+      - name: Tell the owner on WhatsApp that the game day push failed
+        if: failure()
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ALERT_KEY: gameday
+          ALERT_TEXT: "❌ התראות יום המשחק בלוח המועדון נכשלו. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: node alert.mjs
