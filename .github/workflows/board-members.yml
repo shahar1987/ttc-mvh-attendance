@@ -1,11 +1,12 @@
 name: Board members match
 
 # מתאים את מי שנרשם בלוח המועדון (boardMembers) לכרטיס שחקן לפי טלפון
-# (scripts/match_board_members.mjs) וכותב את התוצאה ל-boardMemberMatches — מוצג באפליקציה
-# במסך "נרשמו באפליקציית המועדון" (מנהל בלבד). נרשם חדש שלא נמצא — הודעה לשולה בוואטסאפ
+# (scripts/match_board_members.mjs) וכותב את התוצאה ל-boardMemberMatches — מוצג בדף הניהול בפורטל
+# (בעל הלוח בלבד). נרשם חדש שלא נמצא — הודעה לשולה בוואטסאפ
 # דרך התור של הבוט (agentReports/bot.outboxQueue), כמו agents/alert.mjs.
 # שלב שני: הרשמות לאירועים (eventSignups) עוברות לגיליון של המארגנים (scripts/export_event_signups.mjs,
 # scripts/event_sheets.json), ושולה מקבלת הודעה אחת עם הנרשמים החדשים.
+# גם: התראות שבעל הלוח ביקש מדף הניהול בפורטל (scripts/push_queue.mjs, pushRequests).
 # שלב שלישי: טבלת "הבאת חבר" של החודש למסמך הציבורי boardPublic/referrals (scripts/referrals.mjs).
 #
 # משתמש ב-service account הקיים (FIREBASE_SERVICE_ACCOUNT). אין סוד נוסף.
@@ -53,6 +54,12 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/export_event_signups.mjs
+
+      - name: Push notifications requested from the portal admin page (pushRequests)
+        if: success() || failure()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/push_queue.mjs
 
       - name: Referrals leaderboard (boardPublic/referrals)
         if: success() || failure()
