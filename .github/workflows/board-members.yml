@@ -1,0 +1,50 @@
+name: Board members match
+
+# מתאים את מי שנרשם בלוח המועדון (boardMembers) לכרטיס שחקן לפי טלפון
+# (scripts/match_board_members.mjs) וכותב את התוצאה ל-boardMemberMatches — מוצג באפליקציה
+# במסך "נרשמו באפליקציית המועדון" (מנהל בלבד). נרשם חדש שלא נמצא — הודעה לשולה בוואטסאפ
+# דרך התור של הבוט (agentReports/bot.outboxQueue), כמו agents/alert.mjs.
+#
+# משתמש ב-service account הקיים (FIREBASE_SERVICE_ACCOUNT). אין סוד נוסף.
+#
+# פרטיות: הריפו ציבורי, ולכן ליומן ההרצה מודפסים רק מספרים — לעולם לא שמות או טלפונים.
+on:
+  schedule:
+    - cron: "17 * * * *"   # כל שעה
+  workflow_dispatch:       # מאפשר גם הרצה ידנית מהלשונית Actions
+
+permissions:
+  contents: read
+
+concurrency:
+  group: board-members
+  cancel-in-progress: false
+
+jobs:
+  match:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: agents
+        run: npm ci --no-audit --no-fund
+
+      - name: Match board members to players
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/match_board_members.mjs
+
+      - name: Tell the owner on WhatsApp that the match failed
+        if: failure()
+        working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ALERT_KEY: board-members
+          ALERT_TEXT: "❌ התאמת הנרשמים באפליקציית המועדון לשחקנים נכשלה. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: node alert.mjs

@@ -7,7 +7,8 @@ rules_version = '2';
 //
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
-// accessRequests, reminders, adminTasks, system, auditLog, tournaments. אוסף שלא מופיע
+// accessRequests, reminders, adminTasks, system, auditLog, tournaments,
+// boardMembers, boardMemberMatches. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -317,6 +318,41 @@ service cloud.firestore {
     // רשימת השחקנים של הטופס, אחרי עריכות המאמן (uniformConfig/roster).
     match /uniformConfig/{id} {
       allow read, write: if isAdmin();
+    }
+
+    // ---------- נרשמים בלוח המועדון (אתר ציבורי נפרד, כניסה עם גוגל) ----------
+    // לגולש אין פרופיל ב-users, ולכן hasProfile() נכשל לו בכל אוסף אחר.
+    // כאן הוא כותב רק את המסמך של עצמו, רק בשדות האלה, וקורא/מוחק רק אותו (זכות להישכח).
+    // הטלפון: אחרי הסרת רווחים ומקפים — נייד ישראלי (05XXXXXXXX / 9725XXXXXXXX / +9725XXXXXXXX).
+    function boardMemberValid() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'email', 'phone', 'photo', 'consent', 'createdAt', 'updatedAt'])
+        && d.get('name', null) is string && d.name.size() > 0 && d.name.size() <= 80
+        && (!('email' in d) || (d.email is string && d.email.size() <= 120
+            && d.email == request.auth.token.email))
+        && d.get('phone', null) is string && d.phone.size() <= 20
+        && d.phone.matches('[0-9+ -]+')
+        && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
+        && (!('photo' in d) || (d.photo is string && d.photo.size() <= 500))
+        && d.get('consent', false) == true
+        && d.get('updatedAt', null) == request.time;
+    }
+    match /boardMembers/{uid} {
+      allow read: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && boardMemberValid()
+        && request.resource.data.get('createdAt', null) == request.time;
+      // createdAt לא משתנה בעדכון
+      allow update: if (isSignedIn() && request.auth.uid == uid
+          && boardMemberValid()
+          && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null))
+        || isAdmin();
+      allow delete: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+    }
+    // תוצאת ההתאמה לשחקן — נכתבת רק בסקריפט (scripts/match_board_members.mjs, Admin SDK).
+    match /boardMemberMatches/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
