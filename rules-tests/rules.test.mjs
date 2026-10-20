@@ -317,6 +317,47 @@ await t('גולש מוחק את עצמו (זכות להישכח), לא אחר', 
   await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardMembers/bm1')));
 });
 
+console.log('\n— הרשמה לאירועים מלוח המועדון —');
+const es = (uid, n = 1, extra = {}) => ({ event: 'crane-2026', uid, n, firstName: 'נועה', lastName: 'כהן', heat: '5 ק"מ', gender: 'נ', birth: '1.2.2015', city: 'שניר', phone: '050-1234567', email: `${uid}@example.com`, shirt: 'ילדים 10', byName: 'גולש', createdAt: serverTimestamp(), ...extra });
+const esId = (uid, n = 1) => `eventSignups/crane-2026_${uid}_${n}`;
+await t('גולש רושם את עצמו ובן משפחה, וקורא את שלו', async () => {
+  await assertSucceeds(setDoc(doc(boardAs('ev1'), esId('ev1', 1)), es('ev1', 1)));
+  // בן משפחה: בלי אימייל (שדה אופציונלי)
+  const { email, ...kid } = es('ev1', 2, { gender: 'ז', birth: '12/11/1980', shirt: 'XL' });
+  await assertSucceeds(setDoc(doc(boardAs('ev1'), esId('ev1', 2)), kid));
+  await assertSucceeds(getDoc(doc(boardAs('ev1'), esId('ev1', 1))));
+  await assertSucceeds(getDocs(query(collection(boardAs('ev1'), 'eventSignups'), where('uid', '==', 'ev1'))));
+});
+await t('מזהה או uid לא תואמים — נחסם', async () => {
+  await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2', 2)), es('ev2', 1)));
+  await assertFails(setDoc(doc(boardAs('ev2'), esId('ev1', 3)), es('ev1', 3)));
+  await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2', 9)), es('ev2', 9)));
+  await assertFails(setDoc(doc(boardAs('ev2'), 'eventSignups/crane-2026_ev2_x'), es('ev2', 'x')));
+});
+await t('שדה נוסף (כמו ת.ז) — נחסם', () => assertFails(setDoc(doc(boardAs('ev2'), esId('ev2')), es('ev2', 1, { idNumber: '123' }))));
+await t('מגדר, מידה, טלפון, תאריך לידה או אימייל לא תקינים — נחסם', async () => {
+  for (const bad of [{ gender: 'x' }, { shirt: 'XXXL' }, { phone: '04-6951234' }, { phone: '050123' }, { birth: '2015-02-01' }, { birth: 'אתמול' }, { email: 'other@example.com' }, { firstName: '' }])
+    await assertFails(setDoc(doc(boardAs('ev2'), esId('ev2')), es('ev2', 1, bad)));
+});
+await t('לא קורא הרשמה של אחר ולא את כל הרשימה', async () => {
+  await assertFails(getDoc(doc(boardAs('ev2'), esId('ev1', 1))));
+  await assertFails(getDocs(collection(boardAs('ev2'), 'eventSignups')));
+  await assertFails(getDocs(collection(as('coachA'), 'eventSignups')));
+});
+await t('אין עדכון; מחיקה של שלך בלבד', async () => {
+  await assertFails(updateDoc(doc(boardAs('ev1'), esId('ev1', 1)), { heat: '10 ק"מ' }));
+  await assertFails(deleteDoc(doc(boardAs('ev2'), esId('ev1', 1))));
+  await assertSucceeds(deleteDoc(doc(boardAs('ev1'), esId('ev1', 2))));
+});
+await t('מנהל קורא ומוחק; ייצוא — מנהל קורא, אף לקוח לא כותב', async () => {
+  await assertSucceeds(getDocs(collection(as('admin1'), 'eventSignups')));
+  await assertSucceeds(getDocs(collection(as('admin1'), 'eventSignupExports')));
+  await assertFails(getDocs(collection(boardAs('ev1'), 'eventSignupExports')));
+  await assertFails(setDoc(doc(boardAs('ev1'), 'eventSignupExports/crane-2026_ev1_1'), { exportedAt: 'x' }));
+  await assertFails(setDoc(doc(as('admin1'), 'eventSignupExports/crane-2026_ev1_1'), { exportedAt: 'x' }));
+  await assertSucceeds(deleteDoc(doc(as('admin1'), esId('ev1', 1))));
+});
+
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
   await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));

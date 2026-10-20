@@ -8,7 +8,7 @@ rules_version = '2';
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
-// boardMembers, boardMemberMatches. אוסף שלא מופיע
+// boardMembers, boardMemberMatches, eventSignups, eventSignupExports. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -351,6 +351,44 @@ service cloud.firestore {
     }
     // תוצאת ההתאמה לשחקן — נכתבת רק בסקריפט (scripts/match_board_members.mjs, Admin SDK).
     match /boardMemberMatches/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---------- הרשמה לאירועי המועדון (מרוץ העגור וכו') מלוח המועדון ----------
+    // הגולש רושם את עצמו ובני משפחה: מסמך לכל משתתף, מזהה event_uid_n (n בין 1 ל-8).
+    // לא אוספים ת.ז לעולם. אין עדכון — מוחקים ונרשמים מחדש.
+    // הייצוא לגיליון של המארגנים — בסקריפט (scripts/export_event_signups.mjs, Admin SDK).
+    function eventSignupValid(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['event', 'uid', 'n', 'firstName', 'lastName', 'heat', 'gender', 'birth',
+                               'city', 'phone', 'email', 'shirt', 'byName', 'createdAt'])
+        && d.get('uid', null) == request.auth.uid
+        && d.get('event', null) is string && d.event.matches('[a-z0-9-]{3,40}')
+        && d.get('n', null) is int && d.n >= 1 && d.n <= 8
+        && id == d.event + '_' + request.auth.uid + '_' + string(d.n)
+        && d.get('firstName', null) is string && d.firstName.size() > 0 && d.firstName.size() <= 40
+        && d.get('lastName', null) is string && d.lastName.size() > 0 && d.lastName.size() <= 40
+        && d.get('heat', null) is string && d.heat.size() > 0 && d.heat.size() <= 20
+        && d.get('gender', null) in ['ז', 'נ']
+        && d.get('birth', null) is string && d.birth.matches('[0-9]{1,2}[./][0-9]{1,2}[./][0-9]{4}')
+        && d.get('city', null) is string && d.city.size() <= 40
+        && d.get('phone', null) is string && d.phone.size() <= 20
+        && d.phone.matches('[0-9+ -]+')
+        && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
+        && (!('email' in d) || (d.email is string && d.email == request.auth.token.email))
+        && d.get('shirt', null) in ['XS', 'S', 'M', 'L', 'XL', 'XXL',
+                                    'ילדים 6', 'ילדים 8', 'ילדים 10', 'ילדים 12', 'ילדים 14']
+        && d.get('byName', null) is string && d.byName.size() <= 80
+        && d.get('createdAt', null) == request.time;
+    }
+    match /eventSignups/{id} {
+      allow create: if isSignedIn() && eventSignupValid(id);
+      allow read, delete: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow update: if false;
+    }
+    // מה כבר הועבר לגיליון — נכתב רק בסקריפט
+    match /eventSignupExports/{id} {
       allow read: if isAdmin();
       allow write: if false;
     }
