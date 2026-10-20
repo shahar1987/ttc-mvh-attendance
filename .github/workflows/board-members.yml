@@ -7,6 +7,7 @@ name: Board members match
 # שלב שני: הרשמות לאירועים (eventSignups) עוברות לגיליון של המארגנים (scripts/export_event_signups.mjs,
 # scripts/event_sheets.json), ושולה מקבלת הודעה אחת עם הנרשמים החדשים.
 # גם: התראות שבעל הלוח ביקש מדף הניהול בפורטל (scripts/push_queue.mjs, pushRequests).
+# בדיקה: אנשי צוות שלא יכולים להיכנס לאפליקציית הנוכחות (scripts/staff_logins.mjs).
 # שלב שלישי: טבלת "הבאת חבר" של החודש למסמך הציבורי boardPublic/referrals (scripts/referrals.mjs).
 #
 # משתמש ב-service account הקיים (FIREBASE_SERVICE_ACCOUNT). אין סוד נוסף.
@@ -66,6 +67,13 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/referrals.mjs
+
+      # כניסה עם Google בלוח מוחקת סיסמה של צוות עם אותו אימייל — לכן הבדיקה כאן, אחרי ההתאמה
+      - name: Staff who cannot sign in to the attendance app (scripts/staff_logins.mjs)
+        if: success() || failure()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/staff_logins.mjs
 
       - name: Tell the owner on WhatsApp that the match or export failed
         if: failure()
