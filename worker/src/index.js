@@ -14,7 +14,7 @@ import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, sta
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
-import { dashboardRoute, dashboardUrl } from "./dashboard.js";
+import { dailyDashboard, dashboardRoute, dashboardUrl } from "./dashboard.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
@@ -582,6 +582,7 @@ async function everyQuarter(env) {
     coachReminderTest(env, store, wa),
     parentMsgNag(env, store, wa),
     deliverOutbox(env, store, wa),
+    dailyDashboard(env, store, ORIGIN || env.PUBLIC_URL, (text) => tell(store, wa, "dashboard", text, "הדשבורד התעדכן")),
     dispatchWorkflows(env, store),
     failedRuns(env, store).then(async ({ lines, ids }) => {
       if (lines.length) await tell(store, wa, "github", `❌ *נכשל ב-GitHub:*\n${lines.join("\n")}`, `נכשל ב-GitHub: ${summary(lines)}`);
