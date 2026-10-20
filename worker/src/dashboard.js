@@ -17,6 +17,19 @@ const avg = (xs) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.l
 
 export const dashboardUrl = async (env, origin) => `${origin}/dashboard?t=${await sign(env, "dashboard")}`;
 
+// פעם ביום, אחרי שהסוכן הלילי עדכן את הנתונים: הקישור לדשבורד בוואטסאפ (שחר, 20.10.2026).
+// נרשם כנשלח רק אחרי שליחה מוצלחת — כישלון ינסה שוב ברבע השעה הבאה.
+export async function dailyDashboard(env, store, origin, send) {
+  const updatedAt = ((await store.get("agentReports/insights")) || {}).updatedAt;
+  const bot = (await store.get("agentReports/bot")) || {};
+  if (!updatedAt || bot.dashboardSentFor === updatedAt) return "dashboard: nothing new";
+  const o = origin || bot.workerUrl;
+  if (!o) return "dashboard: no origin";
+  await send(`📊 הדשבורד התעדכן מפייסבוק ומאינסטגרם:\n${await dashboardUrl(env, o)}`);
+  await store.merge("agentReports/bot", { dashboardSentFor: updatedAt });
+  return "dashboard: sent";
+}
+
 export async function dashboardRoute(req, env, store) {
   const url = new URL(req.url);
   if (url.searchParams.get("t") !== (await sign(env, "dashboard"))) return new Response("forbidden", { status: 403 });
