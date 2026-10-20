@@ -1794,6 +1794,84 @@ function BoardMembersScreen({ players, uid }) {
               ),
             );
           }),
+    e.createElement(PushTokensCount, null),
+    e.createElement(EventSignupsSection, { uid }),
+  );
+}
+
+// כמה מכשירים אישרו התראות בלוח המועדון (pushTokens). ספירה אחת מהשרת כשהמסך נפתח.
+function PushTokensCount() {
+  let [n, setN] = b(null);
+  j(() => {
+    fsCount(M(P, "pushTokens"))
+      .then((r) => setN(r.data().count))
+      .catch(() => setN("?"));
+  }, []);
+  return e.createElement("p", { className: "text-sm text-slate-700 pt-2" }, "מכשירים שאישרו התראות: " + (n ?? "…"));
+}
+
+// הרשמות לאירועים מלוח המועדון (eventSignups). הייצוא לגיליון המארגנים בשרת
+// (scripts/export_event_signups.mjs, כל שעה) ומסומן ב-eventSignupExports.
+const EVENT_TITLES = { "crane-2026": "מרוץ העגור" };
+function EventSignupsSection({ uid }) {
+  let { data: signups, loading } = L("eventSignups", null, uid),
+    { data: exported } = L("eventSignupExports", null, uid),
+    [err, setErr] = b(""),
+    done = new Set(exported.map((x) => x.id)),
+    byEvent = {};
+  [...signups]
+    .sort((x, y) => (x.createdAt?.toMillis?.() || 0) - (y.createdAt?.toMillis?.() || 0))
+    .forEach((x) => (byEvent[x.event] ||= []).push(x));
+  let remove = async (x) => {
+    if (!(await askConfirm(`למחוק את ההרשמה של "${x.firstName} ${x.lastName}"?`, { yes: "כן, למחוק", danger: !0 }))) return;
+    setErr("");
+    try {
+      await Ee(S(P, "eventSignups", x.id));
+    } catch (er) {
+      setErr("המחיקה נכשלה: " + (er.message || er));
+    }
+  };
+  return e.createElement(
+    "div",
+    { className: "pt-4 space-y-3" },
+    e.createElement("h3", { className: "font-bold text-slate-900" }, "הרשמות לאירועים"),
+    err && e.createElement("p", { className: "text-sm text-red-600" }, err),
+    loading
+      ? e.createElement("p", { className: "text-sm text-slate-500" }, "טוען…")
+      : signups.length === 0
+        ? e.createElement("p", { className: "text-sm text-slate-500" }, "אין הרשמות.")
+        : Object.entries(byEvent).map(([ev, list]) =>
+            e.createElement(
+              "div",
+              { key: ev, className: "space-y-2" },
+              e.createElement("div", { className: "text-sm font-semibold text-slate-700" }, `${EVENT_TITLES[ev] || ev} · ${list.length}`),
+              list.map((x) =>
+                e.createElement(
+                  "div",
+                  { key: x.id, className: "bg-white rounded-xl border border-slate-200 p-3 flex items-start gap-3" },
+                  e.createElement(
+                    "div",
+                    { className: "flex-1 min-w-0 text-sm space-y-0.5" },
+                    e.createElement("div", { className: "font-bold text-slate-900 truncate" }, `${x.firstName} ${x.lastName}`),
+                    e.createElement("div", { className: "text-slate-600" }, [x.heat, x.gender, x.birth, x.city, "חולצה " + x.shirt].filter(Boolean).join(" · ")),
+                    e.createElement("div", { className: "text-xs text-slate-500" }, "נרשם ע\"י: " + (x.byName || "")),
+                    done.has(x.id)
+                      ? e.createElement("div", { className: "text-xs text-emerald-700" }, "הועבר לגיליון")
+                      : e.createElement("div", { className: "text-xs text-amber-700" }, "עוד לא הועבר לגיליון"),
+                  ),
+                  e.createElement(
+                    "button",
+                    {
+                      onClick: () => remove(x),
+                      className: "text-red-600 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center active:bg-red-50",
+                      "aria-label": "מחיקה",
+                    },
+                    e.createElement(Se, { className: "w-5 h-5" }),
+                  ),
+                ),
+              ),
+            ),
+          ),
   );
 }
 

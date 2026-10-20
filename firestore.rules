@@ -8,7 +8,7 @@ rules_version = '2';
 // שמות האוספים כאן נבדקו מול הקוד: users, groups, players, attendance,
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
-// boardMembers, boardMemberMatches. אוסף שלא מופיע
+// boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -50,6 +50,18 @@ service cloud.firestore {
 
     function isAdmin() {
       return roleIs('admin');
+    }
+
+    // גולש אמיתי עם חשבון גוגל מאומת — לא חשבון אנונימי שנוצר בסקריפט (הגנה מהצפה)
+    function isGoogleUser() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // טקסט חופשי שלא נפתח כנוסחה בגיליון (= + - @ או טאב בהתחלה)
+    function noFormula(v) {
+      return !v.matches('[=+@\\t-].*');
     }
 
     // צוות המועדון: מנהל, מאמן, צופה — כל מי שאינו הורה/שחקן.
@@ -328,8 +340,9 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly(['name', 'email', 'phone', 'photo', 'consent', 'createdAt', 'updatedAt'])
         && d.get('name', null) is string && d.name.size() > 0 && d.name.size() <= 80
-        && (!('email' in d) || (d.email is string && d.email.size() <= 120
-            && d.email == request.auth.token.email))
+        && noFormula(d.name)
+        && d.get('email', null) is string && d.email.size() <= 120
+        && d.get('email', null) == request.auth.token.email
         && d.get('phone', null) is string && d.phone.size() <= 20
         && d.phone.matches('[0-9+ -]+')
         && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
@@ -339,11 +352,11 @@ service cloud.firestore {
     }
     match /boardMembers/{uid} {
       allow read: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == uid
+      allow create: if isGoogleUser() && request.auth.uid == uid
         && boardMemberValid()
         && request.resource.data.get('createdAt', null) == request.time;
       // createdAt לא משתנה בעדכון
-      allow update: if (isSignedIn() && request.auth.uid == uid
+      allow update: if (isGoogleUser() && request.auth.uid == uid
           && boardMemberValid()
           && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null))
         || isAdmin();
@@ -353,6 +366,63 @@ service cloud.firestore {
     match /boardMemberMatches/{uid} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // ---------- הרשמה לאירועי המועדון (מרוץ העגור וכו') מלוח המועדון ----------
+    // הגולש רושם את עצמו ובני משפחה: מסמך לכל משתתף, מזהה event_uid_n (n בין 1 ל-8).
+    // לא אוספים ת.ז לעולם. אין עדכון — מוחקים ונרשמים מחדש.
+    // הייצוא לגיליון של המארגנים — בסקריפט (scripts/export_event_signups.mjs, Admin SDK).
+    function eventSignupValid(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['event', 'uid', 'n', 'firstName', 'lastName', 'heat', 'gender', 'birth',
+                               'city', 'phone', 'email', 'shirt', 'byName', 'createdAt'])
+        && d.get('uid', null) == request.auth.uid
+        && d.get('event', null) is string && d.event.matches('[a-z0-9-]{3,40}')
+        && d.event in ['crane-2026']
+        && d.get('n', null) is int && d.n >= 1 && d.n <= 8
+        && id == d.event + '_' + request.auth.uid + '_' + string(d.n)
+        && d.get('firstName', null) is string && d.firstName.size() > 0 && d.firstName.size() <= 40
+        && d.get('lastName', null) is string && d.lastName.size() > 0 && d.lastName.size() <= 40
+        && d.get('heat', null) is string && d.heat.size() > 0 && d.heat.size() <= 20
+        && d.get('gender', null) in ['ז', 'נ']
+        && d.get('birth', null) is string && d.birth.matches('[0-9]{1,2}[./][0-9]{1,2}[./][0-9]{4}')
+        && d.get('city', null) is string && d.city.size() <= 40
+        && d.get('phone', null) is string && d.phone.size() <= 20
+        && d.phone.matches('[0-9+ -]+')
+        && d.phone.replace('[ -]', '').matches('(\\+?972|0)5[0-9]{8}')
+        && d.get('email', null) is string && d.get('email', null) == request.auth.token.email
+        && d.get('shirt', null) in ['XS', 'S', 'M', 'L', 'XL', 'XXL',
+                                    'ילדים 6', 'ילדים 8', 'ילדים 10', 'ילדים 12', 'ילדים 14']
+        && d.get('byName', null) is string && d.byName.size() <= 80
+        && noFormula(d.firstName) && noFormula(d.lastName) && noFormula(d.heat)
+        && noFormula(d.city) && noFormula(d.byName)
+        && d.get('createdAt', null) == request.time;
+    }
+    match /eventSignups/{id} {
+      // רק מי שכבר הצטרף ללוח (boardMembers) — חשבון גוגל מאומת
+      allow create: if isGoogleUser() && eventSignupValid(id)
+        && exists(/databases/$(database)/documents/boardMembers/$(request.auth.uid));
+      allow read, delete: if (isSignedIn() && resource.data.uid == request.auth.uid) || isAdmin();
+      allow update: if false;
+    }
+    // מה כבר הועבר לגיליון — נכתב רק בסקריפט
+    match /eventSignupExports/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---------- התראות דחיפה של לוח המועדון (FCM) ----------
+    // הגולש לא בהכרח מחובר: הדפדפן שומר את טוקן ה-FCM שלו כמזהה המסמך, בלי שום פרט אישי.
+    // setDoc חוזר על אותו טוקן הוא עדכון ונחסם — הלקוח מתעלם מהשגיאה.
+    // השליחה והניקוי של טוקנים מתים — בסקריפט (scripts/send_push.mjs, Admin SDK).
+    match /pushTokens/{token} {
+      allow create: if token.size() >= 100 && token.size() <= 400
+        && token.matches('[A-Za-z0-9_:\\-]+')
+        && request.resource.data.keys().hasOnly(['createdAt', 'platform'])
+        && request.resource.data.get('createdAt', null) == request.time
+        && (!('platform' in request.resource.data)
+            || request.resource.data.platform in ['android', 'ios', 'desktop']);
+      allow read, update, delete: if isAdmin();
     }
 
     // כל השאר חסום. אוסף חדש דורש כלל מפורש כאן.
