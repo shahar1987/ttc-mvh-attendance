@@ -968,12 +968,15 @@ put("adminTasks/t1", { status: "pending" });
 assert.equal(await dispatchWorkflows(env, store), "no token");
 assert.equal(dispatches.length, 0);
 const genv = { ...env, GH_DISPATCH_TOKEN: "ghp_x" };
-assert.equal(await dispatchWorkflows(genv, store), "agents:scan,sync-payments,admin-tools");
-assert.deepEqual(dispatches.map((d) => [d.url.split("/workflows/")[1], d.body]), [["agents.yml/dispatches", { ref: "main", inputs: { agent: "scan" } }], ["sync-payments.yml/dispatches", { ref: "main" }], ["admin-tools.yml/dispatches", { ref: "main" }]]);
+assert.equal(await dispatchWorkflows(genv, store), "agents:scan,sync-payments,admin-tools,board-members,gameday");
+assert.deepEqual(dispatches.map((d) => [d.url.split("/workflows/")[1], d.body]), [["agents.yml/dispatches", { ref: "main", inputs: { agent: "scan" } }], ["sync-payments.yml/dispatches", { ref: "main" }], ["admin-tools.yml/dispatches", { ref: "main" }], ["board-members.yml/dispatches", { ref: "main" }], ["gameday.yml/dispatches", { ref: "main" }]]);
 assert.ok(dispatches[0].url.startsWith("https://api.github.com/repos/shahar1987/ttc-mvh-attendance/"));
 assert.equal(dispatches[0].auth, "Bearer ghp_x");
 assert.deepEqual(bot().requests, [], "הבקשה נלקחה — בדיקת ה-10 דקות לא תריץ שוב");
 assert.equal(await dispatchWorkflows(genv, store), "nothing pending", "לא מפעילים פעמיים על אותה בקשה");
+// הפורטל: אחרי רבע שעה שוב board-members, ו-gameday רק אחרי שעה
+put("agentReports/bot", { ...bot(), dispatched: { ...bot().dispatched, board: new Date(Date.now() - 15 * 6e4).toISOString() } });
+assert.equal(await dispatchWorkflows(genv, store), "board-members");
 put("agentReports/bot", { requests: ["ideas"] });
 globalThis.ghFail = true;
 await assert.rejects(dispatchWorkflows(genv, store), /GitHub dispatch agents\.yml: 500/);
