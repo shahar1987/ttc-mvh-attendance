@@ -7,7 +7,8 @@
 //      קריאת append אחת לכל אירוע, עם אותו service account (JWT של google-auth-library, כמו sync_payments.mjs).
 //   2. eventSignupExports/{id} = { exportedAt, sheetId }.
 //   3. הודעה אחת לבעלים בוואטסאפ (התור של הבוט) עם השמות — פרטית לבעלים.
-// הרשמה שנמחקה אחרי הייצוא — מתעלמים (השורה בגיליון נשארת).
+// הרשמה שנמחקה אחרי הייצוא — השורה בגיליון נשארת, והסימון נמחק (כדי שהרשמה מחדש תיוצא).
+// יותר מ-60 הרשמות חדשות בהרצה אחת — עוצרים בלי לייצא (חשד להצפה).
 //
 // הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
 //   FIREBASE_SERVICE_ACCOUNT=... node scripts/export_event_signups.mjs   (אחרי `cd agents && npm ci`)
@@ -35,22 +36,40 @@ export function israelTime(v) {
   return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
 }
 
+// הגנה נוספת מנוסחאות (החוקים כבר חוסמים): ערך שמתחיל ב-= + - @ או טאב מקבל גרש בהתחלה.
+// הטלפון לא — החוקים מאמתים אותו כנייד, ו-+972 עם גרש היה נראה שבור בגיליון.
+export const safeCell = (v) => (typeof v === "string" && /^[=+\-@\t]/.test(v) ? "'" + v : v);
+
 export function rowFor(s, cfg) {
-  return [
+  const row = [
     israelTime(s.createdAt), s.lastName || "", s.firstName || "", s.heat || "", s.gender || "", s.birth || "",
     cfg.org, s.phone || "", "", s.city || "", "ישראל", s.email || "", s.shirt || "", s.byName || "", "",
   ];
+  return row.map((v, i) => (i === 7 ? v : safeCell(v)));
 }
 
-// הרשמות שעוד לא יוצאו, לפי אירוע (רק אירועים שמוגדרים ב-event_sheets.json), לפי סדר ההרשמה
-export function pendingByEvent(signups, exportedIds, events = EVENTS) {
+// יותר מזה בהרצה אחת = כנראה הצפה — עוצרים, וההתראה של ה-workflow מגיעה לשולה
+export const MAX_PER_RUN = 60;
+
+export const createdMs = (s) => toDate(s.createdAt).getTime();
+
+// הרשמות שעוד לא יוצאו, לפי אירוע (רק אירועים שמוגדרים ב-event_sheets.json), לפי סדר ההרשמה.
+// markers: Map של id ⟵ eventSignupExports. הרשמה שנמחקה ונרשמה מחדש (אותו id, createdAt אחר) — מיוצאת שוב.
+export function pendingByEvent(signups, markers, events = EVENTS) {
   const out = {};
   for (const s of signups) {
-    if (exportedIds.has(s.id) || !events[s.event]) continue;
+    const m = markers.get(s.id);
+    if ((m && (m.createdAtMs == null || m.createdAtMs === createdMs(s))) || !events[s.event]) continue;
     (out[s.event] ||= []).push(s);
   }
   for (const k in out) out[k].sort((a, b) => toDate(a.createdAt) - toDate(b.createdAt));
   return out;
+}
+
+// סימונים של הרשמות שנמחקו — נמחקים, כדי שהרשמה חדשה באותו id תיוצא
+export function staleMarkerIds(signups, markers) {
+  const live = new Set(signups.map((s) => s.id));
+  return [...markers.keys()].filter((id) => !live.has(id));
 }
 
 export function ownerText(byEvent, events = EVENTS) {
@@ -85,9 +104,14 @@ async function appendRows(token, sheetId, rows) {
 async function main() {
   const db = firestore();
   const [signups, exports] = await Promise.all([loadAll(db, "eventSignups"), loadAll(db, "eventSignupExports")]);
-  const byEvent = pendingByEvent(signups, new Set(exports.map((x) => x.id)));
+  const markers = new Map(exports.map((x) => [x.id, x]));
+  const stale = staleMarkerIds(signups, markers);
+  for (const id of stale) await db.collection("eventSignupExports").doc(id).delete();
+  const byEvent = pendingByEvent(signups, markers);
   const events = Object.keys(byEvent);
-  if (!events.length) return console.log(`event signups: ${signups.length} total, 0 new`);
+  const total = events.reduce((x, ev) => x + byEvent[ev].length, 0);
+  if (total > MAX_PER_RUN) throw new Error(`${total} new signups in one run (limit ${MAX_PER_RUN}) — possible flooding, nothing exported`);
+  if (!events.length) return console.log(`event signups: ${signups.length} total, 0 new, ${stale.length} stale markers removed`);
 
   const token = await sheetsToken();
   let n = 0;
@@ -96,12 +120,12 @@ async function main() {
     await appendRows(token, sheetId, byEvent[ev].map((s) => rowFor(s, EVENTS[ev])));
     // shortcut: אם הכתיבה כאן נכשלת אחרי append מוצלח, הריצה הבאה תוסיף את השורות שוב — נדיר, ומספיק למחוק כפילות ידנית
     const batch = db.batch();
-    for (const s of byEvent[ev]) batch.set(db.collection("eventSignupExports").doc(s.id), { exportedAt: new Date(), sheetId });
+    for (const s of byEvent[ev]) batch.set(db.collection("eventSignupExports").doc(s.id), { exportedAt: new Date(), sheetId, createdAtMs: createdMs(s) });
     await batch.commit();
     n += byEvent[ev].length;
   }
   await enqueueOwner(db, { agent: "event-signups", text: ownerText(byEvent) });
-  console.log(`event signups: ${signups.length} total, ${n} exported to ${events.length} sheet(s), owner notified`);
+  console.log(`event signups: ${signups.length} total, ${n} exported to ${events.length} sheet(s), ${stale.length} stale markers removed, owner notified`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)

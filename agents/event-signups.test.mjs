@@ -1,7 +1,7 @@
 // ייצוא הרשמות לאירועים לגיליון המארגנים (scripts/export_event_signups.mjs) — בלי רשת.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EVENTS, israelTime, rowFor, pendingByEvent, ownerText } from "../scripts/export_event_signups.mjs";
+import { EVENTS, israelTime, rowFor, pendingByEvent, staleMarkerIds, ownerText, safeCell, createdMs } from "../scripts/export_event_signups.mjs";
 
 const s = (id, extra = {}) => ({
   id, event: "crane-2026", uid: "u1", n: 1, firstName: "נועה", lastName: "כהן", heat: "5 ק\"מ", gender: "נ",
@@ -24,13 +24,30 @@ test("rowFor follows the sheet's 15 columns, ID and handed-over left empty", () 
 });
 
 test("pendingByEvent skips exported and unknown events, sorts by signup time", () => {
+  const done = new Map([["done", { createdAtMs: createdMs(s("done")) }]]);
   const out = pendingByEvent(
     [s("late", { createdAt: new Date("2026-10-22") }), s("early", { createdAt: new Date("2026-10-21") }), s("done"), s("x", { event: "other-1" })],
-    new Set(["done"]),
+    done,
   );
   assert.deepEqual(Object.keys(out), ["crane-2026"]);
   assert.deepEqual(out["crane-2026"].map((x) => x.id), ["early", "late"]);
-  assert.deepEqual(pendingByEvent([s("done")], new Set(["done"])), {});
+  assert.deepEqual(pendingByEvent([s("done")], done), {});
+});
+
+test("re-registration: same id with a different createdAt exports again; deleted signups' markers are stale", () => {
+  const markers = new Map([["a", { createdAtMs: 1 }], ["gone", { createdAtMs: 1 }]]);
+  assert.deepEqual(pendingByEvent([s("a")], markers)["crane-2026"].map((x) => x.id), ["a"]);
+  assert.deepEqual(staleMarkerIds([s("a")], markers), ["gone"]);
+});
+
+test("formula guard: leading = + - @ tab get an apostrophe; phone is left alone", () => {
+  assert.equal(safeCell("=cmd"), "'=cmd");
+  assert.equal(safeCell("\tx"), "'\tx");
+  assert.equal(safeCell("נועה"), "נועה");
+  const row = rowFor(s("a", { firstName: "@x", lastName: "-y", phone: "+972501234567" }), EVENTS["crane-2026"]);
+  assert.equal(row[2], "'@x");
+  assert.equal(row[1], "'-y");
+  assert.equal(row[7], "+972501234567");
 });
 
 test("ownerText: one line per event with names and heats", () => {
