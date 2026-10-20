@@ -46,7 +46,7 @@ export const matchKey = (lg, m) => `${lg.id}_${m.r}_${m.h}_${m.a}_${isoDate(m.d)
 function ourMatches(data) {
   const ours = new Set(data.ours || []);
   return (data.leagues || []).flatMap((lg) =>
-    (lg.matches || []).filter((m) => ours.has(m.h) || ours.has(m.a)).map((m) => ({ lg, m: { ...m, t: m.t || "20:00" }, us: ours.has(m.h) ? m.h : m.a })),
+    (lg.matches || []).filter((m) => ours.has(m.h) || ours.has(m.a)).map((m) => ({ lg, m: { ...m, t: String(m.t || "20:00").padStart(5, "0") }, us: ours.has(m.h) ? m.h : m.a })),
   );
 }
 
@@ -54,7 +54,7 @@ const daysBetween = (a, b) => (Date.parse(b) - Date.parse(a)) / 86400000;
 
 // מחזיר את הפושים לשליחה ואת המצב החדש. state = null בהרצה הראשונה.
 export function plan(data, state, now = new Date()) {
-  const { date: today, hhmm } = israelNow(now);
+  const { date: today, hhmm } = israelNow(now); // כבר HH:MM, כמו m.t אחרי padStart
   const first = !state;
   const days = new Set(state?.announcedDays || []);
   const results = new Set(state?.announcedResults || []);
@@ -84,6 +84,8 @@ export function plan(data, state, now = new Date()) {
     });
   }
 
+  // שומרים מראש: לכל היותר 3 פושים בהרצה; מה שנחתך כבר מסומן ולא יישלח
+  pushes.splice(3);
   return {
     pushes,
     state: { announcedDays: [...days].sort().slice(-60), announcedResults: [...results].slice(-1000) },
@@ -98,8 +100,9 @@ async function main() {
   const ref = db.collection(STATE[0]).doc(STATE[1]);
   const snap = await ref.get();
   const { pushes, state } = plan(data, snap.exists ? snap.data() : null);
-  for (const p of pushes) await sendPush(db, pushInput(p));
+  // המצב נשמר לפני השליחה — לכל היותר פעם אחת: שליחה שנכשלה לא חוזרת, אבל גם לא נשלח פעמיים
   await ref.set({ ...state, updatedAt: new Date() });
+  for (const p of pushes) await sendPush(db, pushInput(p));
   console.log(`gameday: ${pushes.length} pushes${snap.exists ? "" : " (first run — existing results marked)"}`);
 }
 
