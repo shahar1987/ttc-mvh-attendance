@@ -327,6 +327,26 @@ await t('גולש מוחק את עצמו (זכות להישכח), לא אחר', 
   await assertSucceeds(deleteDoc(doc(boardAs('bm4'), 'boardMembers/bm4')));
   await assertSucceeds(deleteDoc(doc(as('admin1'), 'boardMembers/bm1')));
 });
+await t('הבאת חבר: ref תקין ביצירה, לא אתה עצמך, לא משתנה אחר כך', async () => {
+  const R = 'inviterUid0001';
+  await assertSucceeds(setDoc(doc(boardAs('refUser001'), 'boardMembers/refUser001'), bm('refUser001', { ref: R })));
+  await assertFails(updateDoc(doc(boardAs('refUser001'), 'boardMembers/refUser001'), { ref: 'otherUid00002', updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(boardAs('refUser001'), 'boardMembers/refUser001'), { name: 'גולש ב', updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(boardAs('refUser002'), 'boardMembers/refUser002'), bm('refUser002', { ref: 'refUser002' })));
+  await assertFails(setDoc(doc(boardAs('refUser002'), 'boardMembers/refUser002'), bm('refUser002', { ref: 'short' })));
+  await assertFails(setDoc(doc(boardAs('refUser002'), 'boardMembers/refUser002'), bm('refUser002', { ref: 'bad/uid-00001' })));
+  await assertFails(setDoc(doc(boardAs('refUser002'), 'boardMembers/refUser002'), bm('refUser002', { ref: 12345678901 })));
+  // מי שנרשם בלי ref לא מוסיף אותו אחר כך
+  await assertSucceeds(setDoc(doc(boardAs('refUser003'), 'boardMembers/refUser003'), bm('refUser003')));
+  await assertFails(updateDoc(doc(boardAs('refUser003'), 'boardMembers/refUser003'), { ref: R, updatedAt: serverTimestamp() }));
+});
+await t('boardPublic: כל אחד קורא, אף לקוח לא כותב', async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'boardPublic/referrals'), { month: '2026-10', top: [] }));
+  await assertSucceeds(getDoc(doc(anon(), 'boardPublic/referrals')));
+  await assertFails(setDoc(doc(anon(), 'boardPublic/referrals'), { month: '2026-10', top: [] }));
+  await assertFails(setDoc(doc(boardAs('bm1'), 'boardPublic/referrals'), { month: '2026-10', top: [] }));
+  await assertFails(updateDoc(doc(as('admin1'), 'boardPublic/referrals'), { top: [] }));
+});
 
 console.log('\n— הרשמה לאירועים מלוח המועדון —');
 const es = (uid, n = 1, extra = {}) => ({ event: 'crane-2026', uid, n, firstName: 'נועה', lastName: 'כהן', heat: '5 ק"מ', gender: 'נ', birth: '1.2.2015', city: 'שניר', phone: '050-1234567', email: `${uid}@example.com`, shirt: 'ילדים 10', byName: 'גולש', createdAt: serverTimestamp(), ...extra });
