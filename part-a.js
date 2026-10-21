@@ -55,8 +55,6 @@ import {
   onAuthStateChanged as Le,
   signInWithEmailAndPassword as Ue,
   sendPasswordResetEmail as PRE,
-  GoogleAuthProvider as GAP,
-  signInWithPopup as SIP,
   signOut as R,
   createUserWithEmailAndPassword as Me,
   getAuth as Xe,
@@ -86,12 +84,35 @@ var B = {
     appId: "1:198162387540:web:f4c4728a39aed9468c13c1",
   },
   G = "";
-var z = de(B),
+// אפליקציה בשם משלה: הלוח והתחרויות יושבים באותו דומיין (shahar1987.github.io) ובאותו פרויקט,
+// ועם השם הרגיל הם חלקו איתה את ההתחברות — יציאה או כניסה שם הוציאה את המשתמש גם מכאן.
+var AN = "attendance";
+try {
+  // מעבר חד-פעמי: מי שכבר מחובר נשאר מחובר
+  let k = `firebase:authUser:${B.apiKey}:`,
+    old = localStorage.getItem(k + "[DEFAULT]");
+  old && !localStorage.getItem(k + AN) && localStorage.setItem(k + AN, old);
+} catch {}
+var z = de(B, AN),
   D = me(z),
   P = xe(z, { localCache: be({ tabManager: pe() }) });
 ue(D, ce).catch((t) => {
   console.warn("Auth persistence not available:", t);
 });
+// הדפדפן לא ימחק את ההתחברות והמטמון כשחסר מקום
+typeof navigator < "u" && navigator.storage?.persist?.().catch(() => {});
+// חד-פעמי: נוכחות שנשמרה בלי רשת במטמון של השם הישן נשלחת לשרת לפני שהמטמון ננטש
+try {
+  if (typeof window < "u" && !localStorage.getItem("oldCacheFlushed")) {
+    let o = de(B);
+    me(o);
+    let op = xe(o, { localCache: be({ tabManager: pe() }) });
+    fsWaitPending(op).then(() => {
+      localStorage.setItem("oldCacheFlushed", "1");
+      fsTerminate(op);
+    }, () => {});
+  }
+} catch {}
 var F =
   typeof window < "u"
     ? ve()
@@ -2157,10 +2178,6 @@ var et = {
     "אין חיבור לאינטרנט. ההתחברות מחייבת חיבור — נסה שוב כשהחיבור יחזור",
   "auth/user-disabled":
     "החשבון הושבת. פנה למנהל המועדון",
-  "auth/popup-closed-by-user":
-    "חלון Google נסגר לפני שהכניסה הסתיימה",
-  "auth/popup-blocked":
-    "הדפדפן חסם את חלון Google. אפשר חלונות קופצים ונסה שוב",
 };
 function tt() {
   let [t, s] = b(""),
@@ -2178,24 +2195,9 @@ function tt() {
           (!t.includes("@") && /credential|user-not-found|wrong-password/.test(x.code || "")
             ? "לא נמצא חשבון עם המספר והסיסמה האלה. מאמנים וצופים נכנסים עם כתובת האימייל שלהם, לא עם מספר הטלפון."
             : "") ||
-            (/credential|wrong-password/.test(x.code || "")
-              ? "אימייל או סיסמה שגויים. אם נכנסת פעם עם Google באותו אימייל — לחצו \u201Cכניסה עם Google\u201D למטה, או \u201Cשכחתי סיסמה\u201D."
-              : "") ||
             et[x.code] ||
             "שגיאה בהתחברות, נסה שוב",
         );
-      } finally {
-        m(!1);
-      }
-    },
-    // כניסה עם Google לאותו חשבון: מי שנכנס עם Google בלוח המועדון עם אותו
-    // אימייל, Firebase מוחק לו את הסיסמה (אימייל לא מאומת). כך הוא עדיין נכנס.
-    google = async () => {
-      (c(""), setOk(""), m(!0));
-      try {
-        await SIP(D, new GAP());
-      } catch (x) {
-        c(et[x.code] || "הכניסה עם Google נכשלה, נסה שוב");
       } finally {
         m(!1);
       }
@@ -2299,16 +2301,6 @@ function tt() {
           className: "text-blue-300 text-xs underline text-center mt-1",
         },
         "שכחתי סיסמה",
-      ),
-      e.createElement(
-        "button",
-        {
-          onClick: google,
-          disabled: n,
-          className:
-            "bg-white text-slate-700 font-semibold rounded-xl py-3.5 mt-3 disabled:opacity-50",
-        },
-        "כניסה עם Google",
       ),
     ),
   );
