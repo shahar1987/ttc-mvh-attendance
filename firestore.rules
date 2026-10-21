@@ -9,7 +9,7 @@ rules_version = '2';
 // cancellations, announcements, paymentMappings, links, invites,
 // accessRequests, reminders, adminTasks, system, auditLog, tournaments,
 // boardMembers, boardMemberMatches, eventSignups, eventSignupExports, pushTokens, boardPublic, boardPosts,
-// boardImages, pushRequests, boardManagers. אוסף שלא מופיע
+// boardImages, pushRequests, boardManagers, boardVisits. אוסף שלא מופיע
 // כאן חסום לחלוטין על ידי הכלל האחרון.
 //
 // שני עקרונות שחוזרים לאורך הקובץ:
@@ -501,6 +501,22 @@ service cloud.firestore {
         && request.resource.data.data.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')
         && request.resource.data.createdAt == request.time;
       allow delete: if isBoardOwner() || isBoardManager();
+    }
+
+    // כניסות לפורטל (21.10.2026, שלום אישר): מסמך אחד למכשיר ליום (מזהה = v_day). כל אחד רק מוסיף,
+    // עם שם מלא שהמבקר הקליד פעם אחת (רשות). רק בעל הלוח קורא ומוחק. אין עדכון.
+    match /boardVisits/{id} {
+      allow read, delete: if isBoardOwner();
+      allow update: if false;
+      allow create: if request.resource.data.keys().hasOnly(['v', 'day', 'n', 'r', 'd', 'at'])
+        && request.resource.data.keys().hasAll(['v', 'day', 'at'])
+        && request.resource.data.v is string && request.resource.data.v.matches('[a-z0-9]{6,16}')
+        && request.resource.data.day is string && request.resource.data.day.matches('20[0-9]{6}')
+        && id == request.resource.data.v + '_' + request.resource.data.day
+        && (!('n' in request.resource.data) || (request.resource.data.n is string && request.resource.data.n.size() <= 60))
+        && (!('r' in request.resource.data) || request.resource.data.r in ['הורה', 'שחקן/ית', 'מאמן/ת', 'אחר'])
+        && (!('d' in request.resource.data) || (request.resource.data.d is string && request.resource.data.d.size() <= 10))
+        && request.resource.data.at == request.time;
     }
 
     // מנהלים שבעל הלוח הוסיף (מזהה = כתובת הג'ימייל). הבעלים מנהל; כל מנהל רואה רק את המסמך של עצמו.
