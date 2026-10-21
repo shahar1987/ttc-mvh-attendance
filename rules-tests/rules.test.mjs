@@ -493,6 +493,20 @@ await t('הבעלים מפרסם עדכון עם תמונה וחלון קופץ,
   await assertSucceeds(deleteDoc(doc(owner(), 'boardPosts/o1')));
   await assertSucceeds(deleteDoc(doc(owner(), 'boardImages/img1')));
 });
+await t('כניסות לפורטל: כל אחד מוסיף פעם ביום, רק הבעלים קורא', async () => {
+  const ok = { v: 'abc123def', day: '20261021', n: 'ישראל ישראלי', r: 'הורה', d: 'android', at: serverTimestamp() };
+  await assertSucceeds(setDoc(doc(anon(), 'boardVisits/abc123def_20261021'), ok));
+  await assertFails(setDoc(doc(anon(), 'boardVisits/abc123def_20261021'), { ...ok, n: 'אחר' }));
+  await assertFails(getDoc(doc(anon(), 'boardVisits/abc123def_20261021')));
+  await assertFails(getDocs(collection(boardAs('ev1'), 'boardVisits')));
+  await assertSucceeds(getDocs(collection(owner(), 'boardVisits')));
+  await assertFails(setDoc(doc(anon(), 'boardVisits/zzz999zzz_20261021'), ok));
+  await assertFails(setDoc(doc(anon(), 'boardVisits/abc123def_20261022'), { ...ok, day: '20261022', r: 'מנהל' }));
+  await assertFails(setDoc(doc(anon(), 'boardVisits/abc123def_20261023'), { ...ok, day: '20261023', n: 'א'.repeat(61) }));
+  await assertFails(setDoc(doc(anon(), 'boardVisits/abc123def_20261024'), { ...ok, day: '20261024', x: 1 }));
+  await assertSucceeds(setDoc(doc(anon(), 'boardVisits/abc123def_20261025'), { v: 'abc123def', day: '20261025', at: serverTimestamp() }));
+  await assertSucceeds(deleteDoc(doc(owner(), 'boardVisits/abc123def_20261021')));
+});
 await t('תמונה: רק הבעלים, רק data URL של תמונה, לא ענקית, אין רשימה או עדכון', async () => {
   await assertFails(setDoc(doc(boardAs('ev1'), 'boardImages/x1'), { data: IMG, createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(as('poster'), 'boardImages/x1'), { data: IMG, createdAt: serverTimestamp() }));
