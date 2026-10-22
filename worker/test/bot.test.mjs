@@ -340,12 +340,29 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("06")), "not now", "09:00 — מוקדם");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), new Date("2026-10-10T08:00:00Z")), "not now", "שבת");
   const n5 = sent.length;
-  assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /^nag: .*יוסי \(\d+\) ✓/);
+  assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /^nag: .*יוסי \(\d+ הודעות\) ✓/);
   const m = sent.slice(n5).filter((b) => b.type === "template" && b.template.name === "club_message" && b.to === "972501234567");
   assert.equal(m.length, 1);
   assert.match(m[0].template.components[0].parameters[0].text, /^בוקר טוב יוסי, .*היעדרות.* שעוד לא נשלחו \(.*בוגרים.*\)\. אפשר לשלוח מכאן בלחיצה: https:\/\/shahar1987/);
   assert.match(JSON.stringify(sent.slice(n5).at(-1)), /תזכורת למאמנים על הודעות היעדרות/, "הבעלים מקבל סיכום");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("09")), "done today");
+  // ⚠️ נשירה: שחקן שהחסיר 3 ברצף בקבוצה של יוסי — המאמן מקבל משפט ברור עם השם והסיבה, ולא שוב באותו שבוע
+  put("players/r1", { name: "עומר רץ", groupId: "g5", isActive: true });
+  for (const d of ["2026-09-20", "2026-09-27", "2026-10-04"]) put(`attendance/${d}_g5_r1`, { date: d, groupId: "g5", playerId: "r1", status: "Absent", msgSentAt: "x" });
+  put("agentReports/bot", { parentMsgNag: "" });
+  const n6 = sent.length;
+  assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /יוסי \(.*1 בסכנת נשירה\) ✓/);
+  const t6 = sent.slice(n6).find((b) => b.type === "template" && b.to === "972501234567").template.components[0].parameters[0].text;
+  assert.match(t6, /⚠️ שחקן שכדאי לבדוק מה שלומו: עומר רץ \(בוגרים\) — 3 היעדרויות ברצף\. כדאי להתקשר לשחקן או להורים/);
+  assert.ok(!t6.includes("\n"), "שורה אחת (תבנית)");
+  assert.equal(docs.get("agentReports/coaches").riskSent.r1, "2026-10-05");
+  put("agentReports/bot", { parentMsgNag: "" });
+  const n7 = sent.length;
+  await parentMsgNag(on, db(env), waConfig(env), new Date("2026-10-06T08:00:00Z"));
+  assert.ok(!JSON.stringify(sent.slice(n7)).includes("עומר רץ"), "לא שוב באותו שבוע");
+  docs.delete("players/r1");
+  ["2026-09-20", "2026-09-27", "2026-10-04"].forEach((d) => docs.delete(`attendance/${d}_g5_r1`));
+  docs.delete("agentReports/coaches");
 }
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {

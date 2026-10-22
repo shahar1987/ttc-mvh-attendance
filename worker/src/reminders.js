@@ -304,7 +304,16 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
   if (!claimed) return "done today";
   // shortcut: קורא את כל הנוכחות פעם ביום; כשהעונה תגדל מאוד — שאילתת טווח תאריכים (8 שבועות אחורה)
   const [players, groups, users, attendance, quiet] = await Promise.all([store.list("players"), store.list("groups"), store.list("users"), store.list("attendance"), quietIds(store)]);
-  const { pending } = analyze({ players, groups, attendance, today });
+  const { pending, atRisk } = analyze({ players, groups, attendance, today });
+  // ⚠️ סכנת נשירה גבוהה (22.10, שולה: "שיוריד למאמנים התראות על נשירה, בשפה ברורה"): כל שחקן לכל היותר פעם בשבוע
+  const riskSent = ((await store.get("agentReports/coaches")) || {}).riskSent || {};
+  const riskBy = new Map();
+  for (const x of atRisk) {
+    if (x.level !== "high" || (riskSent[x.playerId] && riskSent[x.playerId] > addDays(today, -7))) continue;
+    const g = groups.find((v) => v.id === players.find((p) => p.id === x.playerId)?.groupId);
+    if (!g || g.deleted || g.isActive === false) continue;
+    for (const id of coachIds(g).filter((c) => !quiet.includes(c))) riskBy.set(id, [...(riskBy.get(id) || []), x]);
+  }
   const byCoach = new Map();
   for (const x of pending) {
     const g = groups.find((v) => v.id === x.groupId);
@@ -314,27 +323,36 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
       byCoach.set(id, m.set(g, (m.get(g) || 0) + 1));
     }
   }
-  const out = [], watch = {};
-  for (const [id, gs] of byCoach) {
+  const out = [], watch = {}, riskDone = {};
+  for (const id of new Set([...byCoach.keys(), ...riskBy.keys()])) {
+    const gs = byCoach.get(id) || new Map();
+    const risk = (riskBy.get(id) || []).slice(0, 5);
     const c = users.find((u) => u.id === id);
     if (!c || !isValidPhone(c.phone || "")) { out.push(`${c?.name || "מאמן"}: אין טלפון שמור`); continue; }
     const n = [...gs.values()].reduce((a, b) => a + b, 0);
     const first = String(c.name || "").trim().split(/\s+/)[0] || "";
     const link = gs.size === 1 ? `${APP_URL}#group=${[...gs.keys()][0].id}` : APP_URL;
-    const text = `בוקר טוב ${first}, ${n === 1 ? "יש הודעת היעדרות אחת" : `יש ${n} הודעות היעדרות`} שעוד לא נשלחו (${[...gs.keys()].map((g) => g.name).join(", ")}). אפשר לשלוח מכאן בלחיצה: ${link}`;
+    // תבנית Meta: שורה אחת, בלי ירידות שורה
+    const parts = [];
+    if (n) parts.push(`${n === 1 ? "יש הודעת היעדרות אחת" : `יש ${n} הודעות היעדרות`} שעוד לא נשלחו (${[...gs.keys()].map((g) => g.name).join(", ")}). אפשר לשלוח מכאן בלחיצה: ${link}`);
+    if (risk.length)
+      parts.push(`⚠️ ${risk.length === 1 ? "שחקן שכדאי לבדוק מה שלומו" : "שחקנים שכדאי לבדוק מה שלומם"}: ${risk.map((x) => `${x.playerName} (${x.groupName}) — ${x.reason}`).join(" · ")}. כדאי להתקשר לשחקן או להורים ולשאול אם הכל בסדר, ולספר לשחר מה עלה.`);
+    const text = `בוקר טוב ${first}, ${parts.join(" ")}`;
     try {
       const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
-      if (wamid) watch[wamid] = { who: c.name, what: "תזכורת הודעות היעדרות", at: now.toISOString() };
-      out.push(`${c.name} (${n}) ✓`);
+      if (wamid) watch[wamid] = { who: c.name, what: n ? "תזכורת הודעות היעדרות" : "התראת נשירה", at: now.toISOString() };
+      risk.forEach((x) => (riskDone[x.playerId] = today));
+      out.push(`${c.name} (${[n && `${n} הודעות`, risk.length && `${risk.length} בסכנת נשירה`].filter(Boolean).join(", ")}) ✓`);
     } catch (e) {
       out.push(`${c.name}: נכשל (${e.message})`);
     }
   }
   if (Object.keys(watch).length) await watchReads(store, watch, now);
+  if (Object.keys(riskDone).length) await store.update("agentReports/coaches", (cur) => ({ riskSent: { ...(cur.riskSent || {}), ...riskDone } }));
   if (out.length) {
     const bot = (await store.get("agentReports/bot")) || {};
     const list = out.join(", ");
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📨 תזכורת למאמנים על הודעות היעדרות שלא נשלחו: ${list}`, template: "agent_alert", templateParam: `תזכורת הודעות היעדרות למאמנים: ${list}` });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📨 תזכורת למאמנים על הודעות היעדרות ונשירה: ${list}`, template: "agent_alert", templateParam: `תזכורת הודעות היעדרות למאמנים: ${list}` });
   }
   return `nag: ${out.join(", ") || "nothing pending"}`;
 }
