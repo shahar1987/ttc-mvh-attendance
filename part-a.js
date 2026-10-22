@@ -88,10 +88,18 @@ var B = {
 // ועם השם הרגיל הם חלקו איתה את ההתחברות — יציאה או כניסה שם הוציאה את המשתמש גם מכאן.
 var AN = "attendance";
 try {
-  // מעבר חד-פעמי: מי שכבר מחובר נשאר מחובר
   let k = `firebase:authUser:${B.apiKey}:`,
-    old = localStorage.getItem(k + "[DEFAULT]");
-  old && !localStorage.getItem(k + AN) && localStorage.setItem(k + AN, old);
+    pw = (v) => { try { return JSON.parse(v).providerData.some((p) => p.providerId === "password"); } catch { return !1; } },
+    cur = localStorage.getItem(k + AN);
+  // כאן נכנסים רק עם סיסמה. חשבון Google (מהלוח) נתקע במסך "אין הרשאה", ויציאה ממנו
+  // החזירה אותו שוב דרך המעבר — לכן הוא לא נשמר ולא מועתק
+  cur && !pw(cur) && localStorage.removeItem(k + AN);
+  // מעבר חד-פעמי מהשם הישן: מי שכבר מחובר עם סיסמה נשאר מחובר
+  if (!localStorage.getItem("authMigrated")) {
+    let old = localStorage.getItem(k + "[DEFAULT]");
+    old && pw(old) && !localStorage.getItem(k + AN) && localStorage.setItem(k + AN, old);
+    localStorage.setItem("authMigrated", "1");
+  }
 } catch {}
 var z = de(B, AN),
   D = me(z),
