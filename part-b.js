@@ -2043,6 +2043,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     excludedGroupIds = new Set(
       s.filter((g) => g.name === PAYMENT_EXCLUDED_GROUP_NAME).map((g) => g.id),
     ),
+    multiKids = multiGroupKids(t, s, excludedGroupIds),
     familyFlags = (sync?.sameFamilyFlags || [])
       .map((f) => ({
         group: s.find((g) => g.id === f.groupId),
@@ -2531,6 +2532,42 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             ),
           ),
       ),
+    multiKids.length > 0 &&
+      e.createElement(
+        "details",
+        { className: "bg-white rounded-xl border border-slate-200 px-4 py-3 text-right" },
+        e.createElement(
+          "summary",
+          { className: "text-sm font-semibold text-blue-950 cursor-pointer min-h-[28px]" },
+          `ילדים בכמה קבוצות (${multiKids.length})`,
+        ),
+        e.createElement(
+          "div",
+          { className: "flex flex-col divide-y divide-slate-100 mt-2" },
+          multiKids.map((k, idx) =>
+            e.createElement(
+              "div",
+              { key: idx, className: "py-2 flex flex-col gap-0.5" },
+              e.createElement(
+                "p",
+                { className: "text-sm font-medium text-blue-950" },
+                k.name,
+                k.total !== null &&
+                  e.createElement("span", { className: "font-bold" }, ` \xB7 ${k.total} אימונים בשבוע`),
+                k.notPaying &&
+                  e.createElement("span", { className: "text-red-700 font-semibold" }, " \xB7 לא שילם"),
+              ),
+              e.createElement(
+                "p",
+                { className: "text-xs text-slate-600" },
+                k.parts
+                  .map((x) => `${x.group?.name || "קבוצה"}${x.sessions !== null ? ` (${x.sessions})` : ""}`)
+                  .join(" \xB7 "),
+              ),
+            ),
+          ),
+        ),
+      ),
     e.createElement(
       "div",
       { className: "relative" },
@@ -2969,6 +3006,31 @@ function dt({
 // "אחרי האימון": נתוני הקבוצה מתחת לרשימת הנוכחות. קריאה בלבד — לא כותב כלום.
 // גרף נוכחות שבועי ל-8 שבועות, ולכל שחקן רצועה של 8 האימונים האחרונים
 // (מלא = הגיע, ריבוע ריק = לא הגיע, אפור = אין רישום), החלשים קודם.
+function TrainingSummary({ roster, attendance, groupId, date }) {
+  let sm = e.useMemo(() => trainingSummary(roster, attendance, groupId, date), [roster, attendance, groupId, date]);
+  if (!sm) return null;
+  let names = (list) => list.map((p) => p.name).join(" \xB7 ");
+  return e.createElement(
+    "section",
+    { className: "bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-1.5 text-right" },
+    e.createElement("h2", { className: "font-bold text-blue-950" }, "סיכום האימון"),
+    e.createElement(
+      "p",
+      { className: "text-sm text-slate-700" },
+      "הגיעו ",
+      e.createElement("span", { className: "font-bold text-blue-950" }, sm.present),
+      sm.avg !== null ? ` \xB7 ממוצע 8 האימונים הקודמים: ${sm.avg}` : "",
+    ),
+    sm.returned.length > 0 &&
+      e.createElement("p", { className: "text-sm text-emerald-800" }, "חזרו אחרי היעדרות: " + names(sm.returned)),
+    sm.secondMiss.length > 0 &&
+      e.createElement(
+        "p",
+        { className: "text-sm font-semibold text-red-700" },
+        "חסרו פעם שנייה ברצף: " + names(sm.secondMiss),
+      ),
+  );
+}
 function GroupInsights({ group: g, players: roster, attendance: all }) {
   let recs = all.filter((r) => r.groupId === g.id);
   if (!roster.length || !recs.length) return null;
@@ -3890,6 +3952,8 @@ function re({
         { className: "text-xs text-amber-700 text-right leading-relaxed" },
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
+    // רק אחרי שמירה (לא במצב סימון) — לא מאט את המאמן באמצע האימון
+    !u && o && e.createElement(TrainingSummary, { roster: n, attendance: l, groupId: t.id, date: m }),
     e.createElement(GroupInsights, { group: t, players: n, attendance: l }),
     !RO &&
     e.createElement(

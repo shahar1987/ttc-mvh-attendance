@@ -1079,6 +1079,71 @@ function Je(t) {
   let i = a.filter((c) => c.status === "Present").length;
   return { avgPct: Math.round((i / a.length) * 100), sessions: l };
 }
+// ירידה חדה בנוכחות: בחודש האחרון הגיע לפחות ממחצית האימונים, אחרי שבחודשיים שלפני כן הגיע ל-70% ומעלה.
+// תופס ילד שמתרחק בהדרגה בלי להיעדר פעמיים ברצף. אותו תנאי כמו dropoutRisk ב-agents/lib/analysis.mjs.
+function attendanceDrop(recs, today) {
+  let back = (n) => new Date(Date.parse(today + "T12:00:00Z") - n * 864e5).toISOString().slice(0, 10),
+    recentFrom = back(28),
+    prevFrom = back(84),
+    recent = recs.filter((r) => r.date >= recentFrom && r.date <= today),
+    prev = recs.filter((r) => r.date >= prevFrom && r.date < recentFrom),
+    rate = (a) => a.filter((r) => r.status === "Present").length / a.length;
+  if (recent.length < 2 || prev.length < 3) return null;
+  let rr = rate(recent),
+    pr = rate(prev);
+  return rr < 0.5 && pr >= 0.7 ? { recentPct: Math.round(rr * 100), prevPct: Math.round(pr * 100) } : null;
+}
+// אותו ילד בכמה קבוצות = כמה מסמכי שחקן עם אותו שם ואותו טלפון (המפתח של countUniqueActivePlayers).
+// בלי טלפון תקין לא מאחדים: שם לבד לא מספיק, יש ילדים שונים עם אותו שם.
+function multiGroupKids(players, groups, skipGroupIds) {
+  let by = new Map();
+  players.forEach((p) => {
+    if (!p.isActive || p.deleted || (skipGroupIds && skipGroupIds.has(p.groupId))) return;
+    if (!isValidPhone(p.parentPhone || "")) return;
+    let k = (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone);
+    by.has(k) ? by.get(k).push(p) : by.set(k, [p]);
+  });
+  return [...by.values()]
+    .filter((list) => new Set(list.map((p) => p.groupId)).size > 1)
+    .map((list) => {
+      let parts = list.map((p) => {
+        let g = groups.find((x) => x.id === p.groupId) || null;
+        return { player: p, group: g, sessions: g && Y(g) ? g.days.length : null };
+      });
+      return {
+        name: list[0].name,
+        parts,
+        total: parts.every((x) => x.sessions !== null) ? parts.reduce((s2, x) => s2 + x.sessions, 0) : null,
+        notPaying: list.some((p) => p.notPaying),
+      };
+    })
+    .sort((a, c) => (a.name || "").localeCompare(c.name || "", "he"));
+}
+// סיכום אחרי אימון: כמה הגיעו מול הממוצע של 8 האימונים הקודמים, מי חזר אחרי היעדרות ומי חסר פעם שנייה ברצף.
+// "הפעם הקודמת" = התאריך האחרון לפני היום שבו השחקן סומן בקבוצה הזו.
+function trainingSummary(roster, att, groupId, date) {
+  let recs = att.filter((r) => r.groupId === groupId && r.date <= date);
+  if (!recs.some((r) => r.date === date)) return null;
+  let st = new Map(recs.map((r) => [r.playerId + "|" + r.date, r.status])),
+    prevDates = [...new Set(recs.filter((r) => r.date < date).map((r) => r.date))].sort().reverse(),
+    presentOn = (d) => recs.filter((r) => r.date === d && r.status === "Present").length,
+    last8 = prevDates.slice(0, 8),
+    returned = [],
+    secondMiss = [];
+  roster.forEach((p) => {
+    let now = st.get(p.id + "|" + date),
+      pd = prevDates.find((d) => st.has(p.id + "|" + d)),
+      before = pd && st.get(p.id + "|" + pd);
+    now === "Present" && before === "Absent" && returned.push(p);
+    now === "Absent" && before === "Absent" && secondMiss.push(p);
+  });
+  return {
+    present: presentOn(date),
+    avg: last8.length ? Math.round((last8.reduce((s2, d) => s2 + presentOn(d), 0) / last8.length) * 10) / 10 : null,
+    returned,
+    secondMiss,
+  };
+}
 function firstOfMonthStr() {
   let d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
@@ -1732,14 +1797,23 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
         let before = records.slice(streak),
           beforePct = before.length >= 3
             ? Math.round((before.filter((r) => r.status === "Present").length / before.length) * 100)
-            : null;
+            : null,
+          // הירידה ההדרגתית נמדדת על 12 השבועות שעד סוף הטווח, לא רק בתוך הטווח שנבחר
+          allByDate = new Map();
+        attendance.forEach((rec) => {
+          if (rec.playerId !== p.id || rec.date > endDate) return;
+          let prev = allByDate.get(rec.date);
+          (!prev || prev.status !== "Present") && allByDate.set(rec.date, rec);
+        });
+        let drop = flagged ? null : attendanceDrop([...allByDate.values()], endDate);
         return {
           player: p,
           group: groups.find((g) => g.id === p.groupId) || null,
           lastDate: records[0]?.date || null,
-          flagged,
+          flagged: flagged || !!drop,
           streak,
           beforePct,
+          drop,
         };
       })
       .filter((x) => x.flagged)
@@ -1779,7 +1853,7 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
-        "ילדים בסיכון נשירה (2 היעדרויות רצופות)",
+        "ילדים בסיכון נשירה",
       ),
       atRisk.length === 0
         ? e.createElement(
@@ -1839,12 +1913,18 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
                       ? `${groupName(x.player.groupId)} \xB7 ${x.player.parentName}`
                       : groupName(x.player.groupId),
                   ),
-                  e.createElement(
-                    "div",
-                    { className: "text-sm font-semibold text-red-700" },
-                    `${x.streak} אימונים ברצף בלי להגיע` +
-                      (x.beforePct !== null ? ` \xB7 לפני כן הגיע/ה ל-${x.beforePct}%` : ""),
-                  ),
+                  x.drop
+                    ? e.createElement(
+                        "div",
+                        { className: "text-sm font-semibold text-amber-700" },
+                        `ירידה בנוכחות: ${x.drop.recentPct}% בחודש האחרון, לעומת ${x.drop.prevPct}% לפני כן`,
+                      )
+                    : e.createElement(
+                        "div",
+                        { className: "text-sm font-semibold text-red-700" },
+                        `${x.streak} אימונים ברצף בלי להגיע` +
+                          (x.beforePct !== null ? ` \xB7 לפני כן הגיע/ה ל-${x.beforePct}%` : ""),
+                      ),
                 ),
                 e.createElement(
                   "div",
