@@ -227,6 +227,7 @@ export function analyze({ players, groups, attendance, today }) {
       playerId: p.id,
       playerName: (p.name || "").trim(),
       groupName: g ? g.name || "" : "",
+      adult: isAdultGroup(g),
       ...r,
     });
   }
@@ -290,9 +291,31 @@ export function oneLineSummary(r) {
   return parts.join(" · ");
 }
 
+// 🎯 "הכי חשוב היום": עד 3 צעדים, לפי כללים קבועים (לא ניחוש של המודל), מהדחוף לפחות דחוף.
+// כל צעד אומר מה לעשות ואיך — כולל הפקודה המדויקת לשולה, כשיש כזו.
+export function topActions(r) {
+  const a = [];
+  const reg = r.registration;
+  if (reg?.stopped) a.push('סנכרון התשלומים נעצר כי הקובץ בדרייב נראה חלקי — להעלות את הקובץ המלא מהמתנ"ס');
+  for (const x of (r.atRisk || []).filter((x) => x.level === "high").slice(0, 2))
+    a.push(`${x.playerName} (${x.groupName}) — ${x.reason}. ${x.adult ? "כדאי להתקשר אליו/אליה היום" : "כדאי להתקשר להורים היום"}`);
+  const pend = (r.pending || []).map((x, i) => ({ x, n: i + 1 }));
+  const rep = pend.filter(({ x }) => x.kind === "repeat" && x.phone);
+  if (rep.length)
+    a.push(`${rep.length === 1 ? `${rep[0].x.playerName} החסיר/ה פעמיים ברצף` : `${rep.length} ילדים החסירו פעמיים ברצף`} — ${rep.every((v) => v.x.adult) ? "הודעה אישית" : rep.some((v) => v.x.adult) ? "הודעות (לבוגרים ישירות, לילדים להורים)" : "הודעה להורים"}: "שלח ${rep.map((v) => v.n).join(",")}"`);
+  if (reg?.items?.length) a.push(`${reg.items.length === 1 ? "התאמת שם אחת ברישום מחכה" : `${reg.items.length} התאמות שם ברישום מחכות`} לך — "אשר ר1" או "דחה ר1"`);
+  if (reg?.gaps) a.push(`${reg.gaps} משלמים על פחות אימונים ממה שהם מתאמנים — לשלוח להורים את קישור ההרשמה הנכון ממסך "מי לא משלם"`);
+  if (reg?.unmatched) a.push(`${reg.unmatched} שמות בקובץ המתנ"ס לא קיימים באפליקציה — לבדוק אם צריך להוסיף אותם`);
+  const single = pend.filter(({ x }) => x.kind !== "repeat").length;
+  if (single) a.push(`${single === 1 ? "הודעת היעדרות אחת ממתינה" : `${single} הודעות היעדרות ממתינות`} — "שלח הכל" או לבחור מספרים`);
+  return a.slice(0, 3);
+}
+
 // הדוח המלא לשולה (בתוך חלון 24 השעות אפשר טקסט חופשי)
 export function fullReportText(r, max = 15) {
   const lines = [`📋 דוח נוכחות — ${hebrewDay(r.date)}`, oneLineSummary(r), ""];
+  const top = topActions(r);
+  if (top.length) lines.push("🎯 הכי חשוב היום:", ...top.map((t) => `• ${t}`), "");
   if (r.pending.length) {
     lines.push("✉️ ממתינים להודעה:");
     r.pending.slice(0, max).forEach((x, i) => {

@@ -2,7 +2,7 @@
 // Claude לא נוגע ב-Firestore או בוואטסאפ ישירות.
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
-import { dropoutRisk, playerHistory, israelToday, isValidPhone } from "../../agents/lib/analysis.mjs";
+import { dropoutRisk, playerHistory, israelToday, isValidPhone, topActions } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
 
 const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
@@ -224,6 +224,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
         date: r.date,
         yesterday: r.yesterday,
         summary: r.summary,
+        mostImportantToday: topActions(r),
         pending: (r.pending || []).map((x, i) => {
           const t = absenceTemplate(x);
           return {

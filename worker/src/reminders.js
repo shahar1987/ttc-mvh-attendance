@@ -336,7 +336,7 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
     const parts = [];
     if (n) parts.push(`${n === 1 ? "יש הודעת היעדרות אחת" : `יש ${n} הודעות היעדרות`} שעוד לא נשלחו (${[...gs.keys()].map((g) => g.name).join(", ")}). אפשר לשלוח מכאן בלחיצה: ${link}`);
     if (risk.length)
-      parts.push(`⚠️ ${risk.length === 1 ? "שחקן שכדאי לבדוק מה שלומו" : "שחקנים שכדאי לבדוק מה שלומם"}: ${risk.map((x) => `${x.playerName} (${x.groupName}) — ${x.reason}`).join(" · ")}. כדאי להתקשר לשחקן או להורים ולשאול אם הכל בסדר, ולספר לשחר מה עלה.`);
+      parts.push(`⚠️ ${risk.length === 1 ? "שחקן שכדאי לבדוק מה שלומו" : "שחקנים שכדאי לבדוק מה שלומם"}: ${risk.map((x) => `${x.playerName} (${x.groupName}) — ${x.reason}`).join(" · ")}. ${risk.every((x) => x.adult) ? "כדאי להתקשר ולשאול אם הכל בסדר" : risk.some((x) => x.adult) ? "כדאי להתקשר (לבוגרים ישירות, לילדים להורים) ולשאול אם הכל בסדר" : "כדאי להתקשר להורים ולשאול אם הכל בסדר"}, ולספר לשחר מה עלה.`);
     const text = `בוקר טוב ${first}, ${parts.join(" ")}`;
     try {
       const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
