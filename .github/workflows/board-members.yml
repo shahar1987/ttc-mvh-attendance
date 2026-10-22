@@ -75,11 +75,18 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/staff_logins.mjs
 
+      # גיליון מידות התלבושת: מאותו Firestore שהדשבורד קורא, כדי שהגיליון לא יפגר אחריו
+      - name: League uniform sizes sheet (scripts/uniform_sheet.mjs)
+        if: success() || failure()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/uniform_sheet.mjs
+
       - name: Tell the owner on WhatsApp that the match or export failed
         if: failure()
         working-directory: agents
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           ALERT_KEY: board-members
-          ALERT_TEXT: "❌ התאמת הנרשמים באפליקציית המועדון לשחקנים, העברת ההרשמות לאירועים לגיליון או טבלת הבאת חבר נכשלה. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ALERT_TEXT: "❌ התאמת הנרשמים באפליקציית המועדון לשחקנים, העברת ההרשמות לאירועים לגיליון טבלת הבאת חבר או גיליון מידות התלבושת נכשלו. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: node alert.mjs
