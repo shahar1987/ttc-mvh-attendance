@@ -31,7 +31,8 @@ export function staffIssue(user) {
 export function ownerText(issues) {
   return (
     `🔐 ${issues.length} מאנשי הצוות לא יכולים להיכנס לאפליקציית הנוכחות עם סיסמה:\n` +
-    issues.map((i) => `• ${i.name}: ${i.issue}`).join("\n")
+    issues.map((i) => `• ${i.name}: ${i.issue}`).join("\n") +
+    `\nהתיקון: במסך הרשאות, כפתור "סיסמה חדשה" ליד השם (או "שכחתי סיסמה" במסך הכניסה).`
   );
 }
 
@@ -52,10 +53,14 @@ async function main() {
     const issue = staffIssue(user);
     if (issue) issues.push({ id: u.id, name: u.name || "בלי שם", issue });
   }
-  console.log(`staff: ${staff.length}, cannot sign in with password: ${issues.length}`);
+  // ביומן הציבורי רק ספירה לפי סוג הבעיה, בלי שמות
+  const byType = {};
+  for (const i of issues) byType[i.issue.split(" — ")[0]] = (byType[i.issue.split(" — ")[0]] || 0) + 1;
+  console.log(`staff: ${staff.length}, cannot sign in with password: ${issues.length}`, JSON.stringify(byType));
 
   const ref = db.collection("agentReports").doc("staffLogins");
-  const key = issues.map((i) => i.id + ":" + i.issue).sort().join("|");
+  // v2: ההודעה נשלחת שוב פעם אחת אחרי התיקון של 22.10 (#108)
+  const key = "v2|" + issues.map((i) => i.id + ":" + i.issue).sort().join("|");
   if (key === ((await ref.get()).data() || {}).key) return;
   if (issues.length) await enqueueOwner(db, { agent: "staff-logins", text: ownerText(issues) });
   await ref.set({ key, count: issues.length, at: new Date().toISOString() });
