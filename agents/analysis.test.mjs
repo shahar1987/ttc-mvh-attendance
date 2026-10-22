@@ -1,7 +1,7 @@
 // הרצה: node --test agents/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, dropoutRisk, addDays, fullReportText } from "./lib/analysis.mjs";
+import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const today = "2026-09-30";
@@ -153,4 +153,36 @@ test("skipAbsenceMsg: not the player's day, or a player who almost never comes",
   assert.equal(skipAbsenceMsg(p("rare"), "g", att, "2026-10-05"), true, "almost never comes");
   assert.equal(skipAbsenceMsg(p("other", { trainingDays: [1] }), "g", att, "2026-10-08"), true, "days the coach set win over inferred ones");
   assert.equal(skipAbsenceMsg(p("new"), "g", [], "2026-10-08"), false, "no data: keep the message");
+});
+
+test("registration issues: suggestions to confirm, skipping ignored, inactive and duplicates", () => {
+  const players = [P("a"), P("b", { groupId: "g2" }), P("c", { isActive: false })];
+  const sync = {
+    nameSuggestions: [
+      { fileName: "שחקן א׳", groupId: "g1", candidates: [{ playerId: "a" }, { playerId: "c" }] },
+      { fileName: "שחקן ב׳", groupId: "g1", candidates: [{ playerId: "b" }, { playerId: "b" }] },
+      { fileName: "אחר", groupId: "g1", candidates: [{ playerId: "a" }] },
+    ],
+    unmatchedNames: ["x", "y"],
+    sessionGaps: [{}],
+  };
+  const r = registrationIssues({ sync, ignores: ["a::אחר"], players, groups });
+  assert.deepEqual(r.items.map((x) => x.key), ["a::שחקן א׳", "b::שחקן ב׳"]);
+  assert.equal(r.items[1].group, "מבוגרים");
+  assert.equal(r.items[1].fileGroup, "ילדים א");
+  assert.equal(r.unmatched, 2);
+  assert.equal(r.gaps, 1);
+  assert.equal(r.stopped, false);
+  const text = fullReportText({ date: today, yesterday: { present: 0, absent: 0 }, pending: [], atRisk: [], summary: { pending: 0, atRiskHigh: 0, atRiskMedium: 0 }, registration: r });
+  assert.match(text, /ר1\. שחקן a \(ילדים א\) — בקובץ: "שחקן א׳"/);
+  assert.match(text, /ר2\. שחקן b \(מבוגרים\) — בקובץ: "שחקן ב׳" בילדים א/);
+  assert.match(text, /2 שמות בקובץ לא נמצאו/);
+  assert.match(text, /אשר ר1,ר2/);
+});
+
+test("no sync document: registration is empty and the report has no registration section", () => {
+  const r = registrationIssues({ sync: null, ignores: [], players: [P("a")], groups });
+  assert.deepEqual(r, { items: [], unmatched: 0, gaps: 0, stopped: false });
+  const text = fullReportText({ date: today, yesterday: { present: 0, absent: 0 }, pending: [], atRisk: [], summary: { pending: 0, atRiskHigh: 0, atRiskMedium: 0 }, registration: r });
+  assert.doesNotMatch(text, /רישום ותשלום/);
 });
