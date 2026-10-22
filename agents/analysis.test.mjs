@@ -1,7 +1,7 @@
 // הרצה: node --test agents/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues } from "./lib/analysis.mjs";
+import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues, topActions } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const today = "2026-09-30";
@@ -185,4 +185,35 @@ test("no sync document: registration is empty and the report has no registration
   assert.deepEqual(r, { items: [], unmatched: 0, gaps: 0, stopped: false });
   const text = fullReportText({ date: today, yesterday: { present: 0, absent: 0 }, pending: [], atRisk: [], summary: { pending: 0, atRiskHigh: 0, atRiskMedium: 0 }, registration: r });
   assert.doesNotMatch(text, /רישום ותשלום/);
+});
+
+test("top actions: at most 3, most urgent first, each with what to do", () => {
+  const r = {
+    date: today,
+    yesterday: { present: 0, absent: 0 },
+    summary: { pending: 3, atRiskHigh: 1, atRiskMedium: 1 },
+    pending: [
+      { kind: "absence", playerName: "א", phone: "972500000001" },
+      { kind: "repeat", playerName: "ב", phone: "972500000002" },
+      { kind: "repeat", playerName: "ג", phone: "" },
+    ],
+    atRisk: [
+      { playerName: "ד", groupName: "ילדים א", level: "high", reason: "3 היעדרויות ברצף" },
+      { playerName: "ה", groupName: "ילדים א", level: "medium", reason: "x" },
+    ],
+    registration: { items: [{}], unmatched: 2, gaps: 1, stopped: false },
+  };
+  const a = topActions(r);
+  assert.equal(a.length, 3);
+  assert.match(a[0], /^ד \(ילדים א\) — 3 היעדרויות ברצף\. כדאי להתקשר להורים היום/);
+  assert.match(a[1], /^ב החסיר\/ה פעמיים ברצף — הודעה להורים: "שלח 2"/, "מספר כמו ברשימה, בלי מי שאין לו טלפון");
+  assert.match(a[2], /התאמת שם אחת ברישום/);
+  assert.equal(topActions({ ...r, registration: { ...r.registration, stopped: true } })[0].startsWith("סנכרון התשלומים נעצר"), true);
+  assert.deepEqual(topActions({ date: today, pending: [], atRisk: [], registration: null }), []);
+  // בוגרים: מדברים איתם ישירות, לא עם ההורים
+  const adult = topActions({ ...r, atRisk: [{ ...r.atRisk[0], adult: true }], pending: [{ ...r.pending[1], adult: true }], registration: null });
+  assert.match(adult[0], /כדאי להתקשר אליו\/אליה היום$/);
+  assert.match(adult[1], /הודעה אישית: "שלח 1"/);
+  assert.ok(!adult.join(" ").includes("להורים"));
+  assert.match(fullReportText(r), /🎯 הכי חשוב היום:\n• ד \(ילדים א\)/);
 });

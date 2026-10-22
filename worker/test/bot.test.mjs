@@ -353,7 +353,8 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   const n6 = sent.length;
   assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /יוסי \(.*1 בסכנת נשירה\) ✓/);
   const t6 = sent.slice(n6).find((b) => b.type === "template" && b.to === "972501234567").template.components[0].parameters[0].text;
-  assert.match(t6, /⚠️ שחקן שכדאי לבדוק מה שלומו: עומר רץ \(בוגרים\) — 3 היעדרויות ברצף\. כדאי להתקשר לשחקן או להורים/);
+  assert.match(t6, /⚠️ שחקן שכדאי לבדוק מה שלומו: עומר רץ \(בוגרים\) — 3 היעדרויות ברצף\. כדאי להתקשר ולשאול אם הכל בסדר/, "בוגרים — בלי הורים");
+  assert.ok(!t6.includes("להורים"), "בוגרים — לא מזכירים הורים");
   assert.ok(!t6.includes("\n"), "שורה אחת (תבנית)");
   assert.equal(docs.get("agentReports/coaches").riskSent.r1, "2026-10-05");
   put("agentReports/bot", { parentMsgNag: "" });
