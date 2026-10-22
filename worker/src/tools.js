@@ -5,7 +5,8 @@ import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { dropoutRisk, playerHistory, israelToday, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
 
-const AGENTS = ["scan", "bugcheck", "ideas", "supervisor", "content"];
+const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
+const AGENTS = Object.keys(AGENT_HE);
 const MAX_SEND = 40;
 // הודעות להורים יוצאות רק כששולה אישרה במילים שלה, בהודעה האחרונה שכתבה
 const APPROVE_RE = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
@@ -67,7 +68,7 @@ export const TOOL_DEFS = [
   },
   {
     name: "get_agent_results",
-    description: "התוצאות האחרונות של שאר הסוכנים: בודק הבאגים, הרעיונות השבועיים, מצב המפקח (מתי כל סוכן רץ ומה הבעיות), וטיוטות הפרסום של השבוע (content, ממוספרות 1-3 עם נוסח פייסבוק, נוסח אינסטגרם ומועד).",
+    description: "התוצאות האחרונות של שאר הסוכנים: bugcheck = בודק הבאגים; ideas = הרעיונות השבועיים; supervisor = מצב המפקח (מתי כל סוכן רץ ומה הבעיות); content = טיוטות הפרסום של השבוע (ממוספרות 1-3 עם נוסח פייסבוק, נוסח אינסטגרם ומועד). דוח הבוקר עצמו — get_daily_report.",
     input_schema: {
       type: "object",
       properties: { agent: { type: "string", enum: ["bugcheck", "ideas", "supervisor", "content"] } },
@@ -172,7 +173,8 @@ export const TOOL_DEFS = [
   },
   {
     name: "run_agent_now",
-    description: "מבקש להריץ סוכן עכשיו במקום לחכות לזמן הקבוע. התוצאה מגיעה בוואטסאפ תוך כ-10-15 דקות.",
+    description:
+      "מבקש להריץ סוכן עכשיו במקום לחכות לזמן הקבוע. התוצאה מגיעה בוואטסאפ תוך כ-10-15 דקות. scan = הסורק היומי / דוח הבוקר (נוכחות, היעדרויות, סכנת נשירה, רישום ותשלום); bugcheck = בודק הבאגים באפליקציה; ideas = רעיונות שבועיים; supervisor = המפקח (האם כל הסוכנים עובדים); content = טיוטות הפרסום.",
     input_schema: {
       type: "object",
       properties: { agent: { type: "string", enum: AGENTS } },
@@ -466,7 +468,8 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
       if (!AGENTS.includes(agent)) return "סוכן לא מוכר.";
       const bot = (await store.get("agentReports/bot")) || {};
       await store.merge("agentReports/bot", { requests: [...new Set([...(bot.requests || []), agent])] });
-      return `ביקשתי להריץ את ${agent}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
+      // השם בעברית בתשובה — כדי שהבעלים יראה מיד אם הורץ סוכן אחר ממה שביקש
+      return `ביקשתי להריץ את ${AGENT_HE[agent]}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
     },
   };
 }
