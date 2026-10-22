@@ -256,6 +256,29 @@ export function analyze({ players, groups, attendance, today }) {
   };
 }
 
+// בעיות רישום מסנכרון התשלומים (system/paymentSync): הצעות התאמה שממתינות לאישור, ומספר השמות שלא נמצאו
+// ושל מי ששילם על פחות אימונים. key = playerId::fileName — אותו מפתח כמו paymentSyncIgnores באפליקציה,
+// כך שאישור/דחייה בבוט ובמסך "מי לא משלם" הם אותו דבר.
+export function registrationIssues({ sync, ignores, players, groups }) {
+  const ign = new Set(ignores || []);
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const gName = (id) => groups.find((g) => g.id === id)?.name || "";
+  const items = [];
+  for (const sg of sync?.nameSuggestions || [])
+    for (const c of sg.candidates || []) {
+      const p = byId.get(c.playerId);
+      const key = `${c.playerId}::${sg.fileName}`;
+      if (!active(p) || ign.has(key) || items.some((x) => x.key === key)) continue;
+      items.push({ key, playerId: p.id, playerName: (p.name || "").trim(), fileName: sg.fileName, group: gName(p.groupId), fileGroup: gName(sg.groupId) });
+    }
+  return {
+    items,
+    unmatched: (sync?.unmatchedNames || []).length,
+    gaps: (sync?.sessionGaps || []).length,
+    stopped: !!(sync?.needsReview && sync?.partialFile),
+  };
+}
+
 // שורה אחת לתבנית (בלי ירידות שורה — כלל של Meta)
 export function oneLineSummary(r) {
   const s = r.summary;
@@ -285,5 +308,17 @@ export function fullReportText(r, max = 15) {
     lines.push("");
   }
   if (r.pending.length) lines.push('לשליחת ההודעות: "שלח הכל", או "שלח 1,3".');
+  const reg = r.registration;
+  if (reg && (reg.items.length || reg.unmatched || reg.gaps || reg.stopped)) {
+    lines.push("", "📝 רישום ותשלום:");
+    if (reg.stopped) lines.push("⛔ הסנכרון נעצר — הקובץ בדרייב נראה חלקי");
+    reg.items.slice(0, max).forEach((x, i) =>
+      lines.push(`ר${i + 1}. ${x.playerName} (${x.group}) — בקובץ: "${x.fileName}"${x.fileGroup && x.fileGroup !== x.group ? ` ב${x.fileGroup}` : ""}`),
+    );
+    if (reg.items.length > max) lines.push(`ועוד ${reg.items.length - max}`);
+    if (reg.unmatched) lines.push(`• ${reg.unmatched} שמות בקובץ לא נמצאו באפליקציה`);
+    if (reg.gaps) lines.push(`• ${reg.gaps} שילמו על פחות אימונים ממה שהקבוצה מתאמנת`);
+    if (reg.items.length) lines.push('לאישור שזה אותו ילד: "אשר ר1,ר2". לא אותו ילד: "דחה ר1".');
+  }
   return lines.join("\n").trim();
 }

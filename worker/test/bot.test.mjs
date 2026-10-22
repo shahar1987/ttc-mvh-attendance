@@ -707,6 +707,31 @@ assert.deepEqual(docs.get("agentReports/latest").handledKeys, []);
 assert.match(await tools("כן", "s2").skip_messages({ numbers: [] }), /סומנו כמטופלים: 1\. דני כהן/);
 assert.equal(docs.get("agentReports/latest").handledKeys.length, 1);
 
+// 1ב. רישום: "אשר ר1" משנה שם + שילם (כמו באפליקציה); בלי המספר בהודעה — רק אחרי "כן" נפרד; דחייה לא נוגעת בשחקן
+put("agentReports/latest", {
+  handledKeys: [],
+  pending: [],
+  registration: { items: [
+    { key: "p2::נועה לוי-כהן", playerId: "p2", playerName: "נועה לוי", fileName: "נועה לוי-כהן", group: "מתחילים שאר ישוב", fileGroup: "מתחילים שאר ישוב" },
+    { key: "p3::דניאל לוי", playerId: "p3", playerName: "דני לוי", fileName: "דניאל לוי", group: "מתחילים שאר ישוב", fileGroup: "" },
+  ], unmatched: 1, gaps: 0, stopped: false },
+});
+put("players/p2", { notPaying: true });
+assert.match(await tools("תאשרי את כולם", "r1").resolve_registration({ numbers: [1, 2], approve: true }), /לא בוצע עדיין/);
+assert.equal(docs.get("players/p2").name, "נועה לוי");
+const rep = JSON.parse(await tools("מה בדוח").get_daily_report());
+assert.equal(rep.registration.matchesToConfirm[0].number, "ר1");
+assert.match(await tools("אשר ר1", "r2").resolve_registration({ numbers: [1], approve: true }), /ר1\. נועה לוי ← "נועה לוי-כהן", סומן ששילם/);
+assert.equal(docs.get("players/p2").name, "נועה לוי-כהן");
+assert.equal(docs.get("players/p2").notPaying, false);
+assert.equal(docs.get("players/p2").notPayingSource, "manual");
+assert.deepEqual(docs.get("system/paymentSyncIgnores").keys, ["p2::נועה לוי-כהן"]);
+assert.match(await tools("אשר ר1", "r3").resolve_registration({ numbers: [1], approve: true }), /כבר טופלו/, "פעמיים — לא שוב");
+assert.match(await tools("דחה ר2", "r4").resolve_registration({ numbers: [2], approve: false }), /דני לוי: לא אותו ילד/);
+assert.equal(docs.get("players/p3").name, "דני לוי");
+assert.equal(docs.get("system/paymentSyncIgnores").keys.length, 2);
+put("players/p2", { name: "נועה לוי" });
+
 // 8. סימון נוכחות: שם קצר, תאריך או קבוצה שלא נכתבו בהודעה — רק עם "כן" נפרד
 assert.match(await tools("ד הגיע היום למתחילים").mark_attendance({ group: "מתחילים", present: ["ד"] }), /שם קצר מדי/);
 const d3Before = JSON.stringify(docs.get(`attendance/${D3}_g1_p2`)); // D3 can hit a fixture date (2026-10-01/02)

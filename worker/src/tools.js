@@ -119,6 +119,17 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: "resolve_registration",
+    description:
+      "הצעות ההתאמה ברישום (registration בדוח היומי, מסומנות ר1, ר2...): שם בקובץ המתנ\"ס שכנראה שייך לשחקן באפליקציה. approve=true (\"אשר ר1\") — זה אותו ילד: השם באפליקציה משתנה לשם שבקובץ והוא מסומן ששילם, בדיוק כמו \"עדכן וסמן ששילם\" במסך מי לא משלם. approve=false (\"דחה ר1\") — לא אותו ילד, ההצעה לא תחזור. numbers = המספרים בלי ה-ר'.",
+    input_schema: {
+      type: "object",
+      properties: { numbers: { type: "array", items: { type: "integer" } }, approve: { type: "boolean" } },
+      required: ["numbers", "approve"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_groups",
     description: "כל הקבוצות במועדון עם מספר השחקנים הפעילים בכל אחת. להשתמש כדי לזהות קבוצה לפי שם לפני סימון או קריאת נוכחות.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
@@ -225,7 +236,49 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
           };
         }),
         atRisk: (r.atRisk || []).map((x) => ({ name: x.playerName, group: x.groupName, level: x.level, reason: x.reason })),
+        ...(r.registration && {
+          registration: {
+            matchesToConfirm: r.registration.items.map((x, i) => ({
+              number: `ר${i + 1}`,
+              nameInApp: x.playerName,
+              group: x.group,
+              nameInFile: x.fileName,
+              groupInFile: x.fileGroup,
+              alreadyHandled: done.has(x.key),
+            })),
+            unmatchedInFile: r.registration.unmatched,
+            paidForFewerSessions: r.registration.gaps,
+            syncStopped: r.registration.stopped,
+          },
+        }),
       });
+    },
+
+    async resolve_registration({ numbers, approve }) {
+      // שינוי שם בנתונים: מיידי רק כשהבעלים כתב את המספרים בעצמו ("אשר ר2"); אחרת אישור בשני שלבים
+      const nums = (numbers || []).map(Number);
+      if (!inOwnerText(nums, lastOwnerText) && !(await confirmed(store, "registration", { nums, approve: !!approve }, lastOwnerText, turn)))
+        return "לא בוצע עדיין. להציג לבעלים את ההתאמות (ר + מספר, השם באפליקציה והשם בקובץ) ולשאול אם לאשר. אחרי \"כן\" — לקרוא שוב עם אותם מספרים.";
+      const r = await latest();
+      const items = r?.registration?.items || [];
+      const done = new Set(r?.handledKeys || []);
+      const chosen = nums.map((n) => ({ n, x: items[n - 1] })).filter(({ x }) => x && !done.has(x.key));
+      if (!chosen.length) return "אין התאמות כאלה ברשימה, או שכבר טופלו.";
+      const out = [];
+      for (const { n, x } of chosen) {
+        const p = await store.get(`players/${x.playerId}`);
+        if (!p || p.deleted) {
+          out.push(`ר${n}. ${x.playerName}: השחקן כבר לא באפליקציה — דילגתי`);
+          continue;
+        }
+        // notPayingSource: "manual" — אותו דבר שהאפליקציה כותבת, כדי שהסנכרון הבא לא יחזיר אותו לרשימה
+        if (approve) await store.merge(`players/${x.playerId}`, { name: x.fileName, notPaying: false, notPayingSource: "manual" });
+        out.push(approve ? `ר${n}. ${p.name} ← "${x.fileName}", סומן ששילם` : `ר${n}. ${p.name}: לא אותו ילד, ההצעה לא תחזור`);
+      }
+      const keys = chosen.map(({ x }) => x.key);
+      await store.update("system/paymentSyncIgnores", (cur) => ({ keys: [...new Set([...(cur.keys || []), ...keys])] }));
+      await store.update("agentReports/latest", (cur) => ({ handledKeys: [...new Set([...(cur.handledKeys || []), ...keys])] }));
+      return out.join("\n");
     },
 
     async get_agent_results({ agent }) {
