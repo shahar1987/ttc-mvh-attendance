@@ -14,7 +14,8 @@ import { watchReads } from "./reminders.js";
 // רמת כורזים מנוהלת בידי דניאל (הבעלים, 12.10.2026): כל מה ששולה שולחת לבעלים על רמת כורזים — היא מציעה להעביר לדניאל,
 // ושולחת לו (send_message) רק אחרי "כן" של הבעלים. מי שכבר מזכיר את דניאל (למשל "נשלח לדניאל ✓") לא נשאל שוב.
 export const KORAZIM_ASK = "↪️ זה קשור לרמת כורזים. להעביר לדניאל?\n1. כן\n2. לא";
-export const offerKorazim = (text) => (/כורזים/.test(text) && !/דניאל/.test(text) ? `${text}\n\n${KORAZIM_ASK}` : text);
+// הודעות היעדרות וקישורי wa.me הולכים להורים דרך הבעלים — שם הקבוצה "רמת כורזים" ברשימה הוא לא משימה לדניאל
+export const offerKorazim = (text) => (/כורזים/.test(text) && !/דניאל|היעדרות|wa\.me/.test(text) ? `${text}\n\n${KORAZIM_ASK}` : text);
 
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
@@ -39,7 +40,10 @@ async function resolve(store, to) {
     else {
       const hits = people.filter((p) => p.name.includes(q));
       const exact = hits.filter((p) => p.name === q);
+      const staff = hits.filter((p) => p.staff);
       if (hits.length === 1 || exact.length === 1) out.push(exact[0] || hits[0]);
+      // "דניאל" כשיש מדריך אחד בשם הזה ועוד שחקנים — הכוונה למדריך
+      else if (staff.length === 1) out.push(staff[0]);
       else problems.push(hits.length ? `"${q}" מתאים לכמה: ${hits.map((h) => h.name).join(", ")}` : `"${q}" לא נמצא`);
     }
   }
