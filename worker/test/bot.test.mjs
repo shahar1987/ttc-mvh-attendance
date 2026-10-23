@@ -272,6 +272,14 @@ assert.match(rem, /נוער — רון: אין טלפון שמור/);
 assert.match(docs.get("agentReports/bot").outbox.reminders.text, /נשלחה תזכורת/, "הסיכום נשמר לשולה");
 assert.match(texts().at(-1), /נוכחות שלא מולאה היום/);
 assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "לא שולחים פעמיים");
+// קבוצה עם startTime: התזכורת יוצאת 10 דקות אחרי ההתחלה, בלי לחכות לסוף (18:00 בישראל; התחיל 17:45, נגמר 21:00)
+put("groups/g7", { name: "מוקדם", days: [0], startTime: "17:45", endTime: "21:00", coachId: "u1" });
+put("players/p7", { name: "p7", groupId: "g7", isActive: true });
+assert.match(await remindCoaches(env, db(env), waConfig(env), sunday), /מוקדם — יוסי: נשלחה תזכורת ✓/);
+put("groups/g8", { name: "עוד לא", days: [0], startTime: "17:55", endTime: "21:00", coachId: "u1" });
+put("players/p8", { name: "p8", groupId: "g8", isActive: true });
+assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing due", "התחיל לפני 5 דקות — עוד לא");
+for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.delete(p);
 // 📋 סיכום אימון למאמן: רק לקבוצה שמולאה (בוגרים), עם מי הגיע / לא הגיע / ליצור קשר, ופעם אחת בלבד
 {
   const { coachSummaries } = await import("../src/reminders.js");
@@ -364,6 +372,27 @@ assert.equal(await remindCoaches(env, db(env), waConfig(env), sunday), "nothing 
   docs.delete("players/r1");
   ["2026-09-20", "2026-09-27", "2026-10-04"].forEach((d) => docs.delete(`attendance/${d}_g5_r1`));
   docs.delete("agentReports/coaches");
+}
+// 🆕 ילדים בניסיון: מי שהגיע פעמיים — שאלה לבעלים; מי שלא הגיע 21 יום — יוצא לבד; "כן ל-1" הופך לקבוע
+{
+  const { trialCheck } = await import("../src/reminders.js");
+  put("players/tr1", { name: "ניסיון א", groupId: "g3", isActive: true, trial: true, joinDate: "2026-09-28" });
+  put("players/tr2", { name: "ניסיון ב", groupId: "g3", isActive: true, trial: true, joinDate: "2026-09-01" });
+  put("attendance/2026-09-29_g3_tr1", { date: "2026-09-29", groupId: "g3", playerId: "tr1", status: "Present" });
+  put("attendance/2026-10-01_g3_tr1", { date: "2026-10-01", groupId: "g3", playerId: "tr1", status: "Present" });
+  const day = new Date("2026-10-05T08:00:00Z");
+  assert.equal(await trialCheck(db(env), waConfig(env), new Date("2026-10-05T06:00:00Z")), "not now");
+  const n0 = sent.length;
+  assert.equal(await trialCheck(db(env), waConfig(env), day), "trials: ask 1, dropped 1");
+  assert.match(JSON.stringify(sent.slice(n0)), /1\. ניסיון א \(נוער\) — 2 אימונים.*יצאו מהרשימה.*ניסיון ב/);
+  assert.equal(docs.get("players/tr2").isActive, false, "לא הגיע 21 יום — יצא");
+  assert.equal(docs.get("players/tr1").trial, true);
+  assert.equal(await trialCheck(db(env), waConfig(env), day), "done today");
+  assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /עכשיו שחקנים קבועים: 1\. ניסיון א/);
+  assert.equal(docs.get("players/tr1").trial, false);
+  assert.deepEqual(docs.get("agentReports/bot").trialAsk.items, []);
+  assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /לא ברשימת/);
+  for (const p of ["players/tr1", "players/tr2", "attendance/2026-09-29_g3_tr1", "attendance/2026-10-01_g3_tr1"]) docs.delete(p);
 }
 // 🔗 עם PUBLIC_URL הקישור הארוך מוחלף בקישור קצר שמפנה אליו
 {

@@ -3181,6 +3181,7 @@ function re({
     // 18.10: יום שהקבוצה לא מתאמנת בו לא נפתח כשכולם "הגיעו" — לחיצה אחת שמרה נוכחות ליום בלי אימון.
     // קבוצה בלי ימים מוגדרים נחשבת מתאמנת בכל יום, כמו קודם.
     trainsOn = !Y(t) || t.days.includes(new Date(m + "T00:00:00").getDay()),
+    lStat = l.filter((r) => !r.excused),
     existingDayRecords = () => l.filter((p) => p.groupId === t.id && p.date === m),
     staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
     confirmOverwrite = () => {
@@ -3224,7 +3225,10 @@ function re({
     [u, f] = b(RO ? !1 : !o),
     [g, r] = b(!1),
     [y, N] = b(""),
-    [savedNote, setSavedNote] = b("");
+    [savedNote, setSavedNote] = b(""),
+    // הסימון הוא בדיקת בטיחות (שולה, 18.10): מיד אחרי שמירה עם ילד שלא הגיע היום — מציעים להודיע להורה עכשיו
+    [askMsg, setAskMsg] = b(!1),
+    askRef = e.useRef(null);
   let daySig = l
       .filter((v) => v.groupId === t.id && v.date === m)
       .map((v) => v.playerId + ":" + v.status)
@@ -3247,7 +3251,10 @@ function re({
         : Promise.resolve(!0);
   dayKeyRef.current = dayKey;
   // "נשמר במכשיר" שייך ליום שנשמר — לא נשאר כשעוברים ליום או לקבוצה אחרים
-  j(() => setSavedNote(""), [dayKey]);
+  j(() => (setSavedNote(""), setAskMsg(!1)), [dayKey]);
+  j(() => {
+    askMsg && askRef.current && askRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [askMsg]);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
@@ -3407,6 +3414,7 @@ function re({
             prev.msgSentAt &&
             ((rec.msgSentAt = prev.msgSentAt),
             (rec.msgSentBy = prev.msgSentBy || "")),
+            st2 === "Absent" && prev && prev.excused && (rec.excused = !0),
             p.set(k, rec));
         });
         // 27.9: commit() נפתר רק כשהשרת מאשר. בוויפי של אולם שמחובר אבל לא מעביר
@@ -3446,6 +3454,7 @@ function re({
           );
         } else setSavedNote("");
         (dirtyRef.current = null),
+          m === today && Object.values(saved).includes("Absent") && setAskMsg(!0),
           touchedRef.current.clear(),
           h(saved),
           f(!1);
@@ -3462,7 +3471,7 @@ function re({
     // ולא על היעדרות ביום שאינו יום האימון של השחקן. מחושב פעם אחת ולא בכל הקשה.
     alertDates = e.useMemo(() => {
       let o2 = {};
-      absenceAlerts(n, [], l).forEach((r2) => (o2[r2.player.id] = r2.dates));
+      absenceAlerts(n, [], lStat).forEach((r2) => (o2[r2.player.id] = r2.dates));
       return o2;
     }, [a, l, t.id]),
     I = n.filter((p) => x[p.id] === "Present").length,
@@ -3749,7 +3758,7 @@ function re({
           savedRec = l.find(
             (v) => v.groupId === t.id && v.date === m && v.playerId === p.id,
           ),
-          showWa = !!savedRec && savedRec.status === "Absent",
+          showWa = !!savedRec && savedRec.status === "Absent" && !savedRec.excused,
           waSent = !!(savedRec && savedRec.msgSentAt),
           isOffDay =
             Array.isArray(p.trainingDays) &&
@@ -3759,6 +3768,37 @@ function re({
         // והפעולות המשניות. קודם הכל היה בשורה אחת, והשם — האלמנט היחיד שהיה
         // גמיש — נחתך ("מוריס מ") ברגע שהופיע תג ההיעדרויות.
         let secondary = [
+          // מוצדק (מחלה וכו'): נוסף לרישום "לא הגיע" שכבר נשמר; הסטטוס והחוזה לא משתנים
+          savedRec && savedRec.status === "Absent" && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "excused",
+                  onClick: () =>
+                    O(S(P, "attendance", `${m}_${t.id}_${p.id}`), { excused: !savedRec.excused }).catch((err) =>
+                      N("השמירה נכשלה: " + err.message),
+                    ),
+                  "aria-pressed": !!savedRec.excused,
+                  className: `min-h-[44px] rounded-full px-3 text-sm font-semibold shrink-0 active:scale-95 transition-transform ${savedRec.excused ? "bg-slate-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`,
+                },
+                savedRec.excused ? "✓ מוצדק" : "מוצדק?",
+              )
+            : null,
+          p.trial && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "permanent",
+                  onClick: () =>
+                    askConfirm(`להפוך את ${p.name} לשחקן קבוע?`, { yes: "כן, קבוע" }).then(
+                      (ok) => ok && O(S(P, "players", p.id), { trial: !1 }).catch((err) => N("השמירה נכשלה: " + err.message)),
+                    ),
+                  className:
+                    "min-h-[44px] rounded-full px-3 text-sm font-semibold shrink-0 bg-blue-50 text-blue-800 border border-blue-200 active:scale-95 transition-transform",
+                },
+                "להפוך לקבוע",
+              )
+            : null,
           k && !RO
             ? e.createElement(Re, {
                 key: "abs",
@@ -3849,14 +3889,16 @@ function re({
           },
           e.createElement(
             "div",
-            { className: "flex items-center gap-1" },
+            // 23.10 (שולה): התגים והפעולות באותה שורה מול השם, לא בשורה מתחת — פחות גלילה.
+            // שורה חדשה רק כשאין מקום (שם ארוך + תג היעדרויות), כדי שהשם לא ייחתך.
+            { className: "flex items-center gap-1 flex-wrap" },
             e.createElement(
               "button",
               {
                 onClick: () => C(p.id, absent ? "Present" : "Absent"),
                 disabled: !u || g,
                 "aria-pressed": absent,
-                className: `flex-1 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
+                className: `flex-1 basis-36 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
               },
               e.createElement(
                 "span",
@@ -3872,6 +3914,8 @@ function re({
                   className: `flex-1 text-lg font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
                 },
                 p.name,
+                p.trial &&
+                  e.createElement("span", { className: "ms-2 align-middle text-xs font-semibold text-blue-800 bg-blue-50 rounded-full px-2 py-0.5" }, "ניסיון"),
               ),
               absent
                 ? e.createElement("span", { className: "text-sm font-bold text-red-700 shrink-0" }, "לא הגיע")
@@ -3891,17 +3935,8 @@ function re({
                   e.createElement($e, { className: "w-4 h-4" }),
                 )
               : null,
+            ...secondary,
           ),
-          // השורה התחתונה נבנית רק אם יש בה משהו — אחרת נוצר רווח ריק מתחת לשם
-          secondary.length > 0 &&
-            e.createElement(
-              "div",
-              {
-                className:
-                  "flex items-center justify-start gap-1.5 flex-wrap",
-              },
-              secondary,
-            ),
         );
       }),
       n.length === 0 &&
@@ -3928,6 +3963,17 @@ function re({
               "הוספת שחקן",
             )
           : e.createElement("span", null),
+        AP &&
+          e.createElement(
+            "button",
+            {
+              onClick: () => AP(t, !0),
+              className:
+                "col-span-2 order-last bg-white border border-blue-200 text-blue-800 rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+            },
+            e.createElement(K, { className: "w-4 h-4" }),
+            "ילד בניסיון",
+          ),
         e.createElement(
           "button",
           {
@@ -3943,6 +3989,29 @@ function re({
       e.createElement("p", { className: "text-sm text-red-700 text-right" }, y),
     savedNote &&
       e.createElement("p", { className: "text-sm text-emerald-800 text-right font-semibold" }, savedNote),
+    (() => {
+      if (!askMsg || !WA || RO) return null;
+      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt && !v.excused));
+      return miss.length
+        ? e.createElement(
+            "div",
+            { ref: askRef, className: "bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-2 text-right" },
+            e.createElement("p", { className: "font-bold text-amber-900" }, miss.length === 1 ? "לא הגיע היום — להודיע עכשיו?" : `${miss.length} לא הגיעו היום — להודיע עכשיו?`),
+            miss.map((p) =>
+              e.createElement(
+                "button",
+                {
+                  key: p.id,
+                  onClick: () => WA(p, "absence", t.id, m),
+                  className: "bg-emerald-600 text-white rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
+                },
+                e.createElement(te, { className: "w-4 h-4" }),
+                isAdultGroup(t) ? `הודעה ל${p.name}` : `הודעה להורה של ${p.name}`,
+              ),
+            ),
+          )
+        : null;
+    })(),
     u &&
       unmarked > 0 &&
       n.length > 0 &&
@@ -3953,8 +4022,12 @@ function re({
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
     // רק אחרי שמירה (לא במצב סימון) — לא מאט את המאמן באמצע האימון
-    !u && o && e.createElement(TrainingSummary, { roster: n, attendance: l, groupId: t.id, date: m }),
-    e.createElement(GroupInsights, { group: t, players: n, attendance: l }),
+    !u && o && e.createElement(TrainingSummary, { roster: n, attendance: lStat, groupId: t.id, date: m }),
+    e.createElement(GroupInsights, {
+      group: t,
+      players: n.filter((p) => !p.trial),
+      attendance: lStat.filter((r) => !n.some((p) => p.trial && p.id === r.playerId)),
+    }),
     !RO &&
     e.createElement(
       "div",
@@ -3996,6 +4069,8 @@ function mt({
   groups: s,
   players: a,
   attendance: l,
+  rosterPlayers: RP,
+  rosterAttendance: RA,
   users: US,
   isAdmin: i,
   onEditPlayer: EP,
@@ -4098,8 +4173,8 @@ function mt({
           e.createElement(re, {
             group: h,
             profile: t,
-            players: a,
-            attendance: l,
+            players: RP || a,
+            attendance: RA || l,
             users: US,
             onBack: o ? null : () => onSelectGroup(null),
             onEditPlayer: EP,
@@ -4329,6 +4404,11 @@ function Q() {
     [olderFrom, setOlderFrom] = b(null),
     [olderAtt, setOlderAtt] = b([]),
     n = excludeCancelled(olderAtt.length ? olderAtt.concat(rawAttendance) : rawAttendance, cancellations),
+    // ילד בניסיון (trial) מופיע רק במסך הסימון ובספר הטלפונים; הדשבורד, הדוחות, הקבוצות והתשלומים לא רואים אותו
+    trialIds = new Set(c.filter((p) => p.trial).map((p) => p.id)),
+    statPlayers = trialIds.size ? c.filter((p) => !trialIds.has(p.id)) : c,
+    // היעדרות מוצדקת (excused — מחלה וכו') לא נספרת: לא באחוזים, לא בהודעות להורים ולא ב"לא מגיעים"
+    statAtt = n.filter((r) => !r.excused && !trialIds.has(r.playerId)),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
@@ -4342,8 +4422,8 @@ function Q() {
     [playerModal, setPlayerModal] = b(null),
     [waPlayer, setWaPlayer] = b(null),
     g = ut(),
-    openAddPlayer = (group) =>
-      setPlayerModal({ player: null, groupId: group?.id || null }),
+    openAddPlayer = (group, trial) =>
+      setPlayerModal({ player: null, groupId: group?.id || null, trial: !!trial }),
     openEditPlayer = (player) => setPlayerModal({ player }),
     openWhatsapp = (player, mode, groupId, date) =>
       setWaPlayer({
@@ -4618,8 +4698,8 @@ function Q() {
         e.createElement(st, {
           users: l,
           groups: i,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
           onOpenAddPlayer: openAddPlayer,
           currentUserId: s.id,
           onEditPlayer: openEditPlayer,
@@ -4632,7 +4712,7 @@ function Q() {
         }),
       (canDo(s, "manageGroups") || vw) &&
         m === "groups" &&
-        e.createElement(it, { groups: i, users: l, players: c, readOnly: vw }),
+        e.createElement(it, { groups: i, users: l, players: statPlayers, readOnly: vw }),
       canDo(s, "phonebook") &&
         m === "phonebook" &&
         e.createElement(lt, {
@@ -4645,14 +4725,14 @@ function Q() {
         e.createElement(ReportsScreen, {
           groups: i,
           users: l,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
           cancellations,
           readOnly: vw,
         }),
       canDo(s, "payments") &&
         m === "payments" &&
-        e.createElement(PaymentsScreen, { players: c, groups: i, readOnly: vw }),
+        e.createElement(PaymentsScreen, { players: statPlayers, groups: i, readOnly: vw }),
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
@@ -4664,8 +4744,10 @@ function Q() {
         e.createElement(mt, {
           profile: s,
           groups: i,
-          players: c,
-          attendance: n,
+          players: statPlayers,
+          attendance: statAtt,
+          rosterPlayers: c,
+          rosterAttendance: n,
           users: l,
           isAdmin: r,
           onEditPlayer: vw ? null : openEditPlayer,
@@ -4701,6 +4783,7 @@ function Q() {
           players: c,
           player: playerModal.player,
           defaultGroupId: playerModal.groupId,
+          trial: playerModal.trial,
           allowedGroupIds: r || canDo(s, "manageGroups")
             ? null
             : i.filter((G2) => isGroupCoach(G2, s.id)).map((G2) => G2.id),

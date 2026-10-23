@@ -48,6 +48,34 @@ test("handled alert and inactive players are skipped", () => {
   assert.equal(r.pending.length, 0);
 });
 
+test("excused absence (sick etc.) is not counted: no message, no repeat, not in yesterday's absent", () => {
+  const r = analyze({
+    players: [P("a"), P("b")],
+    groups,
+    attendance: [
+      A("a", "2026-09-29", "Absent", { excused: true }),
+      A("a", "2026-09-27", "Absent"),
+      A("b", "2026-09-29", "Absent", { excused: true }),
+      A("b", "2026-09-27", "Absent", { excused: true }),
+    ],
+    today,
+  });
+  // a: רק ההיעדרות הלא מוצדקת (27.9) נשארת — הודעה רגילה ולא "פעמיים ברצף"; b: כלום
+  assert.deepEqual(r.pending.map((x) => [x.playerId, x.kind]), [["a", "absence"]]);
+  assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 0, absent: 0 });
+});
+
+test("trial players get no absence message and no dropout alert", () => {
+  const r = analyze({
+    players: [P("t", { trial: true })],
+    groups,
+    attendance: [A("t", "2026-09-29", "Absent"), A("t", "2026-09-27", "Absent")],
+    today,
+  });
+  assert.equal(r.pending.length, 0);
+  assert.equal(r.atRisk.length, 0);
+});
+
 test("present on the same day in another group wins over absent", () => {
   const r = analyze({
     players: [P("a")],

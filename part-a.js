@@ -421,7 +421,7 @@ function skipAbsenceMsg(p, groupId, attendance, date) {
 function absenceAlerts(players, groups, attendance, allowedGroupIds) {
   let out = [];
   players.forEach((p) => {
-    if (!p.isActive || p.deleted) return;
+    if (!p.isActive || p.deleted || p.trial) return;
     if (allowedGroupIds && !allowedGroupIds.includes(p.groupId)) return;
     let dates = lastTwoAbsences(attendance, p.id);
     if (!dates) return;
@@ -803,7 +803,7 @@ function pendingAbsenceMsgs(players, groups, users, attendance) {
     if (a.status !== "Absent" || a.msgSentAt) return;
     if (!a.date || a.date > today || a.date < from) return;
     let p = players.find((v) => v.id === a.playerId);
-    if (!p || p.deleted || !p.isActive) return;
+    if (!p || p.deleted || !p.isActive || p.trial) return;
     if (p.alertHandledDate && p.alertHandledDate >= a.date) return;
     let two = lastTwoAbsences(attendance, p.id);
     if (two && two.includes(a.date)) return;
@@ -3275,6 +3275,7 @@ function at({
   defaultGroupId: DG,
   canDelete: CD,
   players: PL,
+  trial: TRIAL,
 }) {
   let i = !!a,
     // מעבר שחקן בין קבוצות מותר בחוקים רק עם הרשאת ניהול קבוצות — בלעדיה בעריכה מוצגת רק הקבוצה הנוכחית
@@ -3285,6 +3286,8 @@ function at({
     [f, g] = b(a?.parentPhone || ""),
     [WT, setWT] = b(a?.weeklyTarget != null ? String(a.weeklyTarget) : ""),
     [TD, setTD] = b(a?.trainingDays || []),
+    // ילד בניסיון: מופיע בסימון, אבל לא נספר בסטטיסטיקה, ברשימות ההיעדרות ובתשלומים
+    [TR, setTR] = b(a ? !!a.trial : !!TRIAL),
     toggleTD = (v) => {
       setTD(($) =>
         $.includes(v)
@@ -3323,6 +3326,7 @@ function at({
           monthlyTarget: WT.trim() ? Math.round(Number(WT) * 4.345) : null,
           yearlyTarget: WT.trim() ? Number(WT) * 52 : null,
           trainingDays: TD,
+          trial: TR,
         };
         i
           ? await O(S(P, "players", a.id), v)
@@ -3472,10 +3476,21 @@ function at({
         e.createElement(
           "h3",
           { className: "font-bold text-blue-950" },
-          i ? "עריכת פרטי שחקן" : "הוספת שחקן",
+          i ? "עריכת פרטי שחקן" : TR ? "ילד בניסיון" : "הוספת שחקן",
         ),
       ),
       p("שם השחקן", n, m, null, nameRef),
+      e.createElement(
+        "label",
+        { className: "flex items-center gap-2 text-sm text-slate-700 min-h-[44px] cursor-pointer" },
+        e.createElement("input", {
+          type: "checkbox",
+          checked: TR,
+          onChange: (v) => setTR(v.target.checked),
+          className: "w-5 h-5 accent-emerald-600",
+        }),
+        "בניסיון — עוד לא שחקן קבוע",
+      ),
       dupName &&
         e.createElement(
           "p",
