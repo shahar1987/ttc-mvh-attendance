@@ -553,6 +553,10 @@ put("users/u3", { name: "מנהלת", role: "admin", phone: "0527654321" });
 const prev = JSON.parse(await callTool("תשלחי למאמנים", { name: "preview_recipients", args: { to: ["מאמנים", "דני"] } }));
 assert.deepEqual(prev.recipients, ["1. יוסי (…4567)", "2. מנהלת (…4321)"]);
 assert.match(prev.problems.join(), /"דני" מתאים לכמה/);
+// שם שמתאים למדריכה אחת ולשחקן — הכוונה למדריכה
+put("players/pMn", { name: "מנהלת קטנה", parentPhone: "0541239999" });
+assert.deepEqual(JSON.parse(await callTool("x", { name: "preview_recipients", args: { to: ["מנהל"] } })).recipients, ["1. מנהלת (…4321)"]);
+put("players/pMn", { name: "מנהלת קטנה", deleted: true });
 const n0m = sent.length;
 const now1 = await callTool("תשלחי למאמנים ישיבה מחר", { name: "send_message", args: { to: ["מאמנים"], text: "ישיבה מחר\nב-20:00" } });
 const direct = sent.slice(n0m).filter((b) => b.type === "template");
@@ -1174,6 +1178,9 @@ delete env.MESSAGES;
   assert.ok(offerKorazim("באימון ברמת כורזים לצלם ילדים").endsWith(KORAZIM_ASK));
   assert.equal(offerKorazim("האימון בשאר ישוב בוטל"), "האימון בשאר ישוב בוטל");
   assert.equal(offerKorazim("נשלח לדניאל ✓ (רמת כורזים)"), "נשלח לדניאל ✓ (רמת כורזים)");
+  const absence = "הכנתי את הודעות ההיעדרות עבור:\n3. עמית (מתחילים רמת כורזים)\n\nלהכין קישורים?";
+  assert.equal(offerKorazim(absence), absence);
+  assert.equal(offerKorazim("3. עמית (רמת כורזים): wa.me/972500000000"), "3. עמית (רמת כורזים): wa.me/972500000000");
 }
 console.log("all bot tests passed");
 {
