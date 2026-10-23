@@ -48,6 +48,17 @@ test("handled alert and inactive players are skipped", () => {
   assert.equal(r.pending.length, 0);
 });
 
+test("trial players get no absence message and no dropout alert", () => {
+  const r = analyze({
+    players: [P("t", { trial: true })],
+    groups,
+    attendance: [A("t", "2026-09-29", "Absent"), A("t", "2026-09-27", "Absent")],
+    today,
+  });
+  assert.equal(r.pending.length, 0);
+  assert.equal(r.atRisk.length, 0);
+});
+
 test("present on the same day in another group wins over absent", () => {
   const r = analyze({
     players: [P("a")],

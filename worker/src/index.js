@@ -9,7 +9,7 @@ import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
 import { waConfig, sendText, sendTemplate, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings, watchReads, parentMsgNag } from "./reminders.js";
+import { shortLinks, remindCoaches, coachReminderTest, coachSummaries, readReceipts, morningGreetings, watchReads, parentMsgNag, trialCheck } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -582,6 +582,7 @@ async function everyQuarter(env) {
     morningGreetings(env, store, wa, (e, b) => gemini(e, b, [], LITE)),
     coachReminderTest(env, store, wa),
     parentMsgNag(env, store, wa),
+    trialCheck(store, wa),
     deliverOutbox(env, store, wa),
     dailyDashboard(env, store, ORIGIN || env.PUBLIC_URL, (text) => tell(store, wa, "dashboard", text, "הדשבורד התעדכן")),
     dispatchWorkflows(env, store),
