@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { APPROVAL, ownerWrote } from "../src/tools.js";
 
-for (const t of ["כן", "כן, שלחי", "שלח", "מאשר!", "כן אין בעיה", "כן, אם אפשר עד הערב"]) assert.ok(APPROVAL.test(t), t);
-for (const t of ["לא, אל תשלח עדיין", "אל תשלחי", "עוד לא, כן?", "אם כן אז תשלחי מחר", "רגע, כן", "מה נשמע", "", undefined]) assert.ok(!APPROVAL.test(t), String(t));
+for (const t of ["כן", "כן, שלחי", "שלח", "מאשר!", "כן אין בעיה", "כן, אם אפשר עד הערב", "1", " 1. "]) assert.ok(APPROVAL.test(t), t);
+for (const t of ["לא, אל תשלח עדיין", "אל תשלחי", "עוד לא, כן?", "אם כן אז תשלחי מחר", "רגע, כן", "מה נשמע", "2", "12", "1 2", "", undefined]) assert.ok(!APPROVAL.test(t), String(t));
 
 assert.ok(ownerWrote("ישיבה מחר\nב-20:00", "תשלחי למאמנים ישיבה מחר"), "הכתבה רגילה");
 assert.ok(ownerWrote("מה יש ביומן מחר", "מה יש לי ביומן מחר?"));
