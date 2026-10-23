@@ -3181,6 +3181,7 @@ function re({
     // 18.10: יום שהקבוצה לא מתאמנת בו לא נפתח כשכולם "הגיעו" — לחיצה אחת שמרה נוכחות ליום בלי אימון.
     // קבוצה בלי ימים מוגדרים נחשבת מתאמנת בכל יום, כמו קודם.
     trainsOn = !Y(t) || t.days.includes(new Date(m + "T00:00:00").getDay()),
+    lStat = l.filter((r) => !r.excused),
     existingDayRecords = () => l.filter((p) => p.groupId === t.id && p.date === m),
     staffName = (uid) => ((US || []).find((u) => u.id === uid) || {}).name || "לא ידוע",
     confirmOverwrite = () => {
@@ -3413,6 +3414,7 @@ function re({
             prev.msgSentAt &&
             ((rec.msgSentAt = prev.msgSentAt),
             (rec.msgSentBy = prev.msgSentBy || "")),
+            st2 === "Absent" && prev && prev.excused && (rec.excused = !0),
             p.set(k, rec));
         });
         // 27.9: commit() נפתר רק כשהשרת מאשר. בוויפי של אולם שמחובר אבל לא מעביר
@@ -3469,7 +3471,7 @@ function re({
     // ולא על היעדרות ביום שאינו יום האימון של השחקן. מחושב פעם אחת ולא בכל הקשה.
     alertDates = e.useMemo(() => {
       let o2 = {};
-      absenceAlerts(n, [], l).forEach((r2) => (o2[r2.player.id] = r2.dates));
+      absenceAlerts(n, [], lStat).forEach((r2) => (o2[r2.player.id] = r2.dates));
       return o2;
     }, [a, l, t.id]),
     I = n.filter((p) => x[p.id] === "Present").length,
@@ -3756,7 +3758,7 @@ function re({
           savedRec = l.find(
             (v) => v.groupId === t.id && v.date === m && v.playerId === p.id,
           ),
-          showWa = !!savedRec && savedRec.status === "Absent",
+          showWa = !!savedRec && savedRec.status === "Absent" && !savedRec.excused,
           waSent = !!(savedRec && savedRec.msgSentAt),
           isOffDay =
             Array.isArray(p.trainingDays) &&
@@ -3766,6 +3768,37 @@ function re({
         // והפעולות המשניות. קודם הכל היה בשורה אחת, והשם — האלמנט היחיד שהיה
         // גמיש — נחתך ("מוריס מ") ברגע שהופיע תג ההיעדרויות.
         let secondary = [
+          // מוצדק (מחלה וכו'): נוסף לרישום "לא הגיע" שכבר נשמר; הסטטוס והחוזה לא משתנים
+          savedRec && savedRec.status === "Absent" && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "excused",
+                  onClick: () =>
+                    O(S(P, "attendance", `${m}_${t.id}_${p.id}`), { excused: !savedRec.excused }).catch((err) =>
+                      N("השמירה נכשלה: " + err.message),
+                    ),
+                  "aria-pressed": !!savedRec.excused,
+                  className: `min-h-[44px] rounded-full px-3 text-sm font-semibold shrink-0 active:scale-95 transition-transform ${savedRec.excused ? "bg-slate-600 text-white" : "bg-white border border-slate-300 text-slate-600"}`,
+                },
+                savedRec.excused ? "✓ מוצדק" : "מוצדק?",
+              )
+            : null,
+          p.trial && !RO
+            ? e.createElement(
+                "button",
+                {
+                  key: "permanent",
+                  onClick: () =>
+                    askConfirm(`להפוך את ${p.name} לשחקן קבוע?`, { yes: "כן, קבוע" }).then(
+                      (ok) => ok && O(S(P, "players", p.id), { trial: !1 }).catch((err) => N("השמירה נכשלה: " + err.message)),
+                    ),
+                  className:
+                    "min-h-[44px] rounded-full px-3 text-sm font-semibold shrink-0 bg-blue-50 text-blue-800 border border-blue-200 active:scale-95 transition-transform",
+                },
+                "להפוך לקבוע",
+              )
+            : null,
           k && !RO
             ? e.createElement(Re, {
                 key: "abs",
@@ -3965,7 +3998,7 @@ function re({
       e.createElement("p", { className: "text-sm text-emerald-800 text-right font-semibold" }, savedNote),
     (() => {
       if (!askMsg || !WA || RO) return null;
-      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt));
+      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt && !v.excused));
       return miss.length
         ? e.createElement(
             "div",
@@ -3996,11 +4029,11 @@ function re({
         `${unmarked} שחקנים ללא סימון — הם יישארו ללא רישום נוכחות ${isPast ? `ל־${Ke(m)}` : "להיום"}.`,
       ),
     // רק אחרי שמירה (לא במצב סימון) — לא מאט את המאמן באמצע האימון
-    !u && o && e.createElement(TrainingSummary, { roster: n, attendance: l, groupId: t.id, date: m }),
+    !u && o && e.createElement(TrainingSummary, { roster: n, attendance: lStat, groupId: t.id, date: m }),
     e.createElement(GroupInsights, {
       group: t,
       players: n.filter((p) => !p.trial),
-      attendance: n.some((p) => p.trial) ? l.filter((r) => !n.some((p) => p.trial && p.id === r.playerId)) : l,
+      attendance: lStat.filter((r) => !n.some((p) => p.trial && p.id === r.playerId)),
     }),
     !RO &&
     e.createElement(
@@ -4381,7 +4414,8 @@ function Q() {
     // ילד בניסיון (trial) מופיע רק במסך הסימון ובספר הטלפונים; הדשבורד, הדוחות, הקבוצות והתשלומים לא רואים אותו
     trialIds = new Set(c.filter((p) => p.trial).map((p) => p.id)),
     statPlayers = trialIds.size ? c.filter((p) => !trialIds.has(p.id)) : c,
-    statAtt = trialIds.size ? n.filter((r) => !trialIds.has(r.playerId)) : n,
+    // היעדרות מוצדקת (excused — מחלה וכו') לא נספרת: לא באחוזים, לא בהודעות להורים ולא ב"לא מגיעים"
+    statAtt = n.filter((r) => !r.excused && !trialIds.has(r.playerId)),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
