@@ -554,7 +554,7 @@ const prev = JSON.parse(await callTool("תשלחי למאמנים", { name: "pre
 assert.deepEqual(prev.recipients, ["1. יוסי (…4567)", "2. מנהלת (…4321)"]);
 assert.match(prev.problems.join(), /"דני" מתאים לכמה/);
 // שם שמתאים למדריכה אחת ולשחקן — הכוונה למדריכה
-put("players/pMn", { name: "מנהלת קטנה", parentPhone: "0541239999" });
+put("players/pMn", { name: "מנהלת קטנה", parentPhone: "0540000099" });
 assert.deepEqual(JSON.parse(await callTool("x", { name: "preview_recipients", args: { to: ["מנהל"] } })).recipients, ["1. מנהלת (…4321)"]);
 put("players/pMn", { name: "מנהלת קטנה", deleted: true });
 const n0m = sent.length;
