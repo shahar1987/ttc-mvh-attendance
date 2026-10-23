@@ -3889,14 +3889,16 @@ function re({
           },
           e.createElement(
             "div",
-            { className: "flex items-center gap-1" },
+            // 23.10 (שולה): התגים והפעולות באותה שורה מול השם, לא בשורה מתחת — פחות גלילה.
+            // שורה חדשה רק כשאין מקום (שם ארוך + תג היעדרויות), כדי שהשם לא ייחתך.
+            { className: "flex items-center gap-1 flex-wrap" },
             e.createElement(
               "button",
               {
                 onClick: () => C(p.id, absent ? "Present" : "Absent"),
                 disabled: !u || g,
                 "aria-pressed": absent,
-                className: `flex-1 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
+                className: `flex-1 basis-36 min-h-[56px] flex items-center gap-3 px-2 text-right ${u ? "active:scale-[0.99] transition-transform" : ""}`,
               },
               e.createElement(
                 "span",
@@ -3933,17 +3935,8 @@ function re({
                   e.createElement($e, { className: "w-4 h-4" }),
                 )
               : null,
+            ...secondary,
           ),
-          // השורה התחתונה נבנית רק אם יש בה משהו — אחרת נוצר רווח ריק מתחת לשם
-          secondary.length > 0 &&
-            e.createElement(
-              "div",
-              {
-                className:
-                  "flex items-center justify-start gap-1.5 flex-wrap",
-              },
-              secondary,
-            ),
         );
       }),
       n.length === 0 &&
