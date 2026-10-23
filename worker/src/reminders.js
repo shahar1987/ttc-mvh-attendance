@@ -400,3 +400,24 @@ export async function trialCheck(store, wa, now = new Date()) {
   }
   return `trials: ask ${fresh.length}, dropped ${dropped.length}`;
 }
+
+// 📎 קישורי היעדרות שהוכנו לבעלים ולא קיבלו "שלחתי" (23.10: ליאור ועמית נשארו תלויים כל היום).
+// תזכורת אחת, שעתיים אחרי ההכנה, בין 09:00 ל-21:00. אחרי זה שקט — לא מציקים.
+const LINKS_NAG_MS = 2 * 3600 * 1000;
+export async function absenceLinksNag(store, wa, now = new Date()) {
+  const { min } = israelNow(now);
+  if (min < 9 * 60 || min > 21 * 60) return "not now";
+  let items = [], lastOwnerMsgAt;
+  await store.update("agentReports/bot", (cur) => {
+    const l = cur.absenceLinks;
+    if (!l?.items?.length || l.nagged || now - Date.parse(l.at || 0) < LINKS_NAG_MS) return null;
+    items = l.items;
+    lastOwnerMsgAt = cur.lastOwnerMsgAt;
+    return { absenceLinks: { ...l, nagged: now.toISOString() } };
+  });
+  if (!items.length) return "links: 0";
+  const text = `📎 הכנתי קישורים להודעות היעדרות ל${items.map((x) => `${x.n}. ${x.playerName}`).join(", ")} ועוד לא כתבת "שלחתי".\nשלחת? לכתוב "שלחתי". לא צריך? לכתוב "דלג על ${items.map((x) => x.n).join(",")}".`;
+  await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), "absence-links": { at: now.toISOString(), text } } }));
+  await notifyOwner(wa, { lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 400) });
+  return `links nag: ${items.length}`;
+}

@@ -373,6 +373,19 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   ["2026-09-20", "2026-09-27", "2026-10-04"].forEach((d) => docs.delete(`attendance/${d}_g5_r1`));
   docs.delete("agentReports/coaches");
 }
+// 📎 קישורי היעדרות בלי "שלחתי": תזכורת אחת לבעלים אחרי שעתיים, רק ביום
+{
+  const { absenceLinksNag } = await import("../src/reminders.js");
+  const bot = docs.get("agentReports/bot") || {};
+  put("agentReports/bot", { ...bot, absenceLinks: { date: "2026-10-23", at: "2026-10-23T08:00:00Z", items: [{ n: 1, key: "k1", playerName: "ליאור" }, { n: 3, key: "k3", playerName: "עמית" }] } });
+  assert.equal(await absenceLinksNag(db(env), waConfig(env), new Date("2026-10-23T09:00:00Z")), "links: 0", "פחות משעתיים");
+  assert.equal(await absenceLinksNag(db(env), waConfig(env), new Date("2026-10-23T19:00:00Z")), "not now", "22:00 — מאוחר");
+  const n0 = sent.length;
+  assert.equal(await absenceLinksNag(db(env), waConfig(env), new Date("2026-10-23T11:00:00Z")), "links nag: 2");
+  assert.match(JSON.stringify(sent.slice(n0)), /1\. ליאור, 3\. עמית.*דלג על 1,3/);
+  assert.equal(await absenceLinksNag(db(env), waConfig(env), new Date("2026-10-23T12:00:00Z")), "links: 0", "פעם אחת בלבד");
+  delete docs.get("agentReports/bot").absenceLinks;
+}
 // 🆕 ילדים בניסיון: מי שהגיע פעמיים — שאלה לבעלים; מי שלא הגיע 21 יום — יוצא לבד; "כן ל-1" הופך לקבוע
 {
   const { trialCheck } = await import("../src/reminders.js");
