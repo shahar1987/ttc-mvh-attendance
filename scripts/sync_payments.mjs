@@ -781,6 +781,7 @@ async function main() {
   const notPayingReasons = {}; // playerId -> "no-phone" | "phone-in-file" | "not-in-file"
   for (const p of players) {
     if (p.deleted || p.isActive === false) continue;
+    if (p.trial) continue; // ילד בניסיון — לא מסמנים "לא משלם" עד שהוא קבוע
     if (!coveredGroupIds.has(p.groupId)) continue; // קבוצה בלי מיפוי, או מוחרגת — לא נוגעים
     // המצב הסופי של השחקן אחרי הריצה הזו — כולל החלטות ידניות שלא נדרסות
     const finalNotPaying =

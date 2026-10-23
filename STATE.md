@@ -93,6 +93,16 @@
 - בונה: firestore.rules — boardMembers (כתיבה/קריאה/מחיקה של המסמך שלך בלבד, שדות name/email/phone/photo/consent/createdAt/updatedAt, נייד ישראלי, consent=true, זמנים = request.time; מנהל קורא/מעדכן/מוחק הכל) ו-boardMemberMatches (מנהל קורא, אף לקוח לא כותב). scripts/match_board_members.mjs + .github/workflows/board-members.yml (כל שעה ב-:17): נרמול טלפון כמו בסנכרון התשלומים, השוואה ל-parentPhone/phone/mobile, ונרשם חדש שלא נמצא — הודעה לשולה בתור של הבוט (agentReports/bot.outboxQueue). ביומן רק מספרים. part-b.js: מסך מנהל "נרשמו באפליקציית המועדון" בלשונית ליד ניהול הרשאות (רשימה, סינון "רק מי שלא נמצא", מחיקה עם אישור); המאזינים רק כשהמסך פתוח.
 - בודק: node --check + esbuild (938KB) + privacy-guard; agents 49/49 (כולל board-members.test.mjs: שקילות normalisePhone מול sync_payments.mjs). rules-tests: 15 בדיקות חדשות; האמולטור לא רץ בסביבה של Claude (הורדת ה-jar חסומה) — רצות ב-PR (firestore-rules.yml).
 - שלום: לאשר PR (החוקים נפרסים אוטומטית במיזוג). בקונסולת Firebase: Authentication ⟵ Sign-in method ⟵ Google ⟵ Enable, ולוודא ש-shahar1987.github.io מופיע ב-Authorized domains.
+## [ממתין ל"כן"] 2026-10-18 — "ילד בניסיון": כפתור במסך הסימון, ושאלה לשלום אם להשאיר קבוע
+סוג: ✨ פיצ'ר (שדה חדש trial בשחקן; חוזה attendance לא משתנה; החוקים כבר מתירים למאמן ליצור/לעדכן שחקן בקבוצה שלו)
+מסלול: ענף claude/project-thread-dhe9h7 ← PR ← צילומי לפני/אחרי ← אישור שלום ← שחרור
+- רקע: בגיבוי 18.10 — 19 שחקנים פעילים הגיעו רק פעם-פעמיים ונספרים כקבועים.
+- חוקר: אין מסנן משותף באפליקציה (כל מסך כותב isActive && !deleted); בסוכנים יש active() אחד ב-agents/lib/analysis.mjs.
+- ארכיטקט: מסננים פעם אחת ב-Q() (part-b): statPlayers/statAtt בלי ילדים בניסיון לדשבורד, דוחות, קבוצות, תשלומים ומסך הנוכחות; הרשימה המלאה רק ל-re (סימון) ולספר הטלפונים. absenceAlerts/pendingAbsenceMsgs + active() מדלגים על trial. sync_payments לא מסמן trial כלא-משלם.
+- בונה: כפתור "ילד בניסיון" במסך הסימון (פותח את חלון השחקן עם תיבת "בניסיון"), תג "ניסיון" בשורה. worker: trialCheck (כל יום מ-10:00 חוץ משבת) — הגיע פעמיים → שאלה לשלום (agentReports/bot.trialAsk); לא הגיע 21 יום → isActive=false. כלי trial_decision בבוט ("כן ל-1").
+- בודק: agents 44/44 (כולל בדיקה חדשה + שקילות), worker ירוק (בדיקת trialCheck/trial_decision), node --check + esbuild 937KB + privacy-guard.
+- המשך (שלום, 18.10): הסימון הוא בדיקת בטיחות בתחילת האימון. התזכורת למאמן עברה ל-10 דקות אחרי startTime (בלי startTime — חצי שעה אחרי הסוף כמו קודם). אחרי שמירה של היום עם ילד חסר — כרטיס "להודיע עכשיו?" עם כפתור וואטסאפ לכל ילד.
+- שלום: ...
 
 ## [ממתין ל"כן"] 2026-10-18 — תיקוני בדיקת QA של אפליקציית הנוכחות (A1–A9 ותיקוני B קטנים)
 סוג: 🐞 באגים + 🔒 שינוי אחד בחוקי Firestore (A7). חוזה השמירה של attendance לא השתנה.
