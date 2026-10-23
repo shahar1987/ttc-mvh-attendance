@@ -461,7 +461,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
             status,
             markedBy: coach ? `shula-whatsapp:${coach.id}` : "shula-whatsapp",
             updatedAt: new Date().toISOString(),
-            ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE } : {}),
+            ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE, excused: DELETE } : {}),
           });
           saved.push(`${p.name}: ${status === "Present" ? "נוכח" : "נעדר"}`);
         }
