@@ -131,6 +131,16 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: "trial_decision",
+    description: "החלטה על ילדים בניסיון מהרשימה ששלחתי לבעלים (\"ילדים בניסיון שחזרו\"): keep=true הופך אותם לשחקנים קבועים, keep=false מוציא אותם מהרשימה (ההיסטוריה נשמרת). numbers = המספרים ברשימה.",
+    input_schema: {
+      type: "object",
+      properties: { numbers: { type: "array", items: { type: "integer" } }, keep: { type: "boolean" } },
+      required: ["numbers", "keep"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_groups",
     description: "כל הקבוצות במועדון עם מספר השחקנים הפעילים בכל אחת. להשתמש כדי לזהות קבוצה לפי שם לפני סימון או קריאת נוכחות.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
@@ -386,9 +396,21 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
       return `סומנו כמטופלים: ${chosen.map(({ n, item }) => `${n}. ${item.playerName}`).join(", ")}`;
     },
 
+    async trial_decision({ numbers, keep }) {
+      if (!inOwnerText(numbers || [], lastOwnerText) && !(await confirmed(store, "trial", { numbers, keep }, lastOwnerText, turn)))
+        return `לא עודכן עדיין. להציג לבעלים את המספרים ולשאול אם ${keep ? "להשאיר אותם קבועים" : "להוציא אותם מהרשימה"}. אחרי "כן" — לקרוא שוב עם אותם מספרים.`;
+      const items = ((await store.get("agentReports/bot")) || {}).trialAsk?.items || [];
+      const chosen = items.filter((x) => (numbers || []).map(Number).includes(x.n));
+      if (!chosen.length) return "המספרים האלה לא ברשימת הילדים בניסיון.";
+      for (const x of chosen) await store.merge(`players/${x.id}`, keep ? { trial: false } : { isActive: false, endDate: israelToday() });
+      const ids = new Set(chosen.map((x) => x.id));
+      await store.update("agentReports/bot", (cur) => ({ trialAsk: { items: (cur.trialAsk?.items || []).filter((x) => !ids.has(x.id)) } }));
+      return `${keep ? "עכשיו שחקנים קבועים" : "יצאו מהרשימה"}: ${chosen.map((x) => `${x.n}. ${x.label}`).join(", ")}`;
+    },
+
     async list_groups() {
       const [players, groups] = await Promise.all([store.list("players"), store.list("groups")]);
-      return JSON.stringify(groups.map((g) => ({ name: g.name, players: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted).length })));
+      return JSON.stringify(groups.map((g) => ({ name: g.name, players: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted && !p.trial).length })));
     },
 
     async get_attendance({ group, date }) {
@@ -439,7 +461,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
             status,
             markedBy: coach ? `shula-whatsapp:${coach.id}` : "shula-whatsapp",
             updatedAt: new Date().toISOString(),
-            ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE } : {}),
+            ...(status === "Present" ? { msgSentAt: DELETE, msgSentBy: DELETE, excused: DELETE } : {}),
           });
           saved.push(`${p.name}: ${status === "Present" ? "נוכח" : "נעדר"}`);
         }

@@ -50,13 +50,14 @@ export function isValidPhone(value) {
   return /^972\d{8,9}$/.test(normalizePhone(value));
 }
 
-const active = (p) => p && p.isActive && !p.deleted;
+// ילד בניסיון (trial) לא נכנס להתראות, להודעות להורים ולרשימת הסיכון — כמו באפליקציה
+const active = (p) => p && p.isActive && !p.deleted && !p.trial;
 
 // רשומה אחת לכל יום לכל שחקן; נוכחות גוברת על היעדרות. מהחדש לישן.
 export function playerHistory(attendance, playerId, today) {
   const byDate = new Map();
   for (const a of attendance) {
-    if (a.playerId !== playerId || !a.date || a.date >= today) continue;
+    if (a.playerId !== playerId || !a.date || a.date >= today || a.excused) continue;
     const prev = byDate.get(a.date);
     if (!prev || prev.status !== "Present") byDate.set(a.date, a);
   }
@@ -164,6 +165,8 @@ export function skipAbsenceMsg(p, groupId, attendance, date) {
   return days.length > 0 && !days.includes(wd(date));
 }
 export function analyze({ players, groups, attendance, today }) {
+  // היעדרות מוצדקת (excused) לא נספרת בכלל — כמו statAtt באפליקציה
+  attendance = attendance.filter((a) => !a.excused);
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const playerById = new Map(players.map((p) => [p.id, p]));
   const hist = historyIndex(attendance, today);
