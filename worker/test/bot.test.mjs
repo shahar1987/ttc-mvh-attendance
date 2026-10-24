@@ -1167,6 +1167,9 @@ delete env.MESSAGES;
   const absence = "הכנתי את הודעות ההיעדרות עבור:\n3. עמית (מתחילים רמת כורזים)\n\nלהכין קישורים?";
   assert.equal(offerKorazim(absence), absence);
   assert.equal(offerKorazim("3. עמית (רמת כורזים): wa.me/972500000000"), "3. עמית (רמת כורזים): wa.me/972500000000");
+  const toDaniel = "לדניאל: \"יש אצלך ברמת כורזים שחקנים שנעדרו\"";
+  assert.equal(offerKorazim(`${toDaniel} ↪️ זה קשור לרמת כורזים. להעביר לדניאל? (הסבר)\n\nלשלוח?`), `${toDaniel}\n\nלשלוח?`, "שאלה שהמודל כתב נמחקת");
+  assert.equal(offerKorazim(`משימה ברמת כורזים\n\n${KORAZIM_ASK}`), `משימה ברמת כורזים\n\n${KORAZIM_ASK}`, "לא כפול");
 }
 console.log("all bot tests passed");
 {
