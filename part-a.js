@@ -75,7 +75,7 @@ import {
 } from "firebase/firestore";
 import { getMessaging as fe, isSupported as ve } from "firebase/messaging";
 var B = {
-    apiKey: "AIzaSyCmEVnBSkODaCZyrdEdO0vNQtvOnvgsQiA",
+    apiKey: "AIzaSyDhPiyIrP1zOu5bNSpsQDyXFgZBP6rV7vo",
     authDomain: "ttcmh-2a752.firebaseapp.com",
     databaseURL: "https://ttcmh-2a752-default-rtdb.firebaseio.com",
     projectId: "ttcmh-2a752",
