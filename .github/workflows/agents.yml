@@ -98,8 +98,6 @@ jobs:
         id: bugcheck
         if: contains(steps.pick.outputs.run, ',bugcheck,')
         working-directory: agents
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # רק כאן: בודק תהליכים שנכשלו
         run: node bugcheck.mjs
 
       # !cancelled(): לא תלוי בבודק הבאגים שרץ לפניו

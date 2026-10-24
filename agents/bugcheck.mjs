@@ -3,7 +3,6 @@
 //   2. הנתונים תקינים (lib/checks.mjs)
 //   3. אף תהליך אוטומטי ב-GitHub לא נכשל ביממה האחרונה
 // מדווח לשולה רק כשמופיעה בעיה חדשה, כדי שהתראה תמיד תהיה שווה קריאה.
-import { existsSync } from "node:fs";
 import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
 import { addDays, israelToday } from "./lib/analysis.mjs";
 import { dataChecks } from "./lib/checks.mjs";
@@ -52,21 +51,7 @@ const [players, groups, attendance, cancellations] = await Promise.all([
 ]);
 findings.push(...dataChecks({ players, groups, attendance, cancellations, today }));
 
-// 3. תהליכים שהריצה האחרונה שלהם על main נכשלה (ריצה ירוקה מאוחרת יותר = תוקן)
-if (process.env.GITHUB_TOKEN && process.env.GITHUB_REPOSITORY) {
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const res = await fetch(
-    `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/runs?branch=main&status=completed&per_page=100&created=>=${since}`,
-    { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json" } },
-  );
-  if (res.ok) {
-    const latest = new Map();
-    for (const r of (await res.json()).workflow_runs || []) if (!latest.has(r.name)) latest.set(r.name, r); // החדשה ראשונה
-    // תהליך שהקובץ שלו נמחק (בדיקה חד-פעמית שהוסרה) לא ירוץ שוב, אז הכישלון האחרון שלו לא רלוונטי
-    const names = [...latest.values()].filter((r) => r.conclusion === "failure" && (!r.path || existsSync(new URL(`../${r.path}`, import.meta.url)))).map((r) => r.name);
-    if (names.length) add("workflow-failed", "high", `תהליכים אוטומטיים שהריצה האחרונה שלהם נכשלה: ${names.join(", ")}`);
-  }
-}
+// 3. תהליכים שנכשלו ב-GitHub — לא כאן: ה-worker בודק כל רבע שעה ומדווח (failedRuns ב-worker/src/dispatch.js)
 
 console.log(`findings: ${findings.map((f) => f.id).join(", ") || "none"}`);
 
