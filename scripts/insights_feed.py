@@ -76,6 +76,6 @@ with ThreadPoolExecutor(8) as ex:
         if isinstance(v,(int,float)): reach[k]=v
 body={"series":series,"reach":reach,"eng":eng,"fbHistory":hist}
 KEY=FEED_KEY
-req=urllib.request.Request("https://shula-whatsapp.shahar1987.workers.dev/insights/feed?k="+KEY,data=json.dumps(body).encode(),headers={"content-type":"application/json"},method="POST")
+req=urllib.request.Request("https://shula-whatsapp.shahar1987.workers.dev/insights/feed?k="+KEY,data=json.dumps(body).encode(),headers={"content-type":"application/json","user-agent":"shula-insights-feed/1.0"},method="POST")  # בלי user-agent קלאודפלייר חוסם (1010)
 resp=urllib.request.urlopen(req,timeout=60).read().decode()
 print(json.dumps({"sent":{k:len(v) for k,v in series.items()},"reach":len(reach),"fbPosts":len(fbposts),"igPosts":len(igrecent),"worker":resp,"errors":errors[:5]},ensure_ascii=False))
