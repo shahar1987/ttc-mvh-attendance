@@ -161,6 +161,20 @@ export function compare(insights, period, now = new Date()) {
 }
 
 // שינוי באחוזים: null כשאין עם מה להשוות
+// תווית שינוי: בסיס קטן (מתחת ל-10) — "פי X" במקום אחוז מטורף
+const times = (x) => `פי ${x >= 10 ? Math.round(x) : String(Math.round(x * 10) / 10)}`;
+export function changeLabel(now, before) {
+  const c = change(now, before);
+  if (!c) return "";
+  if (c.dir === "flat") return `<span class="flat">0%</span>`;
+  const arrow = c.dir === "up" ? "▲" : "▼";
+  let txt;
+  if (before === 0) txt = "חדש";
+  else if (now === 0) txt = "100%";
+  else if (before < 10) txt = times(c.dir === "up" ? now / before : before / now);
+  else txt = `${Math.abs(c.pct)}%`;
+  return `<span class="${c.dir}">${arrow} ${txt}</span>`;
+}
 export const change = (now, before) => {
   if (now == null || before == null) return null;
   if (before === 0) return now === 0 ? { pct: 0, dir: "flat" } : { pct: null, dir: "up" };
@@ -197,8 +211,7 @@ function compareHtml(insights, now) {
     // גרף: לכל מדד שני פסים — עכשיו (כהה) מול התקופה הקודמת (בהיר)
     const body = rows
       .map((r, i) => {
-        const c = ch[i];
-        const cell = !c ? "" : c.dir === "flat" ? `<span class="flat">0%</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲" : "▼"} ${c.pct == null ? "חדש" : Math.abs(c.pct) + "%"}</span>`;
+        const cell = changeLabel(r.now, r.before);
         const max = Math.max(1, r.now, r.before);
         const bar = (v, cls) => `<div class="pair ${cls}"><div class="pbar" style="width:${((v / max) * 100).toFixed(1)}%"></div><b>${fmt(v)}</b></div>`;
         return `<div class="crow"><div class="cname">${r.name}${cell}</div>${bar(r.now, "nowb")}${bar(r.before, "befb")}</div>`;
@@ -209,20 +222,27 @@ function compareHtml(insights, now) {
   }).join("");
 }
 
-// 📈 מגמה שנתית: 12 חודשים אחרונים, סכום לכל חודש. מגמה = 3 החודשים האחרונים מול 3 הראשונים.
+// 📈 מגמה שנתית: 12 חודשים, סכום לכל חודש. החודש הנוכחי חלקי — המגמה נמדדת בממוצע יומי, כדי שחודש חלקי לא ייראה כירידה.
 const MONTHS = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
+const ilMonth = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ }).slice(0, 7); // חודש לפי שעון ישראל
 export function trends(insights, now = new Date()) {
   const s = insights.series || {}, hist = insights.history;
+  const today = new Date(now).toLocaleDateString("en-CA", { timeZone: TZ });
+  const [y, m] = today.split("-").map(Number);
   const months = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + i, 1));
-    return { key: d.toISOString().slice(0, 7), label: MONTHS[d.getUTCMonth()] };
+    const d = new Date(Date.UTC(y, m - 12 + i, 1));
+    const key = d.toISOString().slice(0, 7);
+    const full = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const days = i === 11 ? Number(today.slice(8, 10)) : full;
+    return { key, label: MONTHS[d.getUTCMonth()], days, partial: i === 11 && days < full };
   });
-  const bySeries = (m) => m && months.map(({ key }) => {
-    const vs = Object.entries(m).filter(([d]) => d.startsWith(key)).map(([, v]) => v);
+  // סדרות יומיות: המפתח הוא כבר תאריך יומי של Meta
+  const bySeries = (ser) => ser && months.map(({ key }) => {
+    const vs = Object.entries(ser).filter(([d]) => d.startsWith(key)).map(([, v]) => v);
     return vs.length ? vs.reduce((a, b) => a + b, 0) : null;
   });
   const byHist = (p, f) => hist?.length && months.map(({ key }) => {
-    const xs = hist.filter((x) => (!p || x.p === p) && x.at.startsWith(key));
+    const xs = hist.filter((x) => (!p || x.p === p) && ilMonth(x.at) === key);
     return xs.some((x) => f(x) == null) ? null : xs.reduce((a, x) => a + f(x), 0);
   });
   return {
@@ -237,17 +257,30 @@ export function trends(insights, now = new Date()) {
     ].filter(([, v]) => v && v.filter((x) => x != null).length >= 6),
   };
 }
+// מגמה: ממוצע יומי ב-3 החודשים האחרונים מול 3 הראשונים
+export function trendChange(vals, months) {
+  const perDay = (from, to) => {
+    let sum = 0, days = 0;
+    for (let i = from; i < to; i++) if (vals[i] != null) (sum += vals[i]), (days += months[i].days);
+    return days ? sum / days : null;
+  };
+  const a = perDay(0, 3), b = perDay(9, 12);
+  return a == null || b == null ? null : { now: b, before: a };
+}
 function trendHtml(insights, now) {
   const { months, rows } = trends(insights, now);
   if (!rows.length) return "";
   return rows.map(([name, vals]) => {
-    const known = vals.filter((v) => v != null);
-    const avg3 = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    const head = vals.slice(0, 3).filter((v) => v != null), tail = vals.slice(-3).filter((v) => v != null);
-    const c = head.length && tail.length ? change(Math.round(avg3(tail)), Math.round(avg3(head))) : null;
-    const tag = !c ? "" : c.dir === "flat" ? `<span class="flat">יציב</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲ במגמת עלייה" : "▼ במגמת ירידה"}${c.pct != null ? ` ${Math.abs(c.pct)}%` : ""}</span>`;
-    const max = Math.max(1, ...known);
-    const cols = vals.map((v, i) => `<div class="tcol" title="${months[i].label}: ${v ?? ""}"><span class="tv">${v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "K" : v}</span><div class="tb${i === 11 ? " cur" : ""}" style="height:${v == null ? 0 : Math.max(2, (v / max) * 100).toFixed(1)}%"></div><span class="tm">${months[i].label}</span></div>`).join("");
+    const t = trendChange(vals, months);
+    const c = t && change(t.now, t.before);
+    const big = t && t.before > 0 && (t.now / t.before >= 2 || t.before / t.now >= 2);
+    const tag = !c ? "" : c.dir === "flat" ? `<span class="flat">יציב</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲ במגמת עלייה" : "▼ במגמת ירידה"} ${t.before === 0 ? "" : big ? times(c.dir === "up" ? t.now / t.before : t.before / t.now) : Math.abs(c.pct) + "%"}</span>`;
+    const max = Math.max(1, ...vals.filter((v) => v != null));
+    const cols = vals.map((v, i) => {
+      const mo = months[i];
+      const val = v == null ? "" : v >= 10000 ? Math.round(v / 1000) + "K" : v.toLocaleString("he-IL"); // מספר מלא עד 10,000 — עיגול ל-K הסתיר הבדלים (2,252 מול 2,347)
+      return `<div class="tcol${mo.partial ? " part" : ""}" title="${mo.label}: ${v ?? ""}"><span class="tv">${val}</span><div class="tb" style="height:${v == null ? 0 : Math.max(2, (v / max) * 100).toFixed(1)}%"></div><span class="tm">${mo.label}${mo.partial ? `<small>${mo.days} ימים</small>` : ""}</span></div>`;
+    }).join("");
     return `<div class="panel trend"><div class="cmp-h"><h3>${name}</h3>${tag}</div><div class="tchart">${cols}</div></div>`;
   }).join("");
 }
@@ -331,7 +364,7 @@ main .wrap{display:flex;flex-direction:column;gap:28px;padding-block:26px 30px}s
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.chart{padding:18px;display:flex;flex-direction:column;gap:12px}.chart h3{font-size:16px}
 .bars{display:flex;flex-direction:column;gap:10px}.brow{display:grid;grid-template-columns:minmax(120px,44%) 1fr;gap:12px;align-items:center;font-size:14px}.brow .name{color:var(--ink-2);line-height:1.25;min-width:0;overflow-wrap:anywhere}.brow small{display:block;color:var(--ink-3);font-size:12px}
 .track{position:relative;height:24px;background:var(--track);border-radius:4px}.bar{position:absolute;inset-inline-start:0;top:0;bottom:0;background:var(--bar);border-radius:4px;min-width:3px}.ig .bar{background:var(--bar-ig)}.bval{position:absolute;top:50%;transform:translateY(-50%);font:800 13px Heebo,sans-serif;font-variant-numeric:tabular-nums}.bval.in{color:var(--panel)}
-.cmps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.cmp{padding:16px;display:flex;flex-direction:column;gap:10px}.cmp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.cmp h3{font-size:16px}.verdict{font:800 13px Heebo,sans-serif;display:flex;gap:8px}
+.cmps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cmps>:last-child:nth-child(odd){grid-column:1/-1}@media (max-width:720px){.cmps{grid-template-columns:minmax(0,1fr)}}.cmp{padding:16px;display:flex;flex-direction:column;gap:10px}.cmp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.cmp h3{font-size:16px}.verdict{font:800 13px Heebo,sans-serif;display:flex;gap:8px}
 .cmp table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.cmp th,.cmp td{padding:7px 4px;border-top:1px solid var(--line);text-align:start}.cmp thead th{border-top:0;font-size:12px;color:var(--ink-3);font-weight:600}.cmp tbody th{font-weight:600;color:var(--ink-2)}.cmp td{font-weight:700;white-space:nowrap}
 .up{color:var(--ok)}.down{color:var(--bad)}.flat,.na{color:var(--ink-3)}
 .gaps{padding:14px 18px}.gaps ul{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:6px}.gaps p{margin:10px 0 0;font-size:14px}.gaps code{font-size:13px;background:var(--panel-2);padding:1px 6px;border-radius:4px}
@@ -339,6 +372,6 @@ main .wrap{display:flex;flex-direction:column;gap:28px;padding-block:26px 30px}s
 .crow{display:flex;flex-direction:column;gap:3px;padding-top:8px;border-top:1px solid var(--line)}.cname{display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:600;color:var(--ink-2)}.cname span{font:800 13px Heebo,sans-serif;white-space:nowrap}
 .pair{display:flex;align-items:center;gap:8px;height:18px}.pbar{height:100%;border-radius:3px;min-width:3px}.nowb .pbar{background:var(--bar)}.befb .pbar{background:var(--lime);opacity:.55}.pair b{font:800 12.5px Heebo,sans-serif;font-variant-numeric:tabular-nums}
 .trend{padding:16px;display:flex;flex-direction:column;gap:10px}.trend h3{font-size:15px}.trend .cmp-h span{font:800 12.5px Heebo,sans-serif}
-.tchart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;height:130px;align-items:end}.tcol{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px;min-width:0}.tb{width:100%;background:var(--bar);opacity:.75;border-radius:3px 3px 0 0}.tb.cur{opacity:1;background:var(--bar-ig)}.tv{font:700 10px Heebo,sans-serif;color:var(--ink-3)}.tm{font-size:10.5px;color:var(--ink-3)}
+.tchart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;height:130px;align-items:end}.tcol{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px;min-width:0}.tb{width:100%;background:var(--bar);opacity:.8;border-radius:3px 3px 0 0}.part .tb{background:repeating-linear-gradient(135deg,var(--bar-ig) 0 4px,transparent 4px 7px);border:1.5px dashed var(--bar-ig);border-bottom:0;opacity:1}.tm small{display:block;font-size:9px;line-height:1}.tv{font:700 9.5px Heebo,sans-serif;color:var(--ink-3);letter-spacing:-.3px;white-space:nowrap}.tm{font-size:10.5px;color:var(--ink-3)}
 footer{background:var(--olive);color:#E9ECD6;font-size:13px}footer .wrap{padding-block:14px}
 @media (max-width:720px){.two{grid-template-columns:minmax(0,1fr)}.item{grid-template-columns:1fr}.item .chip{justify-self:start}}`;

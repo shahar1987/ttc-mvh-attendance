@@ -118,3 +118,29 @@ console.log("feed ok");
   assert.match(dashboardHtml({ ...insights, series: { fbReach } }, null, N), /מגמה שנתית/);
 }
 console.log("trends ok");
+{
+  const { changeLabel, trendChange, trends } = await import("../src/dashboard.js");
+  assert.match(changeLabel(10, 1), /▲ פי 10/, "בסיס קטן — פי X, לא 900%");
+  assert.match(changeLabel(147, 1), /▲ פי 147/);
+  assert.match(changeLabel(3, 6), /▼ פי 2/);
+  assert.match(changeLabel(15, 10), /▲ 50%/);
+  assert.match(changeLabel(5, 0), /חדש/);
+  assert.match(changeLabel(0, 4), /▼ 100%/);
+  // חודש חלקי: אוקטובר עם 24 ימים לא נראה כירידה כשהממוצע היומי זהה
+  const N = new Date("2026-10-24T05:00:00Z");
+  const fbReach = {};
+  for (let i = 0; i < 365; i++) fbReach[new Date(N - i * 864e5).toISOString().slice(0, 10)] = 10;
+  const t = trends({ series: { fbReach } }, N);
+  assert.equal(t.months[11].partial, true);
+  assert.equal(t.months[11].days, 24);
+  const c = trendChange(t.rows[0][1], t.months);
+  assert.ok(Math.abs(c.now - c.before) < 0.01, "ממוצע יומי זהה = יציב");
+  // חודש לפי שעון ישראל: פוסט ב-31.1 בשעה 23:30 UTC שייך לפברואר
+  const h = trends({ history: Array.from({ length: 12 }, (_, i) => ({ p: "f", at: new Date(Date.UTC(2025, 10 + i, 10)).toISOString(), e: 1 })).concat([{ p: "f", at: "2026-01-31T23:30:00Z", e: 1 }]) }, N);
+  const posts = h.rows.find((r) => r[0] === "פוסטים שעלו")[1];
+  assert.equal(posts[2], 1, "ינואר");
+  assert.equal(posts[3], 2, "פברואר כולל הפוסט של 1.2 בלילה");
+  const html = dashboardHtml({ ...insights, series: { fbReach } }, null, N);
+  assert.match(html, /24 ימים/, "החודש החלקי מסומן");
+}
+console.log("fixes ok");
