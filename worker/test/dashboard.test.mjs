@@ -144,3 +144,27 @@ console.log("trends ok");
   assert.match(html, /24 ימים/, "החודש החלקי מסומן");
 }
 console.log("fixes ok");
+{
+  const { campaignRoute, cleanDrafts, goalProgress } = await import("../src/dashboard.js");
+  const { sha256 } = await import("../src/inbox.js");
+  const cenv = { FEED_KEY_SHA256: await sha256("sekret") };
+  const docs = { "agentReports/bot": { outbox: {} } };
+  const cs = { get: async (p) => docs[p], merge: async (p, v) => (docs[p] = { ...docs[p], ...v }), update: async (p, fn) => (docs[p] = { ...docs[p], ...fn(docs[p] || {}) }) };
+  const sentWa = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (u, o) => (sentWa.push(String(u)), new Response("{}"));
+  const good = { at: "2026-10-26T17:00", kind: "post", topic: "בואו לעקוב", facebook: "טקסט", instagram: "טקסט @x", image: "https://drive.google.com/uc?export=download&id=abc" };
+  assert.equal((await campaignRoute(new Request("https://w/insights/campaign?k=no", { method: "POST", body: "{}" }), cenv, cs, {})).status, 403);
+  const r = await campaignRoute(new Request("https://w/insights/campaign?k=sekret", { method: "POST", body: JSON.stringify({ drafts: [good, { ...good, image: "javascript:x" }], notify: "דוח שבועי" }) }), cenv, cs, { token: "t", phoneId: "p", owner: "o" });
+  globalThis.fetch = origFetch;
+  assert.deepEqual(await r.json(), { ok: true, drafts: 1, notified: true }, "טיוטה בלי תמונה/סרטון תקינים נזרקת");
+  assert.equal(docs["agentReports/content"].by, "claude");
+  assert.equal(docs["agentReports/bot"].outbox.content.text, "דוח שבועי");
+  assert.equal(cleanDrafts([{ ...good, at: "מחר" }]).length, 0);
+  const N = new Date("2026-10-24T05:00:00Z");
+  const fbFollows = {};
+  for (let i = 1; i <= 7; i++) fbFollows[new Date(N - i * 864e5).toISOString().slice(0, 10)] = 1;
+  assert.deepEqual(goalProgress({ series: { fbFollows } }, N), [["פייסבוק", 7]]);
+  assert.match(dashboardHtml({ ...insights, series: { fbFollows } }, null, N), /\+7 \/ 5 ✅/);
+}
+console.log("campaign ok");

@@ -3,6 +3,8 @@
 // קריאה בלבד: לא נוגע ב-Meta ולא בשום מסמך. מספר שלא ידוע מוצג "לא זמין", אף פעם לא 0.
 import { sign } from "./google.js";
 import { sha256 } from "./inbox.js";
+import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { outboxMap } from "./queue.js";
 
 const TZ = "Asia/Jerusalem";
 const STALE_MS = 36 * 3600 * 1000; // הסוכן רץ כל לילה; יותר מיום וחצי בלי עדכון = משהו נתקע
@@ -65,13 +67,42 @@ export async function feedRoute(req, env, store) {
     const recent = (m.history || []).filter((x) => new Date(x.at) >= wk).map((x) => [x.p, x.at.slice(0, 10), x.e]);
     const hm = {};
     for (const x of m.history || []) { const k = x.at.slice(0, 7) + x.p; hm[k] = (hm[k] || 0) + 1; }
-    return Response.json({ debug: { recent, historyByMonth: hm, trend: trends(m), week: compare(m, PERIODS[0]) }, dashboard: await dashboardUrl(env, new URL(req.url).origin), feedAt: feed?.at || null, series: Object.keys(feed?.series || {}), feedReach: Object.keys(feed?.reach || {}).length, posts: (m.posts || []).length, postsWithReach: (m.posts || []).filter((p) => p.reach != null).length, gaps: m.gaps, samplePostIds: (ins?.posts || []).slice(0, 3).map((p) => p.id), sampleFeedIds: Object.keys(feed?.reach || {}).slice(0, 3) });
+    return Response.json({ followers: m.followers || null, followersLog: Object.fromEntries(Object.entries(m.followersLog || {}).sort().slice(-15)), month: compare(m, PERIODS[1]), debug: { recent, historyByMonth: hm, trend: trends(m), week: compare(m, PERIODS[0]) }, dashboard: await dashboardUrl(env, new URL(req.url).origin), feedAt: feed?.at || null, series: Object.keys(feed?.series || {}), feedReach: Object.keys(feed?.reach || {}).length, posts: (m.posts || []).length, postsWithReach: (m.posts || []).filter((p) => p.reach != null).length, gaps: m.gaps, samplePostIds: (ins?.posts || []).slice(0, 3).map((p) => p.id), sampleFeedIds: Object.keys(feed?.reach || {}).slice(0, 3) });
   }
   if (req.method !== "POST") return new Response("forbidden", { status: 403 });
   const feed = cleanFeed(await req.json().catch(() => ({})));
   await store.merge("agentReports/insightsFeed", { ...feed, at: new Date().toISOString() });
   return Response.json({ ok: true, series: Object.keys(feed.series), reach: Object.keys(feed.reach).length });
 }
+// 📣 /insights/campaign — הקמפיין השבועי של קלוד (משימה מתוזמנת, ראשון בבוקר): דוח התקדמות + טיוטות לשבוע.
+// הטיוטות נשמרות ב-agentReports/content (אותו מקום של סוכן הפרסום), ומשם שולה מפרסמת רק אחרי "כן" של הבעלים.
+const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+const url = (v) => (typeof v === "string" && /^https:\/\/[^\s"<>]+$/.test(v) ? v.slice(0, 600) : "");
+export function cleanDrafts(xs) {
+  return (Array.isArray(xs) ? xs : []).slice(0, 7).map((d) => ({
+    at: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d?.at) ? d.at : "",
+    kind: ["post", "reel", "story"].includes(d?.kind) ? d.kind : "post",
+    topic: str(d?.topic, 120), goal: str(d?.goal, 200), training: str(d?.training, 200),
+    facebook: str(d?.facebook, 2200), instagram: str(d?.instagram, 2200), tags: str(d?.tags, 300),
+    image: url(d?.image), video: url(d?.video),
+  })).filter((d) => d.at && d.facebook && (d.image || d.video));
+}
+export async function campaignRoute(req, env, store, wa) {
+  const k = new URL(req.url).searchParams.get("k") || "";
+  if (req.method !== "POST" || !env.FEED_KEY_SHA256 || (await sha256(k)) !== env.FEED_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  const body = await req.json().catch(() => ({}));
+  const drafts = cleanDrafts(body.drafts);
+  const at = new Date().toISOString();
+  if (drafts.length) await store.merge("agentReports/content", { date: at.slice(0, 10), createdAt: at, drafts, by: "claude", goal: str(body.goal, 300) });
+  const text = str(body.notify, 3500);
+  if (text) {
+    const bot = (await store.get("agentReports/bot")) || {};
+    await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), content: { at, text } } }));
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
+  }
+  return Response.json({ ok: true, drafts: drafts.length, notified: !!text });
+}
+
 // משלים מה-feed את מה שהטוקן של שולה לא קיבל (חשיפה, לייקים בפייסבוק, סדרות יומיות)
 export function withFeed(insights, feed) {
   if (!feed?.at) return insights;
@@ -127,6 +158,23 @@ const growth = (log, from, to, net) => {
   const a = logAt(log, from, net), b = logAt(log, to - DAY, net);
   return a == null || b == null ? null : b - a;
 };
+
+// 🎯 יעד שבועי לעוקבים חדשים בכל רשת (שחר, 24.10.2026)
+export const WEEKLY_GOAL = 5;
+export function goalProgress(insights, now = new Date()) {
+  const end = now.getTime(), start = end - 7 * DAY, s = insights.series || {}, log = insights.followersLog;
+  return [
+    ["פייסבוק", sumDays(s.fbFollows, start, end) ?? growth(log, start, end, "facebook")],
+    ["אינסטגרם", sumDays(s.igFollows, start, end) ?? growth(log, start, end, "instagram")],
+  ].filter(([, v]) => v != null);
+}
+function goalHtml(insights, now) {
+  const rows = goalProgress(insights, now);
+  if (!rows.length) return "";
+  return `<section><div class="sec-h"><h2>יעד השבוע: +${WEEKLY_GOAL} עוקבים בכל רשת</h2></div><div class="panel goal">${rows
+    .map(([n, v]) => `<div class="grow"><span>${n}</span><div class="gtrack"><div class="gbar${v >= WEEKLY_GOAL ? " hit" : ""}" style="width:${Math.min(100, Math.max(0, (v / WEEKLY_GOAL) * 100)).toFixed(0)}%"></div></div><b>${v >= 0 ? "+" : ""}${v} / ${WEEKLY_GOAL}${v >= WEEKLY_GOAL ? " ✅" : ""}</b></div>`)
+    .join("")}</div></section>`;
+}
 
 export function compare(insights, period, now = new Date()) {
   const end = now.getTime(), start = end - period.len * DAY;
@@ -330,6 +378,7 @@ ${kpi("פוסטים השבוע", week.length, `פייסבוק ${week.filter((p) 
 ${kpi("חשיפה ממוצעת בפייסבוק", fmt(avg(withReach(fb).map((p) => p.reach))), reachNote(fb, g.fbReach))}
 ${kpi("חשיפה ממוצעת באינסטגרם", fmt(avg(withReach(ig).map((p) => p.reach))), reachNote(ig, g.igReach))}
 </div></section>
+${goalHtml(insights, now)}
 <section><div class="sec-h"><h2>איך אנחנו לעומת קודם</h2></div><div class="cmps">${compareHtml(insights, now)}</div></section>
 <section><div class="sec-h"><h2>מגמה שנתית</h2><span class="meta">12 החודשים האחרונים</span></div><div class="cmps">${trendHtml(insights, now)}</div></section>
 <section><div class="sec-h"><h2>מה עולה ומתי</h2><span class="meta">שום דבר לא עולה בלי "כן" שלך</span></div><div class="panel items">${schedRows}</div></section>
@@ -373,5 +422,6 @@ main .wrap{display:flex;flex-direction:column;gap:28px;padding-block:26px 30px}s
 .pair{display:flex;align-items:center;gap:8px;height:18px}.pbar{height:100%;border-radius:3px;min-width:3px}.nowb .pbar{background:var(--bar)}.befb .pbar{background:var(--lime);opacity:.55}.pair b{font:800 12.5px Heebo,sans-serif;font-variant-numeric:tabular-nums}
 .trend{padding:16px;display:flex;flex-direction:column;gap:10px}.trend h3{font-size:15px}.trend .cmp-h span{font:800 12.5px Heebo,sans-serif}
 .tchart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;height:130px;align-items:end}.tcol{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px;min-width:0}.tb{width:100%;background:var(--bar);opacity:.8;border-radius:3px 3px 0 0}.part .tb{background:repeating-linear-gradient(135deg,var(--bar-ig) 0 4px,transparent 4px 7px);border:1.5px dashed var(--bar-ig);border-bottom:0;opacity:1}.tm small{display:block;font-size:9px;line-height:1}.tv{font:700 9.5px Heebo,sans-serif;color:var(--ink-3);letter-spacing:-.3px;white-space:nowrap}.tm{font-size:10.5px;color:var(--ink-3)}
+.goal{padding:14px 18px;display:flex;flex-direction:column;gap:10px}.grow{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;font-weight:600}.gtrack{height:14px;background:var(--track);border-radius:7px;overflow:hidden}.gbar{height:100%;background:var(--bar)}.gbar.hit{background:var(--ok)}.grow b{font:800 14px Heebo,sans-serif;font-variant-numeric:tabular-nums}
 footer{background:var(--olive);color:#E9ECD6;font-size:13px}footer .wrap{padding-block:14px}
 @media (max-width:720px){.two{grid-template-columns:minmax(0,1fr)}.item{grid-template-columns:1fr}.item .chip{justify-self:start}}`;

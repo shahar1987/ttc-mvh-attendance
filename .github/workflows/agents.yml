@@ -72,7 +72,7 @@ jobs:
           case "${{ github.event.schedule }}" in
             "0 5 * * *")    RUN=scan ;;
             "30 0 * * *")   RUN=bugcheck,insights ;;
-            "0 6 * * 0")    RUN=ideas,content ;;
+            "0 6 * * 0")    RUN=ideas ;;  # הקמפיין השבועי עבר למשימה של קלוד (ראשון 08:30, /insights/campaign) — content רק בהפעלה ידנית
             "17 * * * *")   RUN=supervisor ;;
             "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
             *)              RUN="${{ inputs.agent }}" ;;

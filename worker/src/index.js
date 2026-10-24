@@ -14,7 +14,7 @@ import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, sta
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
-import { dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
+import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
 import { coachFor, handleCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
@@ -117,6 +117,7 @@ export default {
     }
     if (url.pathname === "/dashboard") return dashboardRoute(req, env, db(env));
     if (url.pathname === "/insights/feed") return feedRoute(req, env, db(env));
+    if (url.pathname === "/insights/campaign") return campaignRoute(req, env, db(env), waConfig(env));
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
     // דף פרטיות — גוגל דורש קישור כזה כדי לפרסם את אפליקציית ה-OAuth
     if (url.pathname === "/privacy")
