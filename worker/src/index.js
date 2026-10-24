@@ -5,6 +5,7 @@
 //   2. עונה למספר של הבעלים (OWNER_PHONE), ולמדריכים שהבעלים הפעיל (coaches.js) — רק על הקבוצות שלהם. כל מספר אחר — מתעלם.
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
+import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
@@ -319,7 +320,17 @@ export function unanswered(bot, now = Date.now()) {
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
-async function gemini(env, body, trace = [], first = env.GEMINI_MODEL) {
+// גוגל חוסם (2026-10-24: 403 אחרי תקרת ההוצאה החודשית) — אם יש ANTHROPIC_API_KEY, אותה בקשה עוברת ל-Claude Haiku
+async function gemini(env, body, trace = [], first) {
+  try {
+    return await geminiOnly(env, body, trace, first);
+  } catch (e) {
+    if (!env.ANTHROPIC_API_KEY) throw e;
+    return claude(env, body, trace).catch((e2) => { throw new Error(`${e.message}; ${e2.message}`); });
+  }
+}
+
+async function geminiOnly(env, body, trace = [], first = env.GEMINI_MODEL) {
   let lastErr;
   let models = [...new Set([first, ...MODELS].filter(Boolean))];
   // 503/500 = עומס רגעי אצל גוגל (2026-10-12 08:30: שני המודלים הראשונים 429 מכסה, והשלישי 503 — הבעלים קיבל "503, נסה שוב").
