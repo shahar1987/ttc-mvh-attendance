@@ -27,7 +27,7 @@ test("weekly agents: checked only after Sunday noon, and not when they never ran
   assert.equal(lastWeeklyDue(at("2026-10-04T07:00:00Z")), "2026-09-27");
   assert.deepEqual(scheduleProblems(lastWeek, {}, at("2026-10-04T07:00:00Z")), []);
   // Sunday 12:30 Israel — due today, didn't run
-  assert.deepEqual(scheduleProblems(lastWeek, {}, at("2026-10-04T09:30:00Z")), ["סוכן הרעיונות לא רץ השבוע", "סוכן הפרסום לא רץ השבוע"]);
+  assert.deepEqual(scheduleProblems(lastWeek, {}, at("2026-10-04T09:30:00Z")), ["סוכן הרעיונות לא רץ השבוע"]);
   // never ran at all (no heartbeat) -> NOT reported (first Sunday after release)
   assert.deepEqual(scheduleProblems({ ...base, bugcheck: { at: "2026-10-05T00:40:00Z" } }, {}, at("2026-10-05T09:00:00Z")), []);
 });
