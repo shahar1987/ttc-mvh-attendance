@@ -56,7 +56,14 @@ export function cleanFeed(body = {}) {
 }
 export async function feedRoute(req, env, store) {
   const k = new URL(req.url).searchParams.get("k") || "";
-  if (req.method !== "POST" || !env.FEED_KEY_SHA256 || (await sha256(k)) !== env.FEED_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  if (!env.FEED_KEY_SHA256 || (await sha256(k)) !== env.FEED_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  // בדיקה: מה נשמר ומה מזה באמת נכנס לדשבורד (מספרים בלבד)
+  if (req.method === "GET") {
+    const [ins, feed] = await Promise.all([store.get("agentReports/insights"), store.get("agentReports/insightsFeed")]);
+    const m = withFeed(ins || {}, feed);
+    return Response.json({ feedAt: feed?.at || null, series: Object.keys(feed?.series || {}), feedReach: Object.keys(feed?.reach || {}).length, posts: (m.posts || []).length, postsWithReach: (m.posts || []).filter((p) => p.reach != null).length, gaps: m.gaps, samplePostIds: (ins?.posts || []).slice(0, 3).map((p) => p.id), sampleFeedIds: Object.keys(feed?.reach || {}).slice(0, 3) });
+  }
+  if (req.method !== "POST") return new Response("forbidden", { status: 403 });
   const feed = cleanFeed(await req.json().catch(() => ({})));
   await store.merge("agentReports/insightsFeed", { ...feed, at: new Date().toISOString() });
   return Response.json({ ok: true, series: Object.keys(feed.series), reach: Object.keys(feed.reach).length });
