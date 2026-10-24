@@ -61,7 +61,11 @@ export async function feedRoute(req, env, store) {
   if (req.method === "GET") {
     const [ins, feed] = await Promise.all([store.get("agentReports/insights"), store.get("agentReports/insightsFeed")]);
     const m = withFeed(ins || {}, feed);
-    return Response.json({ dashboard: await dashboardUrl(env, new URL(req.url).origin), feedAt: feed?.at || null, series: Object.keys(feed?.series || {}), feedReach: Object.keys(feed?.reach || {}).length, posts: (m.posts || []).length, postsWithReach: (m.posts || []).filter((p) => p.reach != null).length, gaps: m.gaps, samplePostIds: (ins?.posts || []).slice(0, 3).map((p) => p.id), sampleFeedIds: Object.keys(feed?.reach || {}).slice(0, 3) });
+    const wk = Date.now() - 7 * DAY;
+    const recent = (m.history || []).filter((x) => new Date(x.at) >= wk).map((x) => [x.p, x.at.slice(0, 10), x.e]);
+    const hm = {};
+    for (const x of m.history || []) { const k = x.at.slice(0, 7) + x.p; hm[k] = (hm[k] || 0) + 1; }
+    return Response.json({ debug: { recent, historyByMonth: hm, trend: trends(m), week: compare(m, PERIODS[0]) }, dashboard: await dashboardUrl(env, new URL(req.url).origin), feedAt: feed?.at || null, series: Object.keys(feed?.series || {}), feedReach: Object.keys(feed?.reach || {}).length, posts: (m.posts || []).length, postsWithReach: (m.posts || []).filter((p) => p.reach != null).length, gaps: m.gaps, samplePostIds: (ins?.posts || []).slice(0, 3).map((p) => p.id), sampleFeedIds: Object.keys(feed?.reach || {}).slice(0, 3) });
   }
   if (req.method !== "POST") return new Response("forbidden", { status: 403 });
   const feed = cleanFeed(await req.json().catch(() => ({})));
