@@ -106,3 +106,15 @@ console.log("dashboard ok");
   assert.ok(!noNA.includes("לא זמין</span>"), "כרטיס בלי מספר לא מוצג");
 }
 console.log("feed ok");
+{
+  const { trends } = await import("../src/dashboard.js");
+  const N = new Date("2026-10-24T05:00:00Z");
+  const fbReach = {};
+  for (let i = 0; i < 365; i++) fbReach[new Date(N - i * 864e5).toISOString().slice(0, 10)] = 10;
+  const t = trends({ series: { fbReach }, history: [] }, N);
+  assert.equal(t.months.length, 12);
+  assert.equal(t.months[11].key, "2026-10");
+  assert.deepEqual(t.rows.map((r) => r[0]), ["חשיפה בפייסבוק"], "מדד בלי מספיק חודשים לא מוצג");
+  assert.match(dashboardHtml({ ...insights, series: { fbReach } }, null, N), /מגמה שנתית/);
+}
+console.log("trends ok");

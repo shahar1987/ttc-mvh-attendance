@@ -190,15 +190,61 @@ function compareHtml(insights, now) {
     if (!rows.length) return "";
     const ch = rows.map((r) => change(r.now, r.before));
     const up = ch.filter((c) => c?.dir === "up").length, down = ch.filter((c) => c?.dir === "down").length;
+    // גרף: לכל מדד שני פסים — עכשיו (כהה) מול התקופה הקודמת (בהיר)
     const body = rows
       .map((r, i) => {
         const c = ch[i];
-        const cell = !c ? `<span class="na">—</span>` : c.dir === "flat" ? `<span class="flat">0%</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲" : "▼"} ${c.pct == null ? "חדש" : Math.abs(c.pct) + "%"}</span>`;
-        return `<tr><th scope="row">${r.name}</th><td>${fmt(r.now)}</td><td>${fmt(r.before)}</td><td>${cell}</td></tr>`;
+        const cell = !c ? "" : c.dir === "flat" ? `<span class="flat">0%</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲" : "▼"} ${c.pct == null ? "חדש" : Math.abs(c.pct) + "%"}</span>`;
+        const max = Math.max(1, r.now, r.before);
+        const bar = (v, cls) => `<div class="pair ${cls}"><div class="pbar" style="width:${((v / max) * 100).toFixed(1)}%"></div><b>${fmt(v)}</b></div>`;
+        return `<div class="crow"><div class="cname">${r.name}${cell}</div>${bar(r.now, "nowb")}${bar(r.before, "befb")}</div>`;
       })
       .join("");
     return `<div class="panel cmp"><div class="cmp-h"><h3>${p.title}</h3>${up || down ? `<span class="verdict"><span class="up">▲ ${up}</span> <span class="down">▼ ${down}</span></span>` : ""}</div>
-<table><thead><tr><th></th><th>${p.now}</th><th>${p.before}</th><th>שינוי</th></tr></thead><tbody>${body}</tbody></table></div>`;
+<div class="legend"><span class="nowb">${p.now}</span><span class="befb">${p.before}</span></div>${body}</div>`;
+  }).join("");
+}
+
+// 📈 מגמה שנתית: 12 חודשים אחרונים, סכום לכל חודש. מגמה = 3 החודשים האחרונים מול 3 הראשונים.
+const MONTHS = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
+export function trends(insights, now = new Date()) {
+  const s = insights.series || {}, hist = insights.history;
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + i, 1));
+    return { key: d.toISOString().slice(0, 7), label: MONTHS[d.getUTCMonth()] };
+  });
+  const bySeries = (m) => m && months.map(({ key }) => {
+    const vs = Object.entries(m).filter(([d]) => d.startsWith(key)).map(([, v]) => v);
+    return vs.length ? vs.reduce((a, b) => a + b, 0) : null;
+  });
+  const byHist = (p, f) => hist?.length && months.map(({ key }) => {
+    const xs = hist.filter((x) => (!p || x.p === p) && x.at.startsWith(key));
+    return xs.some((x) => f(x) == null) ? null : xs.reduce((a, x) => a + f(x), 0);
+  });
+  return {
+    months,
+    rows: [
+      ["חשיפה בפייסבוק", bySeries(s.fbReach)],
+      ["חשיפה באינסטגרם", bySeries(s.igReach)],
+      ["פוסטים שעלו", byHist(null, () => 1)],
+      ["לייקים ותגובות בפייסבוק", byHist("f", (x) => x.e)],
+      ["לייקים ותגובות באינסטגרם", byHist("i", (x) => x.e)],
+      ["עוקבים חדשים בפייסבוק", bySeries(s.fbFollows)],
+    ].filter(([, v]) => v && v.filter((x) => x != null).length >= 6),
+  };
+}
+function trendHtml(insights, now) {
+  const { months, rows } = trends(insights, now);
+  if (!rows.length) return "";
+  return rows.map(([name, vals]) => {
+    const known = vals.filter((v) => v != null);
+    const avg3 = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const head = vals.slice(0, 3).filter((v) => v != null), tail = vals.slice(-3).filter((v) => v != null);
+    const c = head.length && tail.length ? change(Math.round(avg3(tail)), Math.round(avg3(head))) : null;
+    const tag = !c ? "" : c.dir === "flat" ? `<span class="flat">יציב</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲ במגמת עלייה" : "▼ במגמת ירידה"}${c.pct != null ? ` ${Math.abs(c.pct)}%` : ""}</span>`;
+    const max = Math.max(1, ...known);
+    const cols = vals.map((v, i) => `<div class="tcol" title="${months[i].label}: ${v ?? ""}"><span class="tv">${v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "K" : v}</span><div class="tb${i === 11 ? " cur" : ""}" style="height:${v == null ? 0 : Math.max(2, (v / max) * 100).toFixed(1)}%"></div><span class="tm">${months[i].label}</span></div>`).join("");
+    return `<div class="panel trend"><div class="cmp-h"><h3>${name}</h3>${tag}</div><div class="tchart">${cols}</div></div>`;
   }).join("");
 }
 
@@ -248,6 +294,7 @@ ${kpi("חשיפה ממוצעת בפייסבוק", fmt(avg(withReach(fb).map((p) 
 ${kpi("חשיפה ממוצעת באינסטגרם", fmt(avg(withReach(ig).map((p) => p.reach))), reachNote(ig, g.igReach))}
 </div></section>
 <section><div class="sec-h"><h2>איך אנחנו לעומת קודם</h2></div><div class="cmps">${compareHtml(insights, now)}</div></section>
+<section><div class="sec-h"><h2>מגמה שנתית</h2><span class="meta">12 החודשים האחרונים</span></div><div class="cmps">${trendHtml(insights, now)}</div></section>
 <section><div class="sec-h"><h2>מה עולה ומתי</h2><span class="meta">שום דבר לא עולה בלי "כן" שלך</span></div><div class="panel items">${schedRows}</div></section>
 <section><div class="sec-h"><h2>הפוסטים החזקים</h2><span class="meta">חשיפה = כמה אנשים שונים ראו, 30 הימים האחרונים</span></div>
 <div class="two">${chart("פייסבוק", top(fb), "")}${chart("אינסטגרם", top(ig), " ig")}</div></section>
@@ -284,5 +331,10 @@ main .wrap{display:flex;flex-direction:column;gap:28px;padding-block:26px 30px}s
 .cmp table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.cmp th,.cmp td{padding:7px 4px;border-top:1px solid var(--line);text-align:start}.cmp thead th{border-top:0;font-size:12px;color:var(--ink-3);font-weight:600}.cmp tbody th{font-weight:600;color:var(--ink-2)}.cmp td{font-weight:700;white-space:nowrap}
 .up{color:var(--ok)}.down{color:var(--bad)}.flat,.na{color:var(--ink-3)}
 .gaps{padding:14px 18px}.gaps ul{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:6px}.gaps p{margin:10px 0 0;font-size:14px}.gaps code{font-size:13px;background:var(--panel-2);padding:1px 6px;border-radius:4px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-3)}.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-inline-end:5px;vertical-align:-1px}.legend .nowb:before{background:var(--bar)}.legend .befb:before{background:var(--lime);opacity:.55}
+.crow{display:flex;flex-direction:column;gap:3px;padding-top:8px;border-top:1px solid var(--line)}.cname{display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:600;color:var(--ink-2)}.cname span{font:800 13px Heebo,sans-serif;white-space:nowrap}
+.pair{display:flex;align-items:center;gap:8px;height:18px}.pbar{height:100%;border-radius:3px;min-width:3px}.nowb .pbar{background:var(--bar)}.befb .pbar{background:var(--lime);opacity:.55}.pair b{font:800 12.5px Heebo,sans-serif;font-variant-numeric:tabular-nums}
+.trend{padding:16px;display:flex;flex-direction:column;gap:10px}.trend h3{font-size:15px}.trend .cmp-h span{font:800 12.5px Heebo,sans-serif}
+.tchart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;height:130px;align-items:end}.tcol{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px;min-width:0}.tb{width:100%;background:var(--bar);opacity:.75;border-radius:3px 3px 0 0}.tb.cur{opacity:1;background:var(--bar-ig)}.tv{font:700 10px Heebo,sans-serif;color:var(--ink-3)}.tm{font-size:10.5px;color:var(--ink-3)}
 footer{background:var(--olive);color:#E9ECD6;font-size:13px}footer .wrap{padding-block:14px}
 @media (max-width:720px){.two{grid-template-columns:minmax(0,1fr)}.item{grid-template-columns:1fr}.item .chip{justify-self:start}}`;
