@@ -347,7 +347,7 @@ export function dashboardHtml(insights, pending, now = new Date()) {
   if (pending?.text) sched.unshift({ at: pending.at, text: pending.text, net: pending.platform === "both" ? "פייסבוק + אינסטגרם" : NET[pending.platform] || "", chip: ["warn", "מחכה ל\"כן\" שלך"], waiting: true });
   const schedRows = sched.length
     ? sched.map((s) => `<div class="item"><span class="t">${s.waiting ? "עכשיו" : esc(when(s.at))}</span><div class="what"><b>${title(s.text)}</b><div class="sub">${esc(s.net)}</div></div><span class="chip ${s.chip[0]}">${s.chip[1]}</span></div>`).join("")
-    : `<p class="empty">אין כרגע פוסטים מתוזמנים בדף הפייסבוק ואין פוסט שמחכה לאישור. פוסטים שמתוזמנים ב-Metricool לא מופיעים כאן.</p>`;
+    : `<p class="empty">אין כרגע פוסטים מתוזמנים בדף הפייסבוק ואין פוסט שמחכה לאישור.</p>`;
 
   const top = (xs) => withReach(xs).sort((a, b) => b.reach - a.reach).slice(0, 6).map((p) => ({ name: `${title(p.text)} · ${day(p.at)}`, v: p.reach, note: TYPE[p.type] || esc(p.type) }));
   const byType = (xs) => {

@@ -234,7 +234,7 @@ export function weeklyReport(posts, now = new Date()) {
 export const tokenDead = (e) => e?.code === 190 || /access token/i.test(e?.message || "");
 export const REMIND_EVERY_DAYS = 3;
 export const shouldRemind = (lastIso, now = new Date()) => !lastIso || now - new Date(lastIso) >= REMIND_EVERY_DAYS * 864e5;
-export const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים. הפוסטים שמתוזמנים ב-Metricool לא מושפעים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
+export const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
 
 async function main() {
   const { firestore, heartbeat, reportMissingKey } = await import("./lib/firebase.mjs");
