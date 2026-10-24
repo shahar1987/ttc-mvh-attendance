@@ -79,7 +79,7 @@ export async function feedRoute(req, env, store) {
 const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
 const url = (v) => (typeof v === "string" && /^https:\/\/[^\s"<>]+$/.test(v) ? v.slice(0, 600) : "");
 export function cleanDrafts(xs) {
-  return (Array.isArray(xs) ? xs : []).slice(0, 7).map((d) => ({
+  return (Array.isArray(xs) ? xs : []).slice(0, 25).map((d) => ({
     at: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(d?.at) ? d.at : "",
     kind: ["post", "reel", "story"].includes(d?.kind) ? d.kind : "post",
     topic: str(d?.topic, 120), goal: str(d?.goal, 200), training: str(d?.training, 200),
