@@ -22,7 +22,15 @@ async function firstOk(urls, get) {
   throw err;
 }
 
-export async function collect(page, now = new Date(), get = getJson) {
+// למה מספר חסר — כדי שהדשבורד יגיד מה לתקן, לא רק "לא זמין"
+export const gapReason = (e) => {
+  const m = `${e?.code ?? ""} ${e?.message || ""}`;
+  if (/^(10|200|190)\b|permission|requires/i.test(m)) return "permission";
+  if (/^100\b|invalid|metric|deprecat/i.test(m)) return "metric";
+  return "error";
+};
+
+export async function collect(page, now = new Date(), get = getJson, gaps = {}) {
   const since = new Date(now.getTime() - DAYS * 864e5);
   const t = page.token;
   const posts = [];
@@ -30,11 +38,15 @@ export async function collect(page, now = new Date(), get = getJson) {
   // לייקים ותגובות דורשים pages_read_user_content (נבדק 11.10: בלי ההרשאה Meta מחזירה #10 רק על שני השדות האלה).
   // כשההרשאה תתווסף באפליקציה ב-Meta — הצירוף המלא יעבוד מעצמו; עד אז נאספים הפוסטים והשיתופים.
   const full = `${base},reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)`;
-  // חשיפה (אנשים שונים) לכל פוסט; אם Meta הורידה את המדד — ממשיכים בלעדיו
-  const reach = "insights.metric(post_impressions_unique){values}";
+  // חשיפה (אנשים שונים) לכל פוסט. post_impressions_unique בוטל ב-15.6.2026 — המדד החדש קודם, הישן כגיבוי
+  const reaches = ["post_total_media_view_unique", "post_impressions_unique"].map((m) => `insights.metric(${m}){values}`);
+  const fields = [...reaches.flatMap((r) => [`${full},${r}`, `${base},${r}`]), full, base];
+  let reachErr;
   const fb = await firstOk(
-    [`${full},${reach}`, `${base},${reach}`, full, base].map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
-    get,
+    fields.map((f) => `${GRAPH}/${page.id}/posts?fields=${f}&since=${Math.floor(since / 1000)}&limit=50&access_token=${t}`),
+    async (u) => {
+      try { return await get(u); } catch (e) { if (u.includes("insights.metric")) reachErr ||= e; throw e; }
+    },
   ).catch((e) => {
     if (tokenDead(e)) throw e;
     // פייסבוק נכשל מסיבה אחרת (הרשאה/שינוי של Meta) — אינסטגרם עדיין נאסף, לא מפילים את הריצה
@@ -51,6 +63,9 @@ export async function collect(page, now = new Date(), get = getJson) {
       likes: p.reactions ? p.reactions.summary?.total_count || 0 : null, comments: p.comments ? p.comments.summary?.total_count || 0 : null, shares: p.shares?.count || 0, saves: null,
     });
   }
+  const fbPosts = posts.filter((p) => p.platform === "facebook");
+  if (fbPosts.length && fbPosts.every((p) => p.reach == null)) gaps.fbReach = reachErr ? gapReason(reachErr) : "metric";
+  if (fbPosts.some((p) => p.likes == null)) gaps.fbLikes = "permission";
   if (page.ig) {
     const ig = await get(`${GRAPH}/${page.ig}/media?fields=id,caption,timestamp,media_type,like_count,comments_count,permalink&limit=50&access_token=${t}`).catch((e) => {
       if (tokenDead(e)) throw e;
@@ -58,7 +73,10 @@ export async function collect(page, now = new Date(), get = getJson) {
       return { data: [] };
     });
     for (const m of (ig.data || []).filter((m) => new Date(m.timestamp) >= since)) {
-      const ins = await firstOk(["reach,saved,shares,views", "reach,saved,shares", "reach,saved"].map((x) => `${GRAPH}/${m.id}/insights?metric=${x}&access_token=${t}`), get).catch(() => ({ data: [] }));
+      const ins = await firstOk(["reach,saved,shares,views", "reach,saved,shares", "reach,saved"].map((x) => `${GRAPH}/${m.id}/insights?metric=${x}&access_token=${t}`), get).catch((e) => {
+        gaps.igReach ||= gapReason(e);
+        return { data: [] };
+      });
       const v = (name) => ins.data?.find((d) => d.name === name)?.values?.[0]?.value ?? null;
       posts.push({
         platform: "instagram", id: m.id, at: new Date(m.timestamp).toISOString(), link: m.permalink || "",
@@ -87,6 +105,100 @@ export async function account(page, get = getJson) {
       ? (sched.data || []).map((s) => ({ at: new Date(Number(s.scheduled_publish_time) * 1000).toISOString(), text: (s.message || "").slice(0, 80) })).sort((a, b) => a.at.localeCompare(b.at))
       : null,
   };
+}
+
+// להשוואות (שבוע / חודש / שנה שעברה): 400 יום אחורה. כל מה שנכשל נשאר חסר ונרשם ב-gaps, לא מפיל את הריצה.
+export const HISTORY_DAYS = 400;
+const ymd = (d) => new Date(d).toISOString().slice(0, 10);
+// Meta מחזירה ערך יומי עם end_time של סוף היום — היום עצמו הוא היום שלפניו
+const dayOf = (endTime) => ymd(new Date(endTime).getTime() - 864e5);
+
+// כל הפוסטים בשנה וחודש האחרונים, בגרסה קלה: מתי, איפה, לייקים+תגובות+שיתופים (null = לא ידוע)
+export async function history(page, now = new Date(), get = getJson, gaps = {}) {
+  const since = Math.floor((now.getTime() - HISTORY_DAYS * 864e5) / 1000);
+  const t = page.token;
+  const out = [];
+  const pages = async (first, keep) => {
+    let url = first;
+    for (let i = 0; url && i < 20; i++) {
+      const j = await get(url);
+      const rows = j.data || [];
+      out.push(...rows.filter(keep).map(keep.map));
+      if (rows.length && !keep(rows[rows.length - 1])) break;
+      url = j.paging?.next;
+    }
+  };
+  const fbKeep = Object.assign(() => true, {
+    map: (p) => ({ p: "f", at: new Date(p.created_time).toISOString(), e: p.reactions ? (p.reactions.summary?.total_count || 0) + (p.comments?.summary?.total_count || 0) + (p.shares?.count || 0) : null }),
+  });
+  const fbFields = ["created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)", "created_time,shares"];
+  let fbDone = false;
+  for (const f of fbFields) {
+    try {
+      await pages(`${GRAPH}/${page.id}/posts?fields=${f}&since=${since}&limit=100&access_token=${t}`, fbKeep);
+      fbDone = true;
+      break;
+    } catch (e) {
+      if (tokenDead(e)) throw e;
+      out.length = 0;
+    }
+  }
+  if (!fbDone) gaps.fbHistory = "error";
+  if (page.ig) {
+    const igKeep = Object.assign((m) => new Date(m.timestamp) >= since * 1000, {
+      map: (m) => ({ p: "i", at: new Date(m.timestamp).toISOString(), e: (m.like_count || 0) + (m.comments_count || 0) }),
+    });
+    await pages(`${GRAPH}/${page.ig}/media?fields=timestamp,like_count,comments_count&limit=100&access_token=${t}`, igKeep).catch((e) => {
+      if (tokenDead(e)) throw e;
+      gaps.igHistory = gapReason(e);
+    });
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+// ערכים יומיים ברמת החשבון: { "2026-10-23": 412, ... }. Meta מגבילה טווח לבקשה (פייסבוק 90 יום, אינסטגרם 30) — מחלקים לחלונות.
+async function daily(urlFor, metrics, windowDays, now, get) {
+  let lastErr;
+  for (const metric of metrics) {
+    const out = {};
+    try {
+      for (let end = now.getTime(); end > now.getTime() - HISTORY_DAYS * 864e5; end -= windowDays * 864e5) {
+        const until = Math.floor(end / 1000), since = until - windowDays * 86400;
+        const j = await get(urlFor(metric, since, until));
+        for (const v of j.data?.[0]?.values || []) if (typeof v.value === "number") out[dayOf(v.end_time)] = v.value;
+      }
+      if (Object.keys(out).length) return out;
+    } catch (e) {
+      if (tokenDead(e)) throw e;
+      lastErr = e;
+      // החלון הראשון עבד ורק ההיסטוריה העמוקה נחסמה — שומרים מה שיש
+      if (Object.keys(out).length) return out;
+    }
+  }
+  throw lastErr || new Error("no data");
+}
+
+export async function trends(page, now = new Date(), get = getJson, gaps = {}) {
+  const t = page.token;
+  const fbUrl = (m, s, u) => `${GRAPH}/${page.id}/insights?metric=${m}&period=day&since=${s}&until=${u}&access_token=${t}`;
+  const igUrl = (m, s, u) => `${GRAPH}/${page.ig}/insights?metric=${m}&period=day&since=${s}&until=${u}&access_token=${t}`;
+  const series = {};
+  const take = async (key, fn) => {
+    try { series[key] = await fn(); } catch (e) { if (tokenDead(e)) throw e; gaps[key] = gapReason(e); }
+  };
+  await take("fbReach", () => daily(fbUrl, ["page_total_media_view_unique", "page_impressions_unique"], 90, now, get));
+  await take("fbFollows", () => daily(fbUrl, ["page_daily_follows_unique", "page_fan_adds_unique"], 90, now, get));
+  if (page.ig) await take("igReach", () => daily(igUrl, ["reach"], 30, now, get));
+  return series;
+}
+
+// יומן עוקבים משלנו: צילום אחד ליום. ככה ההשוואה לשנה שעברה תעבוד גם אם Meta לא מחזירה היסטוריה.
+export function logFollowers(log = {}, followers = {}, now = new Date()) {
+  const next = { ...log };
+  if (followers.facebook != null || followers.instagram != null) next[ymd(now)] = { facebook: followers.facebook ?? null, instagram: followers.instagram ?? null };
+  const cutoff = ymd(now.getTime() - 800 * 864e5);
+  for (const d of Object.keys(next)) if (d < cutoff) delete next[d];
+  return next;
 }
 
 const engagement = (p) => p.likes + p.comments + p.shares + (p.saves || 0);
@@ -131,10 +243,13 @@ async function main() {
   const { clubPage } = await import("./lib/club.mjs");
   const page = clubPage(social);
   if (!page?.token) return console.log("insights: club page not connected");
-  let posts, acc;
+  let posts, acc, past, series;
+  const gaps = {};
   try {
-    posts = await collect(page);
+    posts = await collect(page, new Date(), getJson, gaps);
     acc = await account(page);
+    past = await history(page, new Date(), getJson, gaps);
+    series = await trends(page, new Date(), getJson, gaps);
   } catch (e) {
     if (!tokenDead(e)) throw e;
     // הטוקן מת (החלפת סיסמה / Meta ביטלה) — רק הבעלים יכול לחבר מחדש. אומרים לו מה לעשות, פעם אחת, וההתראה הכללית מדלגת
@@ -152,8 +267,10 @@ async function main() {
     return;
   }
   // reconnectToldAt: null — החיבור עובד, אז בפעם הבאה שיתנתק מזכירים מיד
-  await db.collection("agentReports").doc("insights").set({ updatedAt: new Date().toISOString(), posts, ...acc, reconnectToldAt: null });
-  console.log(`insights: ${posts.length} posts`);
+  const ref = db.collection("agentReports").doc("insights");
+  const followersLog = logFollowers((await ref.get()).data()?.followersLog, acc.followers);
+  await ref.set({ updatedAt: new Date().toISOString(), posts, ...acc, history: past, series, followersLog, gaps, reconnectToldAt: null });
+  console.log(`insights: ${posts.length} posts, ${past.length} in history, series ${Object.keys(series).join("+") || "none"}, gaps ${Object.keys(gaps).join("+") || "none"}`);
   await heartbeat(db, "insights");
 }
 

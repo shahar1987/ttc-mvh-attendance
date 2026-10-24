@@ -10,7 +10,8 @@ import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 import { clubPage } from "../../agents/lib/club.mjs";
 
 const GRAPH = "https://graph.facebook.com/v24.0";
-const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
+// read_insights + instagram_manage_insights = חשיפה לדשבורד; pages_read_user_content = לייקים ותגובות בפייסבוק
+const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,read_insights,instagram_basic,instagram_content_publish,instagram_manage_insights,business_management";
 export const metaLink = async (store, origin) => `${origin}/meta/start?k=${await issueKey(store, "meta")}`;
 export const metaPermanentLink = async (store, origin) => `${origin}/meta/permanent?k=${await issueKey(store, "metaperm")}`;
 const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?t=${await sign(env, `media:${id}`)}`;
@@ -80,7 +81,7 @@ const PERMANENT_FORM = `<h2>חיבור קבוע של שולה לפייסבוק �
 <li>לפתוח את <a href="https://business.facebook.com/settings/system-users" target="_blank">הגדרות העסק ← משתמשי מערכת</a> (במחשב או בטאבלט, במצב מחשב).</li>
 <li>להוסיף משתמש מערכת בשם "שולה" בתפקיד מנהל (אם כבר יש — לבחור בו).</li>
 <li><b>הקצאת נכסים</b>: הדף של המועדון (שליטה מלאה), חשבון האינסטגרם ttcmhr, והאפליקציה של שולה. <b>לא</b> את קפה קורטדו.</li>
-<li><b>יצירת טוקן</b> ← האפליקציה של שולה ← תוקף <b>Never</b> ← לסמן: pages_show_list, pages_read_engagement, pages_manage_posts, pages_read_user_content (אם מופיע), instagram_basic, instagram_content_publish, business_management.</li>
+<li><b>יצירת טוקן</b> ← האפליקציה של שולה ← תוקף <b>Never</b> ← לסמן: pages_show_list, pages_read_engagement, pages_manage_posts, pages_read_user_content, <b>read_insights</b>, instagram_basic, instagram_content_publish, <b>instagram_manage_insights</b>, business_management.</li>
 <li>להעתיק את הטוקן ולהדביק כאן:</li></ol>
 <form method="post"><input name="token" required dir="ltr" autocomplete="off" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"><button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`;
 const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });

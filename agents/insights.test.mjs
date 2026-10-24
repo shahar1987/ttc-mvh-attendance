@@ -95,3 +95,42 @@ test("account: followers + FB scheduled posts, read-only; a missing field is nul
   const dead = async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); };
   await assert.rejects(account({ id: "pg", token: "t" }, dead));
 });
+
+test("reach: new Meta metric first; missing permission is recorded as the reason", async () => {
+  const { gapReason } = await import("./insights.mjs");
+  const gaps = {};
+  const get = async (u) => {
+    if (u.includes("insights.metric")) throw Object.assign(new Error("(#10) requires read_insights"), { code: 10 });
+    if (u.includes("/pg/posts")) return { data: [{ id: "f1", created_time: "2026-10-08T14:00:00+0000" }] };
+    if (u.includes("/ig/media")) return { data: [{ id: "i1", timestamp: "2026-10-09T15:00:00+0000", like_count: 1 }] };
+    if (u.includes("/insights?metric=")) throw Object.assign(new Error("(#10) instagram_manage_insights"), { code: 10 });
+    throw new Error("unexpected " + u);
+  };
+  const urls = [];
+  await collect({ id: "pg", ig: "ig", token: "t" }, NOW, async (u) => (urls.push(u), get(u)), gaps);
+  assert.ok(urls[0].includes("post_total_media_view_unique"), "המדד החדש קודם");
+  assert.deepEqual(gaps, { fbReach: "permission", fbLikes: "permission", igReach: "permission" });
+  assert.equal(gapReason(Object.assign(new Error("(#100) invalid metric"), { code: 100 })), "metric");
+});
+
+test("history pages back a year+, trends split into windows, followers log keeps one snapshot a day", async () => {
+  const { history, trends, logFollowers } = await import("./insights.mjs");
+  const get = async (u) => {
+    if (u.includes("/pg/posts") && !u.includes("p2")) return { data: [{ created_time: "2026-10-01T10:00:00+0000", reactions: { summary: { total_count: 5 } }, comments: { summary: { total_count: 1 } } }], paging: { next: "https://x/pg/posts?p2" } };
+    if (u.includes("p2")) return { data: [{ created_time: "2025-10-05T10:00:00+0000", reactions: { summary: { total_count: 2 } }, comments: { summary: { total_count: 0 } }, shares: { count: 1 } }] };
+    if (u.includes("/ig/media")) return { data: [{ timestamp: "2026-10-02T10:00:00+0000", like_count: 7, comments_count: 1 }, { timestamp: "2024-01-01T00:00:00+0000", like_count: 99 }] };
+    if (u.includes("/pg/insights") && u.includes("page_total_media_view_unique")) return { data: [{ values: [{ value: 40, end_time: "2026-10-10T07:00:00+0000" }] }] };
+    if (u.includes("/pg/insights")) throw Object.assign(new Error("(#100) invalid metric"), { code: 100 });
+    if (u.includes("/ig/insights")) throw Object.assign(new Error("(#10) instagram_manage_insights"), { code: 10 });
+    throw new Error("unexpected " + u);
+  };
+  const gaps = {};
+  const h = await history({ id: "pg", ig: "ig", token: "t" }, NOW, get, gaps);
+  assert.deepEqual(h.map((x) => [x.p, x.e]), [["f", 3], ["f", 6], ["i", 8]], "פוסט מלפני 400 יום לא נכנס");
+  const s = await trends({ id: "pg", ig: "ig", token: "t" }, NOW, get, gaps);
+  assert.deepEqual(s.fbReach, { "2026-10-09": 40 });
+  assert.deepEqual(gaps, { fbFollows: "metric", igReach: "permission" });
+  const log = logFollowers({ "2023-01-01": { facebook: 1 } }, { facebook: 584, instagram: 93 }, NOW);
+  assert.deepEqual(log, { "2026-10-11": { facebook: 584, instagram: 93 } }, "צילום של היום, ישנים מ-800 יום נמחקים");
+  await assert.rejects(trends({ id: "pg", token: "t" }, NOW, async () => { throw Object.assign(new Error("Error validating access token"), { code: 190 }); }), /access token/);
+});

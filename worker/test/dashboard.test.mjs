@@ -1,12 +1,12 @@
 // דשבורד הפרסום: קישור חתום בלבד, טקסט של פוסט לא מוזרק ל-HTML, מספר לא ידוע הוא "לא זמין", ואזהרה כשהנתונים ישנים
 import assert from "node:assert/strict";
-import { dailyDashboard, dashboardHtml, dashboardRoute, dashboardUrl } from "../src/dashboard.js";
+import { change, compare, dailyDashboard, dashboardHtml, dashboardRoute, dashboardUrl, PERIODS } from "../src/dashboard.js";
 
 const NOW = new Date("2026-10-14T19:00:00Z");
 const insights = {
   updatedAt: "2026-10-14T05:16:00Z",
   followers: { facebook: 584, instagram: null },
-  scheduled: [{ at: "2026-10-15T09:00:00Z", text: "קבוצות הבוגרים" }, { at: "2026-10-01T09:00:00Z", text: "עבר" }],
+  scheduled: [{ at: "2026-10-15T09:00:00Z", text: "קבוצות הבוגרים" }, { at: "2026-10-01T09:00:00Z", text: "פוסט-ישן" }],
   posts: [
     { platform: "facebook", at: "2026-10-12T09:00:00Z", type: "photo", text: "<script>alert(1)</script>", reach: 1173 },
     { platform: "facebook", at: "2026-10-11T09:00:00Z", type: "video", text: "ריל", reach: null },
@@ -19,7 +19,7 @@ assert.match(html, /&lt;script&gt;/);
 assert.match(html, /החיבור למטא עובד/);
 assert.match(html, /לא זמין/, "עוקבי אינסטגרם לא ידועים");
 assert.match(html, /קבוצות הבוגרים/);
-assert.ok(!html.includes("עבר"), "פוסט מתוזמן שכבר עבר לא מוצג");
+assert.ok(!html.includes("פוסט-ישן"), "פוסט מתוזמן שכבר עבר לא מוצג");
 assert.match(html, /מחכה ל"כן" שלך/);
 assert.match(html, /1,173/);
 
@@ -45,4 +45,40 @@ assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(
 assert.match(sent[0], /https:\/\/w\/dashboard\?t=/);
 assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(t)), "dashboard: nothing new");
 assert.equal(sent.length, 1);
+
+// השוואות: שבוע מול שבוע, חודש מול חודש, ומול שנה שעברה. חסר = לא זמין, לא 0
+const days = (from, n, v) => Object.fromEntries(Array.from({ length: n }, (_, i) => [new Date(from - i * 864e5).toISOString().slice(0, 10), v]));
+const T = NOW.getTime();
+const rich = {
+  updatedAt: NOW.toISOString(),
+  history: [
+    { p: "f", at: "2026-10-13T09:00:00Z", e: null }, { p: "i", at: "2026-10-12T09:00:00Z", e: 30 }, { p: "i", at: "2026-10-10T09:00:00Z", e: 10 },
+    { p: "i", at: "2026-10-05T09:00:00Z", e: 10 },
+  ],
+  series: { fbReach: { ...days(T - 864e5, 7, 100), ...days(T - 8 * 864e5, 7, 50) } },
+  followersLog: { "2026-10-07": { facebook: 580, instagram: 90 }, "2026-10-13": { facebook: 584, instagram: 93 } },
+};
+const wk = compare(rich, PERIODS[0], NOW);
+const r = Object.fromEntries(wk.map((x) => [x.name, [x.now, x.before]]));
+assert.deepEqual(r["פוסטים שעלו"], [3, 1]);
+assert.deepEqual(r["חשיפה בפייסבוק"], [700, 350]);
+assert.deepEqual(r["חשיפה באינסטגרם"], [null, null], "אין סדרה — לא זמין");
+assert.deepEqual(r["לייקים ותגובות בפייסבוק"], [null, 0], "חסר לייק אחד — כל השבוע לא ידוע");
+assert.deepEqual(r["לייקים ותגובות באינסטגרם"], [40, 10]);
+assert.deepEqual(r["עוקבים חדשים באינסטגרם"], [3, null]);
+assert.deepEqual(r["מעורבות לפוסט באינסטגרם"], [20, 10]);
+assert.equal(compare(rich, PERIODS[2], NOW)[0].now, 4);
+assert.equal(compare(rich, PERIODS[2], NOW)[1].before, null, "לפני שנה בלי נתונים");
+assert.deepEqual(change(700, 350), { pct: 100, dir: "up" });
+assert.deepEqual(change(5, 10), { pct: -50, dir: "down" });
+assert.deepEqual(change(3, 0), { pct: null, dir: "up" });
+assert.equal(change(null, 3), null);
+assert.equal(compare({}, PERIODS[1], NOW)[0].now, null, "לפני האיסוף הראשון — לא זמין, לא 0");
+const page = dashboardHtml({ ...insights, ...rich, gaps: { fbReach: "permission", igReach: "permission", fbLikes: "permission" } }, null, NOW);
+assert.match(page, /השבוע מול שבוע שעבר/);
+assert.match(page, /▲ 100%/);
+assert.match(page, /read_insights/);
+assert.match(page, /instagram_manage_insights/);
+assert.match(page, /חיבור קבוע לפייסבוק/);
+assert.ok(!dashboardHtml(insights, null, NOW).includes("מה חסר ולמה"), "בלי חוסרים — בלי הקטע");
 console.log("dashboard ok");

@@ -49,6 +49,114 @@ function bars(rows, cls = "") {
     .join("");
 }
 
+// 📈 השוואות: אותו מדד בתקופה הנוכחית מול תקופה קודמת. null = לא ידוע (אין נתון או כיסוי חלקי) — אף פעם לא 0 מומצא.
+const DAY = 864e5;
+const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
+export const PERIODS = [
+  { key: "week", title: "השבוע מול שבוע שעבר", now: "7 ימים", before: "שבוע שעבר", len: 7, back: 7 },
+  { key: "month", title: "החודש מול חודש שעבר", now: "30 יום", before: "חודש שעבר", len: 30, back: 30 },
+  { key: "year", title: "החודש מול אותו חודש אשתקד", now: "30 יום", before: "לפני שנה", len: 30, back: 365 },
+];
+// סכום יומי בטווח; פחות מ-80% מהימים מכוסים = לא ידוע
+const sumDays = (series, from, to) => {
+  if (!series) return null;
+  let s = 0, n = 0, days = 0;
+  for (let t = from; t < to; t += DAY, days++) {
+    const v = series[ymd(t)];
+    if (typeof v === "number") (s += v), n++;
+  }
+  return n >= days * 0.8 ? s : null;
+};
+// עוקבים ביום מסוים לפי היומן שלנו (עד 3 ימים אחורה)
+const logAt = (log, t, net) => {
+  for (let i = 0; i < 4; i++) {
+    const v = log?.[ymd(t - i * DAY)]?.[net];
+    if (v != null) return v;
+  }
+  return null;
+};
+const growth = (log, from, to, net) => {
+  const a = logAt(log, from, net), b = logAt(log, to - DAY, net);
+  return a == null || b == null ? null : b - a;
+};
+
+export function compare(insights, period, now = new Date()) {
+  const end = now.getTime(), start = end - period.len * DAY;
+  const pEnd = end - period.back * DAY, pStart = pEnd - period.len * DAY;
+  const hist = insights.history;
+  const s = insights.series || {}, log = insights.followersLog;
+  const inRange = (from, to, p) => (hist || []).filter((x) => x.p === p && new Date(x.at) >= from && new Date(x.at) < to);
+  // ההיסטוריה מכסה 400 יום אחורה — טווח שמתחיל לפני האיסוף הראשון לא ידוע
+  const covered = (from) => hist && insights.updatedAt && from >= new Date(insights.updatedAt).getTime() - 400 * DAY;
+  const posts = (from, to) => (covered(from) ? inRange(from, to, "f").length + inRange(from, to, "i").length : null);
+  const eng = (from, to, p) => {
+    if (!covered(from)) return null;
+    const xs = inRange(from, to, p);
+    return xs.some((x) => x.e == null) ? null : xs.reduce((a, x) => a + x.e, 0);
+  };
+  const perPost = (from, to, p) => {
+    const e = eng(from, to, p), n = covered(from) ? inRange(from, to, p).length : null;
+    return e == null || !n ? null : Math.round(e / n);
+  };
+  const fbNew = (from, to) => sumDays(s.fbFollows, from, to) ?? growth(log, from, to, "facebook");
+  const row = (name, fn) => ({ name, now: fn(start, end), before: fn(pStart, pEnd) });
+  return [
+    row("פוסטים שעלו", posts),
+    row("חשיפה בפייסבוק", (a, b) => sumDays(s.fbReach, a, b)),
+    row("חשיפה באינסטגרם", (a, b) => sumDays(s.igReach, a, b)),
+    row("עוקבים חדשים בפייסבוק", fbNew),
+    row("עוקבים חדשים באינסטגרם", (a, b) => growth(log, a, b, "instagram")),
+    row("לייקים ותגובות בפייסבוק", (a, b) => eng(a, b, "f")),
+    row("לייקים ותגובות באינסטגרם", (a, b) => eng(a, b, "i")),
+    row("מעורבות לפוסט באינסטגרם", (a, b) => perPost(a, b, "i")),
+  ];
+}
+
+// שינוי באחוזים: null כשאין עם מה להשוות
+export const change = (now, before) => {
+  if (now == null || before == null) return null;
+  if (before === 0) return now === 0 ? { pct: 0, dir: "flat" } : { pct: null, dir: "up" };
+  const pct = Math.round(((now - before) / before) * 100);
+  return { pct, dir: pct > 0 ? "up" : pct < 0 ? "down" : "flat" };
+};
+
+// מה חסר ולמה — הרשאות שחסרות בטוקן של שולה, ואיזה מספרים הן פותחות
+const PERM = {
+  fbReach: ["read_insights", "חשיפה בפייסבוק"],
+  fbFollows: ["read_insights", "עוקבים חדשים בפייסבוק"],
+  igReach: ["instagram_manage_insights", "חשיפה באינסטגרם"],
+  fbLikes: ["pages_read_user_content", "לייקים ותגובות בפייסבוק"],
+};
+function gapsHtml(gaps = {}) {
+  const perms = {}, other = [];
+  for (const [k, why] of Object.entries(gaps)) {
+    if (PERM[k] && why === "permission") (perms[PERM[k][0]] ||= new Set()).add(PERM[k][1]);
+    else if (PERM[k]) other.push(PERM[k][1]);
+  }
+  const lines = Object.entries(perms).map(([p, what]) => `<li><b>${[...what].join(", ")}</b> — חסרה ההרשאה <code dir="ltr">${p}</code></li>`);
+  lines.push(...[...new Set(other)].map((w) => `<li><b>${w}</b> — Meta לא החזירה הלילה. נבדק שוב בריצה הבאה.</li>`));
+  if (!lines.length) return "";
+  const fix = Object.keys(perms).length ? `<p>לתיקון: לכתוב לשולה בוואטסאפ <b>"חיבור קבוע לפייסבוק"</b>, ולסמן ביצירת הטוקן את ההרשאות המודגשות בדף. המספרים יופיעו מהלילה שאחרי.</p>` : "";
+  return `<section><div class="sec-h"><h2>מה חסר ולמה</h2></div><div class="panel gaps"><ul>${lines.join("")}</ul>${fix}</div></section>`;
+}
+
+function compareHtml(insights, now) {
+  return PERIODS.map((p) => {
+    const rows = compare(insights, p, now);
+    const ch = rows.map((r) => change(r.now, r.before));
+    const up = ch.filter((c) => c?.dir === "up").length, down = ch.filter((c) => c?.dir === "down").length;
+    const body = rows
+      .map((r, i) => {
+        const c = ch[i];
+        const cell = !c ? `<span class="na">—</span>` : c.dir === "flat" ? `<span class="flat">0%</span>` : `<span class="${c.dir}">${c.dir === "up" ? "▲" : "▼"} ${c.pct == null ? "חדש" : Math.abs(c.pct) + "%"}</span>`;
+        return `<tr><th scope="row">${r.name}</th><td>${fmt(r.now)}</td><td>${fmt(r.before)}</td><td>${cell}</td></tr>`;
+      })
+      .join("");
+    return `<div class="panel cmp"><div class="cmp-h"><h3>${p.title}</h3>${up || down ? `<span class="verdict"><span class="up">▲ ${up}</span> <span class="down">▼ ${down}</span></span>` : ""}</div>
+<table><thead><tr><th></th><th>${p.now}</th><th>${p.before}</th><th>שינוי</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }).join("");
+}
+
 export function dashboardHtml(insights, pending, now = new Date()) {
   const posts = insights.posts || [];
   const updated = insights.updatedAt ? new Date(insights.updatedAt) : null;
@@ -75,6 +183,8 @@ export function dashboardHtml(insights, pending, now = new Date()) {
 
   const kpi = (lbl, v, note, cls = "") => `<div class="panel kpi${cls}"><span class="lbl">${lbl}</span><span class="val">${esc(v)}</span><span class="note">${note}</span></div>`;
   const f = insights.followers || {};
+  const g = insights.gaps || {};
+  const reachNote = (xs, gap) => (withReach(xs).length ? `לפוסט, ${withReach(xs).length} פוסטים ב-30 יום` : gap === "permission" ? "חסרה הרשאה — פירוט למטה" : "Meta לא החזירה חשיפה");
   return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>דשבורד פרסום</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;800;900&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
@@ -89,16 +199,18 @@ ${down ? `<div class="alert" role="alert"><div class="ico">!</div><div><h3>הח�
 ${kpi("עוקבים בפייסבוק", fmt(f.facebook), "מספר העוקבים בדף")}
 ${kpi("עוקבים באינסטגרם", fmt(f.instagram), "מספר העוקבים בחשבון")}
 ${kpi("פוסטים השבוע", week.length, `פייסבוק ${week.filter((p) => p.platform === "facebook").length}, אינסטגרם ${week.filter((p) => p.platform === "instagram").length}`)}
-${kpi("חשיפה ממוצעת בפייסבוק", fmt(avg(withReach(fb).map((p) => p.reach))), `לפוסט, ${withReach(fb).length} פוסטים ב-30 יום`)}
-${kpi("חשיפה ממוצעת באינסטגרם", fmt(avg(withReach(ig).map((p) => p.reach))), `לפוסט, ${withReach(ig).length} פוסטים ב-30 יום`)}
+${kpi("חשיפה ממוצעת בפייסבוק", fmt(avg(withReach(fb).map((p) => p.reach))), reachNote(fb, g.fbReach))}
+${kpi("חשיפה ממוצעת באינסטגרם", fmt(avg(withReach(ig).map((p) => p.reach))), reachNote(ig, g.igReach))}
 </div></section>
+<section><div class="sec-h"><h2>איך אנחנו לעומת קודם</h2></div><div class="cmps">${compareHtml(insights, now)}</div></section>
 <section><div class="sec-h"><h2>מה עולה ומתי</h2><span class="meta">שום דבר לא עולה בלי "כן" שלך</span></div><div class="panel items">${schedRows}</div></section>
 <section><div class="sec-h"><h2>הפוסטים החזקים</h2><span class="meta">חשיפה = כמה אנשים שונים ראו, 30 הימים האחרונים</span></div>
 <div class="two">${chart("פייסבוק", top(fb), "")}${chart("אינסטגרם", top(ig), " ig")}</div></section>
 <section><div class="sec-h"><h2>מה עובד: חשיפה ממוצעת לפי סוג</h2></div>
 <div class="two">${chart("פייסבוק", byType(fb), "")}${chart("אינסטגרם", byType(ig), " ig")}</div></section>
+${gapsHtml(g)}
 </div></main>
-<footer><div class="wrap">מקור: Meta (פייסבוק ואינסטגרם), דרך החיבור של שולה. מספר שמסומן "לא זמין" Meta לא החזירה. פוסטים שמתוזמנים ב-Metricool לא מופיעים כאן.</div></footer>
+<footer><div class="wrap">מקור: Meta (פייסבוק ואינסטגרם), דרך החיבור של שולה. "לא זמין" = Meta לא החזירה את המספר.</div></footer>
 </body></html>`;
 }
 
@@ -123,5 +235,9 @@ main .wrap{display:flex;flex-direction:column;gap:28px;padding-block:26px 30px}s
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.chart{padding:18px;display:flex;flex-direction:column;gap:12px}.chart h3{font-size:16px}
 .bars{display:flex;flex-direction:column;gap:10px}.brow{display:grid;grid-template-columns:minmax(120px,44%) 1fr;gap:12px;align-items:center;font-size:14px}.brow .name{color:var(--ink-2);line-height:1.25;min-width:0;overflow-wrap:anywhere}.brow small{display:block;color:var(--ink-3);font-size:12px}
 .track{position:relative;height:24px;background:var(--track);border-radius:4px}.bar{position:absolute;inset-inline-start:0;top:0;bottom:0;background:var(--bar);border-radius:4px;min-width:3px}.ig .bar{background:var(--bar-ig)}.bval{position:absolute;top:50%;transform:translateY(-50%);font:800 13px Heebo,sans-serif;font-variant-numeric:tabular-nums}.bval.in{color:var(--panel)}
+.cmps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.cmp{padding:16px;display:flex;flex-direction:column;gap:10px}.cmp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.cmp h3{font-size:16px}.verdict{font:800 13px Heebo,sans-serif;display:flex;gap:8px}
+.cmp table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.cmp th,.cmp td{padding:7px 4px;border-top:1px solid var(--line);text-align:start}.cmp thead th{border-top:0;font-size:12px;color:var(--ink-3);font-weight:600}.cmp tbody th{font-weight:600;color:var(--ink-2)}.cmp td{font-weight:700;white-space:nowrap}
+.up{color:var(--ok)}.down{color:var(--bad)}.flat,.na{color:var(--ink-3)}
+.gaps{padding:14px 18px}.gaps ul{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:6px}.gaps p{margin:10px 0 0;font-size:14px}.gaps code{font-size:13px;background:var(--panel-2);padding:1px 6px;border-radius:4px}
 footer{background:var(--olive);color:#E9ECD6;font-size:13px}footer .wrap{padding-block:14px}
 @media (max-width:720px){.two{grid-template-columns:minmax(0,1fr)}.item{grid-template-columns:1fr}.item .chip{justify-self:start}}`;
