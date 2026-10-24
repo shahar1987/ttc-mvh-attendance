@@ -82,3 +82,27 @@ assert.match(page, /instagram_manage_insights/);
 assert.match(page, /חיבור קבוע לפייסבוק/);
 assert.ok(!dashboardHtml(insights, null, NOW).includes("מה חסר ולמה"), "בלי חוסרים — בלי הקטע");
 console.log("dashboard ok");
+
+// 📥 feed מהמשימה הלילית: רק עם המפתח, רק מספרים, ומשלים את מה שחסר
+{
+  const { feedRoute, withFeed, cleanFeed } = await import("../src/dashboard.js");
+  const { sha256 } = await import("../src/inbox.js");
+  const fenv = { FEED_KEY_SHA256: await sha256("sekret") };
+  const saved = {};
+  const fstore = { merge: async (p, v) => (saved[p] = v) };
+  const body = { series: { igReach: { "2026-10-12": 115, "bad": 3, "2026-10-13": "x" } }, reach: { "i1": 1, "18076168262738598": 34 }, eng: { "129_152": { likes: 3, comments: 1 } }, fbHistory: [{ at: "2026-10-01T00:00:00Z", e: 4 }, { at: "nope", e: 1 }] };
+  assert.equal((await feedRoute(new Request("https://w/insights/feed?k=bad", { method: "POST", body: "{}" }), fenv, fstore)).status, 403);
+  assert.equal((await feedRoute(new Request("https://w/insights/feed?k=sekret", { method: "POST", body: JSON.stringify(body) }), fenv, fstore)).status, 200);
+  const f = saved["agentReports/insightsFeed"];
+  assert.deepEqual(f.series, { igReach: { "2026-10-12": 115 } }, "רק תאריכים ומספרים");
+  assert.deepEqual(f.reach, { "18076168262738598": 34 });
+  assert.equal(f.fbHistory.length, 1);
+  const merged = withFeed({ posts: [{ platform: "instagram", id: "18076168262738598", reach: null }, { platform: "facebook", id: "129_152", reach: null, likes: null }], gaps: { igReach: "permission", fbLikes: "permission", fbReach: "permission" } }, f);
+  assert.equal(merged.posts[0].reach, 34);
+  assert.equal(merged.posts[1].likes, 3);
+  assert.deepEqual(merged.gaps, { fbReach: "permission" }, "מה שהושלם יוצא מהרשימה");
+  assert.deepEqual(cleanFeed({}).series, {});
+  const noNA = dashboardHtml({ ...insights, followers: { facebook: 584, instagram: null } }, null, NOW);
+  assert.ok(!noNA.includes("לא זמין</span>"), "כרטיס בלי מספר לא מוצג");
+}
+console.log("feed ok");

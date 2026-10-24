@@ -2,6 +2,7 @@
 // מ-Meta הלילה: עוקבים, פוסטים מתוזמנים בפייסבוק, פוסט שמחכה ל"כן", חשיפה לכל פוסט וממוצע לפי סוג.
 // קריאה בלבד: לא נוגע ב-Meta ולא בשום מסמך. מספר שלא ידוע מוצג "לא זמין", אף פעם לא 0.
 import { sign } from "./google.js";
+import { sha256 } from "./inbox.js";
 
 const TZ = "Asia/Jerusalem";
 const STALE_MS = 36 * 3600 * 1000; // הסוכן רץ כל לילה; יותר מיום וחצי בלי עדכון = משהו נתקע
@@ -33,10 +34,46 @@ export async function dailyDashboard(env, store, origin, send) {
 export async function dashboardRoute(req, env, store) {
   const url = new URL(req.url);
   if (url.searchParams.get("t") !== (await sign(env, "dashboard"))) return new Response("forbidden", { status: 403 });
-  const [insights, bot] = await Promise.all([store.get("agentReports/insights"), store.get("agentReports/bot")]);
-  return new Response(dashboardHtml(insights || {}, bot?.pending?.post || null), {
+  const [insights, bot, feed] = await Promise.all([store.get("agentReports/insights"), store.get("agentReports/bot"), store.get("agentReports/insightsFeed")]);
+  return new Response(dashboardHtml(withFeed(insights || {}, feed), bot?.pending?.post || null), {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" },
   });
+}
+
+// 📥 /insights/feed — משימה לילית של קלוד שולפת מ-Meta דרך חיבורי Composio של הבעלים (שיש להם הרשאות החשיפה
+// שאין לטוקן של שולה) ושולחת לכאן. נשמר במסמך נפרד, כדי שהריצה הלילית של insights.mjs לא תדרוס אותו.
+// המפתח עצמו רק במשימה; כאן ובריפו רק ה-SHA-256. רק מספרים נשמרים — שום טקסט מבחוץ.
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const dayMap = (m) => Object.fromEntries(Object.entries(m && typeof m === "object" ? m : {}).filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && num(v) != null).slice(0, 1000));
+export function cleanFeed(body = {}) {
+  const ids = (m, f) => Object.fromEntries(Object.entries(m && typeof m === "object" ? m : {}).filter(([k]) => /^[\d_]{5,60}$/.test(k)).slice(0, 500).map(([k, v]) => [k, f(v)]));
+  return {
+    series: Object.fromEntries(["fbReach", "fbFollows", "igReach", "igFollows"].map((k) => [k, dayMap(body.series?.[k])]).filter(([, v]) => Object.keys(v).length)),
+    reach: ids(body.reach, num),
+    eng: ids(body.eng, (v) => ({ likes: num(v?.likes), comments: num(v?.comments), shares: num(v?.shares) })),
+    fbHistory: Array.isArray(body.fbHistory) ? body.fbHistory.slice(0, 2000).filter((x) => !isNaN(Date.parse(x?.at)) && num(x?.e) != null).map((x) => ({ p: "f", at: new Date(x.at).toISOString(), e: x.e })) : null,
+  };
+}
+export async function feedRoute(req, env, store) {
+  const k = new URL(req.url).searchParams.get("k") || "";
+  if (req.method !== "POST" || !env.FEED_KEY_SHA256 || (await sha256(k)) !== env.FEED_KEY_SHA256) return new Response("forbidden", { status: 403 });
+  const feed = cleanFeed(await req.json().catch(() => ({})));
+  await store.merge("agentReports/insightsFeed", { ...feed, at: new Date().toISOString() });
+  return Response.json({ ok: true, series: Object.keys(feed.series), reach: Object.keys(feed.reach).length });
+}
+// משלים מה-feed את מה שהטוקן של שולה לא קיבל (חשיפה, לייקים בפייסבוק, סדרות יומיות)
+export function withFeed(insights, feed) {
+  if (!feed?.at) return insights;
+  const series = { ...(insights.series || {}), ...(feed.series || {}) };
+  const posts = (insights.posts || []).map((p) => {
+    const e = feed.eng?.[p.id];
+    return { ...p, reach: p.reach ?? feed.reach?.[p.id] ?? null, likes: p.likes ?? e?.likes ?? null, comments: p.comments ?? e?.comments ?? null };
+  });
+  const history = feed.fbHistory?.length ? [...(insights.history || []).filter((x) => x.p !== "f"), ...feed.fbHistory] : insights.history;
+  const gaps = { ...(insights.gaps || {}) };
+  const covered = { fbReach: posts.some((p) => p.platform === "facebook" && p.reach != null), igReach: posts.some((p) => p.platform === "instagram" && p.reach != null), fbLikes: posts.every((p) => p.platform !== "facebook" || p.likes != null), fbFollows: !!series.fbFollows };
+  for (const [k, ok] of Object.entries(covered)) if (ok) delete gaps[k];
+  return { ...insights, series, posts, history, gaps };
 }
 
 function bars(rows, cls = "") {
@@ -105,7 +142,7 @@ export function compare(insights, period, now = new Date()) {
     row("חשיפה בפייסבוק", (a, b) => sumDays(s.fbReach, a, b)),
     row("חשיפה באינסטגרם", (a, b) => sumDays(s.igReach, a, b)),
     row("עוקבים חדשים בפייסבוק", fbNew),
-    row("עוקבים חדשים באינסטגרם", (a, b) => growth(log, a, b, "instagram")),
+    row("עוקבים חדשים באינסטגרם", (a, b) => sumDays(s.igFollows, a, b) ?? growth(log, a, b, "instagram")),
     row("לייקים ותגובות בפייסבוק", (a, b) => eng(a, b, "f")),
     row("לייקים ותגובות באינסטגרם", (a, b) => eng(a, b, "i")),
     row("מעורבות לפוסט באינסטגרם", (a, b) => perPost(a, b, "i")),
@@ -142,7 +179,8 @@ function gapsHtml(gaps = {}) {
 
 function compareHtml(insights, now) {
   return PERIODS.map((p) => {
-    const rows = compare(insights, p, now);
+    const rows = compare(insights, p, now).filter((r) => r.now != null && r.before != null);
+    if (!rows.length) return "";
     const ch = rows.map((r) => change(r.now, r.before));
     const up = ch.filter((c) => c?.dir === "up").length, down = ch.filter((c) => c?.dir === "down").length;
     const body = rows
@@ -181,7 +219,7 @@ export function dashboardHtml(insights, pending, now = new Date()) {
   };
   const chart = (head, rows, cls) => `<div class="panel chart${cls}"><h3>${head}</h3>${rows.length ? `<div class="bars">${bars(rows)}</div>` : `<p class="empty">אין עדיין נתוני חשיפה. הם יופיעו אחרי הריצה הלילית הבאה.</p>`}</div>`;
 
-  const kpi = (lbl, v, note, cls = "") => `<div class="panel kpi${cls}"><span class="lbl">${lbl}</span><span class="val">${esc(v)}</span><span class="note">${note}</span></div>`;
+  const kpi = (lbl, v, note, cls = "") => v === "לא זמין" ? "" : `<div class="panel kpi${cls}"><span class="lbl">${lbl}</span><span class="val">${esc(v)}</span><span class="note">${note}</span></div>`;
   const f = insights.followers || {};
   const g = insights.gaps || {};
   const reachNote = (xs, gap) => (withReach(xs).length ? `לפוסט, ${withReach(xs).length} פוסטים ב-30 יום` : gap === "permission" ? "חסרה הרשאה — פירוט למטה" : "Meta לא החזירה חשיפה");
