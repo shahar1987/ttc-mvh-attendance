@@ -18,7 +18,17 @@ if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
   await reportMissingKey(db, "ideas", "GEMINI_API_KEY|ANTHROPIC_API_KEY").catch((e) => console.error(e.message));
   process.exit(1);
 }
-const ask = process.env.GEMINI_API_KEY ? gemini : (await import("./lib/claude.mjs")).ask;
+// Gemini קודם; אם נחסם (403 תקרת הוצאה, 429) ויש ANTHROPIC_API_KEY — Claude, במקום ריצה אדומה כל ראשון
+const ask = async (system, user) => {
+  if (!process.env.GEMINI_API_KEY) return (await import("./lib/claude.mjs")).ask(system, user);
+  try {
+    return await gemini(system, user);
+  } catch (e) {
+    if (!process.env.ANTHROPIC_API_KEY) throw e;
+    console.error(`gemini failed (${e.message}), falling back to Claude`);
+    return (await import("./lib/claude.mjs")).ask(system, user);
+  }
+};
 const today = israelToday();
 const [players, groups, attendance] = await Promise.all([
   loadAll(db, "players"),

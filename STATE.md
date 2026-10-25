@@ -5,12 +5,25 @@
 תבנית:
 
 ```
+## [פתוח] 2026-10-25 — סוכן הרעיונות נכשל (ריצה 40185662644)
+סוג: 🐞 באג
+מסלול: חוקר ← בונה ← בודק ← אישור שלום ← שחרור
+- חוקר: הצעד "💡 Weekly ideas" נפל אחרי 11 שניות; הלוג חסום מהסנדבוקס. ideas.mjs בוחר Gemini כשיש GEMINI_API_KEY ואין לו נפילה ל-Claude — ואתמול Gemini החזיר 403 (תקרת הוצאה). content.mjs עם אותו פער.
+- בונה: ideas.mjs ו-content.mjs — Gemini קודם, ואם נכשל ויש ANTHROPIC_API_KEY (נוסף היום) — Claude.
+- בודק: npm test 86/86. מחכה ל"כן".
+
 ## [פתוח] 2026-10-02 — שולה עוברת לבוט הזה: גישה לנוכחות + טיוטות פרסום
 סוג: פיצ'ר + 🔒 נגיעה בנתונים (mark_attendance כותב ל-attendance באותו חוזה של האפליקציה)
 מסלול: ענף shula-gemini ← PR ← אישור שלום ← Secrets ← שחרור
 - בונה: worker עובר מ-Claude ל-Gemini (חינמי) ונקרא shula-whatsapp (מחליף את ה-worker הידני באותה כתובת). כלים חדשים: list_groups, get_attendance, mark_attendance. ידע על המועדון לניסוח טיוטות פוסטים (ניסוח בלבד, בלי תזמון).
 - בודק: worker/test/bot.test.mjs — מקצה לקצה עם Firestore/Gemini/WhatsApp מדומים.
 - שלום: לאשר PR; להוסיף Secrets (FIREBASE_SERVICE_ACCOUNT חדש, GEMINI_API_KEY במקום ANTHROPIC_API_KEY, ושאר ה-WhatsApp/Meta/Cloudflare).
+
+## [פתוח] 2026-10-25 — שולה נופלת על Gemini 403 למרות הגיבוי ל-Claude
+סוג: באג
+- חוקר: תקרת ההוצאה של Gemini נגמרה שוב (403). הגיבוי (#119) לא נכנס כי ל-worker אין ANTHROPIC_API_KEY — ההודעה מכילה רק את שגיאת גוגל, והקוד זורק אותה רק כשאין מפתח. secret bulk מדלג על ערך ריק, כלומר הסוד חסר/ריק ב-GitHub.
+- בונה: המפקח מתריע כש-/health מחזיר claudeFallback:false; הפריסה מסמנת אזהרה באותו מקרה.
+- שלום: להוסיף ANTHROPIC_API_KEY ב-Settings ← Secrets and variables ← Actions, ואז להריץ Agents setup.
 
 ## [פתוח] <תאריך> — <הבקשה במשפט>
 סוג: באג / פיצ'ר / שינוי קטן / נתונים

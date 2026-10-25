@@ -34,6 +34,7 @@ jobs:
       META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
       OWNER_PHONE: ${{ secrets.OWNER_PHONE }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # רשות — גיבוי כשגוגל חוסם את Gemini
       # רשות — חיבור שולה למייל וליומן (ראו מדריך הסודות)
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -129,8 +130,8 @@ jobs:
           jq -n \
             --arg a "$WHATSAPP_TOKEN" --arg b "$WHATSAPP_PHONE_ID" --arg c "$OWNER_PHONE" \
             --arg d "$META_APP_SECRET" --arg e "$VERIFY" --arg f "$GEMINI_API_KEY" --arg g "$FIREBASE_SERVICE_ACCOUNT" \
-            --arg h "$GOOGLE_CLIENT_ID" --arg i "$GOOGLE_CLIENT_SECRET" \
-            '{WHATSAPP_TOKEN:$a, WHATSAPP_PHONE_ID:$b, OWNER_PHONE:$c, META_APP_SECRET:$d, WEBHOOK_VERIFY_TOKEN:$e, GEMINI_API_KEY:$f, FIREBASE_SERVICE_ACCOUNT:$g, GOOGLE_CLIENT_ID:$h, GOOGLE_CLIENT_SECRET:$i} | with_entries(select(.value != ""))' \
+            --arg h "$GOOGLE_CLIENT_ID" --arg i "$GOOGLE_CLIENT_SECRET" --arg j "$ANTHROPIC_API_KEY" \
+            '{WHATSAPP_TOKEN:$a, WHATSAPP_PHONE_ID:$b, OWNER_PHONE:$c, META_APP_SECRET:$d, WEBHOOK_VERIFY_TOKEN:$e, GEMINI_API_KEY:$f, FIREBASE_SERVICE_ACCOUNT:$g, GOOGLE_CLIENT_ID:$h, GOOGLE_CLIENT_SECRET:$i, ANTHROPIC_API_KEY:$j} | with_entries(select(.value != ""))' \
             > /tmp/secrets.json
           npx wrangler secret bulk /tmp/secrets.json
           rm /tmp/secrets.json
@@ -141,7 +142,15 @@ jobs:
         run: |
           URL="${{ steps.sub.outputs.url }}"
           sleep 5
-          curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"
+          H=$(curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"); echo "$H"
+          echo "$H" | grep -q '"claudeFallback":true' || echo "::warning::הגיבוי ל-Claude כבוי: אין ANTHROPIC_API_KEY בסודות של GitHub"
+          # בדיקה חיה של הגיבוי: קריאה קטנה ל-Claude עם המפתח האמיתי ובאותם פרמטרים כמו הבוט (מפתח, קרדיט, מודל)
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            MODEL=$(sed -n 's/.*CLAUDE_MODEL = "\(.*\)".*/\1/p' worker/src/claude.js)
+            R=$(curl -s -w '\n%{http_code}' https://api.anthropic.com/v1/messages -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d "{\"model\":\"$MODEL\",\"max_tokens\":5,\"system\":\"ok\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"tools\":[{\"name\":\"t\",\"description\":\"t\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}}]}")
+            [ "$(echo "$R" | tail -1)" = "200" ] && echo "גיבוי Claude ($MODEL) עונה" || echo "::warning::הגיבוי ל-Claude לא עובד: $(echo "$R" | head -1 | jq -r '.error.message // .' 2>/dev/null | head -c 200)"
+          fi
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "$URL/webhook")
           [ "$CODE" = "401" ] || { echo "webhook בלי חתימה החזיר $CODE במקום 401"; exit 1; }
           if [ -n "$META_APP_SECRET" ]; then

@@ -5,6 +5,7 @@
 //   2. עונה למספר של הבעלים (OWNER_PHONE), ולמדריכים שהבעלים הפעיל (coaches.js) — רק על הקבוצות שלהם. כל מספר אחר — מתעלם.
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
+import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
@@ -135,7 +136,7 @@ export default {
           firestore = true;
         } catch {}
       const ok = missing.length === 0 && firestore;
-      return Response.json({ ok, missing, firestore }, { status: ok ? 200 : 503 });
+      return Response.json({ ok, missing, firestore, claudeFallback: !!env.ANTHROPIC_API_KEY }, { status: ok ? 200 : 503 });
     }
     if (url.pathname !== "/webhook") return new Response("not found", { status: 404 });
 
@@ -239,7 +240,8 @@ async function handle(m, env) {
       at("הורדת ההקלטה");
       const audio = await downloadMedia(wa, m.audio.id);
       at("תמלול ההקלטה");
-      text = await transcribe(env, audio);
+      text = await transcribe(env, audio).catch(() => null);
+      if (text === null) return void (await reply("לא הצלחתי לשמוע את ההקלטה כרגע. אפשר לכתוב לי בטקסט?"));
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
@@ -285,7 +287,8 @@ async function handle(m, env) {
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
       history: [...(cur.history || []), { role: "user", text: userTurn, owner: text, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
-      log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
+      // פירוט זמנים (ms/gem) רק בהודעה האחרונה — במסמך החם הזה הם ניפחו כל כתיבה עד שגוגל החזיר 429 (2026-10-25)
+      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {
@@ -319,7 +322,17 @@ export function unanswered(bot, now = Date.now()) {
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
-async function gemini(env, body, trace = [], first = env.GEMINI_MODEL) {
+// גוגל חוסם (2026-10-24: 403 אחרי תקרת ההוצאה החודשית) — אם יש ANTHROPIC_API_KEY, אותה בקשה עוברת ל-Claude Haiku
+async function gemini(env, body, trace = [], first) {
+  try {
+    return await geminiOnly(env, body, trace, first);
+  } catch (e) {
+    if (!env.ANTHROPIC_API_KEY) throw e;
+    return claude(env, body, trace).catch((e2) => { throw new Error(`${e.message}; ${e2.message}`); });
+  }
+}
+
+async function geminiOnly(env, body, trace = [], first = env.GEMINI_MODEL) {
   let lastErr;
   let models = [...new Set([first, ...MODELS].filter(Boolean))];
   // 503/500 = עומס רגעי אצל גוגל (2026-10-12 08:30: שני המודלים הראשונים 429 מכסה, והשלישי 503 — הבעלים קיבל "503, נסה שוב").
@@ -344,7 +357,8 @@ async function gemini(env, body, trace = [], first = env.GEMINI_MODEL) {
         parts.finishReason = c?.finishReason || "";
         return parts;
       }
-      lastErr = new Error(`Gemini של גוגל לא זמין כרגע (${model}: ${r.status})`);
+      const why = r.json ? (await r.json().catch(() => null))?.error?.message : ""; // 403 בלי סיבה לא אומר אם זו תקרת הוצאה או מפתח חסום
+      lastErr = new Error(`Gemini של גוגל לא זמין כרגע (${model}: ${r.status}${why ? `: ${String(why).slice(0, 120)}` : ""})`);
       if (r.status === 401 || r.status === 403) throw lastErr; // מפתח לא תקין — אין טעם לנסות מודל אחר
       if (r.status >= 500) busy.push(model);
     }
@@ -469,12 +483,20 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
 }
 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
+// geminiOnly ולא gemini: Claude לא שומע אודיו, והתשובה שלו הייתה נרשמת כ"תמלול" (2026-10-25)
+// כשגוגל חוסם — Whisper של Cloudflare Workers AI (מכסה יומית חינמית, בלי כרטיס אשראי) (2026-10-25)
 async function transcribe(env, audio) {
-  const parts = await gemini(env, {
-    contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
-    generationConfig: { maxOutputTokens: 1500, temperature: 0 },
-  });
-  return parts.map((p) => p.text || "").join("").trim();
+  try {
+    const parts = await geminiOnly(env, {
+      contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
+      generationConfig: { maxOutputTokens: 1500, temperature: 0 },
+    });
+    return parts.map((p) => p.text || "").join("").trim();
+  } catch (e) {
+    if (!env.AI) throw e;
+    const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: audio.data, language: "he" });
+    return String(r?.text || "").trim();
+  }
 }
 
 // 🕵️ מפקח השיחות: עובר על השיחות של היממה האחרונה ובודק ששולה סגרה כל בקשה עד הסוף ובדיוק כמו שביקשו.

@@ -22,6 +22,10 @@ PARENT_MSG_NAG = "on" # 📨 תזכורת בוקר למאמנים על הודע�
 FEED_KEY_SHA256 = "94fee1ce1a3289cb5bbb4f5d7bb696351b8e4e6ff873098ee9d5f994687c1065" # 📥 /insights/feed — רק ה-hash; המפתח במשימה הלילית של קלוד
 INBOX_KEY_SHA256 = "f570a9f435394e4c6d1beaf5f2febf72f2cc78bae83adedb14bc60e6e6759771" # רק ה-hash; המפתח עצמו שמור ברוטינה של קלוד
 
+# 🎤 Whisper לתמלול הקלטות כשגוגל חוסם — Workers AI, מכסה יומית חינמית
+[ai]
+binding = "AI"
+
 # לוגים של ה-worker בדשבורד של Cloudflare (שגיאות cron ו-webhook) — חינמי
 [observability]
 enabled = true

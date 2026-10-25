@@ -25,11 +25,13 @@ export async function loadAll(db, name, query) {
 }
 
 // סימן חיים לכל סוכן — המפקח בודק אותם כל שעה
+// ריצה מוצלחת מוחקת את דגל "מפתח חסר": בלי זה שולה והמפקח ממשיכים לדווח על מפתח שכבר נוסף (2026-10-25: ANTHROPIC מ-11.10, META_TOKEN מ-10.10)
 export async function heartbeat(db, agent, extra = {}) {
+  const gone = admin.firestore.FieldValue.delete();
   await db
     .collection("agentReports")
     .doc("health")
-    .set({ [agent]: { at: new Date().toISOString(), ...extra } }, { merge: true });
+    .set({ [agent]: { at: new Date().toISOString(), missingKey: gone, missingKeyAt: gone, ...extra } }, { merge: true });
 }
 
 // סוכן שלא רץ כי חסר לו מפתח: נרשם בנפרד מ-at (שנשאר זמן הריצה המוצלחת האחרונה), כדי שהמפקח

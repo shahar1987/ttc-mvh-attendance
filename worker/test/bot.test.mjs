@@ -71,7 +71,7 @@ globalThis.fetch = async (url, init = {}) => {
     geminiCalls.push(JSON.parse(init.body));
     geminiUrls.push(url);
     const next = geminiQueue.shift();
-    if (next?.status) return json({ error: { code: next.status } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
+    if (next?.status) return json({ error: { code: next.status, ...(next.message && { message: next.message }) } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
     if (next === "hang") return new Promise((_, no) => init.signal?.addEventListener("abort", () => no(init.signal.reason))); // Gemini שלא עונה לעולם (עד שמבטלים)
     return json({ candidates: [next?.finishReason ? { content: { parts: next.parts }, finishReason: next.finishReason } : { content: { parts: next } }] });
   }
@@ -205,6 +205,37 @@ assert.deepEqual(tr, { mimeType: "audio/ogg", data: "AQID" });
 assert.equal(geminiCalls.at(-1).contents.at(-1).parts[0].text, "🎤 מי הגיע היום?");
 assert.equal(texts().at(-1), "תשובה לקול");
 
+// 5ב. גוגל חוסם (403) ויש גיבוי Claude: הקלטה לא עוברת ל-Claude (הוא לא שומע אודיו) — הבעלים מקבל הסבר
+{
+  const real = globalThis.fetch, toClaude = [];
+  globalThis.fetch = (url, init) => String(url).includes("api.anthropic.com/v1/messages") ? (toClaude.push(url), Promise.resolve(new Response("{}"))) : real(url, init);
+  env.ANTHROPIC_API_KEY = "k";
+  geminiQueue.push({ status: 403 });
+  await webhook("", env.OWNER_PHONE, "a2", { type: "audio", audio: { id: "media/aud" } });
+  delete env.ANTHROPIC_API_KEY;
+  globalThis.fetch = real;
+  assert.equal(toClaude.length, 0, "תמלול לא נשלח ל-Claude");
+  assert.match(texts().at(-1), /לא הצלחתי לשמוע את ההקלטה/);
+}
+
+// 5ב2. גוגל חוסם: הסיבה של גוגל מגיעה לבעלים (תקרת הוצאה ≠ מפתח חסום)
+geminiQueue.push({ status: 403, message: "spend cap exceeded" });
+await webhook("שלום", env.OWNER_PHONE, "g403");
+assert.match(texts().at(-1), /403: spend cap exceeded/);
+
+// 5ג. גוגל חוסם ויש Workers AI: התמלול עובר ל-Whisper, והשיחה ממשיכה כרגיל
+{
+  const ai = [];
+  env.AI = { run: async (model, input) => (ai.push([model, input]), { text: "מי הגיע היום?" }) };
+  geminiQueue.push({ status: 403 }, [{ text: "תשובה לקול" }]);
+  await webhook("", env.OWNER_PHONE, "a3", { type: "audio", audio: { id: "media/aud" } });
+  delete env.AI;
+  assert.equal(ai[0][0], "@cf/openai/whisper-large-v3-turbo");
+  assert.equal(ai[0][1].audio, "AQID");
+  assert.equal(geminiCalls.at(-1).contents.at(-1).parts[0].text, "🎤 מי הגיע היום?");
+  assert.equal(texts().at(-1), "תשובה לקול");
+}
+
 // 6. תמונה עם כיתוב — Gemini מקבל את התמונה עצמה
 geminiQueue.push([{ text: "הלוגו קטן מדי" }]);
 await webhook("", env.OWNER_PHONE, "i1", { type: "image", image: { id: "media/img", caption: "מה דעתך על הפלאייר?" } });
@@ -238,7 +269,7 @@ assert.match(await callTool("מזג אוויר?", { name: "get_weather", args: {
 const oldEnv = { ...env, WA_TOKEN: env.WHATSAPP_TOKEN, WA_PHONE_ID: "999", ALLOWED_FROM: env.OWNER_PHONE, VERIFY_TOKEN: "old" };
 for (const k of ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "WEBHOOK_VERIFY_TOKEN"]) delete oldEnv[k];
 const health = await (await worker.fetch(new Request("https://x/health"), oldEnv, {})).json();
-assert.deepEqual(health, { ok: true, missing: [], firestore: true });
+assert.deepEqual(health, { ok: true, missing: [], firestore: true, claudeFallback: false });
 assert.equal(await (await worker.fetch(new Request("https://x/webhook?hub.mode=subscribe&hub.verify_token=old&hub.challenge=42"), oldEnv, {})).text(), "42");
 geminiQueue.push([{ text: "שלום מהשמות הישנים" }]);
 const rawOld = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "old1", from: env.OWNER_PHONE, type: "text", text: { body: "היי" } }] } }] }] });
@@ -976,7 +1007,7 @@ await webhook("היי", env.OWNER_PHONE, "fs1");
 assert.match(texts().at(-1), /משהו השתבש אצלי/);
 const h7 = await worker.fetch(new Request("https://x/health"), env, {});
 assert.equal(h7.status, 503);
-assert.deepEqual(await h7.json(), { ok: false, missing: [], firestore: false });
+assert.deepEqual(await h7.json(), { ok: false, missing: [], firestore: false, claudeFallback: false });
 globalThis.firestoreDown = false;
 const h7b = await worker.fetch(new Request("https://x/health"), { ...env, GEMINI_API_KEY: "" }, {});
 assert.equal(h7b.status, 503, "סוד חסר → 503");
