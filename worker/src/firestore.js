@@ -67,12 +67,23 @@ const maskOf = (data) => Object.keys(data).map((k) => `updateMask.fieldPaths=${e
 const fieldsOf = (data) => Object.fromEntries(Object.entries(data).filter(([, v]) => v !== DELETE).map(([k, v]) => [k, toValue(v)]));
 const bodyOf = (data) => JSON.stringify({ fields: fieldsOf(data) });
 
+// 429/503 מגוגל = עומס רגעי ("exceeded their maximum bandwidth for writes", 2026-10-25) — מחכים ומנסים שוב, כמו שגוגל מבקשים.
+// סה"כ עד ~4.5 שניות, מתחת למגבלת ה-22 שניות של handle.
+export const BACKOFF_MS = [500, 1500, 2500];
+export async function fetchRetry(url, init, waits = BACKOFF_MS) {
+  for (let i = 0; ; i++) {
+    const res = await fetch(url, init);
+    if (![429, 503].includes(res.status) || i >= waits.length) return res;
+    await new Promise((r) => setTimeout(r, waits[i] * (0.75 + Math.random() / 2)));
+  }
+}
+
 export function db(env) {
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const root = `projects/${sa.project_id}/databases/(default)/documents`;
   const base = `https://firestore.googleapis.com/v1/${root}`;
   const call = async (url, init = {}) => {
-    const res = await fetch(url, {
+    const res = await fetchRetry(url, {
       ...init,
       headers: { Authorization: `Bearer ${await accessToken(sa)}`, "Content-Type": "application/json" },
     });
@@ -99,7 +110,7 @@ export function db(env) {
     // מחזיר false כשמישהו אחר כתב בינתיים — ואז קוראים מחדש ומנסים שוב (ראו update).
     async mergeIf(path, data, updateTime) {
       // דרך documents:commit — התנאי (currentDocument) עובר בגוף ה-JSON, בפורמט שגם הענן וגם האמולטור מקבלים
-      const res = await fetch(`${base}:commit`, {
+      const res = await fetchRetry(`${base}:commit`, {
         method: "POST",
         headers: { Authorization: `Bearer ${await accessToken(sa)}`, "Content-Type": "application/json" },
         body: JSON.stringify({

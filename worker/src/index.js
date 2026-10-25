@@ -286,7 +286,8 @@ async function handle(m, env) {
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
       history: [...(cur.history || []), { role: "user", text: userTurn, owner: text, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
-      log: [...(cur.log || []), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
+      // פירוט זמנים (ms/gem) רק בהודעה האחרונה — במסמך החם הזה הם ניפחו כל כתיבה עד שגוגל החזיר 429 (2026-10-25)
+      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {
