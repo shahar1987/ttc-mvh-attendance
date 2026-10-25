@@ -357,7 +357,8 @@ async function geminiOnly(env, body, trace = [], first = env.GEMINI_MODEL) {
         parts.finishReason = c?.finishReason || "";
         return parts;
       }
-      lastErr = new Error(`Gemini של גוגל לא זמין כרגע (${model}: ${r.status})`);
+      const why = r.json ? (await r.json().catch(() => null))?.error?.message : ""; // 403 בלי סיבה לא אומר אם זו תקרת הוצאה או מפתח חסום
+      lastErr = new Error(`Gemini של גוגל לא זמין כרגע (${model}: ${r.status}${why ? `: ${String(why).slice(0, 120)}` : ""})`);
       if (r.status === 401 || r.status === 403) throw lastErr; // מפתח לא תקין — אין טעם לנסות מודל אחר
       if (r.status >= 500) busy.push(model);
     }

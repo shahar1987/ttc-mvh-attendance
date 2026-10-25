@@ -71,7 +71,7 @@ globalThis.fetch = async (url, init = {}) => {
     geminiCalls.push(JSON.parse(init.body));
     geminiUrls.push(url);
     const next = geminiQueue.shift();
-    if (next?.status) return json({ error: { code: next.status } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
+    if (next?.status) return json({ error: { code: next.status, ...(next.message && { message: next.message }) } }, next.status); // שגיאה מגוגל (429 מכסה, 503 עומס)
     if (next === "hang") return new Promise((_, no) => init.signal?.addEventListener("abort", () => no(init.signal.reason))); // Gemini שלא עונה לעולם (עד שמבטלים)
     return json({ candidates: [next?.finishReason ? { content: { parts: next.parts }, finishReason: next.finishReason } : { content: { parts: next } }] });
   }
@@ -217,6 +217,11 @@ assert.equal(texts().at(-1), "תשובה לקול");
   assert.equal(toClaude.length, 0, "תמלול לא נשלח ל-Claude");
   assert.match(texts().at(-1), /לא הצלחתי לשמוע את ההקלטה/);
 }
+
+// 5ב2. גוגל חוסם: הסיבה של גוגל מגיעה לבעלים (תקרת הוצאה ≠ מפתח חסום)
+geminiQueue.push({ status: 403, message: "spend cap exceeded" });
+await webhook("שלום", env.OWNER_PHONE, "g403");
+assert.match(texts().at(-1), /403: spend cap exceeded/);
 
 // 5ג. גוגל חוסם ויש Workers AI: התמלול עובר ל-Whisper, והשיחה ממשיכה כרגיל
 {
