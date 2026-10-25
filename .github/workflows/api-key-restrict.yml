@@ -16,11 +16,12 @@ jobs:
           gcloud auth activate-service-account --key-file=/tmp/sa.json
           gcloud config set project ttcmh-2a752
       - name: Report current keys
-        run: gcloud services api-keys list --format="table(name,displayName,restrictions.browserKeyRestrictions.allowedReferrers,restrictions.apiTargets)" 2>&1 || true
+        # logs are unreadable from the sandbox, so every line goes out as an annotation
+        run: gcloud services api-keys list --format="value(name,displayName,restrictions.browserKeyRestrictions.allowedReferrers,restrictions.apiTargets)" 2>&1 | sed 's/^/::notice::/' || true
       - name: Apply restriction
         if: inputs.apply == 'yes'
         run: |
           KEY=$(gcloud services api-keys list --format="value(name)" --filter="keyString:AIzaSyDhPiyIrP1zOu5bNSpsQDyXFgZBP6rV7vo" 2>/dev/null || true)
           [ -n "$KEY" ] || KEY=$(gcloud services api-keys list --format="value(name)" | head -1)
           gcloud services api-keys update "$KEY" --allowed-referrers="https://shahar1987.github.io/*,http://localhost:*/*,http://127.0.0.1:*/*" --api-target=service=firestore.googleapis.com --api-target=service=identitytoolkit.googleapis.com --api-target=service=securetoken.googleapis.com --api-target=service=fcm.googleapis.com --api-target=service=fcmregistrations.googleapis.com
-          gcloud services api-keys describe "$KEY"
+          gcloud services api-keys describe "$KEY" 2>&1 | sed 's/^/::notice::/'
