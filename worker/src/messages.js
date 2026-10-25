@@ -15,7 +15,11 @@ import { watchReads } from "./reminders.js";
 // ושולחת לו (send_message) רק אחרי "כן" של הבעלים. מי שכבר מזכיר את דניאל (למשל "נשלח לדניאל ✓") לא נשאל שוב.
 export const KORAZIM_ASK = "↪️ זה קשור לרמת כורזים. להעביר לדניאל?\n1. כן\n2. לא";
 // הודעות היעדרות וקישורי wa.me הולכים להורים דרך הבעלים — שם הקבוצה "רמת כורזים" ברשימה הוא לא משימה לדניאל
-export const offerKorazim = (text) => (/כורזים/.test(text) && !/דניאל|היעדרות|wa\.me/.test(text) ? `${text}\n\n${KORAZIM_ASK}` : text);
+// הקוד לבד מחליט אם לשאול: שאלה שהמודל כתב בעצמו נמחקת (24.10 הוא שאל "להעביר לדניאל?" על הודעה לדניאל עצמו)
+export const offerKorazim = (text) => {
+  const t = text.replace(/[ \t]*\n*↪️ זה קשור לרמת כורזים[^\n]*(\n[12]\. (כן|לא))*/g, "");
+  return /כורזים/.test(t) && !/דניאל|היעדרות|wa\.me/.test(t) ? `${t}\n\n${KORAZIM_ASK}` : t;
+};
 
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
