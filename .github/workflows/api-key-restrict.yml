@@ -1,0 +1,26 @@
+name: Restrict web API key
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "yes = set HTTP-referrer restriction, otherwise only report"
+        default: "no"
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auth with the Firebase service account
+        env: { SA: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" }
+        run: |
+          echo "$SA" > /tmp/sa.json
+          gcloud auth activate-service-account --key-file=/tmp/sa.json
+          gcloud config set project ttcmh-2a752
+      - name: Report current keys
+        run: gcloud services api-keys list --format="table(name,displayName,restrictions.browserKeyRestrictions.allowedReferrers,restrictions.apiTargets)" 2>&1 || true
+      - name: Apply restriction
+        if: inputs.apply == 'yes'
+        run: |
+          KEY=$(gcloud services api-keys list --format="value(name)" --filter="keyString:AIzaSyDhPiyIrP1zOu5bNSpsQDyXFgZBP6rV7vo" 2>/dev/null || true)
+          [ -n "$KEY" ] || KEY=$(gcloud services api-keys list --format="value(name)" | head -1)
+          gcloud services api-keys update "$KEY" --allowed-referrers="https://shahar1987.github.io/*,http://localhost:*/*,http://127.0.0.1:*/*" --api-target=service=firestore.googleapis.com --api-target=service=identitytoolkit.googleapis.com --api-target=service=securetoken.googleapis.com --api-target=service=fcm.googleapis.com --api-target=service=fcmregistrations.googleapis.com
+          gcloud services api-keys describe "$KEY"
