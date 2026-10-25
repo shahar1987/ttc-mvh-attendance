@@ -142,7 +142,8 @@ jobs:
         run: |
           URL="${{ steps.sub.outputs.url }}"
           sleep 5
-          curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"
+          H=$(curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"); echo "$H"
+          echo "$H" | grep -q '"claudeFallback":true' || echo "::warning::הגיבוי ל-Claude כבוי: אין ANTHROPIC_API_KEY בסודות של GitHub"
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "$URL/webhook")
           [ "$CODE" = "401" ] || { echo "webhook בלי חתימה החזיר $CODE במקום 401"; exit 1; }
           if [ -n "$META_APP_SECRET" ]; then

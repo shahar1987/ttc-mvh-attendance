@@ -29,6 +29,8 @@ if (bot.workerUrl) {
     const res = await fetch(`${bot.workerUrl}/health`);
     const j = await res.json();
     if (!res.ok || !j.ok) problems.push(`בוט הוואטסאפ לא תקין: ${(j.missing || []).join(", ") || res.status}`);
+    // 2026-10-25: הגיבוי היה בקוד אבל בלי מפתח ב-worker — שולה נפלה כשגוגל חסם. מתריעים לפני הנפילה הבאה
+    if (j.claudeFallback === false) problems.push("הגיבוי ל-Claude כבוי: חסר ANTHROPIC_API_KEY בסודות של GitHub — כשגוגל יחסום את Gemini שולה לא תענה");
   } catch (e) {
     problems.push("בוט הוואטסאפ לא עונה");
   }
