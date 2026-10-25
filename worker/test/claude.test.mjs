@@ -15,7 +15,7 @@ const req = toClaude({
 });
 assert.equal(req.system, "sys");
 assert.equal(req.max_tokens, 500);
-assert.equal(req.temperature, 1);
+assert.equal("temperature" in req, false); // Haiku 5.5 דוחה temperature
 assert.deepEqual(req.tool_choice, { type: "none" });
 assert.deepEqual(req.messages.map((m) => m.role), ["user", "assistant", "user"]); // תורות user רצופות מתאחדות
 assert.equal(req.messages[0].content[1].type, "image");

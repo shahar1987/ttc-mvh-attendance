@@ -37,7 +37,7 @@ export function toClaude(body) {
   return {
     model: CLAUDE_MODEL,
     max_tokens: g.maxOutputTokens || 2048,
-    ...(g.temperature != null && { temperature: Math.min(g.temperature, 1) }),
+    // בלי temperature: Haiku 5.5 מחזיר 400 "temperature is deprecated for this model" (2026-10-25)
     ...(body.systemInstruction && { system: body.systemInstruction.parts.map((p) => p.text).join("\n") }),
     messages,
     ...(decls.length && { tools: decls.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters || { type: "object", properties: {} } })) }),
@@ -61,6 +61,9 @@ export async function claude(env, body, trace = []) {
     signal: AbortSignal.timeout(Number(env.GEMINI_TIMEOUT_MS) || 40000),
   }).catch((e) => ({ ok: false, status: e.name === "TimeoutError" ? "timeout" : e.message }));
   trace.push(`${CLAUDE_MODEL} ${Math.round((Date.now() - t0) / 1000)}s ${r.status}`);
-  if (!r.ok) throw new Error(`גם Claude לא זמין (${r.status})`);
+  if (!r.ok) {
+    const why = r.json ? (await r.json().catch(() => null))?.error?.message : "";
+    throw new Error(`גם Claude לא זמין (${r.status}${why ? `: ${String(why).slice(0, 120)}` : ""})`);
+  }
   return fromClaude(await r.json());
 }
