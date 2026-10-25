@@ -107,7 +107,15 @@ async function performance(page) {
 
 // Gemini כשיש מפתח (חינמי); אחרת Claude עם המפתח שכבר קיים בריפו (אותו מפתח של סוכן הרעיונות)
 async function draftsJson(system, user) {
-  if (process.env.GEMINI_API_KEY) return gemini(system, user, { json: true });
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      return await gemini(system, user, { json: true });
+    } catch (e) {
+      // Gemini נחסם (תקרת הוצאה) — נופלים ל-Claude אם יש מפתח, כמו בסוכן הרעיונות
+      if (!process.env.ANTHROPIC_API_KEY) throw e;
+      console.error(`gemini failed (${e.message}), falling back to Claude`);
+    }
+  }
   const { ask } = await import("./lib/claude.mjs");
   const t = await ask(system + "\nהחזר JSON בלבד, בלי גדרות קוד.", user);
   return JSON.parse(t.replace(/^```(json)?\s*|\s*```$/g, "").trim());
