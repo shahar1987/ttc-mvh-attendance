@@ -24,6 +24,30 @@ async function fireRoutine(env, store, id) {
   return !!r?.ok;
 }
 
+// 📅 תשובה לתוכנית הפרסום השבועית ("מאושר", "מאשר חוץ מ-2", "שינוי 3 ..."). עד 25.10 זה עבר דרך Gemini, שלפעמים
+// קרא את "מאשר" כתשובה לשאלה אחרת ולא העביר לקלוד — והפוסטים לא עלו. עכשיו זה נרשם ישר בתיבה, בלי Gemini.
+// רק כשההודעה האחרונה מקלוד היא התוכנית (מהשבוע האחרון), ו"מאושר" רק פעם אחת לכל תוכנית.
+export const PLAN_HEADER = "הפוסטים של השבוע הבא מוכנים לאישור";
+export function planReply(bot, text, now = Date.now()) {
+  const plan = outboxMap(bot.outbox).claude;
+  if (!plan?.text?.includes(PLAN_HEADER) || now - new Date(plan.at).getTime() > 7 * 24 * 3600 * 1000) return null;
+  const t = text.trim();
+  if (/^שינוי\s*\d+/.test(t)) return "change";
+  if (/^(מאושר|מאשרת?)(?![א-ת])/.test(t) && !(bot.planApprovedAt > plan.at)) return "approve";
+  return null;
+}
+export async function queuePlanReply(env, store, text, kind) {
+  const id = Math.random().toString(36).slice(2, 8);
+  const at = new Date().toISOString();
+  await store.merge(`agentReports/ask_${id}`, { at, request: `תשובת הבעלים לתוכנית הפרסום השבועית (סוכן הפרסום, כלל b8): ${text}`, inboxStatus: "open" });
+  // אחרי "שינוי" הסוכן מבקש "מאושר" מחדש, אז האישור הבא שוב נתפס כאן
+  await store.merge("agentReports/bot", { planApprovedAt: kind === "approve" ? at : null });
+  const fast = await fireRoutine(env, store, id);
+  return kind === "approve"
+    ? `✅ נרשם: התוכנית השבועית מאושרת${fast ? "" : " (תיכנס למערכת תוך שעה)"}. כל פוסט יעלה בשעה שלו.`
+    : `✏️ נרשם${fast ? "" : " (תיכנס למערכת תוך שעה)"}. סוכן הפרסום יתקן ויחזור אליך לאישור.`;
+}
+
 const page = (body, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${body}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
 // /claude/start — דף חד-פעמי להדבקת מפתח המשימה. מפתח קישור משלו, פג אחרי 30 דקות ונמחק אחרי שמירה.

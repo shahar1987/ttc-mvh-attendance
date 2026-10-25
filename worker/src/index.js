@@ -11,7 +11,7 @@ import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
 import { waConfig, sendText, sendTemplate, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox } from "./inbox.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
@@ -271,6 +271,8 @@ async function handle(m, env) {
       await reply(`📊 דשבורד הפרסום (קישור פרטי, מתעדכן כל לילה מפייסבוק ומאינסטגרם):\n${await dashboardUrl(env, ORIGIN || bot.workerUrl)}`);
       return;
     }
+    const plan = planReply(bot, text);
+    if (plan) return void (await reply(await queuePlanReply(env, store, text, plan)));
     if (RECONNECT_META.test(text)) {
       await reply(`קישור לחיבור מחדש של פייסבוק ואינסטגרם (בתוקף 30 דקות):\n${await metaLink(store, ORIGIN || bot.workerUrl)}`);
       return;

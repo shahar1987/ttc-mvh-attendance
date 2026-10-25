@@ -27,3 +27,17 @@ console.log("gates ok");
   defs.forEach((d) => walk(d, d.input_schema.properties));
   console.log("tool enums explained ok");
 }
+
+// "מאושר" לתוכנית הפרסום השבועית נרשם ישר בתיבה (בלי Gemini), רק כשההודעה האחרונה מקלוד היא התוכנית
+{
+  const { planReply } = await import("../src/inbox.js");
+  const now = Date.parse("2026-10-25T13:00:00Z");
+  const bot = { outbox: { claude: { at: "2026-10-24T17:54:00Z", text: "📅 הפוסטים של השבוע הבא מוכנים לאישור\n1. ..." } } };
+  for (const t of ["מאושר", "מאשר", "מאושר - תוכנית הפרסום של השבוע", "מאשר חוץ מ-2", "מאשרת"]) assert.equal(planReply(bot, t, now), "approve", t);
+  for (const t of ["שינוי 3 בלי האשטגים", "שינוי3 x"]) assert.equal(planReply(bot, t, now), "change", t);
+  for (const t of ["מאושרים כולם?", "לא מאשר", "כן", "מה נשמע"]) assert.equal(planReply(bot, t, now), null, t);
+  assert.equal(planReply({ ...bot, planApprovedAt: "2026-10-25T12:00:00Z" }, "מאושר", now), null, "כבר אושרה");
+  assert.equal(planReply(bot, "מאושר", Date.parse("2026-11-02T00:00:00Z")), null, "תוכנית ישנה");
+  assert.equal(planReply({ outbox: { claude: { at: "2026-10-24T17:54:00Z", text: "☀️ תדריך בוקר" } } }, "מאושר", now), null, "ההודעה האחרונה לא תוכנית");
+  console.log("weekly plan approval ok");
+}
