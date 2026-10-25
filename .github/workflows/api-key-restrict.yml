@@ -15,6 +15,8 @@ jobs:
           echo "$SA" > /tmp/sa.json
           gcloud auth activate-service-account --key-file=/tmp/sa.json
           gcloud config set project ttcmh-2a752
+      - name: Enable the API Keys API (free, needed to read/edit key restrictions)
+        run: gcloud services enable apikeys.googleapis.com 2>&1 | sed 's/^/::notice::/' || true
       - name: Report current keys
         # logs are unreadable from the sandbox, so every line goes out as an annotation
         run: gcloud services api-keys list --format="value(name,displayName,restrictions.browserKeyRestrictions.allowedReferrers,restrictions.apiTargets)" 2>&1 | sed 's/^/::notice::/' || true
