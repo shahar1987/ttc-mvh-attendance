@@ -205,6 +205,19 @@ assert.deepEqual(tr, { mimeType: "audio/ogg", data: "AQID" });
 assert.equal(geminiCalls.at(-1).contents.at(-1).parts[0].text, "🎤 מי הגיע היום?");
 assert.equal(texts().at(-1), "תשובה לקול");
 
+// 5ב. גוגל חוסם (403) ויש גיבוי Claude: הקלטה לא עוברת ל-Claude (הוא לא שומע אודיו) — הבעלים מקבל הסבר
+{
+  const real = globalThis.fetch, toClaude = [];
+  globalThis.fetch = (url, init) => String(url).includes("api.anthropic.com/v1/messages") ? (toClaude.push(url), Promise.resolve(new Response("{}"))) : real(url, init);
+  env.ANTHROPIC_API_KEY = "k";
+  geminiQueue.push({ status: 403 });
+  await webhook("", env.OWNER_PHONE, "a2", { type: "audio", audio: { id: "media/aud" } });
+  delete env.ANTHROPIC_API_KEY;
+  globalThis.fetch = real;
+  assert.equal(toClaude.length, 0, "תמלול לא נשלח ל-Claude");
+  assert.match(texts().at(-1), /לא יכולה לשמוע הקלטות/);
+}
+
 // 6. תמונה עם כיתוב — Gemini מקבל את התמונה עצמה
 geminiQueue.push([{ text: "הלוגו קטן מדי" }]);
 await webhook("", env.OWNER_PHONE, "i1", { type: "image", image: { id: "media/img", caption: "מה דעתך על הפלאייר?" } });

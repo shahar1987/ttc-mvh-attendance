@@ -144,6 +144,13 @@ jobs:
           sleep 5
           H=$(curl -sf --retry 3 --retry-delay 5 --retry-all-errors "$URL/health"); echo "$H"
           echo "$H" | grep -q '"claudeFallback":true' || echo "::warning::הגיבוי ל-Claude כבוי: אין ANTHROPIC_API_KEY בסודות של GitHub"
+          # בדיקה חיה של הגיבוי: קריאה קטנה ל-Claude עם המפתח האמיתי ובאותם פרמטרים כמו הבוט (מפתח, קרדיט, מודל)
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            MODEL=$(sed -n 's/.*CLAUDE_MODEL = "\(.*\)".*/\1/p' worker/src/claude.js)
+            R=$(curl -s -w '\n%{http_code}' https://api.anthropic.com/v1/messages -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d "{\"model\":\"$MODEL\",\"max_tokens\":5,\"system\":\"ok\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"tools\":[{\"name\":\"t\",\"description\":\"t\",\"input_schema\":{\"type\":\"object\",\"properties\":{}}}]}")
+            [ "$(echo "$R" | tail -1)" = "200" ] && echo "גיבוי Claude ($MODEL) עונה" || echo "::warning::הגיבוי ל-Claude לא עובד: $(echo "$R" | head -1 | jq -r '.error.message // .' 2>/dev/null | head -c 200)"
+          fi
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "$URL/webhook")
           [ "$CODE" = "401" ] || { echo "webhook בלי חתימה החזיר $CODE במקום 401"; exit 1; }
           if [ -n "$META_APP_SECRET" ]; then
