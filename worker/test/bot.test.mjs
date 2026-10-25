@@ -215,7 +215,20 @@ assert.equal(texts().at(-1), "תשובה לקול");
   delete env.ANTHROPIC_API_KEY;
   globalThis.fetch = real;
   assert.equal(toClaude.length, 0, "תמלול לא נשלח ל-Claude");
-  assert.match(texts().at(-1), /לא יכולה לשמוע הקלטות/);
+  assert.match(texts().at(-1), /לא הצלחתי לשמוע את ההקלטה/);
+}
+
+// 5ג. גוגל חוסם ויש Workers AI: התמלול עובר ל-Whisper, והשיחה ממשיכה כרגיל
+{
+  const ai = [];
+  env.AI = { run: async (model, input) => (ai.push([model, input]), { text: "מי הגיע היום?" }) };
+  geminiQueue.push({ status: 403 }, [{ text: "תשובה לקול" }]);
+  await webhook("", env.OWNER_PHONE, "a3", { type: "audio", audio: { id: "media/aud" } });
+  delete env.AI;
+  assert.equal(ai[0][0], "@cf/openai/whisper-large-v3-turbo");
+  assert.equal(ai[0][1].audio, "AQID");
+  assert.equal(geminiCalls.at(-1).contents.at(-1).parts[0].text, "🎤 מי הגיע היום?");
+  assert.equal(texts().at(-1), "תשובה לקול");
 }
 
 // 6. תמונה עם כיתוב — Gemini מקבל את התמונה עצמה

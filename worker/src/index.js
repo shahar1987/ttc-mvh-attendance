@@ -241,7 +241,7 @@ async function handle(m, env) {
       const audio = await downloadMedia(wa, m.audio.id);
       at("תמלול ההקלטה");
       text = await transcribe(env, audio).catch(() => null);
-      if (text === null) return void (await reply("גוגל חוסם אותי כרגע, ובלי Gemini אני לא יכולה לשמוע הקלטות. אפשר לכתוב לי בטקסט?"));
+      if (text === null) return void (await reply("לא הצלחתי לשמוע את ההקלטה כרגע. אפשר לכתוב לי בטקסט?"));
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
     } else if (m.type === "image") {
@@ -483,12 +483,19 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
 // geminiOnly ולא gemini: Claude לא שומע אודיו, והתשובה שלו הייתה נרשמת כ"תמלול" (2026-10-25)
+// כשגוגל חוסם — Whisper של Cloudflare Workers AI (מכסה יומית חינמית, בלי כרטיס אשראי) (2026-10-25)
 async function transcribe(env, audio) {
-  const parts = await geminiOnly(env, {
-    contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
-    generationConfig: { maxOutputTokens: 1500, temperature: 0 },
-  });
-  return parts.map((p) => p.text || "").join("").trim();
+  try {
+    const parts = await geminiOnly(env, {
+      contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
+      generationConfig: { maxOutputTokens: 1500, temperature: 0 },
+    });
+    return parts.map((p) => p.text || "").join("").trim();
+  } catch (e) {
+    if (!env.AI) throw e;
+    const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: audio.data, language: "he" });
+    return String(r?.text || "").trim();
+  }
 }
 
 // 🕵️ מפקח השיחות: עובר על השיחות של היממה האחרונה ובודק ששולה סגרה כל בקשה עד הסוף ובדיוק כמו שביקשו.
