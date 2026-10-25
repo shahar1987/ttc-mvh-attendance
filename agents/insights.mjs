@@ -262,8 +262,8 @@ async function main() {
       await tellOwner(db, { agent: "insights", text: RECONNECT }).catch((err) => console.error(err.message));
       await ref.set({ reconnectToldAt: new Date().toISOString() }, { merge: true });
     }
-    await reportMissingKey(db, "insights", "META_TOKEN").catch((err) => console.error(err.message));
     await heartbeat(db, "insights");
+    await reportMissingKey(db, "insights", "META_TOKEN").catch((err) => console.error(err.message)); // אחרי heartbeat — הוא מוחק את הדגל
     return;
   }
   // reconnectToldAt: null — החיבור עובד, אז בפעם הבאה שיתנתק מזכירים מיד
