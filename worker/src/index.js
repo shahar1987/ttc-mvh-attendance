@@ -136,7 +136,7 @@ export default {
           firestore = true;
         } catch {}
       const ok = missing.length === 0 && firestore;
-      return Response.json({ ok, missing, firestore }, { status: ok ? 200 : 503 });
+      return Response.json({ ok, missing, firestore, claudeFallback: !!env.ANTHROPIC_API_KEY }, { status: ok ? 200 : 503 });
     }
     if (url.pathname !== "/webhook") return new Response("not found", { status: 404 });
 

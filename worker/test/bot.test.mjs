@@ -238,7 +238,7 @@ assert.match(await callTool("מזג אוויר?", { name: "get_weather", args: {
 const oldEnv = { ...env, WA_TOKEN: env.WHATSAPP_TOKEN, WA_PHONE_ID: "999", ALLOWED_FROM: env.OWNER_PHONE, VERIFY_TOKEN: "old" };
 for (const k of ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "OWNER_PHONE", "WEBHOOK_VERIFY_TOKEN"]) delete oldEnv[k];
 const health = await (await worker.fetch(new Request("https://x/health"), oldEnv, {})).json();
-assert.deepEqual(health, { ok: true, missing: [], firestore: true });
+assert.deepEqual(health, { ok: true, missing: [], firestore: true, claudeFallback: false });
 assert.equal(await (await worker.fetch(new Request("https://x/webhook?hub.mode=subscribe&hub.verify_token=old&hub.challenge=42"), oldEnv, {})).text(), "42");
 geminiQueue.push([{ text: "שלום מהשמות הישנים" }]);
 const rawOld = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id: "old1", from: env.OWNER_PHONE, type: "text", text: { body: "היי" } }] } }] }] });
@@ -976,7 +976,7 @@ await webhook("היי", env.OWNER_PHONE, "fs1");
 assert.match(texts().at(-1), /משהו השתבש אצלי/);
 const h7 = await worker.fetch(new Request("https://x/health"), env, {});
 assert.equal(h7.status, 503);
-assert.deepEqual(await h7.json(), { ok: false, missing: [], firestore: false });
+assert.deepEqual(await h7.json(), { ok: false, missing: [], firestore: false, claudeFallback: false });
 globalThis.firestoreDown = false;
 const h7b = await worker.fetch(new Request("https://x/health"), { ...env, GEMINI_API_KEY: "" }, {});
 assert.equal(h7b.status, 503, "סוד חסר → 503");
