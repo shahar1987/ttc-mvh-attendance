@@ -12,6 +12,12 @@
 - בודק: worker/test/bot.test.mjs — מקצה לקצה עם Firestore/Gemini/WhatsApp מדומים.
 - שלום: לאשר PR; להוסיף Secrets (FIREBASE_SERVICE_ACCOUNT חדש, GEMINI_API_KEY במקום ANTHROPIC_API_KEY, ושאר ה-WhatsApp/Meta/Cloudflare).
 
+## [פתוח] 2026-10-25 — שולה נופלת על Gemini 403 למרות הגיבוי ל-Claude
+סוג: באג
+- חוקר: תקרת ההוצאה של Gemini נגמרה שוב (403). הגיבוי (#119) לא נכנס כי ל-worker אין ANTHROPIC_API_KEY — ההודעה מכילה רק את שגיאת גוגל, והקוד זורק אותה רק כשאין מפתח. secret bulk מדלג על ערך ריק, כלומר הסוד חסר/ריק ב-GitHub.
+- בונה: המפקח מתריע כש-/health מחזיר claudeFallback:false; הפריסה מסמנת אזהרה באותו מקרה.
+- שלום: להוסיף ANTHROPIC_API_KEY ב-Settings ← Secrets and variables ← Actions, ואז להריץ Agents setup.
+
 ## [פתוח] <תאריך> — <הבקשה במשפט>
 סוג: באג / פיצ'ר / שינוי קטן / נתונים
 מסלול: ...
