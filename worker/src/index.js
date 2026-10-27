@@ -324,13 +324,13 @@ export function unanswered(bot, now = Date.now()) {
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
-// גוגל חוסם (2026-10-24: 403 אחרי תקרת ההוצאה החודשית) — אם יש ANTHROPIC_API_KEY, אותה בקשה עוברת ל-Claude Haiku
+// 2026-10-27: Claude Haiku ראשי (על קרדיט ה-API החודשי של מנוי Max), Gemini רק כגיבוי. בלי ANTHROPIC_API_KEY — Gemini כמו קודם
 async function gemini(env, body, trace = [], first) {
+  if (!env.ANTHROPIC_API_KEY) return geminiOnly(env, body, trace, first);
   try {
-    return await geminiOnly(env, body, trace, first);
+    return await claude(env, body, trace);
   } catch (e) {
-    if (!env.ANTHROPIC_API_KEY) throw e;
-    return claude(env, body, trace).catch((e2) => { throw new Error(`${e.message}; ${e2.message}`); });
+    return geminiOnly(env, body, trace, first).catch((e2) => { throw new Error(`${e.message}; ${e2.message}`); });
   }
 }
 

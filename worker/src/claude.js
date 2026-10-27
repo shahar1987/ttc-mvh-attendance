@@ -66,5 +66,8 @@ export async function claude(env, body, trace = []) {
     const why = r.json ? (await r.json().catch(() => null))?.error?.message : "";
     throw new Error(`גם Claude לא זמין (${r.status}${why ? `: ${String(why).slice(0, 120)}` : ""})`);
   }
-  return fromClaude(await r.json());
+  const parts = fromClaude(await r.json());
+  // תשובה ריקה (נגמר התקציב/סירוב) — זורקים, כדי ש-Gemini יענה במקום "נסה שוב"
+  if (!parts.length) throw new Error(`Claude החזיר תשובה ריקה (${parts.finishReason})`);
+  return parts;
 }

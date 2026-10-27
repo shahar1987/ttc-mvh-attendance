@@ -218,6 +218,32 @@ assert.equal(texts().at(-1), "תשובה לקול");
   assert.match(texts().at(-1), /לא הצלחתי לשמוע את ההקלטה/);
 }
 
+// 5ב1. Claude ראשי (2026-10-27): יש מפתח — Claude עונה ו-Gemini לא נקרא; Claude נופל או ריק — Gemini עונה
+{
+  const real = globalThis.fetch, toClaude = [];
+  let claudeRes = [];
+  globalThis.fetch = (url, init) => String(url).includes("api.anthropic.com/v1/messages")
+    ? (toClaude.push(JSON.parse(init.body)), Promise.resolve(claudeRes.shift()))
+    : real(url, init);
+  env.ANTHROPIC_API_KEY = "k";
+  const g0 = geminiCalls.length;
+  claudeRes = [new Response(JSON.stringify({ content: [{ type: "text", text: "תשובה מקלוד" }], stop_reason: "end_turn" }))];
+  await webhook("שלום", env.OWNER_PHONE, "c1");
+  assert.equal(texts().at(-1), "תשובה מקלוד");
+  assert.equal(geminiCalls.length, g0, "Gemini לא נקרא כש-Claude עונה");
+  claudeRes = [new Response(JSON.stringify({ error: { message: "credit balance too low" } }), { status: 400 })];
+  geminiQueue.push([{ text: "תשובה מגוגל" }]);
+  await webhook("שלום", env.OWNER_PHONE, "c2");
+  assert.equal(texts().at(-1), "תשובה מגוגל", "קרדיט נגמר — Gemini עונה");
+  claudeRes = [new Response(JSON.stringify({ content: [], stop_reason: "max_tokens" }))];
+  geminiQueue.push([{ text: "גיבוי לריק" }]);
+  await webhook("שלום", env.OWNER_PHONE, "c3");
+  assert.equal(texts().at(-1), "גיבוי לריק", "Claude ריק — Gemini עונה");
+  delete env.ANTHROPIC_API_KEY;
+  globalThis.fetch = real;
+  assert.equal(toClaude[0].model, "claude-haiku-5-5");
+}
+
 // 5ב2. גוגל חוסם: הסיבה של גוגל מגיעה לבעלים (תקרת הוצאה ≠ מפתח חסום)
 geminiQueue.push({ status: 403, message: "spend cap exceeded" });
 await webhook("שלום", env.OWNER_PHONE, "g403");
