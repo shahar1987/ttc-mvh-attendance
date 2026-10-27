@@ -36,7 +36,8 @@ export function toClaude(body) {
   const g = body.generationConfig || {};
   return {
     model: CLAUDE_MODEL,
-    max_tokens: g.maxOutputTokens || 2048,
+    // Haiku 5.5 חושב לפני שעונה; בתקציב קטן (200) החשיבה אוכלת הכל והתשובה יוצאת ריקה (נבדק 2026-10-27)
+    max_tokens: Math.max(g.maxOutputTokens || 2048, 1024),
     // בלי temperature: Haiku 5.5 מחזיר 400 "temperature is deprecated for this model" (2026-10-25)
     ...(body.systemInstruction && { system: body.systemInstruction.parts.map((p) => p.text).join("\n") }),
     messages,

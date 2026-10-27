@@ -14,7 +14,8 @@ const req = toClaude({
   generationConfig: { maxOutputTokens: 500, temperature: 1.2 },
 });
 assert.equal(req.system, "sys");
-assert.equal(req.max_tokens, 500);
+assert.equal(req.max_tokens, 1024); // רצפה: חשיבה לא בולעת את כל התקציב
+assert.equal(toClaude({ contents: [], generationConfig: { maxOutputTokens: 4096 } }).max_tokens, 4096);
 assert.equal("temperature" in req, false); // Haiku 5.5 דוחה temperature
 assert.deepEqual(req.tool_choice, { type: "none" });
 assert.deepEqual(req.messages.map((m) => m.role), ["user", "assistant", "user"]); // תורות user רצופות מתאחדות
