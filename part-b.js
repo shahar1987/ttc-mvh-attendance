@@ -1,18 +1,3 @@
-// 28.10 עיצוב "בריאות וכושר": עיגול ראשי תיבות לשחקן, בגוונים רכים מפלטת האפליקציה
-const AVATAR_TINTS = [
-  "bg-[#EAF1FA] text-[#3567A8]",
-  "bg-[#E7F1ED] text-[#2E7D6B]",
-  "bg-[#F7EFDD] text-[#7E5710]",
-  "bg-[#EDEBF5] text-[#5E5A8C]",
-  "bg-[#F8EAE8] text-[#A0423A]",
-];
-function initials(name) {
-  return String(name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("");
-}
-function Avatar({ player: p }) {
-  let i = String(p.id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_TINTS.length;
-  return e.createElement("span", { "aria-hidden": "true", className: `w-9 h-9 rounded-full grid place-items-center shrink-0 text-sm font-bold ${AVATAR_TINTS[i]}` }, initials(p.name));
-}
 // טבעות כמו ב-Apple Health: חיצונית = נוכחות השבוע, פנימית = כמה מאימוני היום מולאו
 function ActivityRings({ outer, inner }) {
   let ring = (r, w, pct, track, color) => {
@@ -3828,21 +3813,19 @@ function re({
               )
             : null,
           k && !RO
-            ? e.createElement(Re, {
-                key: "abs",
-                player: p,
-                dates: k,
-                onOpenWhatsapp: (v) =>
-                  WA
-                    ? WA(v)
-                    : window.open(
-                        ne(
-                          normalizePhone(v.parentPhone),
-                          Ve(v.parentName, v.name, isAdultGroup(t), playerGender(v)),
-                        ),
-                        "_blank",
-                      ),
-              })
+            ? e.createElement(
+                "button",
+                {
+                  key: "abs",
+                  onClick: () =>
+                    WA
+                      ? WA(p)
+                      : window.open(ne(normalizePhone(p.parentPhone), Ve(p.parentName, p.name, isAdultGroup(t), playerGender(p))), "_blank"),
+                  className: "min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shrink-0 text-amber-700 active:scale-95 transition-transform",
+                  "aria-label": "2 היעדרויות · שליחת הודעת וואטסאפ להורה",
+                },
+                e.createElement(te, { className: "w-5 h-5" }),
+              )
             : null,
           showWa && WA && !RO
             ? e.createElement(
@@ -3894,18 +3877,9 @@ function re({
                 e.createElement(Ae, { className: "w-4 h-4" }),
               )
             : null,
-          isOffDay
-            ? e.createElement(
-                "span",
-                {
-                  key: "offday",
-                  className:
-                    "text-xs font-normal text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 shrink-0",
-                },
-                `לא יום קבוע (${playerDaysLabel(p)})`,
-              )
-            : null,
         ].filter(Boolean);
+        // 28.10: פחות רעש בשורה — מידע משני בשורה שקטה אחת מתחת לשם, בלי תגים
+        let sub = [k && "2 היעדרויות", isOffDay && `ימים קבועים: ${playerDaysLabel(p)}`].filter(Boolean).join(" · ");
         let absent = w === "Absent";
         // 29.9: כל השורה היא כפתור אחד — נגיעה מסמנת "לא הגיע", נגיעה נוספת מחזירה ל"הגיע".
         // מטרה של 56px לכל הרוחב, במקום שני כפתורים צמודים שקל לפספס ביד רועדת.
@@ -3936,21 +3910,18 @@ function re({
                 },
                 absent ? "✕" : w === "Present" ? "✓" : "",
               ),
-              e.createElement(Avatar, { player: p }),
               e.createElement(
                 "span",
-                {
-                  className: `flex-1 text-[17px] font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
-                },
-                p.name,
-                p.trial &&
-                  e.createElement("span", { className: "ms-2 align-middle text-xs font-semibold text-blue-800 bg-blue-50 rounded-full px-2 py-0.5" }, "ניסיון"),
+                { className: "flex-1 min-w-0" },
+                e.createElement(
+                  "span",
+                  { className: `block text-[17px] font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}` },
+                  p.name,
+                  p.trial &&
+                    e.createElement("span", { className: "ms-2 align-middle text-xs font-semibold text-blue-800 bg-blue-50 rounded-full px-2 py-0.5" }, "ניסיון"),
+                ),
+                sub && e.createElement("span", { className: "block text-[13px] text-slate-400 mt-0.5" }, sub),
               ),
-              absent
-                ? e.createElement("span", { className: "text-sm font-bold text-red-700 shrink-0" }, "לא הגיע")
-                : !w
-                  ? e.createElement("span", { className: "text-sm font-semibold text-amber-700 shrink-0" }, "לא סומן")
-                  : null,
             ),
             EP && !RO && u
               ? e.createElement(
@@ -3958,7 +3929,7 @@ function re({
                   {
                     onClick: () => EP(p),
                     className:
-                      "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 shrink-0",
+                      "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-300 shrink-0",
                     "aria-label": `${p.name} · עריכת פרטי שחקן`,
                   },
                   e.createElement($e, { className: "w-4 h-4" }),

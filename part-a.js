@@ -2200,43 +2200,6 @@ function ReportsScreen({ groups, users, players, attendance, cancellations, read
   );
 }
 
-function Re({ player: t, onOpenWhatsapp: s, dates: DS }) {
-  let two = Array.isArray(DS) && DS.length === 2 ? DS : null;
-  return e.createElement(
-    "div",
-    { className: "flex items-center gap-1.5 shrink-0" },
-    e.createElement(
-      "span",
-      {
-        className:
-          "flex items-center gap-1 bg-amber-50 text-amber-700 text-xs font-semibold px-2 py-1 rounded-full border border-amber-200",
-        // התאריכים עצמם בתג: אפשר לראות מיד על אילו שני אימונים הספירה מבוססת
-        title: two
-          ? `היעדרויות ב־${formatHeDate(two[0])} וב־${formatHeDate(two[1])}`
-          : "",
-      },
-      e.createElement(ye, { className: "w-3 h-3" }),
-      "2 היעדרויות",
-      two &&
-        e.createElement(
-          "span",
-          { className: "font-normal text-amber-600" },
-          `\xB7 ${fmtDateShort(two[0])}, ${fmtDateShort(two[1])}`,
-        ),
-    ),
-    e.createElement(
-      "button",
-      {
-        onClick: () => s(t),
-        className:
-          "w-11 h-11 rounded-full bg-emerald-500 flex items-center justify-center active:scale-95 transition-transform",
-        "aria-label":
-          "שליחת הודעת וואטסאפ להורה",
-      },
-      e.createElement(te, { className: "w-4 h-4 text-white" }),
-    ),
-  );
-}
 var et = {
   "auth/invalid-email":
     "כתובת אימייל לא תקינה",
@@ -3912,13 +3875,6 @@ function memberEmailFromPhone(v) {
 function loginIdToEmail(v) {
   let s = String(v || "").trim();
   return s.includes("@") ? s : memberEmailFromPhone(s);
-}
-function fmtDateShort(iso) {
-  if (!iso) return "";
-  let d = new Date(iso + "T00:00:00");
-  return isNaN(d)
-    ? iso
-    : d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" });
 }
 function normalizeHeName(v) {
   return String(v || "")
