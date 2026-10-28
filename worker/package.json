@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "test": "node test/claude.test.mjs && node test/bot.test.mjs && node test/webhook.test.mjs && node test/gates.test.mjs && node test/dashboard.test.mjs && node test/retry.test.mjs"
+    "test": "node test/claude.test.mjs && node test/bot.test.mjs && node test/webhook.test.mjs && node test/gates.test.mjs && node test/dashboard.test.mjs && node test/retry.test.mjs && node test/join.test.mjs"
   },
   "devDependencies": {
     "wrangler": "4.144.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "1.4.4"
   }
 }

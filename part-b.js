@@ -86,6 +86,7 @@ const STAFF_MENU_ITEMS = [
   { key: "permissions", label: "ניהול הרשאות", icon: Ie, adminOnly: !0 },
   // ייבוא כותב שחקנים — צופה לא רואה אותו גם אם יש לו הרשאת ניהול קבוצות (שאר המסכים שלו לקריאה בלבד)
   { key: "import", label: "ייבוא שחקנים", short: "ייבוא", icon: K, perm: "manageGroups", noViewer: !0 },
+  { key: "join", label: "בקשות הצטרפות", short: "הצטרפות", icon: K, adminOnly: !0 },
   {
     key: "tournaments",
     label: "תחרויות",
@@ -99,7 +100,7 @@ const STAFF_MENU_ITEMS = [
 const MENU_SECTIONS = [
   { label: "דשבורד", icon: le, keys: ["dashboard"] },
   { label: "נוכחות", icon: Z, keys: ["attendance"] },
-  { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import"] },
+  { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import", "join"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
   { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
   { label: "הרשאות", icon: Ie, keys: ["permissions"] },
@@ -1940,6 +1941,201 @@ function PaymentTrackPicker({ player, group, tracks, onClose }) {
   );
 }
 
+// 📝 בקשות הצטרפות מהטופס להורים (worker/src/join.js). הבקשות נכתבות רק בשרת של שולה; כאן המנהל
+// מאשר (שחקן חדש בקבוצה), מחבר לשחקן קיים, או דוחה. בכל מקרה הבקשה נמחקת — לא שומרים פרטים מיותרים.
+const JOIN_URL = "https://shula-whatsapp.shahar1987.workers.dev/join";
+const joinNorm = (v) => String(v || "").replace(/["'׳״\-]/g, "").replace(/\s+/g, " ").trim();
+function joinMatches(r, players) {
+  let full = joinNorm(r.child),
+    [f = "", ...rest] = full.split(" "),
+    last = rest.join(" "),
+    ph = r.phone ? normalizePhone(r.phone) : "";
+  return players
+    .filter((p) => !p.deleted)
+    .filter((p) => {
+      let n = joinNorm(p.name),
+        [pf = "", ...pr] = n.split(" "),
+        pl = pr.join(" ");
+      return (
+        n === full ||
+        n === `${last} ${f}` ||
+        // אותו טלפון הורה + שם משפחה לבד = כנראה אח/ות, לא אותו ילד — צריך גם שם פרטי דומה
+        (ph && p.parentPhone && normalizePhone(p.parentPhone) === ph && pf.slice(0, 2) === f.slice(0, 2)) ||
+        (last && pl === last && pf.slice(0, 2) === f.slice(0, 2))
+      );
+    })
+    .slice(0, 3);
+}
+function JoinScreen({ groups: G, players: PL }) {
+  let [reqs, setReqs] = b(null),
+    [cfg, setCfg] = b(null),
+    [err, setErr] = b(""),
+    [busy, setBusy] = b(""),
+    [copied, setCopied] = b(!1);
+  j(() => {
+    let a = ae(
+        M(P, "joinRequests"),
+        (sn) => setReqs(sn.docs.map((d) => ({ id: d.id, ...d.data() })).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)))),
+        (e2) => setErr(e2.message),
+      ),
+      c2 = ae(S(P, "joinConfig", "main"), (d) => setCfg(d.exists() ? d.data() : {}), (e2) => setErr(e2.message));
+    return () => (a(), c2());
+  }, []);
+  let save = (patch) => De(S(P, "joinConfig", "main"), patch, { merge: !0 }).catch((e2) => setErr("השמירה נכשלה: " + e2.message)),
+    newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => "abcdefghjkmnpqrstuvwxyz23456789"[x % 31]).join(""),
+    link = cfg && cfg.code ? `${JOIN_URL}?k=${cfg.code}` : "",
+    groupName = (id) => (G.find((g) => g.id === id) || {}).name || "קבוצה שנמחקה",
+    act = async (r, fn) => {
+      setBusy(r.id);
+      setErr("");
+      try {
+        await fn();
+        await Ee(S(P, "joinRequests", r.id));
+      } catch (e2) {
+        setErr("הפעולה נכשלה: " + e2.message);
+      } finally {
+        setBusy("");
+      }
+    },
+    approve = (r) =>
+      act(r, () =>
+        V(M(P, "players"), {
+          name: r.child,
+          groupId: r.groupId,
+          parentName: r.parent || "",
+          parentPhone: r.phone ? normalizePhone(r.phone) : "",
+          joinDate: E(),
+          endDate: null,
+          isActive: !0,
+        }),
+      ),
+    linkTo = (r, p) =>
+      act(r, () => {
+        let patch = {};
+        if (!p.parentPhone && r.phone) patch.parentPhone = normalizePhone(r.phone);
+        if (!p.parentName && r.parent) patch.parentName = r.parent;
+        return Object.keys(patch).length ? O(S(P, "players", p.id), patch) : Promise.resolve();
+      }),
+    reject = (r) => askConfirm(`למחוק את הבקשה של ${r.child}?`, { yes: "כן, למחוק", danger: !0 }).then((ok) => ok && act(r, () => Promise.resolve())),
+    on = !!(cfg && cfg.enabled && cfg.code),
+    pill = (active) => `min-h-[40px] px-3.5 rounded-full text-sm font-semibold ${active ? "bg-[#3B82D6] text-white" : "bg-slate-100 text-slate-600"}`;
+  return e.createElement(
+    "div",
+    { className: "px-4 pt-4 pb-6 flex flex-col gap-4 text-right" },
+    err && e.createElement("p", { className: "text-sm text-red-700 bg-red-50 rounded-xl p-3" }, err),
+    e.createElement("h2", { className: "text-xl font-extrabold text-blue-950 px-1" }, "ממתינות לאישור", reqs && reqs.length ? ` (${reqs.length})` : ""),
+    reqs === null
+      ? e.createElement("p", { className: "text-sm text-slate-500 px-1" }, "טוען…")
+      : reqs.length === 0
+        ? e.createElement("p", { className: "text-sm text-slate-500 px-1" }, "אין בקשות חדשות")
+        : reqs.map((r) => {
+            let ms = joinMatches(r, PL);
+            return e.createElement(
+              "div",
+              { key: r.id, className: "rounded-2xl bg-white ios-card p-4 flex flex-col gap-3" },
+              e.createElement(
+                "div",
+                null,
+                e.createElement("div", { className: "text-lg font-bold text-blue-950" }, r.child, e.createElement("span", { className: "text-sm font-semibold text-slate-500 ms-2" }, r.grade)),
+                e.createElement("div", { className: "text-sm text-slate-500" }, groupName(r.groupId), " \xB7 ", r.parent, " ", e.createElement("span", { dir: "ltr" }, r.phone)),
+                r.note && e.createElement("div", { className: "text-sm text-slate-600 mt-1" }, "״", r.note, "״"),
+              ),
+              ms.map((p) =>
+                e.createElement(
+                  "button",
+                  {
+                    key: p.id,
+                    disabled: busy === r.id,
+                    onClick: () => linkTo(r, p),
+                    className: "rounded-xl bg-amber-50 text-amber-800 text-sm font-semibold px-3 py-2.5 text-right disabled:opacity-50",
+                  },
+                  `נראה כמו ${p.name} (${groupName(p.groupId)}${p.isActive ? "" : ", בארכיון"}) — זה אותו ילד, לא להוסיף שוב`,
+                ),
+              ),
+              e.createElement(
+                "div",
+                { className: "grid grid-cols-[1fr_auto] gap-2" },
+                e.createElement(
+                  "button",
+                  { disabled: busy === r.id, onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
+                  ms.length ? "בכל זאת ילד חדש — להוסיף" : "אישור והוספה לקבוצה",
+                ),
+                e.createElement("button", { disabled: busy === r.id, onClick: () => reject(r), className: "min-h-[48px] px-4 rounded-full bg-slate-100 text-slate-600 font-semibold disabled:opacity-50" }, "דחייה"),
+              ),
+            );
+          }),
+    e.createElement("h2", { className: "text-xl font-extrabold text-blue-950 px-1 mt-2" }, "הטופס להורים"),
+    cfg &&
+      e.createElement(
+        "div",
+        { className: "rounded-2xl bg-white ios-card p-4 flex flex-col gap-4" },
+        e.createElement(
+          "label",
+          { className: "flex items-center justify-between gap-3 min-h-[44px]" },
+          e.createElement("span", { className: "font-bold text-blue-950" }, on ? "הטופס פתוח" : "הטופס סגור"),
+          e.createElement("input", {
+            type: "checkbox",
+            checked: on,
+            className: "w-6 h-6 accent-[#5E9E8C]",
+            onChange: (ev) => save(ev.target.checked ? { enabled: !0, code: cfg.code || newCode() } : { enabled: !1 }),
+          }),
+        ),
+        e.createElement(
+          "div",
+          null,
+          e.createElement("div", { className: "text-sm font-semibold text-slate-500 mb-2" }, "קבוצות בטופס"),
+          e.createElement(
+            "div",
+            { className: "flex flex-wrap gap-2" },
+            G.map((g) => {
+              let sel = (cfg.groups || []).includes(g.id);
+              return e.createElement(
+                "button",
+                { key: g.id, onClick: () => save({ groups: sel ? (cfg.groups || []).filter((x) => x !== g.id) : [...(cfg.groups || []), g.id] }), className: pill(sel), "aria-pressed": sel },
+                g.name,
+              );
+            }),
+          ),
+        ),
+        e.createElement(
+          "div",
+          { className: "grid grid-cols-2 gap-2" },
+          ["contactName", "contactPhone"].map((k) =>
+            e.createElement("input", {
+              key: k + (cfg[k] || ""),
+              defaultValue: cfg[k] || "",
+              placeholder: k === "contactName" ? "שם לשאלות (בדף המודפס)" : "טלפון לשאלות",
+              inputMode: k === "contactPhone" ? "tel" : "text",
+              onBlur: (ev) => ev.target.value.trim() !== (cfg[k] || "") && save({ [k]: ev.target.value.trim().slice(0, 30) }),
+              className: "bg-slate-50 rounded-xl px-3 py-2.5 text-sm text-right outline-none",
+            }),
+          ),
+        ),
+        on &&
+          e.createElement(
+            "div",
+            { className: "grid grid-cols-2 gap-2" },
+            e.createElement(
+              "button",
+              {
+                onClick: () => navigator.clipboard && navigator.clipboard.writeText(link).then(() => (setCopied(!0), setTimeout(() => setCopied(!1), 2e3))),
+                className: "min-h-[48px] rounded-full bg-[#3B82D6] text-white font-bold",
+              },
+              copied ? "הועתק ✓" : "העתקת קישור",
+            ),
+            e.createElement("a", { href: `${JOIN_URL}/print?k=${cfg.code}`, target: "_blank", rel: "noopener", className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold grid place-items-center" }, "דף להדפסה"),
+            e.createElement(
+              "button",
+              {
+                onClick: () => askConfirm("ליצור קישור חדש? הברקוד והקישור הישנים יפסיקו לעבוד.", { yes: "כן, קישור חדש" }).then((ok) => ok && save({ code: newCode() })),
+                className: "col-span-2 min-h-[44px] text-sm font-semibold text-slate-500",
+              },
+              "קישור חדש (מבטל את הישן)",
+            ),
+          ),
+      ),
+  );
+}
 function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
   let [a, l] = b(""),
     // "unpaid" | "paid" | "all" — נבחר מהמספרים הגדולים בראש המסך
@@ -4750,6 +4946,7 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
+      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&

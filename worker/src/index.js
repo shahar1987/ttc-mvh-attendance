@@ -16,6 +16,7 @@ import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWe
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
+import { joinRoute } from "./join.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
@@ -116,6 +117,8 @@ export default {
       const to = (((await db(env).get("agentReports/links")) || {}).links || {})[url.pathname.slice(3)]?.url;
       return to?.startsWith("https://wa.me/") ? Response.redirect(to, 302) : new Response("הקישור פג (נשמר 7 ימים)", { status: 404 });
     }
+    // 📝 טופס הצטרפות להורים ודף ההדפסה עם הברקוד (join.js)
+    if (url.pathname === "/join" || url.pathname === "/join/print") return joinRoute(req, env, db(env));
     if (url.pathname === "/dashboard") return dashboardRoute(req, env, db(env));
     if (url.pathname === "/insights/feed") return feedRoute(req, env, db(env));
     if (url.pathname === "/insights/campaign") return campaignRoute(req, env, db(env), waConfig(env));

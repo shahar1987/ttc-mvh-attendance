@@ -271,6 +271,18 @@ await t('רשימת השחקנים: רק מנהל', async () => {
   await assertFails(setDoc(doc(as('coachA'), 'uniformConfig/roster'), { players: [] }));
 });
 
+console.log('\n— טופס הצטרפות (נכתב רק בשרת) —');
+const jr = { child: 'נועה כהן', parent: 'דנה כהן', phone: '0501234567', grade: 'ג׳', groupId: 'g1' };
+await t('הורה לא כותב בקשה ישירות למסד', () => assertFails(addDoc(collection(anon(), 'joinRequests'), jr)));
+await t('גם מנהל לא יוצר בקשה מהדפדפן', () => assertFails(addDoc(collection(as('admin1'), 'joinRequests'), jr)));
+await t('מאמן לא קורא בקשות', () => assertFails(getDocs(collection(as('coachA'), 'joinRequests'))));
+await t('מנהל קורא בקשות', () => assertSucceeds(getDocs(collection(as('admin1'), 'joinRequests'))));
+await t('הגדרות הטופס: רק מנהל', async () => {
+  await assertSucceeds(setDoc(doc(as('admin1'), 'joinConfig/main'), { enabled: true, code: 'abcdefghijkl1234', groups: ['g1'] }));
+  await assertFails(getDoc(doc(anon(), 'joinConfig/main')));
+  await assertFails(getDoc(doc(as('coachA'), 'joinConfig/main')));
+});
+
 console.log('\n— נרשמים בלוח המועדון (כניסה עם גוגל, בלי פרופיל) —');
 const gTok = (uid, extra = {}) => ({ email: `${uid}@example.com`, email_verified: true, firebase: { sign_in_provider: 'google.com' }, ...extra });
 const boardAs = (uid) => env.authenticatedContext(uid, gTok(uid)).firestore();
