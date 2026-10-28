@@ -1,0 +1,35 @@
+name: Auto-send mark
+
+# אחרי שהודעות היעדרות / ברוך הבא יצאו אוטומטית מהמספר של שלום (shahar1987/wa-sender), מסמן אותן באפליקציה
+# כמו שמאמן מסמן (agents/autosend.mjs mark), כדי שהמאמנים לא יקבלו תזכורת על הודעה שכבר נשלחה.
+# הקלט הוא מזהים בלבד (kind:date:groupId:playerId) — בלי שמות וטלפונים. מופעל ע"י המשימה המתוזמנת של קלוד.
+on:
+  workflow_dispatch:
+    inputs:
+      marks:
+        description: "מפתחות שנשלחו, מופרדים בפסיק"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autosend-mark
+  cancel-in-progress: false
+
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - working-directory: agents
+        run: npm ci --no-audit --no-fund
+      - working-directory: agents
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          MARKS: ${{ github.event.inputs.marks }}
+        run: node autosend.mjs mark
