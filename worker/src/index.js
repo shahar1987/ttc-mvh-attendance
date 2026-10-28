@@ -9,8 +9,8 @@ import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
-import { waConfig, sendText, sendTemplate, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { shortLinks, remindCoaches, coachSummaries, readReceipts, flushPending, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
+import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { shortLinks, remindCoaches, coachSummaries, readReceipts, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -184,6 +184,7 @@ async function route(m, env) {
   let coach = null;
   try {
     coach = await coachFor(store, m.from, { any: true });
+    if (coach) await noteInbound(store, m.from).catch(() => {});
     if (coach?.enabled) await handleCoach(m, env, store, wa, coach, gemini);
     else if (coach) await saveNoteFromCoach(m, store, wa, coach);
   } catch (e) {
@@ -564,7 +565,7 @@ export async function deliverOutbox(env, store, wa) {
           const raw = String(x.text || "").slice(0, 3500);
           let text = raw;
           if (x.to) {
-            const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)], "he", x.who);
+            const wamid = await staffSend(store, wa, { phone: x.to, name: x.who, uid: x.uid }, raw, String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900));
             // הבעלים יקבל "✓✓ קרא" כשהמדריך פותח, כמו בשליחה מהבוט
             if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", phone: x.to, text: raw, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
             x.how = "direct";

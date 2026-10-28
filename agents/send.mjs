@@ -38,7 +38,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   ];
   const targets = pickCoaches(await loadAll(db, "users"), ids, to);
   const at = new Date().toISOString();
-  const items = targets.map((t) => ({ id: randomUUID(), from: "send-coach", key: "send-coach", at, to: t.phone, who: t.name, text, template: "club_message", templateParam: text }));
+  const items = targets.map((t) => ({ id: randomUUID(), from: "send-coach", key: "send-coach", at, to: t.phone, who: t.name, uid: t.id, text, template: "club_message", templateParam: text }));
   await db.collection("agentReports").doc("bot").set({ outboxQueue: admin.firestore.FieldValue.arrayUnion(...items) }, { merge: true });
   console.log(`queued ${items.length} for the WhatsApp bot (sent within 15 minutes)`);
 }

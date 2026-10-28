@@ -1353,3 +1353,19 @@ console.log("coach mode ok");
   globalThis.fetch = real;
 }
 console.log("template fallback ok");
+// 💬 מאמן שכתב לשולה ב-23 השעות האחרונות — טקסט רגיל, בלי תבנית; אחרת תבנית
+{
+  const { staffSend, noteInbound } = await import("../src/reminders.js");
+  const n = sent.length;
+  await staffSend(db(env), waConfig(env), { phone: "972500000077", name: "בודק" }, "שלום בודק");
+  assert.equal(sent.at(-1).type, "template", "בלי הודעה ממנו — תבנית");
+  await noteInbound(db(env), "972500000077");
+  await staffSend(db(env), waConfig(env), { phone: "972500000077", name: "בודק" }, "שלום בודק");
+  assert.equal(sent.at(-1).type, "text", "כתב לאחרונה — טקסט");
+  assert.equal(sent.at(-1).text.body, "שלום בודק");
+  await noteInbound(db(env), "972500000088", new Date(Date.now() - 30 * 3600e3));
+  await staffSend(db(env), waConfig(env), { phone: "972500000088", name: "ישן" }, "x");
+  assert.equal(sent.at(-1).type, "template", "כתב לפני יותר מ-23 שעות — תבנית");
+  assert.equal(sent.length - n, 3);
+}
+console.log("24h window ok");

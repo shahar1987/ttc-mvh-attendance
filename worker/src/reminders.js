@@ -214,6 +214,22 @@ export async function readReceipts(store, wa, statuses) {
 }
 
 // כשמי שהודעה אליו נחסמה כותב לשולה — החלון פתוח, ההודעות מהתור יוצאות אליו כטקסט רגיל והבעלים מקבל ✅
+// חלון 24 השעות של Meta: מאמן שכתב לשולה ב-23 השעות האחרונות מקבל טקסט רגיל, בלי תבנית —
+// כך לא חלה עליו מגבלת הודעות השיווק (131049). אחרת — תבנית כרגיל.
+const DAY = 23 * 3600 * 1000;
+export async function staffSend(store, wa, { phone, name, uid }, text, param = text) {
+  let last = ((await store.get("agentReports/bot")) || {}).lastInbound?.[phone];
+  if (!last && uid) last = (((await store.get(`agentReports/coach_${uid}`)) || {}).history || []).filter((h) => h.role === "user").at(-1)?.at;
+  if (last && Date.now() - new Date(last).getTime() < DAY) return sendText(wa, phone, text);
+  return sendTemplate(wa, phone, "club_message", [param], "he", name);
+}
+
+// נרשם כשמאמן כותב לשולה (route ב-index.js). רק יומיים אחרונים נשמרים
+export const noteInbound = (store, phone, now = new Date()) =>
+  store.update("agentReports/bot", (cur) => ({
+    lastInbound: { ...Object.fromEntries(Object.entries(cur.lastInbound || {}).filter(([, at]) => now - new Date(at) < 2 * DAY)), [phone]: now.toISOString() },
+  }));
+
 export async function flushPending(store, wa, phone) {
   let list = [];
   await store.update("agentReports/bot", (cur) => {

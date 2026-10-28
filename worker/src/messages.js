@@ -3,13 +3,13 @@
 // להורים ולמספרים אחרים: שולה מחזירה לבעלים קישור wa.me לכל נמען, והוא לוחץ "שלח" — הלחיצה היא האישור.
 // אם השליחה הישירה נכשלה (למשל המספר לא ברשימת הנמענים של מספר הניסיון ב-Meta) — הבעלים מקבל קישור במקום.
 // מתוזמנות נשמרות ב-agentReports/bot.scheduled, ובשעה שנקבעה הקישורים מגיעים אליו מה-cron (wrangler.toml).
-import { waLink, sendTemplate } from "../../agents/lib/whatsapp.mjs";
+import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
 import { confirmed, findGroup, ownerWrote } from "./tools.js";
 import { drainQueue } from "./queue.js";
-import { watchReads } from "./reminders.js";
+import { watchReads, staffSend } from "./reminders.js";
 
 // רמת כורזים מנוהלת בידי דניאל (הבעלים, 12.10.2026): כל מה ששולה שולחת לבעלים על רמת כורזים — היא מציעה להעביר לדניאל,
 // ושולחת לו (send_message) רק אחרי "כן" של הבעלים. מי שכבר מזכיר את דניאל (למשל "נשלח לדניאל ✓") לא נשאל שוב.
@@ -28,7 +28,7 @@ const role = (u) => String(u.role || "").trim().toLowerCase();
 async function resolve(store, to) {
   const [users, players] = await Promise.all([store.list("users"), store.list("players")]);
   const people = [
-    ...users.filter((u) => !u.deleted).map((u) => ({ name: u.name || "", phone: u.phone, staff: ["coach", "admin"].includes(role(u)) })),
+    ...users.filter((u) => !u.deleted).map((u) => ({ name: u.name || "", phone: u.phone, uid: u.id, staff: ["coach", "admin"].includes(role(u)) })),
     ...players.filter((p) => !p.deleted).map((p) => ({ name: p.name || "", phone: p.parentPhone })),
   ];
   const out = [];
@@ -134,7 +134,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       for (const r of recipients) {
         if (!r.staff || !wa) { links.push(r); continue; }
         try {
-          const wamid = await sendTemplate(wa, r.phone, "club_message", [text], "he", r.name);
+          const wamid = await staffSend(store, wa, { phone: r.phone, name: r.name, uid: r.uid }, text);
           if (wamid) watch[wamid] = { who: r.name, phone: r.phone, text, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
           direct.push(`${r.name}: נשלח משולה ✓`);
         } catch (e) {
