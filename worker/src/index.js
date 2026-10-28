@@ -650,7 +650,8 @@ export async function review(env) {
   const parts = await gemini(env, {
     systemInstruction: { parts: [{ text: REVIEW }] },
     contents: [{ role: "user", parts: [{ text: transcript }] }],
-    generationConfig: { maxOutputTokens: 1000, temperature: 0.2 },
+    // גיבוי Claude חושב לפני שעונה: ב-1000 החשיבה על יום שלם אכלה הכל והמפקח נפל (MAX_TOKENS, 28.10)
+    generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
   }, [], LITE);
   const verdict = parts.map((p) => p.text || "").join("").trim();
   const at = new Date().toISOString();
