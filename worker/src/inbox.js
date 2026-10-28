@@ -78,7 +78,12 @@ export async function inboxRoute(req, env, store, wa) {
   if (req.method === "GET" && url.searchParams.has("diag")) {
     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
     const pick = (k) => bot[k] ?? null;
+    // סטטוס וקטגוריה של כל תבנית: Meta מסווגת לפעמים UTILITY כ-MARKETING, ואז הודעות נחסמות (131049)
+    const templates = await fetch(`https://graph.facebook.com/v24.0/${env.WHATSAPP_WABA_ID}/message_templates?fields=name,status,category,language&limit=200`, { headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}` } })
+      .then((r) => r.json())
+      .then((j) => (j.data || []).map((t) => `${t.name}/${t.language}: ${t.status} ${t.category}`), (e) => [`error: ${e.message}`]);
     return Response.json({
+      templates,
       now: new Date().toISOString(),
       log: (bot.log || []).filter((e) => e.at > since),
       ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "waiting", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
