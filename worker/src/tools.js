@@ -2,7 +2,7 @@
 // Claude לא נוגע ב-Firestore או בוואטסאפ ישירות.
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
-import { dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, topActions } from "../../agents/lib/analysis.mjs";
+import { dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, normalizePhone, topActions } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
 
 const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
@@ -84,6 +84,17 @@ export const TOOL_DEFS = [
       type: "object",
       properties: { name: { type: "string" } },
       required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "set_player_phone",
+    description:
+      "שומר טלפון לשחקן באפליקציה (players.parentPhone; בקבוצות בוגרים זה הטלפון של השחקן עצמו). רק כשהבעלים כתב את המספר בעצמו. הודעות שחיכו למספר יוצאות בשליחה האוטומטית הבאה.",
+    input_schema: {
+      type: "object",
+      properties: { name: { type: "string", description: "שם השחקן כמו באפליקציה" }, phone: { type: "string" } },
+      required: ["name", "phone"],
       additionalProperties: false,
     },
   },
@@ -330,6 +341,20 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
         });
       }
       return JSON.stringify(out);
+    },
+
+    async set_player_phone({ name, phone }) {
+      // 28.10, שלום: "אני יכול לשלוח את המספר, אבל תשמור אותו באפליקציה". המספר חייב להופיע בהודעה שלו —
+      // לא מספר ש-Gemini המציא או שהגיע מתוכן חיצוני.
+      const digits = String(phone || "").replace(/\D/g, "");
+      if (!isValidPhone(digits) || !/^0?5\d{8}$|^9725\d{8}$/.test(digits)) return "המספר לא נראה כמו נייד ישראלי (05XXXXXXXX).";
+      const local = "0" + normalizePhone(digits).slice(3);
+      if (!String(lastOwnerText || "").replace(/\D/g, "").includes(local.slice(1))) return "שמירת טלפון רק כשהבעלים כותב את המספר בעצמו בהודעה.";
+      const q = String(name || "").trim();
+      const hits = q ? (await store.list("players")).filter((p) => !p.deleted && p.isActive !== false && (p.name || "").includes(q)) : [];
+      if (hits.length !== 1) return hits.length ? `יש ${hits.length} שחקנים שמתאימים ל"${q}": ${hits.map((p) => p.name).join(", ")}. לשאול את הבעלים מי מהם.` : `לא נמצא שחקן פעיל בשם "${q}".`;
+      await store.merge(`players/${hits[0].id}`, { parentPhone: local });
+      return `נשמר ל${hits[0].name}. הודעות שחיכו למספר יוצאות בשליחה האוטומטית הקרובה.`;
     },
 
     async send_absence_messages({ numbers }) {

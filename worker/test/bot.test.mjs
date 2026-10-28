@@ -767,6 +767,16 @@ const bot = () => docs.get("agentReports/bot");
 const tools = (text, turn = "t" + Math.random()) => ({ ...makeTools({ env, store, wa: waConfig(env), lastOwnerText: text, turn }), ...makeMessageTools({ store, wa: waConfig(env), lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: "https://x", turn }) });
 const D2 = dayBefore(2), D3 = dayBefore(10);
 
+// טלפון ששלום שולח נשמר באפליקציה (28.10) — רק אם המספר כתוב בהודעה שלו, ורק לשחקן אחד חד-משמעי
+put("players/ph1", { name: "עומר רז", groupId: "g1", isActive: true });
+put("players/ph2", { name: "עומר רזניק", groupId: "g1", isActive: true });
+assert.match(await tools("טלפון של עומר").set_player_phone({ name: "עומר רז", phone: "0521234567" }), /רק כשהבעלים כותב/, "מספר שלא הופיע בהודעה לא נשמר");
+assert.match(await tools("עומר 0521234567").set_player_phone({ name: "עומר", phone: "0521234567" }), /2 שחקנים/, "שם עמום — שואלים");
+assert.match(await tools("עומר 052-1234567").set_player_phone({ name: "עומר רזניק", phone: "052-1234567" }), /נשמר לעומר רזניק/);
+assert.equal(docs.get("players/ph2").parentPhone, "0521234567");
+assert.ok(!docs.get("players/ph1").parentPhone);
+assert.match(await tools("04-6950000").set_player_phone({ name: "עומר רז", phone: "04-6950000" }), /נייד/);
+
 // 2+3. הודעות היעדרות: אישור דו-שלבי, קישורים בלי לסמן "נשלח", וסימון רק אחרי "שלחתי" — ורק על רשומה שעדיין Absent
 put("players/p1", { parentPhone: "0541111111" });
 put("players/p3", { parentPhone: "0540000033" });
