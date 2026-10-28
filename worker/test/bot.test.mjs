@@ -366,6 +366,21 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   const reads = sent.filter((b) => JSON.stringify(b).includes("קרא/ה"));
   assert.equal(reads.length, 1, "עדכון קריאה אחד בלבד");
   assert.match(JSON.stringify(reads[0]), /יוסי קרא\/ה: סיכום אימון בוגרים/);
+  // ❌ הודעה שקיבלה ✓ אבל לא נמסרה — הבעלים מקבל את הסיבה, פעם אחת
+  {
+    const { watchReads } = await import("../src/reminders.js");
+    await watchReads(db(env), { f1: { who: "דור", phone: "972501234567", what: '"בדיקה"', at: new Date().toISOString() } });
+    const fb = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "f1", status: "failed", errors: [{ code: 131049, title: "x" }] }] } }] }] });
+    const fsig = { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(fb).digest("hex") };
+    for (let i = 0; i < 2; i++) {
+      const w = [];
+      await worker.fetch(new Request("https://x/webhook", { method: "POST", body: fb, headers: fsig }), env, { waitUntil: (p) => w.push(p) });
+      await Promise.all(w);
+    }
+    const fails = sent.filter((b) => JSON.stringify(b).includes("לא נמסרה"));
+    assert.equal(fails.length, 1, "עדכון כישלון אחד בלבד");
+    assert.match(JSON.stringify(fails[0]), /לדור לא נמסרה.*131049.*wa\.me\/972501234567/);
+  }
 }
 // ☀️ בוקר טוב למאמן ביום אימון: נוסח של Gemini רק אם הוא כולל את כל הקבוצות והשעות, אחרת נוסח קבוע; פעם אחת ביום
 {

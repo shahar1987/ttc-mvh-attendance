@@ -135,7 +135,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
         if (!r.staff || !wa) { links.push(r); continue; }
         try {
           const wamid = await sendTemplate(wa, r.phone, "club_message", [text]);
-          if (wamid) watch[wamid] = { who: r.name, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
+          if (wamid) watch[wamid] = { who: r.name, phone: r.phone, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
           direct.push(`${r.name}: נשלח משולה ✓`);
         } catch (e) {
           direct.push(`${r.name}: שולה לא הצליחה לשלוח (${e.message}), אפשר בקישור למטה`);
@@ -144,6 +144,8 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       }
       // הבעלים יקבל "✓✓ קרא" כשהמאמן פותח את ההודעה; כישלון כאן לא מבטל את מה שכבר נשלח
       if (Object.keys(watch).length) await watchReads(store, watch).catch(() => {});
+      // ✓ = Meta קיבלה, לא שנמסר. כישלון מסירה מגיע אחר כך ב-webhook (readReceipts) ומעדכן את הבעלים
+      if (Object.keys(watch).length) direct.push("(✓ = יצא לוואטסאפ. אם לא יימסר — תגיע הודעת ❌ עם הסיבה)");
       return [direct.join("\n"), links.length ? `ללחוץ על כל קישור ואז "שלח":\n${deliver(links, text)}` : ""].filter(Boolean).join("\n") + note;
     },
 

@@ -176,20 +176,29 @@ export async function watchReads(store, entries, now = new Date()) {
   }));
 }
 
-// Meta שולחת ב-webhook סטטוס "read" כשהנמען פתח את ההודעה (רק אם אישורי קריאה פעילים אצלו).
-// הודעה שבמעקב — הבעלים מקבל "✓✓ קרא", והיא יוצאת מהמעקב (פעם אחת לכל הודעה).
+// Meta שולחת ב-webhook סטטוס "read" כשהנמען פתח את ההודעה (רק אם אישורי קריאה פעילים אצלו),
+// ו-"failed" כשהודעה שכבר קיבלה ✓ (Meta קיבלה אותה) לא נמסרה בפועל.
+// הודעה שבמעקב — הבעלים מקבל "✓✓ קרא" או "❌ לא נמסרה" עם הסיבה, והיא יוצאת מהמעקב (פעם אחת לכל הודעה).
+const WHY = { 131049: "Meta עצרה את ההודעה (מגבלת הודעות שיווק לנמען)", 131026: "המספר לא יכול לקבל את ההודעה (אין וואטסאפ / גרסה ישנה / חסם)", 131030: "המספר לא ברשימת הנמענים המאושרים של שולה", 131047: "עברו 24 שעות מההודעה האחרונה שלו" };
 export async function readReceipts(store, wa, statuses) {
-  const ids = statuses.filter((s) => s.status === "read").map((s) => s.id);
+  const st = Object.fromEntries(statuses.filter((s) => s.status === "read" || s.status === "failed").map((s) => [s.id, s]));
+  const ids = Object.keys(st);
   if (!ids.length) return [];
   let hits = [];
   await store.update("agentReports/bot", (cur) => {
-    hits = ids.map((id) => cur.readWatch?.[id]).filter(Boolean);
+    hits = ids.filter((id) => cur.readWatch?.[id]).map((id) => ({ ...cur.readWatch[id], s: st[id] }));
     if (!hits.length) return null;
     return { readWatch: Object.fromEntries(Object.entries(cur.readWatch).filter(([id]) => !ids.includes(id))) };
   });
   if (!hits.length) return [];
   const bot = (await store.get("agentReports/bot")) || {};
-  const text = hits.map((h) => `✓✓ ${h.who} קרא/ה: ${h.what}`).join("\n");
+  const text = hits
+    .map(({ who, what, phone, s }) => {
+      if (s.status === "read") return `✓✓ ${who} קרא/ה: ${what}`;
+      const e = s.errors?.[0] || {};
+      return `❌ ההודעה ל${who} לא נמסרה: ${what}\nסיבה: ${WHY[e.code] || e.error_data?.details || e.title || "לא ידוע"} (${e.code || "?"})${phone ? `\nלשליחה ידנית: ${waLink(phone, "")}` : ""}`;
+    })
+    .join("\n");
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") });
   return hits;
 }

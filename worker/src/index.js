@@ -169,7 +169,7 @@ export default {
     // יש תור (נוצר בפריסה) → העבודה עוברת אליו; אין, או שהשליחה לתור נכשלה → כמו קודם, ברקע של הבקשה הזאת
     // "נקרא" על הודעות ששולה שלחה למאמנים — הבעלים מקבל עדכון (readReceipts)
     const statuses = (body.entry || []).flatMap((e) => e.changes || []).flatMap((c) => c.value?.statuses || []);
-    if (statuses.some((s) => s.status === "read")) ctx.waitUntil(readReceipts(db(env), waConfig(env), statuses).catch(() => {}));
+    if (statuses.some((s) => s.status === "read" || s.status === "failed")) ctx.waitUntil(readReceipts(db(env), waConfig(env), statuses).catch(() => {}));
     for (const m of msgs) ctx.waitUntil(env.MESSAGES ? env.MESSAGES.send(m).catch(() => route(m, env)) : route(m, env));
     return new Response("ok");
   },
@@ -565,7 +565,7 @@ export async function deliverOutbox(env, store, wa) {
           if (x.to) {
             const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)]);
             // הבעלים יקבל "✓✓ קרא" כשהמדריך פותח, כמו בשליחה מהבוט
-            if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
+            if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", phone: x.to, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
             x.how = "direct";
             ok.push(keyOf(x));
             continue;
