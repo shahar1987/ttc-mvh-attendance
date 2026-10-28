@@ -2200,30 +2200,6 @@ function ReportsScreen({ groups, users, players, attendance, cancellations, read
   );
 }
 
-function U({ icon: t, label: s, value: a, accent: l }) {
-  return e.createElement(
-    "div",
-    {
-      className:
-        "bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-2",
-    },
-    e.createElement(
-      "div",
-      { className: `w-9 h-9 rounded-lg flex items-center justify-center ${l}` },
-      e.createElement(t, { className: "w-5 h-5 text-white" }),
-    ),
-    e.createElement(
-      "div",
-      { className: "text-2xl font-bold text-blue-950" },
-      a,
-    ),
-    e.createElement(
-      "div",
-      { className: "text-xs text-slate-500 leading-tight" },
-      s,
-    ),
-  );
-}
 function Re({ player: t, onOpenWhatsapp: s, dates: DS }) {
   let two = Array.isArray(DS) && DS.length === 2 ? DS : null;
   return e.createElement(
@@ -2469,7 +2445,9 @@ function st({
         setDashErr("העברה לארכיון נכשלה: " + A.message);
       }
     };
-  let [dashErr, setDashErr] = b("");
+  let [dashErr, setDashErr] = b(""),
+    todayG = s.filter((d) => ee(d)),
+    todayDone = todayG.filter((d) => l.some((y) => y.groupId === d.id && y.date === E()) || findCancellation(CX, d.id, E())).length;
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-5" },
@@ -2491,37 +2469,42 @@ function st({
           dashErr,
         ),
       ),
-    // 27.9: המספרים של הערב קודם, רשימות הפעולה אחריהם
+    // 28.10 עיצוב "בריאות וכושר": טבעת נוכחות החודש (חוץ) ואימוני היום שמולאו (פנים)
     e.createElement(
       "div",
-      { className: "grid grid-cols-2 gap-3" },
-      e.createElement(U, {
-        icon: H,
-        label:
-          "שחקנים פעילים",
-        value: uniqueActiveCount,
-        accent: "bg-blue-900",
+      { className: "rounded-2xl bg-white ios-card p-4 flex items-center gap-5" },
+      e.createElement(ActivityRings, {
+        outer: g,
+        inner: todayG.length ? (100 * todayDone) / todayG.length : 0,
       }),
-      e.createElement(U, {
-        icon: le,
-        label: 'סה"כ קבוצות',
-        value: s.length,
-        accent: "bg-blue-900",
-      }),
-      e.createElement(U, {
-        icon: he,
-        label:
-          "נוכחות ממוצעת החודש",
-        value: g === null ? "—" : `${g}%`,
-        accent: "bg-emerald-500",
-      }),
-      e.createElement(U, {
-        icon: ge,
-        label:
-          "אימונים שנרשמו החודש",
-        value: r,
-        accent: "bg-emerald-500",
-      }),
+      e.createElement(
+        "div",
+        { className: "flex-1 min-w-0 grid gap-2.5" },
+        e.createElement(
+          "div",
+          null,
+          e.createElement("div", { className: "text-[28px] font-extrabold leading-none text-[#2F6DB5] tabular-nums" }, g === null ? "—" : `${g}%`),
+          e.createElement("div", { className: "text-sm font-semibold text-slate-500 mt-1" }, "נוכחות החודש"),
+        ),
+        e.createElement(
+          "div",
+          null,
+          e.createElement("div", { className: "text-[28px] font-extrabold leading-none text-emerald-700 tabular-nums" }, todayDone, "/", todayG.length),
+          e.createElement("div", { className: "text-sm font-semibold text-slate-500 mt-1" }, "אימונים מולאו היום"),
+        ),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "grid grid-cols-3 gap-2" },
+      [[uniqueActiveCount, "שחקנים"], [s.length, "קבוצות"], [r, "אימונים החודש"]].map(([v, lb]) =>
+        e.createElement(
+          "div",
+          { key: lb, className: "rounded-2xl bg-white ios-card px-2 py-3 text-center" },
+          e.createElement("div", { className: "text-xl font-extrabold text-blue-950 tabular-nums" }, v),
+          e.createElement("div", { className: "text-xs font-semibold text-slate-500 mt-0.5" }, lb),
+        ),
+      ),
     ),
     e.createElement(MissingDaysCard, {
       items: pastMissing,
@@ -2547,7 +2530,7 @@ function st({
         {
           onClick: i,
           className:
-            "bg-emerald-500 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
+            "bg-[#5E9E8C] rounded-full py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
         },
         e.createElement(K, { className: "w-4 h-4" }),
         " הוספת שחקן",
@@ -2557,7 +2540,7 @@ function st({
         {
           onClick: y,
           className:
-            "bg-blue-900 rounded-xl py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
+            "bg-[#3B82D6] rounded-full py-3.5 flex items-center justify-center gap-2 text-white font-semibold active:scale-[0.98] transition-transform",
         },
         e.createElement(J, { className: "w-4 h-4" }),
         " תזכורת למאמנים",
@@ -2629,7 +2612,7 @@ function st({
       { className: "flex flex-col gap-3" },
       e.createElement(
         "h2",
-        { className: "text-sm font-semibold text-slate-500 px-1" },
+        { className: "text-xl font-extrabold text-blue-950 px-1 mt-1" },
         "קבוצות",
       ),
       s.map((d) => {
@@ -2642,7 +2625,7 @@ function st({
           {
             key: d.id,
             className:
-              "bg-white rounded-xl border border-slate-200 overflow-hidden",
+              "bg-white rounded-2xl ios-card overflow-hidden",
           },
           e.createElement(
             "button",
@@ -2683,7 +2666,7 @@ function st({
               { className: "text-left shrink-0" },
               e.createElement(
                 "div",
-                { className: "text-sm font-bold text-emerald-600" },
+                { className: "text-lg font-extrabold text-emerald-700 tabular-nums" },
                 I === null ? "—" : `${I}%`,
               ),
               e.createElement(

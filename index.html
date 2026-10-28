@@ -49,10 +49,15 @@
     button { transition: transform .12s ease-out, background-color .2s, color .2s, box-shadow .2s, opacity .2s; touch-action: manipulation; }
     button:not(:disabled):active { transform: scale(.97); }
     /* כפתור מלא בצבע: ברק עדין למעלה וצל רך מתחת */
-    button[class*="bg-blue-9"], button[class*="bg-blue-8"], button[class*="bg-emerald-6"], button[class*="bg-emerald-7"],
-    button[class*="bg-amber-6"], button[class*="bg-amber-7"], button[class*="bg-red-6"], button[class*="bg-red-7"] {
-      background-image: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.10), 0 6px 16px -6px rgba(27,42,65,.45); }
+    /* 28.10 עיצוב "בריאות וכושר" בכל המסכים: מילוי שטוח ורך בגווני האפליקציה, בלי ברק וצל כבד */
+    .bg-blue-900 { background-color: #3B82D6; }
+    .bg-emerald-500, .bg-emerald-600 { background-color: #5E9E8C; }
+    button[class*="bg-blue-9"], button[class*="bg-blue-8"], button[class*="bg-emerald-5"], button[class*="bg-emerald-6"], button[class*="bg-emerald-7"],
+    button[class*="bg-amber-6"], button[class*="bg-amber-7"], button[class*="bg-red-6"], button[class*="bg-red-7"], button[class*="bg-[#"] {
+      box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px -6px rgba(27,42,65,.25); }
+    button.rounded-xl[class*="bg-blue-9"], button.rounded-xl[class*="bg-emerald-5"], button.rounded-xl[class*="bg-emerald-6"] { border-radius: 9999px; }
+    /* כותרות מקטע: גדולות וכהות כמו "האימונים של היום", במקום אפור קטן */
+    h2.text-sm.text-slate-500, h3.text-sm.text-slate-500 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 800; color: #0B1F3A; }
     /* חלונות שעולים מלמטה: הרקע מתעמעם והחלון מחליק למעלה */
     .fixed.inset-0.bg-black\/40.items-end, .fixed.inset-0.bg-black\/50 { animation: dim-in .25s ease-out; }
     .fixed.inset-0.bg-black\/40.items-end > *, .fixed.inset-0.bg-black\/50 > * { animation: sheet-up .45s cubic-bezier(.32,.72,0,1); }
