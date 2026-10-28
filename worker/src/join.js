@@ -7,6 +7,7 @@ import { notifyOwner, waConfig } from "../../agents/lib/whatsapp.mjs";
 
 const PER_IP_HOUR = 5;
 const PER_DAY = 60;
+const ALERT_EVERY = 3600e3; // הודעה לבעלים לכל היותר פעם בשעה, גם בהצפה
 const LOGO = "https://shahar1987.github.io/ttc-mvh-attendance/logo.png";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -48,17 +49,20 @@ const ownerDigits = (ownerPhone) => {
 const showPhone = (d) => `${d.slice(0, 3)}-${d.slice(3)}`;
 export function helpLine(ownerPhone) {
   const d = ownerDigits(ownerPhone);
-  return d ? `<footer class="help">צריכים עזרה? שחר · <a href="tel:${d}" dir="ltr">${showPhone(d)}</a></footer>` : "";
+  return d ? `<footer class="help">צריכים עזרה? <a href="tel:${d}" dir="ltr">${showPhone(d)}</a></footer>` : "";
 }
 
-const ipKey = async (req) => {
-  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("join|" + (req.headers.get("CF-Connecting-IP") || "?")));
+// IPv6 לפי /64 (כתובת אחת לבית) + מלח מקוד הטופס — אי אפשר לשחזר כתובת מהגיבוב
+export const ipOf = (ip) => (ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip);
+const ipKey = async (req, salt) => {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`join|${salt}|${ipOf(req.headers.get("CF-Connecting-IP") || "?")}`));
   return [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
 // מגבלת קצב: 5 שליחות לשעה מאותה כתובת, 60 ביום בסך הכל. נשמר ב-joinConfig/rate (מנהל בלבד)
 async function allow(store, key, now) {
-  let ok = false;
+  let ok = false,
+    alert = false;
   await store.update("joinConfig/rate", (cur) => {
     const hour = now - 3600e3,
       day = now - 86400e3;
@@ -68,9 +72,10 @@ async function allow(store, key, now) {
     ok = mine.filter((t) => t > hour).length < PER_IP_HOUR && total < PER_DAY;
     if (!ok) return null;
     hits[key] = [...mine, now];
-    return { hits };
+    alert = !(now - (cur.alertAt || 0) < ALERT_EVERY);
+    return alert ? { hits, alertAt: now } : { hits };
   });
-  return ok;
+  return { ok, alert };
 }
 
 const html = (body, title = "הצטרפות למועדון") =>
@@ -129,7 +134,7 @@ function printPage(cfg, url, ownerPhone) {
   qr.make();
   const svg = qr.createSvgTag({ cellSize: 5, margin: 0, scalable: true });
   const d = ownerDigits(ownerPhone);
-  const contact = d ? `<p class="c">שאלות? שחר <b dir="ltr">${showPhone(d)}</b></p>` : "";
+  const contact = d ? `<p class="c">שאלות? <b dir="ltr">${showPhone(d)}</b></p>` : "";
   // 10 כרטיסים בדף A4 (2×5, בגודל כרטיס ביקור) — לגזור ולחלק לילדים
   const card = `<section class="p"><div class="q">${svg}</div><div class="t"><div class="h"><img class="l" src="${LOGO}" alt=""><h2>מצטרפים לשולחן 🏓</h2></div><p class="s">${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p><p class="i">סורקים ומצטרפים</p>${contact}</div></section>`;
   return new Response(
@@ -143,7 +148,7 @@ h2{font-size:13pt;margin:0;font-weight:800;white-space:nowrap}.s{margin:0;color:
 .i{margin:2.5mm 0 0;font-size:9pt;font-weight:600}.c{margin:1.5mm 0 0;font-size:9pt;color:#2F6DB5}
 @media screen{body{background:#F2F2F7}.sheet{margin:10px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.1)}}
 </style></head><body><div class="sheet">${card.repeat(10)}</div><script>onload=()=>setTimeout(()=>print(),400)</script></body></html>`,
-    { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } },
+    { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; img-src https://shahar1987.github.io data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" } },
   );
 }
 
@@ -155,12 +160,13 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
   if (req.method === "GET") {
     const cfg = await config(store, url.searchParams.get("k") || ""),
       help = helpLine(env.OWNER_PHONE);
-    if (!cfg) return closed(help);
+    if (!cfg) return closed(); // בלי קוד תקין לא מראים אפילו את הטלפון
     if (url.pathname === "/join/print") return printPage(cfg, `${url.origin}/join?k=${encodeURIComponent(cfg.code)}`, env.OWNER_PHONE);
     return formPage(cfg, help);
   }
   if (req.method !== "POST" || url.pathname !== "/join") return json({ ok: false, error: "bad" }, 405);
   if (!(req.headers.get("content-type") || "").startsWith("application/json")) return json({ ok: false, error: "bad" }, 415);
+  if (Number(req.headers.get("content-length") || 0) > 4000) return json({ ok: false, error: "bad" }, 413);
   const raw = await req.text();
   if (raw.length > 4000) return json({ ok: false, error: "bad" }, 413);
   let body;
@@ -174,14 +180,20 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
   const v = validate(body, cfg);
   if (v.error === "bot") return json({ ok: true }); // לא מגלים לרובוט שנתפס
   if (!v.ok) return json(v, 400);
-  if (!(await allow(store, await ipKey(req), now))) return json({ ok: false, error: "rate" }, 429);
+  let gate;
+  try {
+    gate = await allow(store, await ipKey(req, cfg.code), now);
+  } catch (_) {
+    gate = { ok: false }; // הרבה שליחות בבת אחת — עדיף "נסו שוב" מאשר דף שגיאה
+  }
+  if (!gate.ok) return json({ ok: false, error: "rate" }, 429);
   const id = `${now}_${crypto.randomUUID().slice(0, 8)}`;
   const at = new Date(now).toISOString();
   await store.merge(`joinRequests/${id}`, { ...v.data, createdAt: at, source: "form" });
-  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child}.\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
-  try {
+  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child} (וכל מה שיגיע בשעה הקרובה יחכה שם בלי הודעה נוספת).\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
+  if (gate.alert) try {
     const bot = (await store.get("agentReports/bot")) || {};
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "בקשת הצטרפות חדשה מחכה לאישור באפליקציה" });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "בקשות הצטרפות חדשות מחכות לאישור באפליקציה" });
   } catch (_) {
     /* ההודעה לבעלים לא חוסמת את השמירה */
   }

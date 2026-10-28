@@ -1966,23 +1966,8 @@ function joinMatches(r, players) {
     })
     .slice(0, 3);
 }
-function JoinScreen({ groups: G, players: PL, uid: UID }) {
-  // רק הבעלים רואה ומאשר: המנהל הראשון שפותח את המסך נקבע כבעלים (joinConfig/owner), ואחר כך זה לא משתנה מהאפליקציה
-  let [owner, setOwner] = b(void 0);
-  j(
-    () =>
-      ae(
-        S(P, "joinConfig", "owner"),
-        (d) => {
-          if (d.exists()) setOwner(d.data().uid);
-          else if (UID) De(S(P, "joinConfig", "owner"), { uid: UID, at: new Date().toISOString() }).catch(() => setOwner(null));
-        },
-        () => setOwner(null),
-      ),
-    [UID],
-  );
-  if (owner === void 0) return e.createElement("p", { className: "px-5 pt-6 text-sm text-slate-500 text-right" }, "טוען…");
-  if (!UID || owner !== UID) return e.createElement("p", { className: "px-5 pt-6 text-sm text-slate-500 text-right" }, "בקשות ההצטרפות פתוחות רק לבעלים.");
+function JoinScreen({ groups: G, players: PL }) {
+  // מי הבעלים קובעים החוקים (לפי האימייל); כאן רק מציגים
   return e.createElement(JoinOwnerScreen, { groups: G, players: PL });
 }
 function JoinOwnerScreen({ groups: G, players: PL }) {
@@ -1992,25 +1977,31 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
     [busy, setBusy] = b(""),
     [copied, setCopied] = b(!1),
     [pick, setPick] = b({}); // הקבוצה שהבעלים בחר לכל בקשה (ההורה לא בוחר)
+  let onErr = (e2) => (setReqs([]), setErr(e2.code === "permission-denied" ? "בקשות ההצטרפות פתוחות רק לבעלים." : e2.message));
   j(() => {
     let a = ae(
         M(P, "joinRequests"),
         (sn) => setReqs(sn.docs.map((d) => ({ id: d.id, ...d.data() })).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)))),
-        (e2) => setErr(e2.message),
+        onErr,
       ),
-      c2 = ae(S(P, "joinConfig", "main"), (d) => setCfg(d.exists() ? d.data() : {}), (e2) => setErr(e2.message));
+      c2 = ae(S(P, "joinConfig", "main"), (d) => setCfg(d.exists() ? d.data() : {}), onErr);
     return () => (a(), c2());
   }, []);
   let save = (patch) => De(S(P, "joinConfig", "main"), patch, { merge: !0 }).catch((e2) => setErr("השמירה נכשלה: " + e2.message)),
     newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (x) => "abcdefghjkmnpqrstuvwxyz23456789"[x % 31]).join(""),
     link = cfg && cfg.code ? `${JOIN_URL}?k=${cfg.code}` : "",
     groupName = (id) => (G.find((g) => g.id === id) || {}).name || "קבוצה שנמחקה",
+    gidOf = (r) => pick[r.id] || (G.some((g) => g.id === r.groupId) ? r.groupId : ""),
+    // הכתיבה לשחקן ומחיקת הבקשה באותה פעולה — אין כפילות ואין בקשה שנעלמת בלי שנשמר כלום
     act = async (r, fn) => {
+      if (busy) return;
       setBusy(r.id);
       setErr("");
       try {
-        await fn();
-        await Ee(S(P, "joinRequests", r.id));
+        let bt = Te(P);
+        fn(bt);
+        bt.delete(S(P, "joinRequests", r.id));
+        await bt.commit();
       } catch (e2) {
         setErr("הפעולה נכשלה: " + e2.message);
       } finally {
@@ -2018,10 +2009,11 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
       }
     },
     approve = (r) =>
-      act(r, () =>
-        V(M(P, "players"), {
+      gidOf(r) &&
+      act(r, (bt) =>
+        bt.set(S(P, "players", `join_${r.id}`), {
           name: r.child,
-          groupId: pick[r.id] || r.groupId,
+          groupId: gidOf(r),
           parentName: r.parent || "",
           parentPhone: r.phone ? normalizePhone(r.phone) : "",
           joinDate: E(),
@@ -2030,13 +2022,17 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
         }),
       ),
     linkTo = (r, p) =>
-      act(r, () => {
-        let patch = {};
-        if (!p.parentPhone && r.phone) patch.parentPhone = normalizePhone(r.phone);
-        if (!p.parentName && r.parent) patch.parentName = r.parent;
-        return Object.keys(patch).length ? O(S(P, "players", p.id), patch) : Promise.resolve();
-      }),
-    reject = (r) => askConfirm(`למחוק את הבקשה של ${r.child}?`, { yes: "כן, למחוק", danger: !0 }).then((ok) => ok && act(r, () => Promise.resolve())),
+      askConfirm(`${r.child} הוא ${p.name} שכבר באפליקציה? הבקשה תימחק ולא יתווסף ילד חדש.`, { yes: "כן, אותו ילד" }).then(
+        (ok) =>
+          ok &&
+          act(r, (bt) => {
+            let patch = {};
+            if (!p.parentPhone && r.phone) patch.parentPhone = normalizePhone(r.phone);
+            if (!p.parentName && r.parent) patch.parentName = r.parent;
+            Object.keys(patch).length && bt.update(S(P, "players", p.id), patch);
+          }),
+      ),
+    reject = (r) => askConfirm(`למחוק את הבקשה של ${r.child}?`, { yes: "כן, למחוק", danger: !0 }).then((ok) => ok && act(r, () => {})),
     on = !!(cfg && cfg.enabled && cfg.code),
     pill = (active) => `min-h-[40px] px-3.5 rounded-full text-sm font-semibold ${active ? "bg-[#3B82D6] text-white" : "bg-slate-100 text-slate-600"}`;
   return e.createElement(
@@ -2075,7 +2071,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
               e.createElement(
                 "select",
                 {
-                  value: pick[r.id] || r.groupId || "",
+                  value: gidOf(r),
                   onChange: (ev) => setPick({ ...pick, [r.id]: ev.target.value }),
                   "aria-label": "קבוצה",
                   className: "min-h-[48px] rounded-xl bg-slate-50 px-3 text-right font-semibold text-blue-950 outline-none",
@@ -2088,7 +2084,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
                 { className: "grid grid-cols-[1fr_auto] gap-2" },
                 e.createElement(
                   "button",
-                  { disabled: busy === r.id || !(pick[r.id] || r.groupId), onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
+                  { disabled: busy === r.id || !gidOf(r), onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
                   ms.length ? "בכל זאת ילד חדש — להוסיף" : "אישור והוספה לקבוצה",
                 ),
                 e.createElement("button", { disabled: busy === r.id, onClick: () => reject(r), className: "min-h-[48px] px-4 rounded-full bg-slate-100 text-slate-600 font-semibold disabled:opacity-50" }, "דחייה"),
@@ -4946,7 +4942,7 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
-      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c, uid: t?.uid }),
+      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&
