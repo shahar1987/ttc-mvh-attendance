@@ -1,7 +1,34 @@
-// בהיר וחד: נקודה צבעונית קבועה לכל קבוצה, כדי לזהות אותה במבט
-const GROUP_DOTS = ["bg-blue-600", "bg-emerald-600", "bg-amber-600", "bg-red-600", "bg-violet-600"];
-function groupDot(id) {
-  return GROUP_DOTS[String(id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) % GROUP_DOTS.length];
+// 28.10 עיצוב "בריאות וכושר": עיגול ראשי תיבות לשחקן, בגוונים רכים מפלטת האפליקציה
+const AVATAR_TINTS = [
+  "bg-[#EAF1FA] text-[#3567A8]",
+  "bg-[#E7F1ED] text-[#2E7D6B]",
+  "bg-[#F7EFDD] text-[#7E5710]",
+  "bg-[#EDEBF5] text-[#5E5A8C]",
+  "bg-[#F8EAE8] text-[#A0423A]",
+];
+function initials(name) {
+  return String(name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("");
+}
+function Avatar({ player: p }) {
+  let i = String(p.id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_TINTS.length;
+  return e.createElement("span", { "aria-hidden": "true", className: `w-9 h-9 rounded-full grid place-items-center shrink-0 text-sm font-bold ${AVATAR_TINTS[i]}` }, initials(p.name));
+}
+// טבעות כמו ב-Apple Health: חיצונית = נוכחות השבוע, פנימית = כמה מאימוני היום מולאו
+function ActivityRings({ outer, inner }) {
+  let ring = (r, w, pct, track, color) => {
+    let len = 2 * Math.PI * r,
+      v = Math.max(0, Math.min(100, pct || 0));
+    return [
+      e.createElement("circle", { key: "t", cx: 48, cy: 48, r, fill: "none", stroke: track, strokeWidth: w }),
+      v > 0 && e.createElement("circle", { key: "v", cx: 48, cy: 48, r, fill: "none", stroke: color, strokeWidth: w, strokeLinecap: "round", strokeDasharray: `${(len * v) / 100} ${len}`, transform: "rotate(-90 48 48)" }),
+    ];
+  };
+  return e.createElement(
+    "svg",
+    { width: 96, height: 96, viewBox: "0 0 96 96", "aria-hidden": "true", className: "shrink-0" },
+    ...ring(40, 12, outer, "#E4EEF9", "#3B82D6"),
+    ...ring(24, 10, inner, "#E3EFEB", "#5E9E8C"),
+  );
 }
 function roleKey(v) {
   let r = v && typeof v === "object" ? v.role : v;
@@ -3059,11 +3086,11 @@ function GroupInsights({ group: g, players: roster, attendance: all }) {
     latest = weeks.find((w) => w.pct !== null);
   return e.createElement(
     "section",
-    { className: "bg-white rounded-xl border border-slate-200 p-4 flex flex-col gap-4 text-right" },
+    { className: "bg-white rounded-2xl ios-card p-4 flex flex-col gap-4 text-right" },
     e.createElement(
       "div",
       null,
-      e.createElement("h2", { className: "font-bold text-blue-950" }, "נתוני הקבוצה"),
+      e.createElement("h2", { className: "text-xl font-extrabold text-blue-950" }, "נתוני הקבוצה"),
       latest &&
         e.createElement(
           "p",
@@ -3078,7 +3105,7 @@ function GroupInsights({ group: g, players: roster, attendance: all }) {
       { "aria-label": "נוכחות שבועית ב-8 השבועות האחרונים", role: "img" },
       e.createElement(
         "div",
-        { className: "h-24 flex items-end gap-1.5 border-b border-slate-300" },
+        { className: "h-24 flex items-end gap-1.5" },
         weeks.map((w) =>
           e.createElement(
             "div",
@@ -3092,7 +3119,7 @@ function GroupInsights({ group: g, players: roster, attendance: all }) {
             w.pct === null
               ? e.createElement("span", { className: "text-xs text-slate-400 mb-1" }, "–")
               : e.createElement("div", {
-                  className: `w-full max-w-[28px] rounded-t ${w === latest ? "bg-emerald-600" : "bg-emerald-300"}`,
+                  className: `w-full max-w-[28px] rounded-t-md rounded-b-sm ${w === latest ? "bg-[#3B82D6]" : "bg-[#D3E3F6]"}`,
                   style: { height: Math.max(w.pct, 3) + "%" },
                 }),
           ),
@@ -3115,9 +3142,9 @@ function GroupInsights({ group: g, players: roster, attendance: all }) {
         e.createElement(
           "span",
           { className: "flex items-center gap-2" },
-          e.createElement("span", { className: "inline-block w-3 h-3 rounded-sm bg-emerald-600" }),
+          e.createElement("span", { className: "inline-block w-3 h-3 rounded-[3px] bg-[#8FBDB0]" }),
           "הגיע",
-          e.createElement("span", { className: "inline-block w-3 h-3 rounded-sm border-2 border-red-600 bg-white" }),
+          e.createElement("span", { className: "inline-block w-3 h-3 rounded-[3px] border-2 border-red-400 bg-white" }),
           "לא הגיע",
         ),
       ),
@@ -3133,7 +3160,7 @@ function GroupInsights({ group: g, players: roster, attendance: all }) {
               e.createElement("span", {
                 key: c.d,
                 title: shortDate(c.d) + " · " + (c.st === "Present" ? "הגיע" : c.st === "Absent" ? "לא הגיע" : "אין רישום"),
-                className: `w-4 h-4 rounded-sm ${c.st === "Present" ? "bg-emerald-600" : c.st === "Absent" ? "border-2 border-red-600 bg-white" : "bg-slate-200"}`,
+                className: `w-4 h-4 rounded-[4px] ${c.st === "Present" ? "bg-[#8FBDB0]" : c.st === "Absent" ? "border-2 border-red-400 bg-white" : "bg-slate-100"}`,
               }),
             ),
           ),
@@ -3667,8 +3694,8 @@ function re({
         { className: "px-1 text-right" },
         e.createElement(
           "h2",
-          { className: "text-2xl font-bold text-blue-950 leading-tight" },
-          isPast ? `מי לא הגיע ב־${Ke(m)}?` : "מי לא הגיע היום?",
+          { className: "text-[30px] font-extrabold text-blue-950 leading-tight" },
+          isPast ? `מי לא הגיע ב־${Ke(m)}?` : "מי לא הגיע?",
         ),
         e.createElement(
           "p",
@@ -3750,7 +3777,8 @@ function re({
     e.createElement(
       "div",
       {
-        className: "flex flex-col gap-1.5",
+        // 28.10: רשימה אחת מקובצת בכרטיס לבן, כמו ב-Apple Health
+        className: "flex flex-col bg-white rounded-2xl ios-card overflow-hidden divide-y divide-slate-100",
       },
       n.map((p) => {
         let w = x[p.id] || null,
@@ -3885,7 +3913,7 @@ function re({
           "div",
           {
             key: p.id,
-            className: `rounded-2xl px-2 py-1 flex flex-col gap-1 transition-colors duration-200 ${absent ? "bg-red-50" : "bg-white ios-card"}`,
+            className: `px-2 py-1 flex flex-col gap-1 transition-colors duration-200 ${absent ? "bg-red-50" : "bg-white"}`,
           },
           e.createElement(
             "div",
@@ -3904,14 +3932,15 @@ function re({
                 "span",
                 {
                   "aria-hidden": "true",
-                  className: `w-7 h-7 rounded-full border-2 grid place-items-center shrink-0 text-sm font-bold ${absent ? "bg-red-500 border-red-500 text-white" : "bg-white border-slate-300"}`,
+                  className: `w-[30px] h-[30px] rounded-full grid place-items-center shrink-0 text-sm font-bold ${absent ? "bg-red-50 border-2 border-red-400 text-red-500" : w === "Present" ? "bg-[#5E9E8C] text-white" : "bg-white border-2 border-slate-300"}`,
                 },
-                absent ? "✕" : "",
+                absent ? "✕" : w === "Present" ? "✓" : "",
               ),
+              e.createElement(Avatar, { player: p }),
               e.createElement(
                 "span",
                 {
-                  className: `flex-1 text-lg font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
+                  className: `flex-1 text-[17px] font-semibold break-words ${absent ? "text-red-800" : "text-blue-950"}`,
                 },
                 p.name,
                 p.trial &&
@@ -4042,7 +4071,7 @@ function re({
               onClick: A,
               disabled: g || n.length === 0 || offDayEmpty,
               className:
-                "w-full bg-blue-700 disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
+                "w-full bg-[#2F6DB5] disabled:opacity-60 text-white text-lg font-bold rounded-2xl py-4 active:scale-[0.98] transition-transform shadow-lg",
             },
             g
               ? "שומר…"
@@ -4131,23 +4160,7 @@ function mt({
             m.notPaying &&
             !s.some((gr) => gr.id === m.groupId && gr.name === PAYMENT_EXCLUDED_GROUP_NAME),
         ).length
-      : 0,
-    toneCls = {
-      emerald: "text-emerald-700",
-      blue: "text-blue-950",
-      amber: "text-amber-700",
-      red: "text-red-700",
-    },
-    tile = (num, label, tone, onClick) =>
-      e.createElement(
-        onClick ? "button" : "div",
-        {
-          onClick,
-          className: "min-h-[80px] rounded-xl bg-white border border-slate-200 px-2 py-2 flex flex-col items-center justify-center text-center",
-        },
-        e.createElement("span", { className: `text-3xl font-bold leading-none ${toneCls[tone]}` }, num),
-        e.createElement("span", { className: "text-sm text-slate-600 mt-1.5 leading-tight" }, label),
-      );
+      : 0;
   useLocalAlertNotice
 (myAlerts, "נוכחות מועדון");
   return c.length === 0
@@ -4221,20 +4234,50 @@ function mt({
       : e.createElement(
           "div",
           { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
-          // 10.10: מסך הפתיחה כלוח קטן — מספרים למעלה, האימונים של היום, כל השאר מקופל.
+          // 28.10: מסך הפתיחה בסגנון Apple Health — כותרת "היום", טבעות, ואז האימונים של היום.
           e.createElement(
             "div",
-            { className: `grid gap-2 ${OP ? "grid-cols-2" : "grid-cols-3"}` },
-            tile(weekPct == null ? "—" : weekPct + "%", "נוכחות השבוע", "emerald"),
-            tile(activeCount, "שחקנים פעילים", "blue"),
-            tile(myMissing.length, "לא דווחו", myMissing.length ? "amber" : "blue"),
-            OP && tile(notPayingCount, "לא שילמו", notPayingCount ? "red" : "blue", OP),
+            { className: "px-1" },
+            e.createElement("div", { className: "text-sm font-semibold text-slate-500" }, "יום ", We[new Date().getDay()], ", ", new Date().toLocaleDateString("he-IL", { day: "numeric", month: "long" })),
+            e.createElement("h1", { className: "text-[34px] font-extrabold text-blue-950 leading-tight" }, "היום"),
           ),
           e.createElement(
-            "p",
-            { className: "text-sm font-semibold text-blue-950 px-1 -mb-2" },
-            "האימונים של היום \xB7 יום ",
-            We[new Date().getDay()],
+            "div",
+            { className: "rounded-2xl bg-white ios-card p-4 flex items-center gap-5" },
+            e.createElement(ActivityRings, {
+              outer: weekPct,
+              inner: todayGroups.length ? (100 * todayGroups.filter((r) => f(r) || fc(r)).length) / todayGroups.length : 0,
+            }),
+            e.createElement(
+              "div",
+              { className: "flex-1 min-w-0 grid gap-2.5" },
+              e.createElement(
+                "div",
+                null,
+                e.createElement("div", { className: "text-[28px] font-extrabold leading-none text-[#2F6DB5] tabular-nums" }, weekPct == null ? "—" : weekPct + "%"),
+                e.createElement("div", { className: "text-sm font-semibold text-slate-500 mt-1" }, "נוכחות השבוע"),
+              ),
+              e.createElement(
+                "div",
+                null,
+                e.createElement("div", { className: "text-[28px] font-extrabold leading-none text-emerald-700 tabular-nums" }, todayGroups.filter((r) => f(r) || fc(r)).length, "/", todayGroups.length),
+                e.createElement("div", { className: "text-sm font-semibold text-slate-500 mt-1" }, "אימונים מולאו היום \xB7 ", activeCount, " שחקנים"),
+              ),
+            ),
+          ),
+          (myMissing.length > 0 || (OP && notPayingCount > 0)) &&
+            e.createElement(
+              "div",
+              { className: "flex gap-2 flex-wrap" },
+              myMissing.length > 0 &&
+                e.createElement("span", { className: "rounded-full bg-amber-50 text-amber-700 text-sm font-semibold px-3 py-1.5" }, myMissing.length, " ימים לא דווחו"),
+              OP && notPayingCount > 0 &&
+                e.createElement("button", { onClick: OP, className: "rounded-full bg-red-50 text-red-700 text-sm font-semibold px-3 min-h-[36px]" }, notPayingCount, " לא שילמו ‹"),
+            ),
+          e.createElement(
+            "h2",
+            { className: "text-xl font-extrabold text-blue-950 px-1 -mb-1 mt-1" },
+            "האימונים של היום",
           ),
           todayGroups.length === 0 &&
             e.createElement(
@@ -4250,23 +4293,23 @@ function mt({
               {
                 key: r.id,
                 onClick: () => onSelectGroup(r.id),
-                className: `rounded-2xl px-4 py-4 flex items-center gap-3 text-right active:scale-[0.99] transition-transform ${y || cx ? "bg-white border border-slate-200" : "bg-white ios-card"}`,
+                className: "rounded-2xl px-4 py-4 flex items-center gap-3 text-right bg-white ios-card active:scale-[0.99] transition-transform",
               },
               e.createElement(
                 "div",
                 { className: "flex-1 min-w-0" },
-                e.createElement("div", { className: "text-lg font-bold text-blue-950 truncate flex items-center gap-2" }, e.createElement("span", { className: `inline-block w-2.5 h-2.5 rounded-full shrink-0 ${groupDot(r.id)}` }), r.name),
-                e.createElement("div", { className: "text-sm text-slate-600 truncate" }, r.startTime ? r.startTime + "-" + r.endTime : q(r), " \xB7 ", countIn(r), " שחקנים"),
+                e.createElement("div", { className: "text-lg font-bold text-blue-950 truncate" }, r.name),
+                e.createElement("div", { className: "text-sm text-slate-500 truncate tabular-nums" }, r.startTime ? r.startTime + "-" + r.endTime : q(r), " \xB7 ", countIn(r), " שחקנים"),
               ),
               y || cx
                 ? e.createElement(
                     "span",
-                    { className: `shrink-0 text-sm font-semibold px-3 py-1.5 rounded-full ${cx ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"}` },
+                    { className: `shrink-0 text-sm font-semibold px-3.5 py-2 rounded-full ${cx ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"}` },
                     cx ? "בוטל" : "נשמר ✓",
                   )
                 : e.createElement(
                     "span",
-                    { className: "shrink-0 min-h-[48px] px-4 rounded-xl bg-blue-700 text-white font-bold flex items-center" },
+                    { className: "shrink-0 min-h-[44px] px-5 rounded-full bg-[#3B82D6] text-white font-bold flex items-center" },
                     "מילוי",
                   ),
             );
