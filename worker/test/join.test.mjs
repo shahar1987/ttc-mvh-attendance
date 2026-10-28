@@ -20,7 +20,7 @@ const store = {
 };
 const opts = (now = 1_800_000_000_000) => ({ now, wa: null });
 
-assert.equal(normalisePhone("050-123 4567"), "0501234567");
+assert.equal(normalisePhone("050-12 34567"), "0501234567");
 assert.equal(normalisePhone("+972501234567"), "0501234567");
 assert.equal(normalisePhone("04-1234567"), "", "לא נייד");
 
