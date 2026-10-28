@@ -1317,3 +1317,26 @@ console.log("google-via-claude ok");
   assert.ok(!(docs.get("agentReports/bot").history || []).some((h) => h.text.includes("נועה הגיעה היום")), "לא נכנס לשיחה של הבעלים");
 }
 console.log("coach mode ok");
+// 🧩 תבנית תפעולית: coach_update קודם; אם Meta עוד לא מכירה אותה (132001) — נופלים ל-club_message; שגיאה אחרת נזרקת
+{
+  const { sendTemplate } = await import("../../agents/lib/whatsapp.mjs");
+  const real = globalThis.fetch, tried = [];
+  const deny = (code) => (url, init) => {
+    const b = JSON.parse(init.body);
+    tried.push(b.template.name);
+    return b.template.name === "coach_update" && code ? Promise.resolve(new Response(JSON.stringify({ error: { code, message: "nope" } }), { status: 400 })) : real(url, init);
+  };
+  globalThis.fetch = deny(132001);
+  await sendTemplate(waConfig(env), "972501234567", "club_message", ["בדיקה"]);
+  assert.deepEqual(tried, ["coach_update", "club_message"], "תבנית לא מאושרת — נופלים לישנה");
+  tried.length = 0;
+  globalThis.fetch = deny(0);
+  await sendTemplate(waConfig(env), "972501234567", "club_message", ["בדיקה"]);
+  assert.deepEqual(tried, ["coach_update"], "מאושרת — רק היא");
+  tried.length = 0;
+  globalThis.fetch = deny(131049);
+  await assert.rejects(sendTemplate(waConfig(env), "972501234567", "club_message", ["בדיקה"]), /131049|nope/, "שגיאת מסירה אמיתית לא מוסתרת");
+  assert.deepEqual(tried, ["coach_update"]);
+  globalThis.fetch = real;
+}
+console.log("template fallback ok");
