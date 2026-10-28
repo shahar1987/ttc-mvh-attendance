@@ -30,12 +30,13 @@ export function sendText(cfg, to, text) {
 }
 
 // club_message סווגה ב-Meta כשיווקית, ונמענים חסומים לה (131049). קודם התבנית התפעולית, ואם היא עוד לא קיימת/מאושרת — הישנה.
-const PREFER = { club_message: "coach_update" };
+const PREFER = { club_message: "coach_notice" };
 const NO_TEMPLATE = [132001, 132015, 132016];
-export async function sendTemplate(cfg, to, name, params = [], lang = "he") {
+// who = שם הנמען (התבנית התפעולית פונה בשם)
+export async function sendTemplate(cfg, to, name, params = [], lang = "he", who = "") {
   if (PREFER[name]) {
     try {
-      return await sendTemplate(cfg, to, PREFER[name], params, lang);
+      return await sendTemplate(cfg, to, PREFER[name], [who || "מאמן/ת", ...params], lang);
     } catch (e) {
       if (!NO_TEMPLATE.includes(e.code)) throw e;
     }

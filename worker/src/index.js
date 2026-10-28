@@ -563,7 +563,7 @@ export async function deliverOutbox(env, store, wa) {
           const raw = String(x.text || "").slice(0, 3500);
           let text = raw;
           if (x.to) {
-            const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)]);
+            const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)], "he", x.who);
             // הבעלים יקבל "✓✓ קרא" כשהמדריך פותח, כמו בשליחה מהבוט
             if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", phone: x.to, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
             x.how = "direct";

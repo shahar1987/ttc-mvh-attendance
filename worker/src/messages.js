@@ -134,7 +134,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       for (const r of recipients) {
         if (!r.staff || !wa) { links.push(r); continue; }
         try {
-          const wamid = await sendTemplate(wa, r.phone, "club_message", [text]);
+          const wamid = await sendTemplate(wa, r.phone, "club_message", [text], "he", r.name);
           if (wamid) watch[wamid] = { who: r.name, phone: r.phone, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
           direct.push(`${r.name}: נשלח משולה ✓`);
         } catch (e) {
@@ -210,7 +210,7 @@ export async function ensureTemplates(env) {
   const out = [];
   for (const [name, t] of Object.entries(TEMPLATES)) {
     if (have.has(name)) continue;
-    const r = await g(`${waba}/message_templates`, { method: "POST", body: JSON.stringify({ name, language: "he", category: t.category, components: [{ type: "BODY", text: t.body, example: { body_text: [t.example] } }] }) });
+    const r = await g(`${waba}/message_templates`, { method: "POST", body: JSON.stringify({ name, language: "he", category: t.category, allow_category_change: false, components: [{ type: "BODY", text: t.body, example: { body_text: [t.example] } }] }) });
     out.push(`${name}: ${r.status || r.error?.message || "?"}`);
   }
   return out;

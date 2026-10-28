@@ -148,7 +148,7 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
       if (!isValidPhone(c.phone || "")) { problems.push(`• ${g.name} — ${c.name}: אין טלפון שמור`); continue; }
       try {
-        const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+        const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
         if (wamid) watch[wamid] = { who: c.name, what: `סיכום אימון ${g.name}`, at: now.toISOString() };
         out.push(`${g.name} — ${c.name} ✓`);
       } catch (e) {
@@ -236,7 +236,7 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
       if (t && t.length < 400 && gs.every((g) => t.includes(g.name) && (!g.startTime || t.includes(g.startTime)))) text = t;
     } catch {}
     try {
-      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
       if (wamid) watch[wamid] = { who: c.name, what: "תזכורת הבוקר לאימון", at: now.toISOString() };
       out.push(`${c.name} ✓`);
     } catch (e) {
@@ -302,7 +302,7 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
       parts.push(`⚠️ ${risk.length === 1 ? "שחקן שכדאי לבדוק מה שלומו" : "שחקנים שכדאי לבדוק מה שלומם"}: ${risk.map((x) => `${x.playerName} (${x.groupName}) — ${x.reason}`).join(" · ")}. ${risk.every((x) => x.adult) ? "כדאי להתקשר ולשאול אם הכל בסדר" : risk.some((x) => x.adult) ? "כדאי להתקשר (לבוגרים ישירות, לילדים להורים) ולשאול אם הכל בסדר" : "כדאי להתקשר להורים ולשאול אם הכל בסדר"}, ולספר לשחר מה עלה.`);
     const text = `בוקר טוב ${first}, ${parts.join(" ")}`;
     try {
-      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text]);
+      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
       if (wamid) watch[wamid] = { who: c.name, what: n ? "תזכורת הודעות היעדרות" : "התראת נשירה", at: now.toISOString() };
       risk.forEach((x) => (riskDone[x.playerId] = today));
       out.push(`${c.name} (${[n && `${n} הודעות`, risk.length && `${risk.length} בסכנת נשירה`].filter(Boolean).join(", ")}) ✓`);

@@ -69,6 +69,7 @@ for (const [name, t] of Object.entries(TEMPLATES)) {
         name,
         language: "he",
         category: t.category,
+        allow_category_change: false, // שלא תסווג בשקט כשיווקית — עדיף דחייה גלויה
         components: [{ type: "BODY", text: t.body, example: { body_text: [t.example] } }],
       },
     });
