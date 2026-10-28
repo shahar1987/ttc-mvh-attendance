@@ -54,8 +54,9 @@ await graph(`${WHATSAPP_WABA_ID}/subscribed_apps`, { method: "POST" });
 console.log("webhook connected");
 
 // 3. תבניות
-const existing = await graph(`${WHATSAPP_WABA_ID}/message_templates?fields=name,status,language&limit=200`);
-const have = new Map((existing.data || []).filter((t) => t.language === "he").map((t) => [t.name, t.status]));
+const existing = await graph(`${WHATSAPP_WABA_ID}/message_templates?fields=name,status,category,language&limit=200`);
+// הקטגוריה בלוג: Meta לפעמים מסווגת תבנית UTILITY כ-MARKETING, ואז נמען חסום (131049)
+const have = new Map((existing.data || []).filter((t) => t.language === "he").map((t) => [t.name, `${t.status} ${t.category}`]));
 for (const [name, t] of Object.entries(TEMPLATES)) {
   if (have.has(name)) {
     console.log(`template ${name}: ${have.get(name)}`);
