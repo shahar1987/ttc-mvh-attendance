@@ -22,9 +22,9 @@ function extract(src, name) {
 
 function appFunctions(today) {
   const src = readFileSync(APP, "utf8");
-  const code = ["skipAbsenceMsg", "lastTwoAbsences", "absenceAlerts", "pendingAbsenceMsgs"].map((n) => extract(src, n)).join("\n");
+  const code = ["onlyHeldTrainings", "skipAbsenceMsg", "lastTwoAbsences", "absenceAlerts", "pendingAbsenceMsgs"].map((n) => extract(src, n)).join("\n");
   // E() באפליקציה מחזיר את התאריך של היום; groupCoachLabel לא משנה את הרשימה
-  return new Function("E", "groupCoachLabel", `${code}\nreturn { absenceAlerts, pendingAbsenceMsgs };`)(() => today, () => null);
+  return new Function("E", "groupCoachLabel", `${code}\nreturn { onlyHeldTrainings, absenceAlerts, pendingAbsenceMsgs };`)(() => today, () => null);
 }
 
 const today = "2026-09-30";
@@ -47,8 +47,9 @@ const players = [
   P("todayPlusOld"), // היום + אתמול: היום לא נספר בהתראה
   P("old"), // מחוץ לחלון השבוע
   P("presentLast"),
+  P("anchor", { isActive: false }), // מישהו הגיע ב-d(5), כדי שהיום הזה ייחשב אימון שהתקיים
 ];
-const attendance = [
+const attendance0 = [
   A("single", d(1), "Absent"), A("single", d(4), "Present"),
   A("repeat3", d(1), "Absent"), A("repeat3", d(3), "Absent"), A("repeat3", d(5), "Absent"),
   A("handled", d(1), "Absent"), A("handled", d(3), "Absent"),
@@ -60,14 +61,17 @@ const attendance = [
   A("todayAbs", today, "Absent"), A("todayAbs", d(2), "Present"),
   A("todayPlusOld", today, "Absent"), A("todayPlusOld", d(1), "Absent"), A("todayPlusOld", d(3), "Present"),
   A("old", d(8), "Absent"), A("old", d(10), "Present"),
+  A("anchor", d(5), "Present"),
   A("presentLast", d(1), "Present"), A("presentLast", d(3), "Absent"), A("presentLast", d(5), "Absent"),
 ];
 
 test("agent pending list == app (absenceAlerts + pendingAbsenceMsgs)", { skip: !existsSync(APP) && "part-a.js not found" }, () => {
   const app = appFunctions(today);
+  // באפליקציה ההתראות רצות על statAtt, שכבר עבר onlyHeldTrainings
+  const attendance = app.onlyHeldTrainings(attendance0);
   const appRepeat = app.absenceAlerts(players, groups, attendance, null).map((x) => `repeat:${x.dates[0]}:${x.player.id}:${x.dates.join(",")}`);
   const appSingle = app.pendingAbsenceMsgs(players, groups, [], attendance).map((x) => `absence:${x.record.date}:${x.player.id}:${x.record.groupId}`);
-  const agent = analyze({ players, groups, attendance, today }).pending.map((x) =>
+  const agent = analyze({ players, groups, attendance: attendance0, today }).pending.map((x) =>
     x.kind === "repeat" ? `repeat:${x.date}:${x.playerId}:${x.dates.join(",")}` : `absence:${x.date}:${x.playerId}:${x.groupId}`,
   );
   assert.deepEqual([...agent].sort(), [...appRepeat, ...appSingle].sort());

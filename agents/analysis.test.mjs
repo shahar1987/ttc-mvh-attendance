@@ -1,7 +1,7 @@
 // הרצה: node --test agents/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyze, dropoutRisk, addDays, fullReportText, registrationIssues, topActions, coachNotesText } from "./lib/analysis.mjs";
+import { analyze as realAnalyze, dropoutRisk, addDays, fullReportText, registrationIssues, topActions, coachNotesText } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const today = "2026-09-30";
@@ -11,6 +11,13 @@ const groups = [
 ];
 const P = (id, extra = {}) => ({ id, name: `שחקן ${id}`, groupId: "g1", isActive: true, parentPhone: "050-1234567", ...extra });
 const A = (playerId, date, status, extra = {}) => ({ playerId, date, status, groupId: "g1", ...extra });
+// האימונים בבדיקות האלה התקיימו: מוסיפים "עוגן" שהגיע לכל יום-קבוצה (אחרת יום שכולם נעדרו בו נחשב חג)
+const withHeld = (att) => [...att, ...[...new Set(att.map((a) => `${a.date}|${a.groupId}`))].map((k) => ({ playerId: "_anchor", date: k.split("|")[0], groupId: k.split("|")[1], status: "Present" }))];
+const analyze = (o) => {
+  const r = realAnalyze({ ...o, attendance: withHeld(o.attendance) });
+  const y = o.attendance.filter((a) => a.date === r.yesterday.date && !a.excused);
+  return { ...r, yesterday: { ...r.yesterday, present: y.filter((a) => a.status === "Present").length } };
+};
 
 test("single absence yesterday is pending, not after message was sent", () => {
   const r = analyze({
@@ -251,4 +258,29 @@ test("coach notes text in the morning report", () => {
   assert.equal(coachNotesText([]), "");
   assert.match(coachNotesText([{ coach: "דני", groups: ["מתחילים"], text: "עבדנו על הגשה, היה מעולה" }]), /📝 מה המדריכים כתבו אתמול:\n• דני \(מתחילים\): עבדנו על הגשה/);
   assert.ok(coachNotesText([{ coach: "x", text: "א".repeat(2000) }]).length < 1300, "ארוך מדי נחתך");
+});
+
+test("holiday / cancelled training is not an absence and not dropout risk", () => {
+  const days = [1, 3, 6, 8].map((n) => addDays(today, -n));
+  // כולם נעדרו בשלושת הימים האחרונים = חג / אימון שלא התקיים; היום הרביעי התקיים
+  const att = [
+    ...days.slice(0, 3).flatMap((d) => [A("a", d, "Absent"), A("b", d, "Absent")]),
+    A("a", days[3], "Present"), A("b", days[3], "Present"),
+  ];
+  const r = realAnalyze({ players: [P("a"), P("b")], groups, attendance: att, today });
+  assert.equal(r.atRisk.length, 0);
+  assert.equal(r.pending.length, 0);
+  // ביטול רשום: גם אם מישהו סומן "הגיע", היום לא נספר
+  const r2 = realAnalyze({
+    players: [P("a"), P("b")],
+    groups,
+    attendance: [...days.flatMap((d) => [A("a", d, "Absent"), A("b", d, "Present")])],
+    cancellations: days.map((d) => ({ date: d, groupId: "g1" })),
+    today,
+  });
+  assert.equal(r2.atRisk.length, 0);
+  assert.equal(r2.pending.length, 0);
+  // ובלי ביטול — a באמת נעדר 4 פעמים ברצף
+  const r3 = realAnalyze({ players: [P("a"), P("b")], groups, attendance: days.flatMap((d) => [A("a", d, "Absent"), A("b", d, "Present")]), today });
+  assert.equal(r3.atRisk[0].playerId, "a");
 });

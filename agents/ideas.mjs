@@ -4,7 +4,7 @@
 // ממצאי בודק הבאגים) — בלי שמות ובלי טלפונים.
 import { readFileSync } from "node:fs";
 import { firestore, loadAll, heartbeat, reportMissingKey } from "./lib/firebase.mjs";
-import { analyze, addDays, israelToday } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, onlyHeldTrainings } from "./lib/analysis.mjs";
 import { gemini } from "./lib/gemini.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
@@ -30,11 +30,14 @@ const ask = async (system, user) => {
   }
 };
 const today = israelToday();
-const [players, groups, attendance] = await Promise.all([
+const [players, groups, rawAttendance, cancellations] = await Promise.all([
   loadAll(db, "players"),
   loadAll(db, "groups"),
   loadAll(db, "attendance", (c) => c.where("date", ">=", addDays(today, -91))),
+  loadAll(db, "cancellations", (c) => c.where("date", ">=", addDays(today, -91))),
 ]);
+// חג / אימון שבוטל לא נספר — לא באחוזי הנוכחות ולא בסיכון הנשירה
+const attendance = onlyHeldTrainings(rawAttendance, cancellations, today);
 
 const pct = (recs) => (recs.length ? Math.round((100 * recs.filter((r) => r.status === "Present").length) / recs.length) : null);
 const recentFrom = addDays(today, -28);
@@ -56,7 +59,7 @@ const byWeekday = WEEKDAYS.map((d, i) => ({
   attendancePct: pct(attendance.filter((a) => new Date(a.date + "T00:00:00Z").getUTCDay() === i)),
 })).filter((x) => x.attendancePct !== null);
 
-const report = analyze({ players, groups, attendance, today });
+const report = analyze({ players, groups, attendance, cancellations, today });
 const bugs = ((await db.collection("agentReports").doc("bugs").get()).data() || {}).findings || [];
 const pastIdeas = ((await db.collection("agentReports").doc("ideas").get()).data() || {}).text || "";
 

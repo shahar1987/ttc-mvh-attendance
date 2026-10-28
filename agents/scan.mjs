@@ -13,16 +13,17 @@ const today = israelToday();
 // 13 שבועות אחורה מספיקים לכל החישובים (סכנת נשירה משווה ל-12 השבועות האחרונים)
 const from = addDays(today, -91);
 
-const [players, groups, attendance, sync, ignores] = await Promise.all([
+const [players, groups, attendance, sync, ignores, cancellations] = await Promise.all([
   loadAll(db, "players"),
   loadAll(db, "groups"),
   loadAll(db, "attendance", (c) => c.where("date", ">=", from)),
   db.collection("system").doc("paymentSync").get().then((s) => s.data() || null),
   db.collection("system").doc("paymentSyncIgnores").get().then((s) => s.data()?.keys || []),
+  loadAll(db, "cancellations", (c) => c.where("date", ">=", from)),
 ]);
 console.log(`loaded ${players.length} players, ${groups.length} groups, ${attendance.length} attendance records`);
 
-const report = analyze({ players, groups, attendance, today });
+const report = analyze({ players, groups, attendance, cancellations, today });
 report.registration = registrationIssues({ sync, ignores, players, groups });
 report.summary.registration = report.registration.items.length;
 // 📝 מה המדריכים כתבו אתמול (worker/src/coaches.js שומר לפי תאריך)

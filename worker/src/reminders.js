@@ -257,8 +257,8 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
   const claimed = await store.update("agentReports/bot", (cur) => (cur.parentMsgNag === today ? null : { parentMsgNag: today }));
   if (!claimed) return "done today";
   // shortcut: קורא את כל הנוכחות פעם ביום; כשהעונה תגדל מאוד — שאילתת טווח תאריכים (8 שבועות אחורה)
-  const [players, groups, users, attendance, quiet] = await Promise.all([store.list("players"), store.list("groups"), store.list("users"), store.list("attendance"), quietIds(store)]);
-  const { pending, atRisk } = analyze({ players, groups, attendance, today });
+  const [players, groups, users, attendance, cancellations, quiet] = await Promise.all([store.list("players"), store.list("groups"), store.list("users"), store.list("attendance"), store.list("cancellations"), quietIds(store)]);
+  const { pending, atRisk } = analyze({ players, groups, attendance, cancellations, today });
   // ⚠️ סכנת נשירה גבוהה (22.10, שולה: "שיוריד למאמנים התראות על נשירה, בשפה ברורה"): כל שחקן לכל היותר פעם בשבוע
   const riskSent = ((await store.get("agentReports/coaches")) || {}).riskSent || {};
   const riskBy = new Map();

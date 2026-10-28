@@ -2,7 +2,7 @@
 // Claude לא נוגע ב-Firestore או בוואטסאפ ישירות.
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
-import { dropoutRisk, playerHistory, israelToday, isValidPhone, topActions } from "../../agents/lib/analysis.mjs";
+import { dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, topActions } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
 
 const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
@@ -311,14 +311,15 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
     async find_player({ name }) {
       const q = String(name || "").trim();
       if (!q) return "צריך שם.";
-      const [players, groups] = await Promise.all([store.list("players"), store.list("groups")]);
+      const [players, groups, cancellations] = await Promise.all([store.list("players"), store.list("groups"), store.list("cancellations")]);
       const hits = players.filter((p) => !p.deleted && (p.name || "").includes(q)).slice(0, 5);
       if (!hits.length) return `לא נמצא שחקן בשם "${q}".`;
       const today = israelToday();
       const out = [];
       for (const p of hits) {
-        const recs = await store.where("attendance", "playerId", p.id);
-        const hist = playerHistory(recs, p.id, today);
+        // רשומות כל הקבוצה — כדי לזהות יום שאף אחד לא הגיע בו (חג, אימון שלא התקיים)
+        const recs = [...(await store.where("attendance", "playerId", p.id)), ...(p.groupId ? await store.where("attendance", "groupId", p.groupId) : [])];
+        const hist = playerHistory(onlyHeldTrainings(recs, cancellations, today), p.id, today);
         out.push({
           name: p.name,
           group: groups.find((g) => g.id === p.groupId)?.name || "",

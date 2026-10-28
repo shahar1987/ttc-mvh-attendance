@@ -4408,7 +4408,7 @@ function Q() {
     trialIds = new Set(c.filter((p) => p.trial).map((p) => p.id)),
     statPlayers = trialIds.size ? c.filter((p) => !trialIds.has(p.id)) : c,
     // היעדרות מוצדקת (excused — מחלה וכו') לא נספרת: לא באחוזים, לא בהודעות להורים ולא ב"לא מגיעים"
-    statAtt = n.filter((r) => !r.excused && !trialIds.has(r.playerId)),
+    statAtt = onlyHeldTrainings(n).filter((r) => !r.excused && !trialIds.has(r.playerId)),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,

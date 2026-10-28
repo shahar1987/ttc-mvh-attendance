@@ -414,6 +414,8 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   // ⚠️ נשירה: שחקן שהחסיר 3 ברצף בקבוצה של יוסי — המאמן מקבל משפט ברור עם השם והסיבה, ולא שוב באותו שבוע
   put("players/r1", { name: "עומר רץ", groupId: "g5", isActive: true });
   for (const d of ["2026-09-20", "2026-09-27", "2026-10-04"]) put(`attendance/${d}_g5_r1`, { date: d, groupId: "g5", playerId: "r1", status: "Absent", msgSentAt: "x" });
+  // האימונים התקיימו (מישהו אחר הגיע) — אחרת זה חג ולא היעדרות
+  for (const d of ["2026-09-20", "2026-09-27", "2026-10-04"]) put(`attendance/${d}_g5_r2`, { date: d, groupId: "g5", playerId: "r2", status: "Present" });
   put("agentReports/bot", { parentMsgNag: "" });
   const n6 = sent.length;
   assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /יוסי \(.*1 בסכנת נשירה\) ✓/);

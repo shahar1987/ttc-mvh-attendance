@@ -538,6 +538,7 @@ function groupCoachLabel(g, users) {
   return n ? { name: n } : null;
 }
 var CANCEL_REASONS = [
+  "חג",
   "מזג אוויר",
   "מצב ביטחוני",
   "האולם לא זמין",
@@ -563,6 +564,15 @@ function excludeCancelled(attendance, cancellations) {
   if (!cancellations || cancellations.length === 0) return attendance;
   let keys = new Set(cancellations.map((c) => cancellationId(c.date, c.groupId)));
   return attendance.filter((a) => !keys.has(cancellationId(a.date, a.groupId)));
+}
+// אימון שלא התקיים (חג, ביטול שלא נרשם): יום-קבוצה בעבר שאף אחד לא סומן בו "הגיע" לא נספר
+// כהיעדרות — לא בהתראות, לא באחוזים ולא בסיכון נשירה. היום עצמו נשאר (המאמן אולי באמצע סימון).
+// מועתק ל-agents/lib/analysis.mjs (שינוי — לשנות גם שם).
+function onlyHeldTrainings(attendance) {
+  let today = E(),
+    held = new Set();
+  attendance.forEach((a) => a.status === "Present" && held.add(a.date + "_" + a.groupId));
+  return attendance.filter((a) => a.date >= today || held.has(a.date + "_" + a.groupId));
 }
 async function cancelTraining({ date, groupId, reason, note, userId }) {
   // רשומות הנוכחות של היום לא נמחקות: excludeCancelled מסתיר אותן בכל החישובים,

@@ -164,9 +164,18 @@ export function skipAbsenceMsg(p, groupId, attendance, date) {
           .filter((k) => came[k] && came[k].size >= 2 && came[k].size / held[k].size >= 0.4);
   return days.length > 0 && !days.includes(wd(date));
 }
-export function analyze({ players, groups, attendance, today }) {
+// אימון שבוטל (cancellations) או שלא התקיים — חג, ביטול שלא נרשם: יום-קבוצה בעבר שאף אחד לא סומן בו
+// "הגיע" — לא נספר כהיעדרות. כמו excludeCancelled + onlyHeldTrainings ב-part-a.js.
+export function onlyHeldTrainings(attendance, cancellations, today) {
+  const key = (a) => `${a.date}_${a.groupId}`;
+  const cancelled = new Set((cancellations || []).map(key));
+  const held = new Set(attendance.filter((a) => a.status === "Present").map(key));
+  return attendance.filter((a) => !cancelled.has(key(a)) && (a.date >= today || held.has(key(a))));
+}
+
+export function analyze({ players, groups, attendance, cancellations, today }) {
   // היעדרות מוצדקת (excused) לא נספרת בכלל — כמו statAtt באפליקציה
-  attendance = attendance.filter((a) => !a.excused);
+  attendance = onlyHeldTrainings(attendance, cancellations, today).filter((a) => !a.excused);
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const playerById = new Map(players.map((p) => [p.id, p]));
   const hist = historyIndex(attendance, today);
