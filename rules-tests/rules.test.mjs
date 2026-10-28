@@ -272,7 +272,7 @@ await t('רשימת השחקנים: רק מנהל', async () => {
 });
 
 console.log('\n— טופס הצטרפות (נכתב רק בשרת) —');
-const jr = { child: 'נועה כהן', parent: 'דנה כהן', phone: '0501234567', grade: 'ג׳', groupId: 'g1' };
+const jr = { child: 'נועה כהן', parent: 'דנה כהן', phone: '0501234567', groupId: 'g1' };
 await t('הורה לא כותב בקשה ישירות למסד', () => assertFails(addDoc(collection(anon(), 'joinRequests'), jr)));
 await t('גם מנהל לא יוצר בקשה מהדפדפן', () => assertFails(addDoc(collection(as('admin1'), 'joinRequests'), jr)));
 await t('מאמן לא קורא בקשות', () => assertFails(getDocs(collection(as('coachA'), 'joinRequests'))));

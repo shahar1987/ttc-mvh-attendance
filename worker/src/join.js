@@ -5,7 +5,6 @@
 import qrcode from "qrcode-generator";
 import { notifyOwner, waConfig } from "../../agents/lib/whatsapp.mjs";
 
-export const GRADES = ["גן", "א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ז׳", "ח׳", "ט׳", "י׳ ומעלה"];
 const PER_IP_HOUR = 5;
 const PER_DAY = 60;
 const LOGO = "https://shahar1987.github.io/ttc-mvh-attendance/logo.png";
@@ -28,14 +27,12 @@ export function validate(body, cfg) {
   const child = clean(body.child, 40),
     parent = clean(body.parent, 40),
     phone = normalisePhone(body.phone),
-    grade = clean(body.grade, 12),
     note = clean(body.note, 200);
   if (!NAME.test(child) || !child.includes(" ")) return { ok: false, error: "child" };
   if (!NAME.test(parent)) return { ok: false, error: "parent" };
   if (!phone) return { ok: false, error: "phone" };
-  if (!GRADES.includes(grade)) return { ok: false, error: "grade" };
   if (body.consent !== true) return { ok: false, error: "consent" };
-  return { ok: true, data: { child, parent, phone, grade, note } };
+  return { ok: true, data: { child, parent, phone, note } };
 }
 
 async function config(store, k) {
@@ -106,7 +103,7 @@ function formPage(cfg, help = "") {
 <form id="f" novalidate>
 <h3>הילד/ה</h3>
 <div class="card"><label class="f"><span>שם מלא</span><input name="child" autocomplete="off" maxlength="40" required></label>
-<label class="f"><span>כיתה</span><select name="grade" required><option value="">בחירה</option>${GRADES.map((g) => `<option>${esc(g)}</option>`).join("")}</select></label></div>
+</div>
 <h3>ההורה</h3>
 <div class="card"><label class="f"><span>שם</span><input name="parent" autocomplete="name" maxlength="40" required></label>
 <label class="f"><span>טלפון נייד</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="16" dir="ltr" style="text-align:right" required></label>
@@ -117,7 +114,7 @@ function formPage(cfg, help = "") {
 </form>${help}</main>
 <script>
 const t0=Date.now(),f=document.getElementById("f"),b=document.getElementById("b"),e=document.getElementById("e");
-const M={child:"נא לכתוב שם פרטי ושם משפחה",parent:"נא לכתוב את שם ההורה",phone:"נא לכתוב מספר נייד תקין",grade:"נא לבחור כיתה",consent:"נא לאשר את שמירת הפרטים",rate:"נשלחו הרבה בקשות. נסו שוב בעוד שעה",closed:"הטופס סגור כרגע"};
+const M={child:"נא לכתוב שם פרטי ושם משפחה",parent:"נא לכתוב את שם ההורה",phone:"נא לכתוב מספר נייד תקין",consent:"נא לאשר את שמירת הפרטים",rate:"נשלחו הרבה בקשות. נסו שוב בעוד שעה",closed:"הטופס סגור כרגע"};
 f.addEventListener("submit",async(ev)=>{ev.preventDefault();e.textContent="";b.disabled=true;
 const d=Object.fromEntries(new FormData(f));d.consent=f.consent.checked;d.ms=Date.now()-t0;d.k=new URLSearchParams(location.search).get("k")||"";
 try{const r=await fetch("/join",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(d)});const j=await r.json().catch(()=>({}));
@@ -134,7 +131,7 @@ function printPage(cfg, url, ownerPhone) {
   const d = ownerDigits(ownerPhone);
   const contact = d ? `<p class="c">שאלות? שחר <b dir="ltr">${showPhone(d)}</b></p>` : "";
   // 10 כרטיסים בדף A4 (2×5, בגודל כרטיס ביקור) — לגזור ולחלק לילדים
-  const card = `<section class="p"><div class="q">${svg}</div><div class="t"><div class="h"><img class="l" src="${LOGO}" alt=""><h2>מצטרפים לשולחן 🏓</h2></div><p class="s">${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p><p class="i">סורקים את הברקוד וממלאים דקה</p>${contact}</div></section>`;
+  const card = `<section class="p"><div class="q">${svg}</div><div class="t"><div class="h"><img class="l" src="${LOGO}" alt=""><h2>מצטרפים לשולחן 🏓</h2></div><p class="s">${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p><p class="i">סורקים ומצטרפים</p>${contact}</div></section>`;
   return new Response(
     `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>הדפסה — טופס הצטרפות</title><style>
 @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Assistant","Segoe UI",Arial,sans-serif;color:#0B1F3A;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -181,7 +178,7 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
   const id = `${now}_${crypto.randomUUID().slice(0, 8)}`;
   const at = new Date(now).toISOString();
   await store.merge(`joinRequests/${id}`, { ...v.data, createdAt: at, source: "form" });
-  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child} (${v.data.grade}).\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
+  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child}.\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
   try {
     const bot = (await store.get("agentReports/bot")) || {};
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "בקשת הצטרפות חדשה מחכה לאישור באפליקציה" });

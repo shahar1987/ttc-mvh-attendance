@@ -24,12 +24,12 @@ assert.equal(normalisePhone("050.123.4567"), "0501234567");
 assert.equal(normalisePhone("+972501234567"), "0501234567");
 assert.equal(normalisePhone("04-1234567"), "", "לא נייד");
 
-const good = { k: CODE, child: "נועה כהן", parent: "דנה כהן", phone: "050-1234567", grade: "ג׳", consent: true, ms: 9000, website: "" };
+const good = { k: CODE, child: "נועה כהן", parent: "דנה כהן", phone: "050-1234567", consent: true, ms: 9000, website: "" };
 assert.ok(validate(good, docs["joinConfig/main"]).ok);
 assert.equal(validate({ ...good, child: "נועה" }, docs["joinConfig/main"]).error, "child", "צריך שם משפחה");
 assert.equal(validate({ ...good, child: "<script>x</script> y" }, docs["joinConfig/main"]).error, "child");
 assert.ok(!("groupId" in validate({ ...good, groupId: "g1" }, docs["joinConfig/main"]).data), "את הקבוצה קובע הבעלים באישור, לא ההורה");
-assert.equal(validate({ ...good, grade: "יב" }, docs["joinConfig/main"]).error, "grade");
+assert.ok(!("grade" in validate(good, docs["joinConfig/main"]).data), "בלי כיתה — רק מה שהמנהל מוסיף");
 assert.equal(validate({ ...good, consent: "true" }, docs["joinConfig/main"]).error, "consent");
 assert.equal(validate({ ...good, website: "spam" }, docs["joinConfig/main"]).error, "bot");
 assert.equal(validate({ ...good, ms: 500 }, docs["joinConfig/main"]).error, "bot");

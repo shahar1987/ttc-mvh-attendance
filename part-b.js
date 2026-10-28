@@ -2056,7 +2056,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
               e.createElement(
                 "div",
                 null,
-                e.createElement("div", { className: "text-lg font-bold text-blue-950" }, r.child, e.createElement("span", { className: "text-sm font-semibold text-slate-500 ms-2" }, r.grade)),
+                e.createElement("div", { className: "text-lg font-bold text-blue-950" }, r.child),
                 e.createElement("div", { className: "text-sm text-slate-500" }, r.parent, " ", e.createElement("span", { dir: "ltr" }, r.phone)),
                 r.note && e.createElement("div", { className: "text-sm text-slate-600 mt-1" }, "״", r.note, "״"),
               ),
