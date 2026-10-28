@@ -24,11 +24,11 @@ assert.equal(normalisePhone("050.123.4567"), "0501234567");
 assert.equal(normalisePhone("+972501234567"), "0501234567");
 assert.equal(normalisePhone("04-1234567"), "", "לא נייד");
 
-const good = { k: CODE, child: "נועה כהן", parent: "דנה כהן", phone: "050-1234567", grade: "ג׳", groupId: "g1", consent: true, ms: 9000, website: "" };
+const good = { k: CODE, child: "נועה כהן", parent: "דנה כהן", phone: "050-1234567", grade: "ג׳", consent: true, ms: 9000, website: "" };
 assert.ok(validate(good, docs["joinConfig/main"]).ok);
 assert.equal(validate({ ...good, child: "נועה" }, docs["joinConfig/main"]).error, "child", "צריך שם משפחה");
 assert.equal(validate({ ...good, child: "<script>x</script> y" }, docs["joinConfig/main"]).error, "child");
-assert.equal(validate({ ...good, groupId: "other" }, docs["joinConfig/main"]).error, "group", "רק קבוצה שהמנהל פתח");
+assert.ok(!("groupId" in validate({ ...good, groupId: "g1" }, docs["joinConfig/main"]).data), "את הקבוצה קובע הבעלים באישור, לא ההורה");
 assert.equal(validate({ ...good, grade: "יב" }, docs["joinConfig/main"]).error, "grade");
 assert.equal(validate({ ...good, consent: "true" }, docs["joinConfig/main"]).error, "consent");
 assert.equal(validate({ ...good, website: "spam" }, docs["joinConfig/main"]).error, "bot");
@@ -43,11 +43,11 @@ const page = await (await joinRoute(new Request(`https://w/join?k=${CODE}`), { O
 assert.match(page, /צריכים עזרה\? שחר/, "הטלפון של הבעלים בתחתית");
 assert.match(page, /tel:0501234567/);
 assert.equal(helpLine(""), "", "בלי סוד — בלי שורה");
-assert.match(page, /מתחילים רמת כורזים/);
-assert.match(page, /ב׳ וד׳ · \u206616:30–18:00\u2069/);
-const print = await (await joinRoute(new Request(`https://w/join/print?k=${CODE}`), {}, store, opts())).text();
+assert.doesNotMatch(page, /name="groupId"/, "אין בחירת קבוצה בטופס");
+const print = await (await joinRoute(new Request(`https://w/join/print?k=${CODE}`), { OWNER_PHONE: "972501234567" }, store, opts())).text();
 assert.match(print, /<svg/, "ברקוד בדף ההדפסה");
-assert.match(print, /050-1234567/);
+assert.match(print, /050-1234567/, "הטלפון של הבעלים בכרטיס");
+assert.equal((print.match(/class="p"/g) || []).length, 10, "10 כרטיסים בדף A4");
 
 // שליחה: נשמרת רק ב-joinRequests
 let r = await joinRoute(post(good), {}, store, opts());

@@ -6,7 +6,6 @@ import qrcode from "qrcode-generator";
 import { notifyOwner, waConfig } from "../../agents/lib/whatsapp.mjs";
 
 export const GRADES = ["גן", "א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ז׳", "ח׳", "ט׳", "י׳ ומעלה"];
-const DAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 const PER_IP_HOUR = 5;
 const PER_DAY = 60;
 const LOGO = "https://shahar1987.github.io/ttc-mvh-attendance/logo.png";
@@ -30,15 +29,13 @@ export function validate(body, cfg) {
     parent = clean(body.parent, 40),
     phone = normalisePhone(body.phone),
     grade = clean(body.grade, 12),
-    groupId = clean(body.groupId, 40),
     note = clean(body.note, 200);
   if (!NAME.test(child) || !child.includes(" ")) return { ok: false, error: "child" };
   if (!NAME.test(parent)) return { ok: false, error: "parent" };
   if (!phone) return { ok: false, error: "phone" };
   if (!GRADES.includes(grade)) return { ok: false, error: "grade" };
-  if (!(cfg.groups || []).includes(groupId)) return { ok: false, error: "group" };
   if (body.consent !== true) return { ok: false, error: "consent" };
-  return { ok: true, data: { child, parent, phone, grade, groupId, note } };
+  return { ok: true, data: { child, parent, phone, grade, note } };
 }
 
 async function config(store, k) {
@@ -46,20 +43,15 @@ async function config(store, k) {
   return cfg && cfg.enabled && typeof cfg.code === "string" && cfg.code.length >= 12 && k === cfg.code ? cfg : null;
 }
 
-async function groupsOf(store, cfg) {
-  const out = [];
-  for (const id of cfg.groups || []) {
-    const g = await store.get(`groups/${id}`);
-    if (g) out.push({ id, name: g.name || "", when: [(g.days || []).map((d) => DAYS[d]).join(" ו"), g.startTime && g.endTime ? `\u2066${g.startTime}–${g.endTime}\u2069` : ""].filter(Boolean).join(" · ") });
-  }
-  return out;
-}
-
-// הטלפון של הבעלים (סוד OWNER_PHONE ב-worker, לא בקוד) — בתחתית הטופס, למי שצריך עזרה
-export function helpLine(ownerPhone) {
+// הטלפון של הבעלים (סוד OWNER_PHONE ב-worker, לא בקוד) — בתחתית הטופס ובכרטיסים המודפסים
+const ownerDigits = (ownerPhone) => {
   const d = String(ownerPhone || "").replace(/\D/g, "").replace(/^972/, "0");
-  if (!/^05\d{8}$/.test(d)) return "";
-  return `<footer class="help">צריכים עזרה? שחר · <a href="tel:${d}" dir="ltr">${d.slice(0, 3)}-${d.slice(3)}</a></footer>`;
+  return /^05\d{8}$/.test(d) ? d : "";
+};
+const showPhone = (d) => `${d.slice(0, 3)}-${d.slice(3)}`;
+export function helpLine(ownerPhone) {
+  const d = ownerDigits(ownerPhone);
+  return d ? `<footer class="help">צריכים עזרה? שחר · <a href="tel:${d}" dir="ltr">${showPhone(d)}</a></footer>` : "";
 }
 
 const ipKey = async (req) => {
@@ -101,8 +93,6 @@ const CSS = `:root{--bg:#F2F2F7;--ink:#0B1F3A;--muted:#5B6670;--blue:#3B82D6;--b
 label.f{display:block;padding:12px 0;border-bottom:1px solid var(--line)}label.f:last-child{border-bottom:0}
 label.f span{display:block;font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px}
 input,select,textarea{width:100%;border:0;background:transparent;font:inherit;color:var(--ink);padding:4px 0;outline:none}textarea{resize:none;min-height:56px}
-.groups{display:grid;gap:10px;margin-bottom:14px}.g{display:flex;gap:12px;align-items:center;background:#fff;border-radius:18px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 2px 8px rgba(0,0,0,.04);cursor:pointer;border:2px solid transparent}
-.g input{width:22px;height:22px;accent-color:var(--blue);flex:none}.g b{display:block}.g small{color:var(--muted)}.g:has(input:checked){border-color:var(--blue)}
 .ok{display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--muted);margin:4px 2px 18px}.ok input{width:22px;height:22px;flex:none;accent-color:var(--green)}
 button{width:100%;border:0;border-radius:999px;background:var(--blue);color:#fff;font:inherit;font-weight:700;font-size:18px;padding:16px;box-shadow:0 4px 12px -6px rgba(27,42,65,.35)}button:disabled{opacity:.6}
 .err{color:var(--red);font-weight:600;min-height:24px;margin:10px 2px}.hp{position:absolute;left:-9999px;height:0;overflow:hidden}
@@ -110,13 +100,10 @@ button{width:100%;border:0;border-radius:999px;background:var(--blue);color:#fff
 h3{font-size:20px;font-weight:800;margin:20px 4px 10px}
 .help{text-align:center;color:var(--muted);font-size:15px;margin-top:22px}.help a{color:var(--blue2);font-weight:700;text-decoration:none}`;
 
-function formPage(cfg, groups, help = "") {
-  const one = groups.length === 1;
+function formPage(cfg, help = "") {
   return html(`<main class="wrap">
 <header class="hero"><img src="${LOGO}" alt=""><h1>מצטרפים לשולחן 🏓</h1><p>${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p></header>
 <form id="f" novalidate>
-<h3>${one ? "הקבוצה" : "באיזו קבוצה?"}</h3>
-<div class="groups">${groups.map((g, i) => `<label class="g"><input type="radio" name="groupId" value="${esc(g.id)}"${one || i === 0 ? " checked" : ""}><div><b>${esc(g.name)}</b><small>${esc(g.when)}</small></div></label>`).join("")}</div>
 <h3>הילד/ה</h3>
 <div class="card"><label class="f"><span>שם מלא</span><input name="child" autocomplete="off" maxlength="40" required></label>
 <label class="f"><span>כיתה</span><select name="grade" required><option value="">בחירה</option>${GRADES.map((g) => `<option>${esc(g)}</option>`).join("")}</select></label></div>
@@ -130,7 +117,7 @@ function formPage(cfg, groups, help = "") {
 </form>${help}</main>
 <script>
 const t0=Date.now(),f=document.getElementById("f"),b=document.getElementById("b"),e=document.getElementById("e");
-const M={child:"נא לכתוב שם פרטי ושם משפחה",parent:"נא לכתוב את שם ההורה",phone:"נא לכתוב מספר נייד תקין",grade:"נא לבחור כיתה",group:"נא לבחור קבוצה",consent:"נא לאשר את שמירת הפרטים",rate:"נשלחו הרבה בקשות. נסו שוב בעוד שעה",closed:"הטופס סגור כרגע"};
+const M={child:"נא לכתוב שם פרטי ושם משפחה",parent:"נא לכתוב את שם ההורה",phone:"נא לכתוב מספר נייד תקין",grade:"נא לבחור כיתה",consent:"נא לאשר את שמירת הפרטים",rate:"נשלחו הרבה בקשות. נסו שוב בעוד שעה",closed:"הטופס סגור כרגע"};
 f.addEventListener("submit",async(ev)=>{ev.preventDefault();e.textContent="";b.disabled=true;
 const d=Object.fromEntries(new FormData(f));d.consent=f.consent.checked;d.ms=Date.now()-t0;d.k=new URLSearchParams(location.search).get("k")||"";
 try{const r=await fetch("/join",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(d)});const j=await r.json().catch(()=>({}));
@@ -139,22 +126,26 @@ e.textContent=M[j.error]||"משהו השתבש. נסו שוב";}catch(_){e.textC
 </script>`);
 }
 
-function printPage(cfg, url) {
+function printPage(cfg, url, ownerPhone) {
   const qr = qrcode(0, "M");
   qr.addData(url);
   qr.make();
   const svg = qr.createSvgTag({ cellSize: 5, margin: 0, scalable: true });
-  const contact = cfg.contactPhone ? `<p class="c">שאלות? ${esc(cfg.contactName || "")} <b dir="ltr">${esc(cfg.contactPhone)}</b></p>` : "";
-  const card = `<section class="p"><img class="l" src="${LOGO}" alt=""><h2>מצטרפים לשולחן 🏓</h2><p class="s">${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p><div class="q">${svg}</div><p class="i">סורקים, ממלאים דקה,<br>ואנחנו חוזרים אליכם</p>${contact}</section>`;
+  const d = ownerDigits(ownerPhone);
+  const contact = d ? `<p class="c">שאלות? שחר <b dir="ltr">${showPhone(d)}</b></p>` : "";
+  // 10 כרטיסים בדף A4 (2×5, בגודל כרטיס ביקור) — לגזור ולחלק לילדים
+  const card = `<section class="p"><div class="q">${svg}</div><div class="t"><div class="h"><img class="l" src="${LOGO}" alt=""><h2>מצטרפים לשולחן 🏓</h2></div><p class="s">${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p><p class="i">סורקים את הברקוד וממלאים דקה</p>${contact}</div></section>`;
   return new Response(
     `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>הדפסה — טופס הצטרפות</title><style>
 @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Assistant","Segoe UI",Arial,sans-serif;color:#0B1F3A;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.sheet{width:210mm;height:297mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
-.p{border:1px dashed #C9CED6;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10mm;background:linear-gradient(160deg,#EAF1FA,#fff 55%,#E7F1ED)}
-.l{width:20mm;height:20mm;border-radius:6mm;background:#fff}h2{font-size:22pt;margin:4mm 0 1mm;font-weight:800}.s{margin:0;color:#5B6670;font-size:10pt}
-.q{width:52mm;height:52mm;margin:6mm 0 4mm;background:#fff;padding:3mm;border-radius:4mm}.q svg{width:100%;height:100%}.i{margin:0;font-size:12pt;font-weight:600}.c{margin:3mm 0 0;font-size:11pt;color:#2F6DB5}
+.sheet{width:210mm;height:297mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr)}
+.p{border:.3mm dashed #C9CED6;display:flex;align-items:center;gap:4mm;padding:5mm 6mm;background:linear-gradient(160deg,#EAF1FA,#fff 55%,#E7F1ED)}
+.q{flex:0 0 36mm;width:36mm;height:36mm;background:#fff;padding:2mm;border-radius:3mm}.q svg{width:100%;height:100%;display:block}
+.t{flex:1;min-width:0;text-align:right}.h{display:flex;align-items:center;gap:2mm;margin-bottom:.5mm}.l{width:9mm;height:9mm;border-radius:2.5mm;background:#fff;flex:none}
+h2{font-size:13pt;margin:0;font-weight:800;white-space:nowrap}.s{margin:0;color:#5B6670;font-size:7.5pt;line-height:1.3}
+.i{margin:2.5mm 0 0;font-size:9pt;font-weight:600}.c{margin:1.5mm 0 0;font-size:9pt;color:#2F6DB5}
 @media screen{body{background:#F2F2F7}.sheet{margin:10px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.1)}}
-</style></head><body><div class="sheet">${card.repeat(4)}</div><script>onload=()=>setTimeout(()=>print(),400)</script></body></html>`,
+</style></head><body><div class="sheet">${card.repeat(10)}</div><script>onload=()=>setTimeout(()=>print(),400)</script></body></html>`,
     { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } },
   );
 }
@@ -168,8 +159,8 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
     const cfg = await config(store, url.searchParams.get("k") || ""),
       help = helpLine(env.OWNER_PHONE);
     if (!cfg) return closed(help);
-    if (url.pathname === "/join/print") return printPage(cfg, `${url.origin}/join?k=${encodeURIComponent(cfg.code)}`);
-    return formPage(cfg, await groupsOf(store, cfg), help);
+    if (url.pathname === "/join/print") return printPage(cfg, `${url.origin}/join?k=${encodeURIComponent(cfg.code)}`, env.OWNER_PHONE);
+    return formPage(cfg, help);
   }
   if (req.method !== "POST" || url.pathname !== "/join") return json({ ok: false, error: "bad" }, 405);
   if (!(req.headers.get("content-type") || "").startsWith("application/json")) return json({ ok: false, error: "bad" }, 415);
@@ -190,8 +181,7 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
   const id = `${now}_${crypto.randomUUID().slice(0, 8)}`;
   const at = new Date(now).toISOString();
   await store.merge(`joinRequests/${id}`, { ...v.data, createdAt: at, source: "form" });
-  const g = (await store.get(`groups/${v.data.groupId}`)) || {};
-  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child} (${v.data.grade}) — ${g.name || "קבוצה"}.\nלאישור: באפליקציה ← בקשות הצטרפות`;
+  const text = `📝 בקשת הצטרפות חדשה: ${v.data.child} (${v.data.grade}).\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
   try {
     const bot = (await store.get("agentReports/bot")) || {};
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "בקשת הצטרפות חדשה מחכה לאישור באפליקציה" });

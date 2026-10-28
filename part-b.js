@@ -1990,7 +1990,8 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
     [cfg, setCfg] = b(null),
     [err, setErr] = b(""),
     [busy, setBusy] = b(""),
-    [copied, setCopied] = b(!1);
+    [copied, setCopied] = b(!1),
+    [pick, setPick] = b({}); // הקבוצה שהבעלים בחר לכל בקשה (ההורה לא בוחר)
   j(() => {
     let a = ae(
         M(P, "joinRequests"),
@@ -2020,7 +2021,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
       act(r, () =>
         V(M(P, "players"), {
           name: r.child,
-          groupId: r.groupId,
+          groupId: pick[r.id] || r.groupId,
           parentName: r.parent || "",
           parentPhone: r.phone ? normalizePhone(r.phone) : "",
           joinDate: E(),
@@ -2056,7 +2057,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
                 "div",
                 null,
                 e.createElement("div", { className: "text-lg font-bold text-blue-950" }, r.child, e.createElement("span", { className: "text-sm font-semibold text-slate-500 ms-2" }, r.grade)),
-                e.createElement("div", { className: "text-sm text-slate-500" }, groupName(r.groupId), " \xB7 ", r.parent, " ", e.createElement("span", { dir: "ltr" }, r.phone)),
+                e.createElement("div", { className: "text-sm text-slate-500" }, r.parent, " ", e.createElement("span", { dir: "ltr" }, r.phone)),
                 r.note && e.createElement("div", { className: "text-sm text-slate-600 mt-1" }, "״", r.note, "״"),
               ),
               ms.map((p) =>
@@ -2072,11 +2073,22 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
                 ),
               ),
               e.createElement(
+                "select",
+                {
+                  value: pick[r.id] || r.groupId || "",
+                  onChange: (ev) => setPick({ ...pick, [r.id]: ev.target.value }),
+                  "aria-label": "קבוצה",
+                  className: "min-h-[48px] rounded-xl bg-slate-50 px-3 text-right font-semibold text-blue-950 outline-none",
+                },
+                e.createElement("option", { value: "" }, "לאיזו קבוצה?"),
+                G.map((g) => e.createElement("option", { key: g.id, value: g.id }, g.name)),
+              ),
+              e.createElement(
                 "div",
                 { className: "grid grid-cols-[1fr_auto] gap-2" },
                 e.createElement(
                   "button",
-                  { disabled: busy === r.id, onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
+                  { disabled: busy === r.id || !(pick[r.id] || r.groupId), onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
                   ms.length ? "בכל זאת ילד חדש — להוסיף" : "אישור והוספה לקבוצה",
                 ),
                 e.createElement("button", { disabled: busy === r.id, onClick: () => reject(r), className: "min-h-[48px] px-4 rounded-full bg-slate-100 text-slate-600 font-semibold disabled:opacity-50" }, "דחייה"),
@@ -2098,37 +2110,6 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
             className: "w-6 h-6 accent-[#5E9E8C]",
             onChange: (ev) => save(ev.target.checked ? { enabled: !0, code: cfg.code || newCode() } : { enabled: !1 }),
           }),
-        ),
-        e.createElement(
-          "div",
-          null,
-          e.createElement("div", { className: "text-sm font-semibold text-slate-500 mb-2" }, "קבוצות בטופס"),
-          e.createElement(
-            "div",
-            { className: "flex flex-wrap gap-2" },
-            G.map((g) => {
-              let sel = (cfg.groups || []).includes(g.id);
-              return e.createElement(
-                "button",
-                { key: g.id, onClick: () => save({ groups: sel ? (cfg.groups || []).filter((x) => x !== g.id) : [...(cfg.groups || []), g.id] }), className: pill(sel), "aria-pressed": sel },
-                g.name,
-              );
-            }),
-          ),
-        ),
-        e.createElement(
-          "div",
-          { className: "grid grid-cols-2 gap-2" },
-          ["contactName", "contactPhone"].map((k) =>
-            e.createElement("input", {
-              key: k + (cfg[k] || ""),
-              defaultValue: cfg[k] || "",
-              placeholder: k === "contactName" ? "שם לשאלות (בדף המודפס)" : "טלפון לשאלות",
-              inputMode: k === "contactPhone" ? "tel" : "text",
-              onBlur: (ev) => ev.target.value.trim() !== (cfg[k] || "") && save({ [k]: ev.target.value.trim().slice(0, 30) }),
-              className: "bg-slate-50 rounded-xl px-3 py-2.5 text-sm text-right outline-none",
-            }),
-          ),
         ),
         on &&
           e.createElement(
