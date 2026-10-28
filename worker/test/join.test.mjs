@@ -1,6 +1,6 @@
 // טופס ההצטרפות: קוד שגוי = סגור, בדיקת שדות קפדנית, מלכודת רובוטים, מגבלת קצב, ושמירה רק ב-joinRequests
 import assert from "node:assert/strict";
-import { joinRoute, normalisePhone, validate } from "../src/join.js";
+import { helpLine, joinRoute, normalisePhone, validate } from "../src/join.js";
 
 const CODE = "abcdefghijkl1234";
 const docs = {
@@ -20,7 +20,7 @@ const store = {
 };
 const opts = (now = 1_800_000_000_000) => ({ now, wa: null });
 
-assert.equal(normalisePhone("050-12 34567"), "0501234567");
+assert.equal(normalisePhone("050.123.4567"), "0501234567");
 assert.equal(normalisePhone("+972501234567"), "0501234567");
 assert.equal(normalisePhone("04-1234567"), "", "לא נייד");
 
@@ -39,7 +39,10 @@ const post = (body, ip = "1.1.1.1") =>
 
 // דף הטופס: קוד שגוי או טופס כבוי = "סגור", בלי לחשוף כלום
 assert.match(await (await joinRoute(new Request("https://w/join?k=wrong"), {}, store, opts())).text(), /הטופס סגור/);
-const page = await (await joinRoute(new Request(`https://w/join?k=${CODE}`), {}, store, opts())).text();
+const page = await (await joinRoute(new Request(`https://w/join?k=${CODE}`), { OWNER_PHONE: "972501234567" }, store, opts())).text();
+assert.match(page, /צריכים עזרה\? שחר/, "הטלפון של הבעלים בתחתית");
+assert.match(page, /tel:0501234567/);
+assert.equal(helpLine(""), "", "בלי סוד — בלי שורה");
 assert.match(page, /מתחילים רמת כורזים/);
 assert.match(page, /ב׳ וד׳ · \u206616:30–18:00\u2069/);
 const print = await (await joinRoute(new Request(`https://w/join/print?k=${CODE}`), {}, store, opts())).text();

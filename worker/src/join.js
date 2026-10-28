@@ -55,6 +55,13 @@ async function groupsOf(store, cfg) {
   return out;
 }
 
+// הטלפון של הבעלים (סוד OWNER_PHONE ב-worker, לא בקוד) — בתחתית הטופס, למי שצריך עזרה
+export function helpLine(ownerPhone) {
+  const d = String(ownerPhone || "").replace(/\D/g, "").replace(/^972/, "0");
+  if (!/^05\d{8}$/.test(d)) return "";
+  return `<footer class="help">צריכים עזרה? שחר · <a href="tel:${d}" dir="ltr">${d.slice(0, 3)}-${d.slice(3)}</a></footer>`;
+}
+
 const ipKey = async (req) => {
   const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("join|" + (req.headers.get("CF-Connecting-IP") || "?")));
   return [...new Uint8Array(h)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -100,9 +107,10 @@ input,select,textarea{width:100%;border:0;background:transparent;font:inherit;co
 button{width:100%;border:0;border-radius:999px;background:var(--blue);color:#fff;font:inherit;font-weight:700;font-size:18px;padding:16px;box-shadow:0 4px 12px -6px rgba(27,42,65,.35)}button:disabled{opacity:.6}
 .err{color:var(--red);font-weight:600;min-height:24px;margin:10px 2px}.hp{position:absolute;left:-9999px;height:0;overflow:hidden}
 .done{text-align:center;padding:30px 10px}.done .big{font-size:56px}.done h2{font-size:26px;margin:8px 0}
-h3{font-size:20px;font-weight:800;margin:20px 4px 10px}`;
+h3{font-size:20px;font-weight:800;margin:20px 4px 10px}
+.help{text-align:center;color:var(--muted);font-size:15px;margin-top:22px}.help a{color:var(--blue2);font-weight:700;text-decoration:none}`;
 
-function formPage(cfg, groups) {
+function formPage(cfg, groups, help = "") {
   const one = groups.length === 1;
   return html(`<main class="wrap">
 <header class="hero"><img src="${LOGO}" alt=""><h1>מצטרפים לשולחן 🏓</h1><p>${esc(cfg.title || "מועדון טניס שולחן מבואות החרמון")}</p></header>
@@ -119,14 +127,14 @@ function formPage(cfg, groups) {
 <div class="hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></div>
 <label class="ok"><input type="checkbox" name="consent"><span>מאשר/ת שהמועדון ישמור את הפרטים לצורך הרישום ויצור איתי קשר</span></label>
 <button id="b">שליחה</button><div class="err" id="e" role="alert"></div>
-</form></main>
+</form>${help}</main>
 <script>
 const t0=Date.now(),f=document.getElementById("f"),b=document.getElementById("b"),e=document.getElementById("e");
 const M={child:"נא לכתוב שם פרטי ושם משפחה",parent:"נא לכתוב את שם ההורה",phone:"נא לכתוב מספר נייד תקין",grade:"נא לבחור כיתה",group:"נא לבחור קבוצה",consent:"נא לאשר את שמירת הפרטים",rate:"נשלחו הרבה בקשות. נסו שוב בעוד שעה",closed:"הטופס סגור כרגע"};
 f.addEventListener("submit",async(ev)=>{ev.preventDefault();e.textContent="";b.disabled=true;
 const d=Object.fromEntries(new FormData(f));d.consent=f.consent.checked;d.ms=Date.now()-t0;d.k=new URLSearchParams(location.search).get("k")||"";
 try{const r=await fetch("/join",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(d)});const j=await r.json().catch(()=>({}));
-if(r.ok&&j.ok){document.querySelector("main").innerHTML='<div class="done"><div class="big">🎉</div><h2>תודה! קיבלנו</h2><p>ניצור איתכם קשר בקרוב.</p></div>';return}
+if(r.ok&&j.ok){f.outerHTML='<div class="done"><div class="big">🎉</div><h2>תודה! קיבלנו</h2><p>ניצור איתכם קשר בקרוב.</p></div>';return}
 e.textContent=M[j.error]||"משהו השתבש. נסו שוב";}catch(_){e.textContent="אין חיבור. נסו שוב"}b.disabled=false;});
 </script>`);
 }
@@ -151,16 +159,17 @@ function printPage(cfg, url) {
   );
 }
 
-const closed = () => html(`<main class="wrap"><header class="hero"><img src="${LOGO}" alt=""><h1>הטופס סגור כרגע</h1><p>לפרטים אפשר לפנות למאמן הקבוצה.</p></header></main>`, "הטופס סגור");
+const closed = (help = "") => html(`<main class="wrap"><header class="hero"><img src="${LOGO}" alt=""><h1>הטופס סגור כרגע</h1><p>לפרטים אפשר לפנות למאמן הקבוצה.</p></header>${help}</main>`, "הטופס סגור");
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 export async function joinRoute(req, env, store, { now = Date.now(), wa = waConfig(env) } = {}) {
   const url = new URL(req.url);
   if (req.method === "GET") {
-    const cfg = await config(store, url.searchParams.get("k") || "");
-    if (!cfg) return closed();
+    const cfg = await config(store, url.searchParams.get("k") || ""),
+      help = helpLine(env.OWNER_PHONE);
+    if (!cfg) return closed(help);
     if (url.pathname === "/join/print") return printPage(cfg, `${url.origin}/join?k=${encodeURIComponent(cfg.code)}`);
-    return formPage(cfg, await groupsOf(store, cfg));
+    return formPage(cfg, await groupsOf(store, cfg), help);
   }
   if (req.method !== "POST" || url.pathname !== "/join") return json({ ok: false, error: "bad" }, 405);
   if (!(req.headers.get("content-type") || "").startsWith("application/json")) return json({ ok: false, error: "bad" }, 415);

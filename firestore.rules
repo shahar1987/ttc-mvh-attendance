@@ -299,14 +299,24 @@ service cloud.firestore {
     // paymentSyncIgnores, זריעות). נקראים במסכי הצוות, נכתבים על ידי המנהל
     // או בעל הרשאת התשלומים; סקריפטי ה-Admin SDK עוקפים את הכללים ממילא.
     // 📝 טופס ההצטרפות (worker/src/join.js): הבקשות נכתבות רק בשרת של שולה (service account),
-    // אף אחד לא כותב אליהן מהדפדפן. המנהל קורא, מאשר (יוצר שחקן כרגיל) ומוחק.
+    // אף אחד לא כותב אליהן מהדפדפן. רק הבעלים (joinConfig/owner — נקבע פעם אחת, לא ניתן לשינוי מהאפליקציה)
+    // רואה, מאשר (יוצר שחקן כרגיל) ומוחק. מנהלים אחרים לא רואים את הבקשות ולא את ההגדרות.
+    function isJoinOwner() {
+      return isAdmin()
+        && exists(/databases/$(database)/documents/joinConfig/owner)
+        && get(/databases/$(database)/documents/joinConfig/owner).data.uid == request.auth.uid;
+    }
     match /joinRequests/{id} {
-      allow read, delete: if isAdmin();
+      allow read, delete: if isJoinOwner();
       allow create, update: if false;
     }
-    // הגדרות הטופס (קוד סודי, קבוצות, טלפון לשאלות) ומגבלת הקצב — מנהל בלבד
     match /joinConfig/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() && (id == 'owner' || isJoinOwner());
+      allow create: if (id == 'owner' && isAdmin()
+                        && request.resource.data.keys().hasOnly(['uid', 'at'])
+                        && request.resource.data.uid == request.auth.uid)
+                    || (id != 'owner' && isJoinOwner());
+      allow update, delete: if id != 'owner' && isJoinOwner();
     }
     match /system/{id} {
       allow read: if hasPerm('payments');

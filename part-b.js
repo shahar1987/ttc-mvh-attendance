@@ -1966,7 +1966,26 @@ function joinMatches(r, players) {
     })
     .slice(0, 3);
 }
-function JoinScreen({ groups: G, players: PL }) {
+function JoinScreen({ groups: G, players: PL, uid: UID }) {
+  // רק הבעלים רואה ומאשר: המנהל הראשון שפותח את המסך נקבע כבעלים (joinConfig/owner), ואחר כך זה לא משתנה מהאפליקציה
+  let [owner, setOwner] = b(void 0);
+  j(
+    () =>
+      ae(
+        S(P, "joinConfig", "owner"),
+        (d) => {
+          if (d.exists()) setOwner(d.data().uid);
+          else if (UID) De(S(P, "joinConfig", "owner"), { uid: UID, at: new Date().toISOString() }).catch(() => setOwner(null));
+        },
+        () => setOwner(null),
+      ),
+    [UID],
+  );
+  if (owner === void 0) return e.createElement("p", { className: "px-5 pt-6 text-sm text-slate-500 text-right" }, "טוען…");
+  if (!UID || owner !== UID) return e.createElement("p", { className: "px-5 pt-6 text-sm text-slate-500 text-right" }, "בקשות ההצטרפות פתוחות רק לבעלים.");
+  return e.createElement(JoinOwnerScreen, { groups: G, players: PL });
+}
+function JoinOwnerScreen({ groups: G, players: PL }) {
   let [reqs, setReqs] = b(null),
     [cfg, setCfg] = b(null),
     [err, setErr] = b(""),
@@ -4946,7 +4965,7 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
-      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c }),
+      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c, uid: t?.uid }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&
