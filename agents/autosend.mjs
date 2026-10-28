@@ -102,4 +102,4 @@ async function main() {
     console.log(`::notice title=סומן::${res.ok} סומנו, ${res.skipped} דולגו (סומנו בינתיים כנוכח או לא קיימים)`);
   } else throw new Error("usage: autosend.mjs plan <dir> [today] [sentLog] | mark");
 }
-if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
