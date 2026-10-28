@@ -628,6 +628,8 @@ async function everyQuarter(env) {
       return tell(store, wa, "unanswered", u.text, u.text.split("\n")[0]);
     }),
     staleInbox(store).then((lines) => lines.length && tell(store, wa, "inbox", `📮 *בקשות לקלוד שעוד לא נענו* (כנראה הרוטינה של קלוד לא רצה — מכסת שימוש או תקלה; האחראית הלילית תבדוק):\n${lines.join("\n")}`, `בקשות לקלוד שלא נענו: ${summary(lines)}`)),
+    // תבנית חדשה מוגשת ל-Meta תוך רבע שעה מהפריסה, לא רק ב-cron היומי
+    ensureTemplates(env).then((t) => (t.length ? store.merge("agentReports/bot", { templates: { at: new Date().toISOString(), result: t } }).then(() => t.join(", ")) : "templates ok")),
     ensureWebhook(env, store).then((lines) => lines.length && tell(store, wa, "webhook", `🔌 *החיבור של שולה ל-Meta:*\n${lines.join("\n")}`, summary(lines))),
   ]);
   const failed = parts.filter((p) => p.status === "rejected").map((p) => String(p.reason?.message || p.reason));

@@ -29,7 +29,17 @@ export function sendText(cfg, to, text) {
   return post(cfg, { to, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
 }
 
-export function sendTemplate(cfg, to, name, params = [], lang = "he") {
+// club_message סווגה ב-Meta כשיווקית, ונמענים חסומים לה (131049). קודם התבנית התפעולית, ואם היא עוד לא קיימת/מאושרת — הישנה.
+const PREFER = { club_message: "coach_update" };
+const NO_TEMPLATE = [132001, 132015, 132016];
+export async function sendTemplate(cfg, to, name, params = [], lang = "he") {
+  if (PREFER[name]) {
+    try {
+      return await sendTemplate(cfg, to, PREFER[name], params, lang);
+    } catch (e) {
+      if (!NO_TEMPLATE.includes(e.code)) throw e;
+    }
+  }
   return post(cfg, {
     to,
     type: "template",
