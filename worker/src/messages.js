@@ -135,7 +135,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
         if (!r.staff || !wa) { links.push(r); continue; }
         try {
           const wamid = await sendTemplate(wa, r.phone, "club_message", [text], "he", r.name);
-          if (wamid) watch[wamid] = { who: r.name, phone: r.phone, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
+          if (wamid) watch[wamid] = { who: r.name, phone: r.phone, text, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() };
           direct.push(`${r.name}: נשלח משולה ✓`);
         } catch (e) {
           direct.push(`${r.name}: שולה לא הצליחה לשלוח (${e.message}), אפשר בקישור למטה`);

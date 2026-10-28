@@ -10,7 +10,7 @@ import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
 import { waConfig, sendText, sendTemplate, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { shortLinks, remindCoaches, coachSummaries, readReceipts, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
+import { shortLinks, remindCoaches, coachSummaries, readReceipts, flushPending, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
@@ -180,6 +180,7 @@ export default {
 async function route(m, env) {
   if (m.from === String(env.OWNER_PHONE || "").replace(/\D/g, "")) return handle(m, env);
   const store = db(env), wa = waConfig(env);
+  await flushPending(store, wa, m.from).catch(() => {});
   let coach = null;
   try {
     coach = await coachFor(store, m.from, { any: true });
@@ -565,7 +566,7 @@ export async function deliverOutbox(env, store, wa) {
           if (x.to) {
             const wamid = await sendTemplate(wa, x.to, x.template || "club_message", [String(x.templateParam || text).replace(/\s+/g, " ").slice(0, 900)], "he", x.who);
             // הבעלים יקבל "✓✓ קרא" כשהמדריך פותח, כמו בשליחה מהבוט
-            if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", phone: x.to, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
+            if (wamid) await watchReads(store, { [wamid]: { who: x.who || "מדריך", phone: x.to, text: raw, what: `"${text.replace(/\s+/g, " ").slice(0, 40)}"`, at: new Date().toISOString() } }).catch(() => {});
             x.how = "direct";
             ok.push(keyOf(x));
             continue;

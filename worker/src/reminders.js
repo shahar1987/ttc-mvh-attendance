@@ -3,7 +3,7 @@
 // הבוט שולח לכל מאמן שלה את התבנית coach_attendance_reminder עם קישור שפותח ישר את הקבוצה, והבעלים מקבל סיכום.
 // מאמן שהשליחה אליו נכשלה (למשל התבנית לא אושרה) — הבעלים מקבל עבורו קישור wa.me כמו פעם, ושולח בעצמו.
 import { addDays, israelToday, normalizePhone, isValidPhone, analyze } from "../../agents/lib/analysis.mjs";
-import { waLink, notifyOwner, sendTemplate } from "../../agents/lib/whatsapp.mjs";
+import { waLink, notifyOwner, sendTemplate, sendText } from "../../agents/lib/whatsapp.mjs";
 import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
 
@@ -191,16 +191,50 @@ export async function readReceipts(store, wa, statuses) {
     return { readWatch: Object.fromEntries(Object.entries(cur.readWatch).filter(([id]) => !ids.includes(id))) };
   });
   if (!hits.length) return [];
+  // נחסמה כתבנית → נשמרת בתור, ויוצאת כטקסט רגיל ברגע שהנמען כותב לשולה (חלון 24 שעות נפתח). 131026/131030 — זה לא יעזור
+  const queued = hits.filter(({ s, phone, text }) => s.status === "failed" && phone && text && ![131026, 131030].includes(s.errors?.[0]?.code));
+  if (queued.length)
+    await store.update("agentReports/bot", (cur) => {
+      const pend = { ...(cur.pendingDelivery || {}) };
+      for (const { phone, who, text } of queued) pend[phone] = [...(pend[phone] || []), { who, text, at: new Date().toISOString() }].slice(-5);
+      return { pendingDelivery: pend };
+    });
   const bot = (await store.get("agentReports/bot")) || {};
   const text = hits
-    .map(({ who, what, phone, s }) => {
+    .map((h) => {
+      const { who, what, phone, s } = h;
       if (s.status === "read") return `✓✓ ${who} קרא/ה: ${what}`;
       const e = s.errors?.[0] || {};
-      return `❌ ההודעה ל${who} לא נמסרה: ${what}\nסיבה: ${WHY[e.code] || e.error_data?.details || e.title || "לא ידוע"} (${e.code || "?"})${phone ? `\nלשליחה ידנית: ${waLink(phone, "")}` : ""}`;
+      const later = queued.includes(h) ? `\n⏳ תישלח אליו אוטומטית ברגע שיכתוב משהו לשולה` : "";
+      return `❌ ההודעה ל${who} לא נמסרה: ${what}\nסיבה: ${WHY[e.code] || e.error_data?.details || e.title || "לא ידוע"} (${e.code || "?"})${later}${phone ? `\nלשליחה ידנית: ${waLink(phone, h.text || "")}` : ""}`;
     })
     .join("\n");
   await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") });
   return hits;
+}
+
+// כשמי שהודעה אליו נחסמה כותב לשולה — החלון פתוח, ההודעות מהתור יוצאות אליו כטקסט רגיל והבעלים מקבל ✅
+export async function flushPending(store, wa, phone) {
+  let list = [];
+  await store.update("agentReports/bot", (cur) => {
+    list = cur.pendingDelivery?.[phone] || [];
+    if (!list.length) return null;
+    const { [phone]: _, ...rest } = cur.pendingDelivery;
+    return { pendingDelivery: rest };
+  });
+  if (!list.length) return [];
+  const done = [], back = [];
+  for (const m of list) {
+    try { await sendText(wa, phone, m.text); done.push(m); } catch { back.push(m); }
+  }
+  // שליחה שנכשלה — חוזרת לתור לפעם הבאה שיכתוב
+  if (back.length) await store.update("agentReports/bot", (cur) => ({ pendingDelivery: { ...(cur.pendingDelivery || {}), [phone]: [...back, ...(cur.pendingDelivery?.[phone] || [])] } }));
+  if (done.length) {
+    const bot = (await store.get("agentReports/bot")) || {};
+    const text = done.map((m) => `✅ ההודעה ל${m.who} נמסרה עכשיו: "${m.text.replace(/\s+/g, " ").slice(0, 40)}"`).join("\n");
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") }).catch(() => {});
+  }
+  return done;
 }
 
 // ☀️ בוקר טוב למאמנים: ביום אימון, מ-08:00 (ברבע השעה הראשון אחרי), כל מאמן מקבל הודעה קלילה עם הקבוצות והשעות שלו להיום.

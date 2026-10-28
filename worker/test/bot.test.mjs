@@ -380,6 +380,19 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
     const fails = sent.filter((b) => JSON.stringify(b).includes("לא נמסרה"));
     assert.equal(fails.length, 1, "עדכון כישלון אחד בלבד");
     assert.match(JSON.stringify(fails[0]), /לדור לא נמסרה.*131049.*wa\.me\/972501234567/);
+    // ⏳ הודעה עם נוסח מלא נכנסת לתור, ויוצאת כטקסט כשהנמען כותב לשולה; הבעלים מקבל ✅, פעם אחת
+    const { flushPending } = await import("../src/reminders.js");
+    await watchReads(db(env), { f2: { who: "דור", phone: "972501234567", text: "בדיקה מלאה", what: '"בדיקה"', at: new Date().toISOString() } });
+    const fb2 = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "f2", status: "failed", errors: [{ code: 131049 }] }] } }] }] });
+    const w2 = [];
+    await worker.fetch(new Request("https://x/webhook", { method: "POST", body: fb2, headers: { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(fb2).digest("hex") } }), env, { waitUntil: (p) => w2.push(p) });
+    await Promise.all(w2);
+    assert.match(JSON.stringify(sent.at(-1)), /תישלח אליו אוטומטית/);
+    const n0 = sent.length;
+    assert.equal((await flushPending(db(env), waConfig(env), "972501234567")).length, 1);
+    assert.ok(sent.slice(n0).some((b) => b.to === "972501234567" && b.text?.body === "בדיקה מלאה"), "נשלח לדור כטקסט");
+    assert.match(JSON.stringify(sent.slice(n0)), /נמסרה עכשיו/);
+    assert.equal((await flushPending(db(env), waConfig(env), "972501234567")).length, 0, "לא שולחים פעמיים");
   }
 }
 // ☀️ בוקר טוב למאמן ביום אימון: נוסח של Gemini רק אם הוא כולל את כל הקבוצות והשעות, אחרת נוסח קבוע; פעם אחת ביום
