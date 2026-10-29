@@ -873,6 +873,12 @@ globalThis.beforePatch = (path) => { if (path === `attendance/${D3}_g1_p3`) { gl
 assert.match(await tools("שלחתי").confirm_absence_sent({ numbers: [1] }), /סומן בינתיים כנוכח/);
 assert.equal(docs.get(`attendance/${D3}_g1_p3`).status, "Present");
 assert.ok(!("msgSentAt" in docs.get(`attendance/${D3}_g1_p3`)));
+// 3ג. הבעלים הוריד שם מהרשימה שהוצגה ("שליו הגיע") ואז "כן" — פחות מספרים מאותה רשימה מאושר; מספר חדש לא (29.10)
+put("agentReports/latest", { date: TODAY, handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "972541111111"), absItem("p3", "דני לוי", D2, "972540000033")] });
+assert.match(await callTool("מאשר הכל", { name: "send_absence_messages", args: { numbers: [1, 2] } }), /עוד לא הוכנו/);
+assert.equal((await callTool("כן", { name: "send_absence_messages", args: { numbers: [1] } })).match(/wa\.me\//g).length, 1, "תת-רשימה של מה שהוצג");
+assert.match(await callTool("תכיני לשניהם", { name: "send_absence_messages", args: { numbers: [1] } }), /עוד לא הוכנו/);
+assert.match(await callTool("כן", { name: "send_absence_messages", args: { numbers: [1, 2] } }), /עוד לא הוכנו/, "מספר שלא הוצג — שואלים שוב");
 
 // 1. skip_messages עם רשימה ריקה (= הכל) — לא עוקף את האישור
 put("agentReports/latest", { handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "")] });
@@ -1293,6 +1299,8 @@ delete env.MESSAGES;
   assert.equal(offerKorazim("3. עמית (רמת כורזים): wa.me/972500000000"), "3. עמית (רמת כורזים): wa.me/972500000000");
   const toDaniel = "לדניאל: \"יש אצלך ברמת כורזים שחקנים שנעדרו\"";
   assert.equal(offerKorazim(`${toDaniel} ↪️ זה קשור לרמת כורזים. להעביר לדניאל? (הסבר)\n\nלשלוח?`), `${toDaniel}\n\nלשלוח?`, "שאלה שהמודל כתב נמחקת");
+  const own = "רעי (רמת כורזים), להורה. להכין קישורים?\n\n1. כן\n2. לא";
+  assert.equal(offerKorazim(own), own, "שולה כבר שואלת 1/2 — בלי שאלה שנייה");
   assert.equal(offerKorazim(`משימה ברמת כורזים\n\n${KORAZIM_ASK}`), `משימה ברמת כורזים\n\n${KORAZIM_ASK}`, "לא כפול");
 }
 console.log("all bot tests passed");
