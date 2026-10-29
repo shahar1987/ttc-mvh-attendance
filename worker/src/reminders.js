@@ -180,29 +180,50 @@ export async function watchReads(store, entries, now = new Date()) {
 // ו-"failed" כשהודעה שכבר קיבלה ✓ (Meta קיבלה אותה) לא נמסרה בפועל.
 // הודעה שבמעקב — הבעלים מקבל "✓✓ קרא" או "❌ לא נמסרה" עם הסיבה, והיא יוצאת מהמעקב (פעם אחת לכל הודעה).
 const WHY = { 131049: "Meta עצרה את ההודעה (מגבלת הודעות שיווק לנמען)", 131026: "המספר לא יכול לקבל את ההודעה (אין וואטסאפ / גרסה ישנה / חסם)", 131030: "המספר לא ברשימת הנמענים המאושרים של שולה", 131047: "עברו 24 שעות מההודעה האחרונה שלו" };
-export async function readReceipts(store, wa, statuses) {
+// Meta שולחת לפעמים "failed" (131026) על הודעה שכן הגיעה לטלפון (29.10, תזכורת הבוקר), ולפעמים לפני ה-"delivered".
+// לכן כישלון לא מדווח מיד: הוא מחכה FAIL_WAIT, ואם בינתיים הגיע "delivered" — אין ❌.
+const FAIL_WAIT = 10 * 60 * 1000;
+export async function readReceipts(store, wa, statuses, now = new Date()) {
   const st = Object.fromEntries(statuses.filter((s) => ["read", "failed", "delivered"].includes(s.status)).map((s) => [s.id, s]));
   const ids = Object.keys(st);
   if (!ids.length) return [];
   let hits = [];
   await store.update("agentReports/bot", (cur) => {
     const watch = { ...(cur.readWatch || {}) };
-    const fails = statuses.filter((s) => s.status === "failed" && watch[s.id]);
+    const log = [];
     hits = [];
     for (const id of ids) {
-      const w = watch[id];
+      const w = watch[id], s = st[id];
       if (!w) continue;
-      // "delivered" — רק נרשם. Meta שולחת לפעמים "failed" (131026) על הודעה שכבר הגיעה לטלפון (29.10, תזכורת הבוקר) — לא מתריעים עליה
-      if (st[id].status === "delivered") watch[id] = { ...w, delivered: true };
-      else {
-        delete watch[id];
-        if (!(st[id].status === "failed" && w.delivered)) hits.push({ ...w, s: st[id] });
+      if (s.status === "read") { delete watch[id]; hits.push({ ...w, s }); }
+      else if (s.status === "delivered") {
+        if (w.failed) delete watch[id]; // נכשל ואז נמסר — הגיע, אין מה לדווח
+        else watch[id] = { ...w, delivered: true };
+      } else {
+        // הכישלון כמו ש-Meta שלחה אותו — לבדיקה בדיעבד
+        log.push({ who: w.who, delivered: !!w.delivered, at: now.toISOString(), errors: s.errors || null });
+        if (w.delivered) delete watch[id];
+        else watch[id] = { ...w, failed: s, failedAt: w.failedAt || now.toISOString() };
       }
     }
-    // הכישלון כמו ש-Meta שלחה אותו — כדי שאפשר יהיה לבדוק בדיעבד. 10 אחרונים
-    const failLog = fails.length ? { failLog: [...(cur.failLog || []), ...fails.map((s) => ({ who: cur.readWatch[s.id].who, delivered: !!cur.readWatch[s.id].delivered, at: new Date().toISOString(), errors: s.errors || null }))].slice(-10) } : {};
-    return { readWatch: watch, ...failLog };
+    return { readWatch: watch, ...(log.length ? { failLog: [...(cur.failLog || []), ...log].slice(-10) } : {}) };
   });
+  return report(store, wa, hits);
+}
+
+// מה-cron כל רבע שעה: כישלון שעברו עליו FAIL_WAIT בלי "delivered" — עכשיו מדווחים
+export async function staleFailures(store, wa, now = new Date()) {
+  let hits = [];
+  await store.update("agentReports/bot", (cur) => {
+    const old = Object.entries(cur.readWatch || {}).filter(([, w]) => w?.failedAt && now - new Date(w.failedAt) >= FAIL_WAIT);
+    if (!old.length) return null;
+    hits = old.map(([, w]) => ({ ...w, s: w.failed }));
+    return { readWatch: Object.fromEntries(Object.entries(cur.readWatch).filter(([id]) => !old.some(([o]) => o === id))) };
+  });
+  return report(store, wa, hits);
+}
+
+async function report(store, wa, hits) {
   if (!hits.length) return [];
   // נחסמה כתבנית → נשמרת בתור, ויוצאת כטקסט רגיל ברגע שהנמען כותב לשולה (חלון 24 שעות נפתח). 131026/131030 — זה לא יעזור
   const queued = hits.filter(({ s, phone, text }) => s.status === "failed" && phone && text && ![131026, 131030].includes(s.errors?.[0]?.code));
