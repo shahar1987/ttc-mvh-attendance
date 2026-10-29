@@ -379,6 +379,17 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
     }
     const fails = sent.filter((b) => JSON.stringify(b).includes("לא נמסרה"));
     assert.equal(fails.length, 1, "עדכון כישלון אחד בלבד");
+    // ✓ "delivered" ואחריו "failed" על אותה הודעה (קרה 29.10) — אין ❌, והכישלון נרשם ב-failLog
+    await watchReads(db(env), { d1: { who: "שחר", what: "תזכורת", at: new Date().toISOString() } });
+    for (const status of ["delivered", "failed"]) {
+      const b = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "d1", status, errors: status === "failed" ? [{ code: 131026 }] : undefined }] } }] }] });
+      const w = [];
+      await worker.fetch(new Request("https://x/webhook", { method: "POST", body: b, headers: { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(b).digest("hex") } }), env, { waitUntil: (p) => w.push(p) });
+      await Promise.all(w);
+    }
+    assert.ok(!sent.some((b) => JSON.stringify(b).includes("לשחר לא נמסרה")), "הודעה שנמסרה — בלי ❌");
+    assert.equal(docs.get("agentReports/bot").failLog.at(-1).delivered, true);
+    assert.ok(!docs.get("agentReports/bot").readWatch.d1, "יצאה מהמעקב");
     assert.match(JSON.stringify(fails[0]), /לדור לא נמסרה.*131049.*wa\.me\/972501234567/);
     // ⏳ הודעה עם נוסח מלא נכנסת לתור, ויוצאת כטקסט כשהנמען כותב לשולה; הבעלים מקבל ✅, פעם אחת
     const { flushPending } = await import("../src/reminders.js");

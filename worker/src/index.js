@@ -172,7 +172,7 @@ export default {
     // יש תור (נוצר בפריסה) → העבודה עוברת אליו; אין, או שהשליחה לתור נכשלה → כמו קודם, ברקע של הבקשה הזאת
     // "נקרא" על הודעות ששולה שלחה למאמנים — הבעלים מקבל עדכון (readReceipts)
     const statuses = (body.entry || []).flatMap((e) => e.changes || []).flatMap((c) => c.value?.statuses || []);
-    if (statuses.some((s) => s.status === "read" || s.status === "failed")) ctx.waitUntil(readReceipts(db(env), waConfig(env), statuses).catch(() => {}));
+    if (statuses.some((s) => ["read", "failed", "delivered"].includes(s.status))) ctx.waitUntil(readReceipts(db(env), waConfig(env), statuses).catch(() => {}));
     for (const m of msgs) ctx.waitUntil(env.MESSAGES ? env.MESSAGES.send(m).catch(() => route(m, env)) : route(m, env));
     return new Response("ok");
   },

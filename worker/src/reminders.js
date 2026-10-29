@@ -181,14 +181,27 @@ export async function watchReads(store, entries, now = new Date()) {
 // הודעה שבמעקב — הבעלים מקבל "✓✓ קרא" או "❌ לא נמסרה" עם הסיבה, והיא יוצאת מהמעקב (פעם אחת לכל הודעה).
 const WHY = { 131049: "Meta עצרה את ההודעה (מגבלת הודעות שיווק לנמען)", 131026: "המספר לא יכול לקבל את ההודעה (אין וואטסאפ / גרסה ישנה / חסם)", 131030: "המספר לא ברשימת הנמענים המאושרים של שולה", 131047: "עברו 24 שעות מההודעה האחרונה שלו" };
 export async function readReceipts(store, wa, statuses) {
-  const st = Object.fromEntries(statuses.filter((s) => s.status === "read" || s.status === "failed").map((s) => [s.id, s]));
+  const st = Object.fromEntries(statuses.filter((s) => ["read", "failed", "delivered"].includes(s.status)).map((s) => [s.id, s]));
   const ids = Object.keys(st);
   if (!ids.length) return [];
   let hits = [];
   await store.update("agentReports/bot", (cur) => {
-    hits = ids.filter((id) => cur.readWatch?.[id]).map((id) => ({ ...cur.readWatch[id], s: st[id] }));
-    if (!hits.length) return null;
-    return { readWatch: Object.fromEntries(Object.entries(cur.readWatch).filter(([id]) => !ids.includes(id))) };
+    const watch = { ...(cur.readWatch || {}) };
+    const fails = statuses.filter((s) => s.status === "failed" && watch[s.id]);
+    hits = [];
+    for (const id of ids) {
+      const w = watch[id];
+      if (!w) continue;
+      // "delivered" — רק נרשם. Meta שולחת לפעמים "failed" (131026) על הודעה שכבר הגיעה לטלפון (29.10, תזכורת הבוקר) — לא מתריעים עליה
+      if (st[id].status === "delivered") watch[id] = { ...w, delivered: true };
+      else {
+        delete watch[id];
+        if (!(st[id].status === "failed" && w.delivered)) hits.push({ ...w, s: st[id] });
+      }
+    }
+    // הכישלון כמו ש-Meta שלחה אותו — כדי שאפשר יהיה לבדוק בדיעבד. 10 אחרונים
+    const failLog = fails.length ? { failLog: [...(cur.failLog || []), ...fails.map((s) => ({ who: cur.readWatch[s.id].who, delivered: !!cur.readWatch[s.id].delivered, at: new Date().toISOString(), errors: s.errors || null }))].slice(-10) } : {};
+    return { readWatch: watch, ...failLog };
   });
   if (!hits.length) return [];
   // נחסמה כתבנית → נשמרת בתור, ויוצאת כטקסט רגיל ברגע שהנמען כותב לשולה (חלון 24 שעות נפתח). 131026/131030 — זה לא יעזור
