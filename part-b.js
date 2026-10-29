@@ -4183,7 +4183,7 @@ function re({
       e.createElement("p", { className: "text-sm text-emerald-800 text-right font-semibold" }, savedNote),
     (() => {
       if (!askMsg || !WA || RO) return null;
-      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt && !v.excused));
+      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt && !v.excused) && !skipAbsenceMsg(p, t.id, l, m)); // 29.10: לא יום האימון שלו — לא מציעים הודעה
       return miss.length
         ? e.createElement(
             "div",
