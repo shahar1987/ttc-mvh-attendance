@@ -68,3 +68,36 @@ test("coach messages: only the coach's own group, readable and one-line", () => 
   const ok = coachMessages({ players: [], groups: g2, users, attendance: [], cancellations: [{ date: "2026-10-25", groupId: "a" }, { date: "2026-10-29", groupId: "a" }], today });
   assert.match(ok.find((x) => x.uid === "c1").text, /הכל מסודר/);
 });
+
+import { weeklyHealth } from "./lib/weekly.mjs";
+test("weekly health: finds what would stop a coach getting the message", () => {
+  const now = new Date("2026-10-30T12:00:00Z");
+  const g = [
+    { id: "a", name: "א", coachId: "c1" },
+    { id: "b", name: "ב" },
+    { id: "c", name: "ג", coachIds: ["c2", "c3"] },
+    { id: "d", name: "ד", coachId: "adm" },
+  ];
+  const users = [
+    { id: "c1", name: "מדריך 1", phone: "0521234567" },
+    { id: "c2", name: "מדריך 2", phone: "" },
+    { id: "c3", name: "מדריך 3", phone: "0527654321" },
+    { id: "adm", name: "מנהל", role: "admin" },
+  ];
+  const bot = {
+    lastCronError: { at: "2026-10-30T11:30:00Z", message: "boom" },
+    outboxQueue: [{ at: "2026-10-30T09:00:00Z" }, { at: "2026-10-30T11:55:00Z" }],
+    failLog: [{ who: "מדריך 1", at: "2026-10-28T10:00:00Z" }, { who: "x", at: "2026-10-01T10:00:00Z" }],
+  };
+  const h = weeklyHealth({ groups: g, users, quiet: ["c3"], bot, now });
+  assert.deepEqual(h.problems, [
+    "לקבוצה ב לא משויך מדריך באפליקציה",
+    "למדריך מדריך 2 (ג) אין טלפון תקין באפליקציה",
+    "השרת של שולה נכשל בשעה האחרונה: boom",
+    "1 הודעות תקועות בתור יותר משעה — השרת של שולה לא מוציא אותן",
+    "1 הודעות לא נמסרו בשבוע האחרון (מדריך 1)",
+  ]);
+  assert.deepEqual(h.notes, ["מדריך 3 מושתק — לא יקבל הודעות", "ד: רק אתה מדריך — הנתונים שלה בסיכום שלך"]);
+  assert.deepEqual(weeklyHealth({ groups: [g[0]], users, bot: {}, now }), { problems: [], notes: [] });
+  assert.deepEqual(weeklyHealth({ groups: [g[0]], users, quiet: ["c1"], bot: {}, now }).problems, ["לקבוצה א אין מדריך פעיל שמקבל הודעות — לשייך מדריך באפליקציה"]);
+});

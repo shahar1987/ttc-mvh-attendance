@@ -11,7 +11,11 @@ on:
         required: true
       text:
         description: "נוסח ההודעה (שורה אחת; קישור לקובץ בתוך הטקסט)"
-        required: true
+        required: false
+      quiet:
+        description: "לא לשלוח — להפסיק הודעות אוטומטיות למדריך הזה"
+        type: boolean
+        default: false
 
 permissions:
   contents: read

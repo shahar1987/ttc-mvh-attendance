@@ -25,8 +25,8 @@ export function pickCoaches(users, ids, to) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { to, text } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
-  if (!String(text || "").trim()) throw new Error("missing text");
+  const { to, text, quiet } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
+  if (String(quiet) !== "true" && !String(text || "").trim()) throw new Error("missing text");
   const { firestore, loadAll } = await import("./lib/firebase.mjs");
   const { randomUUID } = await import("node:crypto");
   const admin = (await import("firebase-admin")).default;
@@ -36,6 +36,16 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     ...((await db.collection("agentReports").doc("coaches").get()).data()?.ids || []),
     ...groups.flatMap((g) => [g.coachId, ...(Array.isArray(g.coachIds) ? g.coachIds : [])]).filter(Boolean),
   ];
+  // quiet: המדריך לא יקבל שום הודעה אוטומטית (תזכורות, סיכומים, הסיכום השבועי) — כמו הפקודה לשולה בוואטסאפ.
+  // לא נוגע בקבוצות ובמשתמשים באפליקציה. אין צורך בטלפון תקין כדי להשתיק.
+  if (String(quiet) === "true") {
+    const q = String(to || "").trim();
+    const hits = (await loadAll(db, "users")).filter((u) => !u.deleted && q && (u.name === q || (u.name || "").includes(q)));
+    if (hits.length !== 1) throw new Error(`quiet: name matches ${hits.length} users (need exactly 1)`);
+    await db.collection("agentReports").doc("coaches").set({ quiet: admin.firestore.FieldValue.arrayUnion(hits[0].id) }, { merge: true });
+    console.log("quiet: 1 user will not get automatic messages");
+    process.exit(0);
+  }
   const targets = pickCoaches(await loadAll(db, "users"), ids, to);
   const at = new Date().toISOString();
   const items = targets.map((t) => ({ id: randomUUID(), from: "send-coach", key: "send-coach", at, to: t.phone, who: t.name, uid: t.id, text, template: "club_message", templateParam: text }));

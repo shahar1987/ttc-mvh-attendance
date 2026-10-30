@@ -111,3 +111,33 @@ export function weeklySummary({ players, groups, attendance, cancellations, toda
   if (better.length) lines.push("💡 איך להשתפר:", ...better.map((x) => `• ${x}`));
   return { text: lines.join("\n").trim(), counts: { groups: rows.length, unmarked: unmarked.length, fix: fix.length, better: better.length } };
 }
+
+// 🩺 בדיקה לפני השליחה: שאין "נשלח / לא נשלח" בשקט. בודק שלכל קבוצה יש מדריך עם טלפון, שה-worker
+// (שמוציא את ההודעות מהתור) חי, שהתור לא תקוע, ושלא היו כישלוני מסירה בשבוע האחרון.
+// problems = מה שמונע ממדריך לקבל את ההודעה; notes = לידיעה.
+export function weeklyHealth({ groups, users, quiet = [], bot = {}, now = new Date() }) {
+  const problems = [];
+  const notes = [];
+  const live = groups.filter((g) => !g.deleted && g.isActive !== false);
+  const byId = new Map(users.filter((u) => !u.deleted).map((u) => [u.id, u]));
+  const coachesOf = (g) => [g.coachId, ...(Array.isArray(g.coachIds) ? g.coachIds : [])].filter(Boolean).map((id) => byId.get(id)).filter(Boolean);
+  const isAdmin = (u) => String(u.role || "").toLowerCase() === "admin";
+  for (const g of live) {
+    const cs = coachesOf(g).filter((u) => !isAdmin(u));
+    if (!coachesOf(g).length) problems.push(`לקבוצה ${g.name} לא משויך מדריך באפליקציה`);
+    else if (!cs.length) notes.push(`${g.name}: רק אתה מדריך — הנתונים שלה בסיכום שלך`);
+    for (const u of cs) {
+      if (!isValidPhone(u.phone || "")) problems.push(`למדריך ${u.name || "?"} (${g.name}) אין טלפון תקין באפליקציה`);
+      else if (quiet.includes(u.id)) notes.push(`${u.name || "?"} מושתק — לא יקבל הודעות`);
+    }
+    if (cs.length && cs.every((u) => quiet.includes(u.id))) problems.push(`לקבוצה ${g.name} אין מדריך פעיל שמקבל הודעות — לשייך מדריך באפליקציה`);
+  }
+  const hours = (iso) => (iso ? (now - new Date(iso)) / 36e5 : Infinity);
+  if (hours(bot.lastCronError?.at) < 1) problems.push(`השרת של שולה נכשל בשעה האחרונה: ${String(bot.lastCronError.message || "").slice(0, 120)}`);
+  const queue = Array.isArray(bot.outboxQueue) ? bot.outboxQueue : [];
+  const stuck = queue.filter((x) => hours(x.at) > 1).length;
+  if (stuck) problems.push(`${stuck} הודעות תקועות בתור יותר משעה — השרת של שולה לא מוציא אותן`);
+  const fails = (bot.failLog || []).filter((f) => hours(f.at) < 7 * 24);
+  if (fails.length) problems.push(`${fails.length} הודעות לא נמסרו בשבוע האחרון (${[...new Set(fails.map((f) => f.who).filter(Boolean))].join(", ")})`);
+  return { problems: [...new Set(problems)], notes: [...new Set(notes)] };
+}
