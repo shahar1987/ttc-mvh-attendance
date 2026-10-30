@@ -27,7 +27,7 @@ on:
       agent:
         description: "איזה סוכן להריץ"
         type: choice
-        options: [scan, bugcheck, ideas, supervisor, content, insights, weekly]
+        options: [scan, bugcheck, ideas, supervisor, content, insights, weekly, diag]
       preview:
         description: "weekly: רק תצוגה מקדימה לבעלים, בלי לשלוח למדריכים"
         type: boolean
@@ -134,6 +134,12 @@ jobs:
         env:
           WEEKLY_PREVIEW: ${{ inputs.preview && '1' || '0' }}
         run: node weekly.mjs
+
+      - name: 🩺 Queue diagnostics
+        id: diag
+        if: contains(steps.pick.outputs.run, ',diag,')
+        working-directory: agents
+        run: node diag.mjs
 
       - name: 🛡️ Supervisor
         id: supervisor
