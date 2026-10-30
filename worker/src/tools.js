@@ -29,13 +29,20 @@ export function ownerWrote(text, ownerText) {
 // הכתיבה מותנית: שתי קריאות במקביל (Gemini מפעיל כמה כלים יחד) לא יכולות שתיהן "לצרוך" את אותו אישור.
 // "כן" תקף רק 10 דקות אחרי שהשאלה נשאלה — "כן" לשאלה אחרת שעה אחר כך לא מפעיל טיוטה ישנה
 const CONFIRM_TTL_MS = 10 * 60 * 1000;
+// "כן" אחרי שהבעלים הוריד שמות מהרשימה שהוצגה ("שליו הגיע") — פחות מספרים מאותה רשימה זה עדיין מה שאישר (29.10)
+const narrower = (payload, shownKey) => {
+  const shown = shownKey ? JSON.parse(shownKey) : {};
+  const nums = payload.numbers;
+  return Object.keys(payload).length === 1 && Array.isArray(nums) && nums.length > 0 && Array.isArray(shown.numbers)
+    && Object.keys(shown).length === 1 && (!shown.numbers.length || nums.every((n) => shown.numbers.includes(n)));
+};
 export async function confirmed(store, kind, payload, ownerText, turn) {
   const key = JSON.stringify(payload);
   let ok = false;
   await store.update("agentReports/bot", (bot) => {
     const p = bot.pending?.[kind];
     const fresh = Date.now() - Date.parse(p?.askedAt || p?.at || 0) < CONFIRM_TTL_MS;
-    ok = APPROVAL.test(ownerText || "") && p?.key === key && p.turn !== turn && fresh;
+    ok = APPROVAL.test(ownerText || "") && (p?.key === key || narrower(payload, p?.key)) && p.turn !== turn && fresh;
     const now = new Date().toISOString();
     return { pending: { ...(bot.pending || {}), [kind]: ok ? null : { key, turn, at: p?.key === key ? p.at || now : now, askedAt: now } } };
   });
