@@ -1396,3 +1396,24 @@ console.log("template fallback ok");
   assert.equal(sent.length - n, 3);
 }
 console.log("24h window ok");
+
+// 30.10: בלי מספרים — "1. כן\n2. לא" יוצא ככפתורים, ולחיצה על כפתור של משימה נרשמת ביומן בלי לעבור למודל
+{
+  geminiQueue.push([{ text: "לשלוח לדור?\n1. כן\n2. לא" }]);
+  await webhook("תנסחי הודעה לדור");
+  const b = sent.at(-1);
+  assert.equal(b.type, "interactive", "אפשרויות ממוספרות — כפתורים");
+  assert.equal(b.interactive.body.text, "לשלוח לדור?");
+  assert.deepEqual(b.interactive.action.buttons.map((x) => x.reply.title), ["כן", "לא"]);
+  const calls = geminiCalls.length;
+  const tap = (id) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", interactive: { type: "button_reply", button_reply: { id, title: "x" } } });
+  await tap("מוח 9");
+  await tap("מוח שינוי 4");
+  await webhook("היי דור, נוסח חדש");
+  assert.equal(geminiCalls.length, calls, "תשובות למשימות לא עוברות למודל");
+  const log = docs.get("agentReports/bot").log.map((e) => e.user);
+  assert.deepEqual(log.slice(-3), ["מוח 9", "מוח שינוי 4", "מוח 4 נוסח: היי דור, נוסח חדש"]);
+  await webhook("סתם שאלה") ; // אחרי הנוסח — חוזר לשיחה רגילה
+  assert.equal(geminiCalls.length > calls, true);
+}
+console.log("buttons ok");

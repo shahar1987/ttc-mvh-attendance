@@ -91,12 +91,12 @@ export async function inboxRoute(req, env, store, wa) {
   }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
   if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
-  const { id, answer, notify } = await req.json();
+  const { id, answer, notify, buttons } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
-    const text = offerKorazim(String(notify).slice(0, 3500));
+    const text = Array.isArray(buttons) ? String(notify).slice(0, 3500) : offerKorazim(String(notify).slice(0, 3500));
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), claude: { at: new Date().toISOString(), text } } }));
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900), buttons: Array.isArray(buttons) ? buttons : undefined });
     return Response.json({ ok: true });
   }
   const item = id && (await store.get(`agentReports/ask_${id}`));
