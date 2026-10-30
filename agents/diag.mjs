@@ -10,6 +10,17 @@ const now = Date.now();
 const age = (iso) => (iso ? `${Math.round((now - new Date(iso)) / 60000)}m` : "-");
 const clean = (s) => String(s || "").replace(/\d{7,}/g, "#").replace(/\s+/g, " ").slice(0, 300);
 const q = Array.isArray(bot.outboxQueue) ? bot.outboxQueue : [];
+// GitHub מציג רק 10 הערות לכל צעד — הבדיקות החשובות קודם
+const [groups, users] = await Promise.all([loadAll(db, "groups"), loadAll(db, "users")]);
+// DIAG_PHONE: בודק אם הטלפון שהבעלים מסר תואם למה שרשום למנהלים באפליקציה. מדפיס רק כן/לא
+if (process.env.DIAG_PHONE) {
+  const { normalizePhone } = await import("./lib/analysis.mjs");
+  const want = normalizePhone(process.env.DIAG_PHONE);
+  const admins = users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted);
+  console.log(`::notice::admins=${admins.length} match=${admins.map((u) => normalizePhone(u.phone || "") === want).join(",")}`);
+  if (0) for (const u of users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted))
+    console.log(`::notice::admin phone matches=${normalizePhone(u.phone || "") === want} hasPhone=${Boolean(u.phone)}`);
+}
 console.log(`::notice::env whatsapp=${Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID)} owner=${Boolean(process.env.OWNER_PHONE)}`);
 // DIAG_FIX=1: מוציא מהתור את הודעות הסיכום השבועי שנתקעו (ישלחו מחדש ישירות), ומשחרר נעילות של השאר
 if (process.env.DIAG_FIX === "1") {
@@ -31,7 +42,6 @@ const t = bot.templates;
 if (t) console.log(`::notice::templates age=${age(t.at)} ${clean((t.result || []).join(" | "))}`);
 
 // בדיקת המערכת של הסיכום השבועי — שמות המדריכים מוסתרים ביומן הציבורי
-const [groups, users] = await Promise.all([loadAll(db, "groups"), loadAll(db, "users")]);
 const quiet = (await db.collection("agentReports").doc("coaches").get()).data()?.quiet || [];
 const hide = (s) => users.reduce((t, u) => (u.name ? t.split(u.name).join("[מדריך]") : t), clean(s));
 const h = weeklyHealth({ groups, users, quiet, bot });
@@ -45,11 +55,4 @@ if (process.env.DIAG_TELL === "1") {
   const failedWho = [...new Set((bot.failLog || []).filter((f) => now - new Date(f.at) < 7 * 864e5).map((f) => f.who).filter(Boolean))];
   const lines = ["🩺 פירוט בדיקת המערכת", ...failedWho.map((w) => `📞 הטלפון של ${w} באפליקציה (לשם נשלחות הודעות המדריך): ${phoneOf(w)}`), ...(fails.length ? ["הודעות שלא נמסרו בשבוע האחרון:", ...fails] : ["אין הודעות שלא נמסרו"]), ...h.problems.map((x) => `❗ ${x}`), ...h.notes.map((x) => `• ${x}`)];
   await tellOwner(db, { agent: "diag", text: lines.join("\n"), templateParam: "פירוט בדיקת המערכת מחכה לך" });
-}
-// DIAG_PHONE: בודק אם הטלפון שהבעלים מסר תואם למה שרשום למנהלים באפליקציה. מדפיס רק כן/לא
-if (process.env.DIAG_PHONE) {
-  const { normalizePhone } = await import("./lib/analysis.mjs");
-  const want = normalizePhone(process.env.DIAG_PHONE);
-  for (const u of users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted))
-    console.log(`::notice::admin phone matches=${normalizePhone(u.phone || "") === want} hasPhone=${Boolean(u.phone)}`);
 }
