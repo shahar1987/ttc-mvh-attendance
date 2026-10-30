@@ -46,3 +46,10 @@ if (process.env.DIAG_TELL === "1") {
   const lines = ["🩺 פירוט בדיקת המערכת", ...failedWho.map((w) => `📞 הטלפון של ${w} באפליקציה (לשם נשלחות הודעות המדריך): ${phoneOf(w)}`), ...(fails.length ? ["הודעות שלא נמסרו בשבוע האחרון:", ...fails] : ["אין הודעות שלא נמסרו"]), ...h.problems.map((x) => `❗ ${x}`), ...h.notes.map((x) => `• ${x}`)];
   await tellOwner(db, { agent: "diag", text: lines.join("\n"), templateParam: "פירוט בדיקת המערכת מחכה לך" });
 }
+// DIAG_PHONE: בודק אם הטלפון שהבעלים מסר תואם למה שרשום למנהלים באפליקציה. מדפיס רק כן/לא
+if (process.env.DIAG_PHONE) {
+  const { normalizePhone } = await import("./lib/analysis.mjs");
+  const want = normalizePhone(process.env.DIAG_PHONE);
+  for (const u of users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted))
+    console.log(`::notice::admin phone matches=${normalizePhone(u.phone || "") === want} hasPhone=${Boolean(u.phone)}`);
+}

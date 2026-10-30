@@ -40,6 +40,9 @@ on:
         description: "diag: לשלוח לבעלים בוואטסאפ את הפירוט עם השמות"
         type: boolean
         default: false
+      phone:
+        description: "diag: טלפון לבדיקה מול מה שרשום למנהלים (מודפס רק כן/לא)"
+        required: false
 
 permissions:
   contents: read
@@ -150,6 +153,7 @@ jobs:
         env:
           DIAG_FIX: ${{ inputs.fix && '1' || '0' }}
           DIAG_TELL: ${{ inputs.tell && '1' || '0' }}
+          DIAG_PHONE: ${{ inputs.phone }}
         run: node diag.mjs
 
       - name: 🛡️ Supervisor
