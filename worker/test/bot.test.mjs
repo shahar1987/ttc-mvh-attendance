@@ -1406,13 +1406,17 @@ console.log("24h window ok");
   assert.equal(b.interactive.body.text, "לשלוח לדור?");
   assert.deepEqual(b.interactive.action.buttons.map((x) => x.reply.title), ["כן", "לא"]);
   const calls = geminiCalls.length;
-  const tap = (id) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", interactive: { type: "button_reply", button_reply: { id, title: "x" } } });
+  const tap = (id) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", context: { id: "card-" + id }, interactive: { type: "button_reply", button_reply: { id, title: "שלח לדור" } } });
   await tap("מוח 9");
   await tap("מוח שינוי 4");
   await webhook("היי דור, נוסח חדש");
   assert.equal(geminiCalls.length, calls, "תשובות למשימות לא עוברות למודל");
   const log = docs.get("agentReports/bot").log.map((e) => e.user);
   assert.deepEqual(log.slice(-3), ["מוח 9", "מוח שינוי 4", "מוח 4 נוסח: היי דור, נוסח חדש"]);
+  assert.equal(sent.at(-1).context.message_id, "card-מוח שינוי 4", "האישור מצטט את הכרטיס");
+  assert.equal(sent.at(-1).text.body, "הנוסח החדש התקבל · בטיפול");
+  assert.equal(docs.get("agentReports/bot").cards["9"], "card-מוח 9");
+  assert.ok([...docs.keys()].some((k) => k.startsWith("agentReports/ask_") && docs.get(k).silent && docs.get(k).request.includes("מוח 9")), "לחיצה מפעילה מיד");
   await webhook("סתם שאלה") ; // אחרי הנוסח — חוזר לשיחה רגילה
   assert.equal(geminiCalls.length > calls, true);
 }

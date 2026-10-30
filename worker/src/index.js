@@ -11,7 +11,7 @@ import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply } from "./inbox.js";
+import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply, queueTap } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
@@ -247,12 +247,19 @@ async function handle(m, env) {
     if (code || (edit && m.type === "text")) {
       const shift = /^מוח שינוי (\d+)$/.exec(text);
       const user = edit && !code ? `מוח ${edit} נוסח: ${text}` : text;
-      const answer = shift ? "✏️ מה לשנות? פשוט תכתוב את הנוסח החדש" : "👍 נרשם, יוצא בסבב הקרוב";
-      await reply(answer);
+      const n = shift?.[1] || /(\d+)$/.exec(user.split(" נוסח:")[0])?.[1];
+      // התשובה מצטטת את הכרטיס שעליו לחץ, והמזהה שלו נשמר — כך גם "נשלח לדור" שיגיע אחר כך יופיע על אותו כרטיס
+      const card = m.context?.id || (bot.cards || {})[n];
+      const title = m.interactive?.button_reply?.title || "";
+      const answer = shift ? "מה לשנות? תכתוב את הנוסח החדש" : code ? `${title || "התקבל"} · בטיפול` : "הנוסח החדש התקבל · בטיפול";
+      await sendText(wa, m.from, answer, undefined, card).catch(() => reply(answer));
+      replied = true;
       await store.update("agentReports/bot", (cur) => ({
         editItem: shift ? { n: shift[1], at: now } : null,
+        ...(n && card ? { cards: Object.fromEntries(Object.entries({ ...(cur.cards || {}), [n]: card }).slice(-40)) } : {}),
         log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP),
       }));
+      if (!shift && /^מוח/.test(user)) await queueTap(env, store, user).catch(() => {});
       return;
     }
     let media = null;
