@@ -6,6 +6,7 @@ name: Agents
 #   🔎 scan        — כל בוקר ב-08:00 (שעון קיץ; 07:00 בחורף): דוח נוכחות לשולה
 #   🐞 bugcheck    — כל לילה ב-03:30: האתר החי, תקינות הנתונים, תהליכים שנכשלו
 #   💡 ideas       — ראשון ב-09:00: 3 רעיונות לשבוע
+#   📊 weekly      — שישי ב-14:00: סיכום שבועי — מה לסדר ואיך להשתפר
 #   📈 insights    — כל לילה ב-03:30: נתוני חשיפה ומעורבות מ-Meta (קריאה בלבד)
 #   📣 content     — ראשון ב-09:00: דוח "מה עבד השבוע" + 3 טיוטות פוסטים לשבוע (לאישור בוואטסאפ)
 #   🛡️ supervisor  — כל שעה: שכולם רצו, שהבוט עונה, שלא דלף מידע
@@ -18,6 +19,7 @@ on:
     - cron: "0 5 * * *"
     - cron: "30 0 * * *"
     - cron: "0 6 * * 0"
+    - cron: "0 12 * * 5"
     - cron: "17 * * * *"
     - cron: "*/10 * * * *"
   workflow_dispatch:
@@ -25,7 +27,7 @@ on:
       agent:
         description: "איזה סוכן להריץ"
         type: choice
-        options: [scan, bugcheck, ideas, supervisor, content, insights]
+        options: [scan, bugcheck, ideas, supervisor, content, insights, weekly]
 
 permissions:
   contents: read
@@ -73,6 +75,7 @@ jobs:
             "0 5 * * *")    RUN=scan ;;
             "30 0 * * *")   RUN=bugcheck,insights ;;
             "0 6 * * 0")    RUN=ideas ;;  # הקמפיין השבועי עבר למשימה של קלוד (ראשון 08:30, /insights/campaign) — content רק בהפעלה ידנית
+            "0 12 * * 5")   RUN=weekly ;;  # שישי 14:00 בחורף (15:00 בשעון קיץ)
             "17 * * * *")   RUN=supervisor ;;
             "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
             *)              RUN="${{ inputs.agent }}" ;;
@@ -119,6 +122,12 @@ jobs:
         if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',content,') }}
         working-directory: agents
         run: node content.mjs
+
+      - name: 📊 Weekly summary
+        id: weekly
+        if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',weekly,') }}
+        working-directory: agents
+        run: node weekly.mjs
 
       - name: 🛡️ Supervisor
         id: supervisor
