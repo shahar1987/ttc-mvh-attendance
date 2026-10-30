@@ -2,6 +2,7 @@
 // גילאים ושגיאות — כל רצף של 7 ספרות ומעלה מוסתר, ושמות לא מודפסים.
 import { firestore, loadAll } from "./lib/firebase.mjs";
 import { weeklyHealth } from "./lib/weekly.mjs";
+import { tellOwner } from "./lib/owner.mjs";
 
 const db = firestore();
 const bot = (await db.collection("agentReports").doc("bot").get()).data() || {};
@@ -36,3 +37,9 @@ const hide = (s) => users.reduce((t, u) => (u.name ? t.split(u.name).join("[מד
 const h = weeklyHealth({ groups, users, quiet, bot });
 for (const x of h.problems) console.log(`::notice::health problem: ${hide(x)}`);
 for (const x of h.notes) console.log(`::notice::health note: ${hide(x)}`);
+// DIAG_TELL=1: הפירוט עם השמות נשלח רק לבעלים בוואטסאפ (לא ליומן הציבורי)
+if (process.env.DIAG_TELL === "1") {
+  const fails = (bot.failLog || []).filter((f) => now - new Date(f.at) < 7 * 864e5).map((f) => `• ${f.who || "?"} — ${new Date(f.at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", dateStyle: "short", timeStyle: "short" })}${f.delivered ? " (נמסרה ואז נכשלה)" : ""}`);
+  const lines = ["🩺 פירוט בדיקת המערכת", ...(fails.length ? ["הודעות שלא נמסרו בשבוע האחרון:", ...fails] : ["אין הודעות שלא נמסרו"]), ...h.problems.map((x) => `❗ ${x}`), ...h.notes.map((x) => `• ${x}`)];
+  await tellOwner(db, { agent: "diag", text: lines.join("\n"), templateParam: "פירוט בדיקת המערכת מחכה לך" });
+}

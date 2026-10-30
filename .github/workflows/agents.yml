@@ -36,6 +36,10 @@ on:
         description: "diag: לנקות מהתור הודעות סיכום שבועי שנתקעו"
         type: boolean
         default: false
+      tell:
+        description: "diag: לשלוח לבעלים בוואטסאפ את הפירוט עם השמות"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -145,6 +149,7 @@ jobs:
         working-directory: agents
         env:
           DIAG_FIX: ${{ inputs.fix && '1' || '0' }}
+          DIAG_TELL: ${{ inputs.tell && '1' || '0' }}
         run: node diag.mjs
 
       - name: 🛡️ Supervisor
