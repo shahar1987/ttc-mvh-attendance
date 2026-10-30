@@ -62,7 +62,7 @@ console.log(`weekly: ${JSON.stringify(counts)}, coaches queued: ${items.length}`
 await db.collection("agentReports").doc("weekly").set({ date: today, createdAt: new Date().toISOString(), text, counts, ...(preview ? {} : { coachFacts: nowFacts }) }, { merge: true });
 await tellOwner(db, { agent: "weekly", text, templateParam: "הסיכום השבועי של המועדון מחכה לך" });
 
-// אישור מסירה: ה-worker מוציא את התור כל רבע שעה. מחכים עד 35 דקות (4 הודעות בכל ריצה של השרת) שכל ההודעות יצאו, ומודיעים לבעלים בכל מקרה —
+// אישור מסירה: ה-worker מוציא את התור כל רבע שעה. מחכים עד 50 דקות (הודעה אחת למדריך בכל ריצה של השרת, כל רבע שעה) שכל ההודעות יצאו, ומודיעים לבעלים בכל מקרה —
 // "נשלח" או "לא יצא", כדי שלא יהיה ניחוש. ✓✓ קרא מגיע אחר כך מה-worker, לכל מדריך שפותח (אם אישורי קריאה פעילים אצלו).
 if (!preview && items.length && wa) {
   await tellOwner(db, {
@@ -74,7 +74,7 @@ if (!preview && items.length && wa) {
 } else if (!preview && items.length) {
   const ids = new Set(items.map((x) => x.id));
   let left = items.length;
-  for (let i = 0; i < 35 && left; i++) {
+  for (let i = 0; i < 50 && left; i++) {
     await new Promise((r) => setTimeout(r, 60_000));
     const q = (await db.collection("agentReports").doc("bot").get()).data()?.outboxQueue || [];
     left = q.filter((x) => ids.has(x.id)).length;
@@ -83,7 +83,7 @@ if (!preview && items.length && wa) {
   console.log(`::notice::weekly delivery sent=${sent} stuck=${left}`);
   await tellOwner(db, {
     agent: "weekly",
-    text: left ? `❗ הסיכום השבועי למדריכים: ${sent} יצאו, ${left} עדיין לא יצאו אחרי 35 דקות — השרת של שולה לא מוציא את התור. אבדוק את זה.` : `✅ הסיכום השבועי נשלח לכל ${sent} המדריכים. תקבל עדכון כשכל אחד קורא.`,
+    text: left ? `❗ הסיכום השבועי למדריכים: ${sent} יצאו, ${left} עדיין לא יצאו אחרי 50 דקות — השרת של שולה לא מוציא את התור. אבדוק את זה.` : `✅ הסיכום השבועי נשלח לכל ${sent} המדריכים. תקבל עדכון כשכל אחד קורא.`,
     templateParam: left ? "הסיכום השבועי למדריכים לא יצא במלואו" : "הסיכום השבועי נשלח לכל המדריכים",
   });
   if (left) process.exitCode = 1;

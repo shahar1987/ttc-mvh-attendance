@@ -24,10 +24,30 @@ console.log("firestore retry ok");
     { id: "locked", claimedAt: "2026-10-30T15:55:00Z" }, { id: "stale", claimedAt: "2026-10-30T15:45:00Z" },
   ];
   let seen = [];
-  await drainQueue(store, "q", "items", { now, max: 3, order: (a, b) => (b.to ? 1 : 0) - (a.to ? 1 : 0), run: async (xs) => (seen = xs.map((x) => x.id)) });
-  assert.deepEqual(seen, ["c1", "c2", "o1"], "מדריכים קודם, ורק 3");
-  assert.deepEqual(docs.q.items.map((x) => x.id), ["o2", "o3", "locked", "stale"]);
-  await drainQueue(store, "q", "items", { now, max: 10, run: async (xs) => (seen = xs.map((x) => x.id)) });
-  assert.deepEqual(seen, ["o2", "o3", "stale"], "נעילה של 5 דקות נשארת, של 15 דקות משתחררת");
+  const pick = (xs) => [xs.find((x) => x.to), ...xs.filter((x) => !x.to).slice(0, 2)].filter(Boolean);
+  await drainQueue(store, "q", "items", { now, pick, run: async (xs) => (seen = xs.map((x) => x.id)) });
+  assert.deepEqual(seen, ["c1", "o1", "o2"], "מדריך אחד ועד שניים לבעלים בריצה");
+  assert.deepEqual(docs.q.items.map((x) => x.id), ["o3", "c2", "locked", "stale"]);
+  await drainQueue(store, "q", "items", { now, run: async (xs) => (seen = xs.map((x) => x.id)) });
+  assert.deepEqual(seen, ["o3", "c2", "stale"], "נעילה של 5 דקות נשארת, של 15 דקות משתחררת");
   console.log("queue max ok");
+}
+
+// 🔑 כניסה אחת לגוגל לכל ריצה: 14 משימות במקביל חלקו 14 בקשות כניסה ופוצצו את מגבלת 50 הבקשות של ה-worker (30.10)
+{
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const sa = { client_email: "x@y", private_key: privateKey.export({ type: "pkcs8", format: "pem" }) };
+  const { accessToken } = await import("../src/firestore.js");
+  let tokenCalls = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("oauth2")) { tokenCalls++; await new Promise((r) => setTimeout(r, 20)); return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }), { status: 200 }); }
+    return new Response("{}", { status: 200 });
+  };
+  const tokens = await Promise.all(Array.from({ length: 14 }, () => accessToken(sa)));
+  assert.equal(tokenCalls, 1, "14 בקשות במקביל — כניסה אחת");
+  assert.ok(tokens.every((t) => t === "t"));
+  await accessToken(sa);
+  assert.equal(tokenCalls, 1, "אחר כך מהמטמון");
+  console.log("token shared ok");
 }

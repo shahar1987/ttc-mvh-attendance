@@ -582,9 +582,9 @@ export async function deliverOutbox(env, store, wa) {
   const errors = [];
   let done = [];
   await drainQueue(store, "agentReports/bot", "outboxQueue", {
-    // 4 בכל ריצה, הודעות למדריכים קודם (הן עולות יותר בקשות). shortcut: תור של 20+ הודעות לוקח שעה; לפצל לריצות נפרדות אם זה יקרה
-    max: 4,
-    order: (a, b) => (b.to ? 1 : 0) - (a.to ? 1 : 0),
+    // בכל ריצה: הודעה אחת למדריך (~5 בקשות) ועד שתיים לבעלים (~2 כל אחת). ריצה רגילה כבר עולה ~40 מתוך 50 הבקשות של ה-worker.
+    // shortcut: 6 מדריכים = שעה וחצי; אם יהיו יותר — לשלוח את הסיכום השבועי בכמה ריצות נפרדות או לעבור לתוכנית בתשלום
+    pick: (xs) => [xs.find((x) => x.to), ...xs.filter((x) => !x.to).slice(0, 2)].filter(Boolean),
     run: async (items) => {
       const bot = (await store.get("agentReports/bot")) || {};
       const ok = [];

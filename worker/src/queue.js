@@ -3,16 +3,16 @@
 // כך הודעה לא הולכת לאיבוד כשהשליחה נכשלת, ושתי ריצות cron במקביל לא שולחות את אותו פריט פעמיים.
 export const keyOf = (x) => x.id || `${x.at || ""}|${x.from || ""}|${String(x.text || "").slice(0, 60)}`;
 
-// max: כמה פריטים לכל היותר בריצה אחת. ה-worker בתוכנית החינמית מוגבל ל-50 בקשות רשת לריצה, וכל שליחה עולה כמה;
+// pick: אילו מהפריטים הזמינים לקחת בריצה הזו. ה-worker בתוכנית החינמית מוגבל ל-50 בקשות רשת לריצה, וכל שליחה עולה כמה;
 // תור ארוך (30.10: 10 הודעות בבת אחת) חרג מהמגבלה, הריצה נקטעה בלי לרשום שגיאה, והפריטים נשארו נעולים. השאר — בריצה הבאה.
-export async function drainQueue(store, path, field, { due = () => true, run, maxAttempts = 5, now = new Date(), max = Infinity, order = () => 0 }) {
+export async function drainQueue(store, path, field, { due = () => true, run, maxAttempts = 5, now = new Date(), pick = (xs) => xs }) {
   const stamp = now.toISOString();
   // תפיסה של ריצה שנפלה באמצע משתחררת בריצה הבאה (כל 15 דקות). ריצת cron לא נמשכת 10 דקות.
   const staleBefore = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
   let claimed = [];
   await store.update(path, (cur) => {
     const list = Array.isArray(cur[field]) ? cur[field] : [];
-    claimed = list.filter((x) => x && due(x) && !(x.claimedAt && x.claimedAt > staleBefore)).sort(order).slice(0, max);
+    claimed = pick(list.filter((x) => x && due(x) && !(x.claimedAt && x.claimedAt > staleBefore)));
     if (!claimed.length) return null;
     const ids = new Set(claimed.map(keyOf));
     return { [field]: list.map((x) => (x && ids.has(keyOf(x)) ? { ...x, claimedAt: stamp } : x)) };

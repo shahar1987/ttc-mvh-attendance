@@ -7,9 +7,16 @@ const b64url = (buf) =>
   btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const b64urlText = (s) => b64url(new TextEncoder().encode(s));
 
-async function accessToken(sa) {
+// בקשת כניסה אחת משותפת: משימות שרצות במקביל מחכות לאותה בקשה. בלי זה כל משימה (עד 14 ב-cron) ביקשה כניסה משלה,
+// והריצה חרגה ממגבלת 50 הבקשות של ה-worker ונקטעה בשקט (30.10).
+let pending = null;
+export async function accessToken(sa) {
   const now = Math.floor(Date.now() / 1000);
   if (cached.token && cached.exp - 60 > now) return cached.token;
+  pending ??= fetchToken(sa, now).finally(() => (pending = null));
+  return pending;
+}
+async function fetchToken(sa, now) {
   const header = b64urlText(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = b64urlText(
     JSON.stringify({
