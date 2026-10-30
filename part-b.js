@@ -79,6 +79,7 @@ const DEFAULT_PERMISSIONS_BY_ROLE = {
 const STAFF_MENU_ITEMS = [
   { key: "dashboard", label: "דשבורד", short: "סקירה", icon: le, perm: "reports", viewerToo: !0 },
   { key: "attendance", label: "מילוי נוכחות", icon: Z },
+  { key: "after", label: "אחרי האימון", icon: ReportsIcon },
   { key: "groups", label: "ניהול קבוצות", short: "קבוצות", icon: H, perm: "manageGroups", viewerToo: !0 },
   { key: "phonebook", label: "ספר טלפונים", short: "טלפונים", icon: se, perm: "phonebook" },
   { key: "payments", label: "מי לא משלם", icon: ye, perm: "payments" },
@@ -99,7 +100,7 @@ const STAFF_MENU_ITEMS = [
 // 10.10: הדשבורד בשורה משלו בראש התפריט, לבקשת שולה.
 const MENU_SECTIONS = [
   { label: "דשבורד", icon: le, keys: ["dashboard"] },
-  { label: "נוכחות", icon: Z, keys: ["attendance"] },
+  { label: "נוכחות", icon: Z, keys: ["attendance", "after"] },
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import", "join"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
   { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
@@ -4947,6 +4948,14 @@ function Q() {
         !vw &&
         m === "import" &&
         e.createElement(ImportScreen, { groups: i, players: c }),
+      m === "after" &&
+        e.createElement(PostTrainingScreen, {
+          groups: i,
+          players: statPlayers,
+          attendance: statAtt,
+          onWhatsapp: vw ? null : openWhatsapp,
+          onOpenGroup: goToGroupScreen,
+        }),
       m === "attendance" &&
         e.createElement(mt, {
           profile: s,

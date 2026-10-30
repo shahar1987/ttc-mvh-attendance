@@ -2200,6 +2200,376 @@ function ReportsScreen({ groups, users, players, attendance, cancellations, read
   );
 }
 
+// 30.10: "אחרי האימון" — שלוש תצוגות קריאה בלבד מעל הנתונים הקיימים: סיכום האימון האחרון של קבוצה,
+// מפת נוכחות של 8 האימונים האחרונים, ותמונת המועדון של היום. לא כותב כלום ל-Firestore;
+// הודעת היעדרות עוברת דרך חלון ה-WhatsApp הרגיל, ששולום שולח ממנו בעצמו.
+const PT_TONE = {
+  Present: "#2E7D6B",
+  Absent: "#C6716A",
+};
+const ptShort = (d) => `${+d.slice(8, 10)}.${+d.slice(5, 7)}`;
+// נוכחות לפי קבוצה: לכל תאריך — מפה שחקן→סטטוס (נוכחות גוברת על היעדרות באותו יום)
+function ptGroupData(gid, players, attendance) {
+  let roster = players.filter((p) => p.groupId === gid && p.isActive && !p.deleted && !p.trial),
+    ids = new Set(roster.map((p) => p.id)),
+    byDate = {};
+  attendance.forEach((a) => {
+    if (a.groupId !== gid || !a.date || a.date > E() || !ids.has(a.playerId)) return;
+    let m = (byDate[a.date] = byDate[a.date] || {});
+    m[a.playerId] !== "Present" && (m[a.playerId] = a.status);
+  });
+  let dates = Object.keys(byDate).sort().reverse(),
+    pctOf = (d) => {
+      let v = Object.values(byDate[d]),
+        n = v.length;
+      return n ? Math.round((100 * v.filter((x) => x === "Present").length) / n) : null;
+    };
+  return { roster, byDate, dates, pctOf };
+}
+// שתי ההיעדרויות האחרונות של השחקן בקבוצה, כשהאחרונה היא date
+function ptStreak(pid, date, gd) {
+  let mine = gd.dates.filter((d) => d <= date && gd.byDate[d][pid]);
+  return mine.length >= 2 && mine[0] === date && gd.byDate[mine[0]][pid] === "Absent" && gd.byDate[mine[1]][pid] === "Absent";
+}
+// מספר האימונים ברצף שפוספסו לפני date (לשחקן שחזר היום)
+function ptMissedBefore(pid, date, gd) {
+  let n = 0;
+  for (let d of gd.dates) {
+    if (d >= date || !gd.byDate[d][pid]) continue;
+    if (gd.byDate[d][pid] !== "Absent") break;
+    n++;
+  }
+  return n;
+}
+function PtCard({ children, className }) {
+  return e.createElement("div", { className: `bg-white rounded-2xl ${className || ""}` }, children);
+}
+function PtTitle({ children }) {
+  return e.createElement("p", { className: "text-sm font-bold text-slate-700 px-1 pt-2" }, children);
+}
+function PtSummary({ group, gd, onWhatsapp }) {
+  let date = gd.dates[0];
+  if (!date)
+    return e.createElement(PtCard, { className: "p-5 text-center text-slate-600" }, "עוד לא סומנה נוכחות בקבוצה הזו");
+  let day = gd.byDate[date],
+    total = Object.keys(day).length,
+    present = Object.values(day).filter((x) => x === "Present").length,
+    pct = gd.pctOf(date),
+    monthAgo = new Date(Date.parse(date + "T12:00:00Z") - 30 * 864e5).toISOString().slice(0, 10),
+    prev = gd.dates.filter((d) => d < date && d >= monthAgo).map(gd.pctOf),
+    avg = prev.length ? Math.round(prev.reduce((s, v) => s + v, 0) / prev.length) : null,
+    diff = avg === null ? null : pct - avg,
+    byId = Object.fromEntries(gd.roster.map((p) => [p.id, p])),
+    absent = Object.keys(day)
+      .filter((id) => day[id] === "Absent" && byId[id])
+      .map((id) => ({ p: byId[id], streak: ptStreak(id, date, gd) }))
+      .sort((a, c) => c.streak - a.streak),
+    back = Object.keys(day)
+      .filter((id) => day[id] === "Present" && byId[id])
+      .map((id) => ({ p: byId[id], n: ptMissedBefore(id, date, gd) }))
+      .filter((x) => x.n >= 2),
+    last4 = gd.dates.slice(0, 4).reverse(),
+    R = 44,
+    C = 2 * Math.PI * R;
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-2" },
+    e.createElement(
+      PtCard,
+      { className: "p-5 flex items-center gap-5" },
+      e.createElement(
+        "div",
+        { className: "relative shrink-0", style: { width: 104, height: 104 } },
+        e.createElement(
+          "svg",
+          { width: 104, height: 104, viewBox: "0 0 104 104", role: "img", "aria-label": `${present} מתוך ${total} הגיעו` },
+          e.createElement("circle", { cx: 52, cy: 52, r: R, fill: "none", stroke: "#E9E9EE", strokeWidth: 12 }),
+          e.createElement("circle", {
+            cx: 52, cy: 52, r: R, fill: "none", stroke: PT_TONE.Present, strokeWidth: 12, strokeLinecap: "round",
+            strokeDasharray: `${(C * pct) / 100} ${C}`, transform: "rotate(-90 52 52)",
+          }),
+        ),
+        e.createElement(
+          "div",
+          { className: "absolute inset-0 flex flex-col items-center justify-center" },
+          e.createElement("span", { className: "text-2xl font-extrabold leading-none" }, `${present}/${total}`),
+          e.createElement("span", { className: "text-sm text-slate-500" }, "הגיעו"),
+        ),
+      ),
+      e.createElement(
+        "div",
+        { className: "flex flex-col gap-2" },
+        e.createElement("span", { className: "text-sm text-slate-500" }, Ke(date)),
+        e.createElement("span", { className: "text-3xl font-extrabold text-emerald-700 leading-none" }, `${pct}%`),
+        diff !== null &&
+          e.createElement(
+            "span",
+            { className: `text-sm font-bold ${diff >= 0 ? "text-emerald-700" : "text-red-700"}` },
+            diff === 0 ? "בדיוק ממוצע החודש" : `${Math.abs(diff)}% ${diff > 0 ? "מעל" : "מתחת"} לממוצע החודש`,
+          ),
+      ),
+    ),
+    absent.length > 0 && e.createElement(PtTitle, null, `לא הגיעו · ${absent.length}`),
+    absent.length > 0 &&
+      e.createElement(
+        PtCard,
+        { className: "overflow-hidden" },
+        absent.map(({ p, streak }) =>
+          e.createElement(
+            "div",
+            { key: p.id, className: "flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0" },
+            e.createElement(
+              "div",
+              { className: "flex flex-col flex-1 min-w-0" },
+              e.createElement("span", { className: "font-bold truncate" }, p.name),
+              streak && e.createElement("span", { className: "text-sm font-bold text-red-700" }, "פעם שנייה ברצף"),
+            ),
+            onWhatsapp &&
+              e.createElement(
+                "button",
+                {
+                  onClick: () => onWhatsapp(p, "absence", group.id, date),
+                  className: "h-11 px-4 rounded-full bg-emerald-50 text-emerald-700 font-bold text-sm",
+                },
+                "הודעה",
+              ),
+          ),
+        ),
+      ),
+    back.length > 0 && e.createElement(PtTitle, null, `חזרו אחרי היעדרות · ${back.length}`),
+    back.length > 0 &&
+      e.createElement(
+        PtCard,
+        { className: "overflow-hidden" },
+        back.map(({ p, n }) =>
+          e.createElement(
+            "div",
+            { key: p.id, className: "flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0" },
+            e.createElement("span", { className: "font-bold flex-1 truncate" }, p.name),
+            e.createElement("span", { className: "text-sm text-slate-500" }, `אחרי ${n} אימונים`),
+          ),
+        ),
+      ),
+    last4.length > 1 && e.createElement(PtTitle, null, `${last4.length} אימונים אחרונים`),
+    last4.length > 1 &&
+      e.createElement(
+        PtCard,
+        { className: "p-4 flex justify-around items-end" },
+        last4.map((d) => {
+          let v = gd.pctOf(d);
+          return e.createElement(
+            "div",
+            { key: d, className: "flex flex-col items-center gap-1" },
+            e.createElement("span", { className: "text-sm font-bold" }, `${v}%`),
+            e.createElement(
+              "div",
+              { className: "w-8 h-16 rounded-lg bg-slate-100 flex items-end overflow-hidden" },
+              e.createElement("div", {
+                className: "w-full rounded-lg",
+                style: { height: `${v}%`, background: d === date ? PT_TONE.Present : "#8FC1B1" },
+              }),
+            ),
+            e.createElement("span", { className: "text-sm text-slate-500" }, d === E() ? "היום" : ptShort(d)),
+          );
+        }),
+      ),
+  );
+}
+function PtHeatmap({ gd }) {
+  let dates = gd.dates.slice(0, 8).reverse();
+  if (!dates.length)
+    return e.createElement(PtCard, { className: "p-5 text-center text-slate-600" }, "עוד לא סומנה נוכחות בקבוצה הזו");
+  let cols = `minmax(0,7rem) repeat(${dates.length}, minmax(0,1fr)) 2.75rem`,
+    rows = gd.roster
+      .map((p) => {
+        let marks = dates.map((d) => gd.byDate[d][p.id]),
+          seen = marks.filter(Boolean);
+        return {
+          p, marks,
+          pct: seen.length ? Math.round((100 * seen.filter((x) => x === "Present").length) / seen.length) : null,
+        };
+      })
+      .sort((a, c) => (a.pct ?? 101) - (c.pct ?? 101)),
+    avgs = dates.map(gd.pctOf),
+    avg = Math.round(avgs.reduce((s, v) => s + v, 0) / avgs.length);
+  return e.createElement(
+    PtCard,
+    { className: "p-3 flex flex-col gap-1" },
+    e.createElement(
+      "div",
+      { className: "flex items-baseline justify-between px-1 pb-2" },
+      e.createElement("span", { className: "text-sm font-bold text-slate-700" }, `${dates.length} אימונים אחרונים`),
+      e.createElement("span", { className: "text-2xl font-extrabold" }, `${avg}%`),
+    ),
+    e.createElement(
+      "div",
+      { className: "grid gap-1 text-xs font-bold text-slate-500 items-center", style: { gridTemplateColumns: cols } },
+      e.createElement("span", null),
+      dates.map((d) => e.createElement("span", { key: d, className: "text-center" }, +d.slice(8, 10))),
+      e.createElement("span", { className: "text-center" }, "%"),
+    ),
+    rows.map(({ p, marks, pct }) =>
+      e.createElement(
+        "div",
+        { key: p.id, className: "grid gap-1 items-center h-9", style: { gridTemplateColumns: cols } },
+        e.createElement("span", { className: "text-sm font-semibold truncate" }, p.name),
+        marks.map((m, i) =>
+          e.createElement("span", {
+            key: i,
+            "aria-label": m === "Present" ? "הגיע" : m === "Absent" ? "לא הגיע" : "לא סומן",
+            className: "h-7 rounded-md",
+            style: { background: PT_TONE[m] || "#E9E9EE" },
+          }),
+        ),
+        e.createElement(
+          "span",
+          {
+            className: `text-center text-sm font-extrabold ${pct === null ? "text-slate-400" : pct < 60 ? "text-red-700" : pct < 80 ? "text-amber-700" : "text-emerald-700"}`,
+          },
+          pct === null ? "—" : pct,
+        ),
+      ),
+    ),
+    e.createElement(
+      "div",
+      { className: "flex gap-4 pt-3 px-1 text-sm text-slate-700 font-semibold" },
+      [["הגיע", PT_TONE.Present], ["לא הגיע", PT_TONE.Absent], ["לא סומן", "#E9E9EE"]].map(([l, c]) =>
+        e.createElement(
+          "span",
+          { key: l, className: "flex items-center gap-1.5" },
+          e.createElement("span", { className: "w-3.5 h-3.5 rounded", style: { background: c } }),
+          l,
+        ),
+      ),
+    ),
+  );
+}
+function PtClub({ groups, data, onOpenGroup }) {
+  let today = E(),
+    wd = new Date(today + "T12:00:00").getDay(),
+    tiles = groups.map((g) => {
+      let gd = data[g.id],
+        day = gd.byDate[today],
+        n = day ? Object.keys(day).length : 0,
+        pr = day ? Object.values(day).filter((x) => x === "Present").length : 0;
+      return { g, gd, day, n, pr, pct: day ? gd.pctOf(today) : null, trainsToday: Y(g) && g.days.includes(wd) };
+    }),
+    cards = [];
+  let streaks = [];
+  tiles.forEach(({ g, gd, day }) =>
+    day && Object.keys(day).forEach((id) => {
+      let p = gd.roster.find((x) => x.id === id);
+      p && ptStreak(id, today, gd) && streaks.push(`${p.name} · ${g.name}`);
+    }),
+  );
+  streaks.length &&
+    cards.push({ k: "s", tone: "red", title: `${streaks.length} נעדרו פעמיים ברצף`, detail: streaks.join(", ") });
+  tiles.forEach(({ g, gd, pct }) => {
+    if (pct === null) return;
+    let prev = gd.dates.filter((d) => d < today).slice(0, 8).map(gd.pctOf),
+      avg = prev.length ? Math.round(prev.reduce((s, v) => s + v, 0) / prev.length) : null;
+    avg !== null && avg - pct >= 10 &&
+      cards.push({ k: "d" + g.id, tone: "amber", title: `נוכחות ב${g.name} ירדה ל-${pct}%`, detail: `ממוצע 8 האימונים הקודמים ${avg}%`, gid: g.id });
+  });
+  tiles.forEach(({ g, day, trainsToday }) =>
+    trainsToday && !day &&
+      cards.push({ k: "m" + g.id, tone: "blue", title: `${g.name} עוד לא סומנה היום`, gid: g.id }),
+  );
+  let TONES = {
+    red: "bg-red-50 text-red-800",
+    amber: "bg-amber-50 text-amber-800",
+    blue: "bg-blue-50 text-blue-900",
+  };
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-2" },
+    e.createElement(
+      "div",
+      { className: "grid grid-cols-2 gap-2" },
+      tiles
+        .filter((t) => t.day || t.trainsToday)
+        .map((t) =>
+          e.createElement(
+            "button",
+            {
+              key: t.g.id,
+              onClick: () => onOpenGroup && onOpenGroup(t.g.id),
+              className: "bg-white rounded-2xl p-3 flex flex-col items-start text-right",
+            },
+            e.createElement("span", { className: "text-sm font-semibold text-slate-500 truncate w-full" }, t.g.name),
+            e.createElement("span", { className: "text-2xl font-extrabold" }, t.pct === null ? "—" : `${t.pct}%`),
+            e.createElement("span", { className: "text-sm text-slate-500" }, t.day ? `${t.pr} מתוך ${t.n}` : "לא סומן"),
+          ),
+        ),
+    ),
+    !tiles.some((t) => t.day || t.trainsToday) &&
+      e.createElement(PtCard, { className: "p-5 text-center text-slate-600" }, "אין היום אימונים"),
+    cards.length > 0 && e.createElement(PtTitle, null, `דורש טיפול · ${cards.length}`),
+    cards.map((c) =>
+      e.createElement(
+        PtCard,
+        { key: c.k, className: "p-4 flex flex-col gap-3" },
+        e.createElement(
+          "div",
+          { className: `rounded-xl px-3 py-2 ${TONES[c.tone]}` },
+          e.createElement("p", { className: "font-extrabold" }, c.title),
+          c.detail && e.createElement("p", { className: "text-sm" }, c.detail),
+        ),
+        c.gid && onOpenGroup &&
+          e.createElement(
+            "button",
+            { onClick: () => onOpenGroup(c.gid), className: "h-11 rounded-xl bg-blue-600 text-white font-bold" },
+            "פתח את הקבוצה",
+          ),
+      ),
+    ),
+  );
+}
+function PostTrainingScreen({ groups, players, attendance, onWhatsapp, onOpenGroup }) {
+  let [tab, setTab] = b("summary"),
+    [gid, setGid] = b(null),
+    data = Object.fromEntries(groups.map((g) => [g.id, ptGroupData(g.id, players, attendance)])),
+    // ברירת מחדל: הקבוצה שהתאמנה הכי לאחרונה
+    latest = groups.slice().sort((a, c) => (data[c.id].dates[0] || "").localeCompare(data[a.id].dates[0] || ""))[0],
+    group = groups.find((g) => g.id === gid) || latest;
+  if (!group)
+    return e.createElement("div", { className: "p-6 text-center text-slate-600" }, "אין קבוצות להצגה");
+  let TABS = [["summary", "סיכום"], ["map", "מפת נוכחות"], ["club", "המועדון היום"]];
+  return e.createElement(
+    "div",
+    { className: "px-4 pt-4 pb-6 flex flex-col gap-3" },
+    e.createElement(
+      "div",
+      { className: "grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl", role: "tablist" },
+      TABS.map(([k, l]) =>
+        e.createElement(
+          "button",
+          {
+            key: k, role: "tab", "aria-selected": tab === k, onClick: () => setTab(k),
+            className: `h-10 rounded-lg text-sm font-bold ${tab === k ? "bg-white text-blue-950 shadow-sm" : "text-slate-600"}`,
+          },
+          l,
+        ),
+      ),
+    ),
+    tab !== "club" &&
+      groups.length > 1 &&
+      e.createElement(
+        "select",
+        {
+          "aria-label": "קבוצה",
+          value: group.id,
+          onChange: (ev) => setGid(ev.target.value),
+          className: "h-11 rounded-xl border border-slate-200 bg-white px-3 font-bold",
+        },
+        groups.map((g) => e.createElement("option", { key: g.id, value: g.id }, g.name)),
+      ),
+    tab === "summary" && e.createElement(PtSummary, { group, gd: data[group.id], onWhatsapp }),
+    tab === "map" && e.createElement(PtHeatmap, { gd: data[group.id] }),
+    tab === "club" && e.createElement(PtClub, { groups, data, onOpenGroup }),
+  );
+}
+
 var et = {
   "auth/invalid-email":
     "כתובת אימייל לא תקינה",
