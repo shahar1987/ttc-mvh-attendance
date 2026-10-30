@@ -25,9 +25,36 @@ async function post(cfg, body) {
   return json.messages?.[0]?.id || "";
 }
 
-export function sendText(cfg, to, text) {
-  return post(cfg, { to, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
+// "1. כן\n2. לא" בסוף הודעה יוצא ככפתורים ללחיצה (30.10: "כל העניין הזה של המספרים מאוד מעצבן").
+// buttons מפורשים: [{id, title}] — id הוא מה שחוזר כשלוחצים (למשל "מוח 9"), title עד 20 תווים.
+const OPTIONS = /\n+((?:[1-3]\. [^\n]{1,20}(?:\n|$)){2,3})\s*$/;
+export async function sendText(cfg, to, text, buttons) {
+  const m = !buttons?.length && text.match(OPTIONS);
+  if (m) buttons = m[1].trim().split("\n").map((l) => l.replace(/^\d\. /, "").trim());
+  if (!buttons?.length) return post(cfg, { to, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
+  let body = (m ? text.slice(0, m.index) : text).trim();
+  // גוף הודעה עם כפתורים מוגבל ל-1024 תווים — הארוך יוצא קודם כטקסט, והכפתורים עם השורה האחרונה
+  if (body.length > 1000) {
+    await post(cfg, { to, type: "text", text: { body: body.slice(0, 4000), preview_url: false } });
+    body = body.split("\n").filter(Boolean).pop().slice(0, 1000);
+  }
+  return post(cfg, {
+    to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: body || "?" },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => (typeof b === "string" ? { id: b, title: b } : b))
+          .map((b) => ({ type: "reply", reply: { id: String(b.id).slice(0, 256), title: String(b.title || b.id).slice(0, 20) } })),
+      },
+    },
+  });
 }
+
+// הטקסט של הודעה נכנסת: כתיבה, כפתור של תבנית, או לחיצה על כפתור (חוזר ה-id שלו)
+export const incomingText = (m) =>
+  (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.type === "interactive" ? m.interactive?.button_reply?.id || "" : "").trim();
 
 // club_message סווגה ב-Meta כשיווקית, ונמענים חסומים לה (131049). קודם התבנית התפעולית, ואם היא עוד לא קיימת/מאושרת — הישנה.
 const PREFER = { club_message: "coach_notice" };
@@ -56,11 +83,11 @@ export async function sendTemplate(cfg, to, name, params = [], lang = "he", who 
 
 // הודעה לשולה: טקסט מלא אם היא כתבה לבוט ב-24 השעות האחרונות (חלון השירות של Meta),
 // אחרת תבנית עם שורת סיכום, והפרטים המלאים מחכים לה כשהיא עונה.
-export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templateParam }) {
+export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templateParam, buttons }) {
   if (!cfg || !cfg.owner) return "skipped: WhatsApp not configured";
   const open = lastOwnerMsgAt && Date.now() - new Date(lastOwnerMsgAt).getTime() < 23 * 3600 * 1000;
   if (open) {
-    await sendText(cfg, cfg.owner, text);
+    await sendText(cfg, cfg.owner, text, buttons);
     return "text";
   }
   await sendTemplate(cfg, cfg.owner, template, [templateParam]);

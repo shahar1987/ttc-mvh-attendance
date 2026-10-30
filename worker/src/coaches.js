@@ -2,7 +2,7 @@
 // אין להם גישה לשום דבר אחר: לא גוגל, לא פרסום, לא הודעות בשם המועדון, לא קלוד ולא הסוכנים.
 // מי מופעל: agentReports/coaches.ids (מזהי users, לא טלפונים — הריפו ציבורי). הטלפון והקבוצות נלקחים מהאפליקציה.
 import { normalizePhone, isValidPhone, israelToday } from "../../agents/lib/analysis.mjs";
-import { sendText, typing } from "../../agents/lib/whatsapp.mjs";
+import { sendText, typing, incomingText } from "../../agents/lib/whatsapp.mjs";
 import { TOOL_DEFS, makeTools, confirmed } from "./tools.js";
 import { coachIds } from "./reminders.js";
 
@@ -40,7 +40,7 @@ export async function addCoachNote(store, coach, text, msgId, now = new Date()) 
 
 // מדריך שלא הופעל ועונה להודעה של שולה (למשל לסיכום האימון) — שומרים כסיכום אימון ומודים לו
 export async function saveNoteFromCoach(m, store, wa, coach) {
-  const text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "").trim();
+  const text = incomingText(m);
   if (!text) return;
   await addCoachNote(store, coach, text, m.id);
   await sendText(wa, m.from, "תודה! העברתי לשחר 🙏");
@@ -57,7 +57,7 @@ export async function handleCoach(m, env, store, wa, coach, gemini) {
   });
   if (dup) return;
   await typing(wa, m.id).catch(() => {});
-  const text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : "").trim();
+  const text = incomingText(m);
   if (!text) return void (await sendText(wa, m.from, "אני מבינה כרגע רק הודעות טקסט 🙂"));
 
   const all = makeTools({ env, store, wa, lastOwnerText: text, turn: m.id, coach });

@@ -9,7 +9,7 @@ import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
-import { waConfig, sendText, typing, downloadMedia, notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
@@ -239,7 +239,22 @@ async function handle(m, env) {
 
     at("קבלת ההודעה");
     await typing(wa, m.id).catch(() => {});
-    let text = (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.image?.caption || "").trim();
+    let text = incomingText(m) || (m.image?.caption || "").trim();
+    // תשובה למשימה מתוזמנת (כפתור "מוח 9" / "הודעות כן" / "הרכב לקבוצה", או "✏️ לשנות" ואז הנוסח) — רק נרשמת ביומן,
+    // שם המשימה קוראת אותה. לא עוברת למודל, כדי ששולה לא תבצע אותה בעצמה פעם שנייה.
+    const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem.n : "";
+    const code = m.type === "interactive" && /^(מוח|הודעות|הרכב)( |$)/.test(text);
+    if (code || (edit && m.type === "text")) {
+      const shift = /^מוח שינוי (\d+)$/.exec(text);
+      const user = edit && !code ? `מוח ${edit} נוסח: ${text}` : text;
+      const answer = shift ? "✏️ מה לשנות? פשוט תכתוב את הנוסח החדש" : "👍 נרשם, יוצא בסבב הקרוב";
+      await reply(answer);
+      await store.update("agentReports/bot", (cur) => ({
+        editItem: shift ? { n: shift[1], at: now } : null,
+        log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP),
+      }));
+      return;
+    }
     let media = null;
     if (m.type === "audio") {
       at("הורדת ההקלטה");
