@@ -46,8 +46,9 @@ export function coachMessages({ players, groups, users, attendance, cancellation
       if (absent.length) items.push(`⚠️ הרבה חיסורים: ${list(absent, 4)}`);
       if (noPhone.length) items.push(`📞 חסר טלפון: ${list(noPhone)}`);
       if (noDays.length) items.push(`📅 לא סומנו ימי אימון: ${list(noDays)}`);
+      const facts = items.map((x) => `${g.name}: ${x.replace(/^\S+ /, "")}`);
       if (!items.length) items.push("✅ הכל מסודר, כל הכבוד");
-      return { head: `${g.name}${pc === null ? "" : ` — נוכחות השבוע ${pc}%`}`, items };
+      return { head: `${g.name}${pc === null ? "" : ` — נוכחות השבוע ${pc}%`}`, items, facts };
     });
     const first = (u.name || "").trim().split(/\s+/)[0] || "";
     const hello = `היי ${first}, הסיכום השבועי של הקבוצה שלך 📋`;
@@ -56,6 +57,7 @@ export function coachMessages({ players, groups, users, attendance, cancellation
       uid: u.id,
       name: u.name || "מדריך",
       phone: normalizePhone(u.phone),
+      facts: blocks.flatMap((b) => b.facts),
       text: [hello, ...blocks.map((b) => `\n*${b.head}*\n${b.items.join("\n")}`), "", bye].join("\n"),
       param: `${hello} ${blocks.map((b) => `${b.head}: ${b.items.join(" · ")}`).join(" | ")}. ${bye}`.slice(0, 900),
     });
@@ -140,4 +142,22 @@ export function weeklyHealth({ groups, users, quiet = [], bot = {}, now = new Da
   const fails = (bot.failLog || []).filter((f) => hours(f.at) < 7 * 24);
   if (fails.length) problems.push(`${fails.length} הודעות לא נמסרו בשבוע האחרון (${[...new Set(fails.map((f) => f.who).filter(Boolean))].join(", ")})`);
   return { problems: [...new Set(problems)], notes: [...new Set(notes)] };
+}
+
+// מה השתנה מהשבוע שעבר אצל כל מדריך: מה תוקן ומה חדש. prev/now = { uid: { name, facts } }.
+// השוואה לפי סוג הבעיה בקבוצה (בלי השמות שאחרי הנקודתיים השנייה), כדי ש"חסר טלפון: א, ב" → "חסר טלפון: א" ייחשב שינוי ולא בעיה חדשה.
+export function weeklyChanges(prev = {}, now = {}) {
+  const kind = (f) => f.split(":").slice(0, 2).join(":");
+  const lines = [];
+  for (const uid of new Set([...Object.keys(prev), ...Object.keys(now)])) {
+    const a = prev[uid]?.facts || [], b = now[uid]?.facts || [];
+    const name = now[uid]?.name || prev[uid]?.name || "?";
+    const fixed = a.filter((f) => !b.some((x) => kind(x) === kind(f)));
+    const added = b.filter((f) => !a.some((x) => kind(x) === kind(f)));
+    const changed = b.filter((f) => !added.includes(f) && !a.includes(f));
+    if (fixed.length) lines.push(`✅ ${name} סידר: ${fixed.map(kind).join(" · ")}`);
+    if (added.length) lines.push(`🆕 חדש אצל ${name}: ${added.join(" · ")}`);
+    if (changed.length) lines.push(`🔄 השתנה אצל ${name}: ${changed.join(" · ")}`);
+  }
+  return lines;
 }

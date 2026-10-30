@@ -4,14 +4,14 @@ import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
 import { addDays, israelToday } from "./lib/analysis.mjs";
 import { randomUUID } from "node:crypto";
 import admin from "firebase-admin";
-import { weeklySummary, coachMessages, weeklyHealth } from "./lib/weekly.mjs";
+import { weeklySummary, coachMessages, weeklyHealth, weeklyChanges } from "./lib/weekly.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
 const db = firestore();
 const today = israelToday();
 // 13 שבועות — מספיק לסכנת נשירה (12 שבועות) ולהשוואה לחודש שלפני
 const from = addDays(today, -91);
-const [players, groups, attendance, cancellations, users, quiet, bot] = await Promise.all([
+const [players, groups, attendance, cancellations, users, quiet, bot, last] = await Promise.all([
   loadAll(db, "players"),
   loadAll(db, "groups"),
   loadAll(db, "attendance", (c) => c.where("date", ">=", from)),
@@ -19,6 +19,7 @@ const [players, groups, attendance, cancellations, users, quiet, bot] = await Pr
   loadAll(db, "users"),
   db.collection("agentReports").doc("coaches").get().then((s) => s.data()?.quiet || []),
   db.collection("agentReports").doc("bot").get().then((s) => s.data() || {}),
+  db.collection("agentReports").doc("weekly").get().then((s) => s.data() || {}),
 ]);
 const health = weeklyHealth({ groups, users, quiet, bot });
 
@@ -31,11 +32,16 @@ const items = coaches.map((c) => ({ id: randomUUID(), from: "weekly-coach", key:
 const preview = process.env.WEEKLY_PREVIEW === "1";
 if (preview) for (const c of coaches) await tellOwner(db, { agent: "weekly-preview", text: `👀 תצוגה מקדימה — כך ${c.name} יקבל:\n\n${c.text}`, templateParam: `תצוגה מקדימה להודעה ל${c.name}` });
 else if (items.length) await db.collection("agentReports").doc("bot").set({ outboxQueue: admin.firestore.FieldValue.arrayUnion(...items) }, { merge: true });
+// מה השתנה מול השבוע שעבר (בפעם הראשונה אין עם מה להשוות)
+const nowFacts = Object.fromEntries(coaches.map((c) => [c.uid, { name: c.name, facts: c.facts }]));
+const changes = last.coachFacts ? weeklyChanges(last.coachFacts, nowFacts) : [];
+const changed = changes.length ? `\n\n🔄 מה השתנה אצל המדריכים מהשבוע שעבר:\n${changes.map((x) => `• ${x}`).join("\n")}` : "";
 const check = health.problems.length || health.notes.length ? `\n\n🩺 בדיקת המערכת:\n${[...health.problems.map((x) => `❗ ${x}`), ...health.notes.map((x) => `• ${x}`)].join("\n")}` : "\n\n🩺 בדיקת המערכת: הכל תקין";
-const text = (preview ? `${summary}\n\n👀 זו תצוגה מקדימה — לא נשלח כלום למדריכים.` : coaches.length ? `${summary}\n\n📨 נשלח סיכום שבועי ל-${coaches.length} מדריכים: ${coaches.map((c) => c.name).join(", ")}. אישור מסירה יגיע תוך כמה דקות.` : summary) + check;
+const text = (preview ? `${summary}\n\n👀 זו תצוגה מקדימה — לא נשלח כלום למדריכים.` : coaches.length ? `${summary}\n\n📨 נשלח סיכום שבועי ל-${coaches.length} מדריכים: ${coaches.map((c) => c.name).join(", ")}. אישור מסירה יגיע תוך כמה דקות.` : summary) + changed + check;
 console.log(`::notice::weekly coaches=${coaches.length} problems=${health.problems.length} notes=${health.notes.length} preview=${preview}`);
 console.log(`weekly: ${JSON.stringify(counts)}, coaches queued: ${items.length}`);
-await db.collection("agentReports").doc("weekly").set({ date: today, createdAt: new Date().toISOString(), text, counts });
+// תצוגה מקדימה לא מזיזה את נקודת ההשוואה של השבוע הבא
+await db.collection("agentReports").doc("weekly").set({ date: today, createdAt: new Date().toISOString(), text, counts, ...(preview ? {} : { coachFacts: nowFacts }) }, { merge: true });
 await tellOwner(db, { agent: "weekly", text, templateParam: "הסיכום השבועי של המועדון מחכה לך" });
 
 // אישור מסירה: ה-worker מוציא את התור כל רבע שעה. מחכים עד 25 דקות שכל ההודעות יצאו, ומודיעים לבעלים בכל מקרה —

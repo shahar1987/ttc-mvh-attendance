@@ -101,3 +101,15 @@ test("weekly health: finds what would stop a coach getting the message", () => {
   assert.deepEqual(weeklyHealth({ groups: [g[0]], users, bot: {}, now }), { problems: [], notes: [] });
   assert.deepEqual(weeklyHealth({ groups: [g[0]], users, quiet: ["c1"], bot: {}, now }).problems, ["לקבוצה א אין מדריך פעיל שמקבל הודעות — לשייך מדריך באפליקציה"]);
 });
+
+import { weeklyChanges } from "./lib/weekly.mjs";
+test("weekly changes: fixed, new and changed per coach", () => {
+  const prev = { c1: { name: "דני", facts: ["א: חסר טלפון: x, y", "א: לא מולאה נוכחות: יום שני"] }, c2: { name: "רון", facts: [] } };
+  const now = { c1: { name: "דני", facts: ["א: חסר טלפון: x"] }, c2: { name: "רון", facts: ["ב: הרבה חיסורים: z (3 היעדרויות ברצף)"] } };
+  assert.deepEqual(weeklyChanges(prev, now), [
+    "✅ דני סידר: א: לא מולאה נוכחות",
+    "🔄 השתנה אצל דני: א: חסר טלפון: x",
+    "🆕 חדש אצל רון: ב: הרבה חיסורים: z (3 היעדרויות ברצף)",
+  ]);
+  assert.deepEqual(weeklyChanges(now, now), []);
+});
