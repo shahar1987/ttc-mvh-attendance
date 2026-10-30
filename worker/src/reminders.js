@@ -38,6 +38,19 @@ const israelNow = (now) => {
 const toMin = (t) => (/^\d{1,2}:\d{2}$/.test(t || "") ? Number(t.split(":")[0]) * 60 + Number(t.split(":")[1]) : null);
 export const coachIds = (g) => [...new Set([g.coachId, ...(Array.isArray(g.coachIds) ? g.coachIds : [])].filter(Boolean))];
 // מאמנים שהבעלים ביקש לא לשלוח להם הודעות אוטומטיות (למשל מחליף) — נשארים משויכים בקבוצה. coach_messages ב-coaches.js
+// הודעת מאמן למאמן שהוא גם הבעלים (שחר מדריך כמה קבוצות): נשלחת בערוץ של הבעלים — טקסט חופשי כשהוא כתב ב-23 השעות
+// האחרונות, אחרת agent_alert. 29.10: סיכום אימון בתבנית המאמנים למספר של שחר חזר מוואטסאפ "Message undeliverable".
+// מחזיר wamid למאמן רגיל, "" לבעלים (לא עוקבים אחרי "קרא" על הודעה לעצמו).
+export async function toCoach(store, wa, c, text, bot) {
+  const phone = normalizePhone(c.phone);
+  if (wa?.owner && phone === normalizePhone(wa.owner)) {
+    const b = bot || (await store.get("agentReports/bot")) || {};
+    await notifyOwner(wa, { lastOwnerMsgAt: b.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text });
+    return "";
+  }
+  return sendTemplate(wa, phone, "club_message", [text], "he", c.name);
+}
+
 const quietIds = async (store) => ((await store.get("agentReports/coaches")) || {}).quiet || [];
 
 export async function remindCoaches(env, store, wa, now = new Date()) {
@@ -148,7 +161,7 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
       if (!isValidPhone(c.phone || "")) { problems.push(`• ${g.name} — ${c.name}: אין טלפון שמור`); continue; }
       try {
-        const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
+        const wamid = await toCoach(store, wa, c, text, bot);
         if (wamid) watch[wamid] = { who: c.name, what: `סיכום אימון ${g.name}`, at: now.toISOString() };
         out.push(`${g.name} — ${c.name} ✓`);
       } catch (e) {
@@ -320,7 +333,7 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
       if (t && t.length < 400 && gs.every((g) => t.includes(g.name) && (!g.startTime || t.includes(g.startTime)))) text = t;
     } catch {}
     try {
-      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
+      const wamid = await toCoach(store, wa, c, text);
       if (wamid) watch[wamid] = { who: c.name, what: "תזכורת הבוקר לאימון", at: now.toISOString() };
       out.push(`${c.name} ✓`);
     } catch (e) {
@@ -386,7 +399,7 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
       parts.push(`⚠️ ${risk.length === 1 ? "שחקן שכדאי לבדוק מה שלומו" : "שחקנים שכדאי לבדוק מה שלומם"}: ${risk.map((x) => `${x.playerName} (${x.groupName}) — ${x.reason}`).join(" · ")}. ${risk.every((x) => x.adult) ? "כדאי להתקשר ולשאול אם הכל בסדר" : risk.some((x) => x.adult) ? "כדאי להתקשר (לבוגרים ישירות, לילדים להורים) ולשאול אם הכל בסדר" : "כדאי להתקשר להורים ולשאול אם הכל בסדר"}, ולספר לשחר מה עלה.`);
     const text = `בוקר טוב ${first}, ${parts.join(" ")}`;
     try {
-      const wamid = await sendTemplate(wa, normalizePhone(c.phone), "club_message", [text], "he", c.name);
+      const wamid = await toCoach(store, wa, c, text);
       if (wamid) watch[wamid] = { who: c.name, what: n ? "תזכורת הודעות היעדרות" : "התראת נשירה", at: now.toISOString() };
       risk.forEach((x) => (riskDone[x.playerId] = today));
       out.push(`${c.name} (${[n && `${n} הודעות`, risk.length && `${risk.length} בסכנת נשירה`].filter(Boolean).join(", ")}) ✓`);

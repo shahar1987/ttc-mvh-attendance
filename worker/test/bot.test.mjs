@@ -355,6 +355,14 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.equal(tpl[0].template.name, "coach_notice");
   assert.equal(tpl[0].template.components[0].parameters[1].text, "סיכום אימון בוגרים היום: הגיעו 1 מתוך 3 · הגיעו: p5 · לא הגיעו: p7, p8 · ליצור קשר: p7");
   assert.equal(await coachSummaries(env, db(env), waConfig(env), sunday), "not marked yet", "בוגרים לא נשלח שוב; נוער מחכה למילוי");
+  // מאמן שהוא גם הבעלים: מקבל בערוץ של הבעלים, לא בתבנית המאמנים (29.10: "Message undeliverable")
+  const { toCoach } = await import("../src/reminders.js");
+  const n3 = sent.length;
+  assert.equal(await toCoach(db(env), waConfig(env), { name: "שחר", phone: "0500000000" }, "סיכום אימון סגל", { lastOwnerMsgAt: new Date().toISOString() }), "");
+  assert.deepEqual([sent.at(-1).to, sent.at(-1).type, sent.at(-1).text?.body], ["972500000000", "text", "סיכום אימון סגל"]);
+  await toCoach(db(env), waConfig(env), { name: "שחר", phone: "0500000000" }, "סיכום", { lastOwnerMsgAt: "2000-01-01T00:00:00Z" });
+  assert.equal(sent.at(-1).template.name, "agent_alert", "מחוץ לחלון — תבנית הבעלים");
+  assert.equal(sent.length, n3 + 2);
   // ✓✓ המאמן קרא — הבעלים מקבל עדכון, פעם אחת
   const st = JSON.stringify({ entry: [{ changes: [{ value: { statuses: [{ id: "w", status: "read" }] } }] }] });
   const sig = { "x-hub-signature-256": "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(st).digest("hex") };
