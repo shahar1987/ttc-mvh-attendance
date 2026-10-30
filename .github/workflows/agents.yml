@@ -32,6 +32,10 @@ on:
         description: "weekly: רק תצוגה מקדימה לבעלים, בלי לשלוח למדריכים"
         type: boolean
         default: false
+      fix:
+        description: "diag: לנקות מהתור הודעות סיכום שבועי שנתקעו"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -139,6 +143,8 @@ jobs:
         id: diag
         if: contains(steps.pick.outputs.run, ',diag,')
         working-directory: agents
+        env:
+          DIAG_FIX: ${{ inputs.fix && '1' || '0' }}
         run: node diag.mjs
 
       - name: 🛡️ Supervisor

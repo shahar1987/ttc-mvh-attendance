@@ -8,6 +8,18 @@ const now = Date.now();
 const age = (iso) => (iso ? `${Math.round((now - new Date(iso)) / 60000)}m` : "-");
 const clean = (s) => String(s || "").replace(/\d{7,}/g, "#").replace(/\s+/g, " ").slice(0, 300);
 const q = Array.isArray(bot.outboxQueue) ? bot.outboxQueue : [];
+console.log(`::notice::env whatsapp=${Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID)} owner=${Boolean(process.env.OWNER_PHONE)}`);
+// DIAG_FIX=1: מוציא מהתור את הודעות הסיכום השבועי שנתקעו (ישלחו מחדש ישירות), ומשחרר נעילות של השאר
+if (process.env.DIAG_FIX === "1") {
+  const ref = db.collection("agentReports").doc("bot");
+  const removed = await db.runTransaction(async (t) => {
+    const cur = (await t.get(ref)).data()?.outboxQueue || [];
+    const keep = cur.filter((x) => !["weekly", "weekly-coach", "weekly-preview"].includes(x?.from)).map(({ claimedAt, ...x }) => x);
+    t.update(ref, { outboxQueue: keep });
+    return cur.length - keep.length;
+  });
+  console.log(`::notice::fix removed=${removed}`);
+}
 console.log(`::notice::queue=${q.length} lastCronError=${age(bot.lastCronError?.at)} lastCoachError=${age(bot.lastCoachError?.at)} lastOwnerMsg=${age(bot.lastOwnerMsgAt)}`);
 for (const x of q) console.log(`::notice::item from=${x.from} to=${x.to ? "yes" : "owner"} age=${age(x.at)} attempts=${x.attempts || 0} claimed=${age(x.claimedAt)} template=${x.template || "-"}`);
 if (bot.lastCronError) console.log(`::notice::cronError ${clean(bot.lastCronError.message)}`);

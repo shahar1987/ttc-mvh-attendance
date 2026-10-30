@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import admin from "firebase-admin";
 import { weeklySummary, coachMessages, weeklyHealth, weeklyChanges } from "./lib/weekly.mjs";
 import { tellOwner } from "./lib/owner.mjs";
+import { waConfig, sendTemplate } from "./lib/whatsapp.mjs";
 
 const db = firestore();
 const today = israelToday();
@@ -31,7 +32,24 @@ const items = coaches.map((c) => ({ id: randomUUID(), from: "weekly-coach", key:
 // preview: ההודעות למדריכים מגיעות רק לבעלים, לבדיקה, ואף מדריך לא מקבל כלום
 const preview = process.env.WEEKLY_PREVIEW === "1";
 if (preview) for (const c of coaches) await tellOwner(db, { agent: "weekly-preview", text: `👀 תצוגה מקדימה — כך ${c.name} יקבל:\n\n${c.text}`, templateParam: `תצוגה מקדימה להודעה ל${c.name}` });
-else if (items.length) await db.collection("agentReports").doc("bot").set({ outboxQueue: admin.firestore.FieldValue.arrayUnion(...items) }, { merge: true });
+// שליחה ישירה מ-GitHub כשיש סודות וואטסאפ — לא תלויה בשרת של שולה (30.10: תור ארוך תקע את השרת). מזהה ההודעה
+// נרשם ב-bot.readWatch, וכך ה-worker עדיין מעדכן את הבעלים "קרא". בלי סודות — דרך התור, כמו קודם.
+const wa = waConfig(process.env);
+const direct = { sent: [], failed: [] };
+if (!preview && items.length && wa) {
+  const watch = {};
+  for (const c of coaches) {
+    try {
+      const wamid = await sendTemplate(wa, c.phone, "club_message", [c.param], "he", c.name);
+      if (wamid) watch[wamid] = { who: c.name, what: "הסיכום השבועי", at: new Date().toISOString() };
+      direct.sent.push(c.name);
+    } catch (e) {
+      direct.failed.push(`${c.name} (${String(e.message).replace(/\d{7,}/g, "#").slice(0, 120)})`);
+    }
+  }
+  if (Object.keys(watch).length) await db.collection("agentReports").doc("bot").set({ readWatch: watch }, { merge: true });
+  console.log(`::notice::weekly direct sent=${direct.sent.length} failed=${direct.failed.length}`);
+} else if (!preview && items.length) await db.collection("agentReports").doc("bot").set({ outboxQueue: admin.firestore.FieldValue.arrayUnion(...items) }, { merge: true });
 // מה השתנה מול השבוע שעבר (בפעם הראשונה אין עם מה להשוות)
 const nowFacts = Object.fromEntries(coaches.map((c) => [c.uid, { name: c.name, facts: c.facts }]));
 const changes = last.coachFacts ? weeklyChanges(last.coachFacts, nowFacts) : [];
@@ -46,7 +64,14 @@ await tellOwner(db, { agent: "weekly", text, templateParam: "הסיכום השב
 
 // אישור מסירה: ה-worker מוציא את התור כל רבע שעה. מחכים עד 35 דקות (4 הודעות בכל ריצה של השרת) שכל ההודעות יצאו, ומודיעים לבעלים בכל מקרה —
 // "נשלח" או "לא יצא", כדי שלא יהיה ניחוש. ✓✓ קרא מגיע אחר כך מה-worker, לכל מדריך שפותח (אם אישורי קריאה פעילים אצלו).
-if (!preview && items.length) {
+if (!preview && items.length && wa) {
+  await tellOwner(db, {
+    agent: "weekly",
+    text: direct.failed.length ? `❗ הסיכום השבועי למדריכים: נשלח ל-${direct.sent.length}. לא נשלח ל: ${direct.failed.join(", ")}` : `✅ הסיכום השבועי נשלח ישירות לכל ${direct.sent.length} המדריכים: ${direct.sent.join(", ")}. תקבל עדכון כשכל אחד קורא.`,
+    templateParam: direct.failed.length ? "הסיכום השבועי לא נשלח לכל המדריכים" : "הסיכום השבועי נשלח לכל המדריכים",
+  });
+  if (direct.failed.length) process.exitCode = 1;
+} else if (!preview && items.length) {
   const ids = new Set(items.map((x) => x.id));
   let left = items.length;
   for (let i = 0; i < 35 && left; i++) {
