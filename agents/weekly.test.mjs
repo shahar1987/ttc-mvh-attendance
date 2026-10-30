@@ -113,3 +113,21 @@ test("weekly changes: fixed, new and changed per coach", () => {
   ]);
   assert.deepEqual(weeklyChanges(now, now), []);
 });
+
+test("coach messages: shows whether a player with many absences was contacted", () => {
+  const g = [{ id: "a", name: "קבוצה א", days: [0, 4], coachId: "c1" }];
+  const users = [{ id: "c1", name: "מדריך", phone: "0521234567" }];
+  const ps = [
+    { id: "x", name: "שחקן x", groupId: "a", isActive: true, parentPhone: "0527654321", trainingDays: [0] },
+    { id: "y", name: "שחקן y", groupId: "a", isActive: true, parentPhone: "0521112222", trainingDays: [0] },
+  ];
+  const att2 = [];
+  for (const d of ["2026-10-15", "2026-10-18", "2026-10-22", "2026-10-25", "2026-10-29"]) {
+    att2.push({ date: d, groupId: "a", playerId: "x", status: "Absent", ...(d === "2026-10-25" ? { msgSentAt: "t" } : {}) });
+    att2.push({ date: d, groupId: "a", playerId: "y", status: "Absent" });
+    att2.push({ date: d, groupId: "a", playerId: "z", status: "Present" });
+  }
+  const [m] = coachMessages({ players: [...ps, { id: "z", name: "z", groupId: "a", isActive: true, parentPhone: "0500000001", trainingDays: [0] }], groups: g, users, attendance: att2, cancellations: [], today });
+  assert.match(m.text, /שחקן x \(\d+ היעדרויות ברצף, נוצר קשר ✓\)/);
+  assert.match(m.text, /שחקן y \(\d+ היעדרויות ברצף, עוד לא נוצר קשר\)/);
+});

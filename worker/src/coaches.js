@@ -29,13 +29,19 @@ export async function coachFor(store, from, { any = false } = {}) {
   return { id: u.id, name: u.name || "מדריך", groups: mineOf(u.id), enabled: ids.includes(u.id) };
 }
 
-// 📝 סיכום אימון שמדריך כתב — נשמר לפי תאריך, והסורק של הבוקר (agents/scan.mjs) שולח אותו לבעלים
+// 📝 מה שמדריך כתב לשולה (סיכום אימון, תשובה לסיכום השבועי) — נשמר לפי תאריך (הסורק של הבוקר מסכם),
+// ונכנס מיד לתור לבעלים — כך שחר מתעדכן תוך רבע שעה ולא רק למחרת (בקשה של שחר, 30.10).
 export async function addCoachNote(store, coach, text, msgId, now = new Date()) {
-  await store.update(`agentReports/coachNotes-${israelToday(now)}`, (cur) =>
-    (cur.notes || []).some((n) => n.msgId === msgId)
-      ? null
-      : { notes: [...(cur.notes || []), { at: now.toISOString(), msgId, coachId: coach.id, coach: coach.name, groups: coach.groups.map((g) => g.name), text: String(text).slice(0, 1500) }] },
-  );
+  let isNew = false;
+  const body = String(text).slice(0, 1500);
+  await store.update(`agentReports/coachNotes-${israelToday(now)}`, (cur) => {
+    isNew = !(cur.notes || []).some((n) => n.msgId === msgId);
+    return isNew ? { notes: [...(cur.notes || []), { at: now.toISOString(), msgId, coachId: coach.id, coach: coach.name, groups: coach.groups.map((g) => g.name), text: body }] } : null;
+  });
+  if (!isNew) return;
+  const head = `📝 ${coach.name}${coach.groups.length ? ` (${coach.groups.map((g) => g.name).join(", ")})` : ""} כתב/ה:`;
+  const item = { id: `note-${msgId || now.getTime()}`, from: "coach-note", key: "coach-note", at: now.toISOString(), text: `${head}\n${body}`, template: "agent_alert", templateParam: `${head} ${body}`.slice(0, 900) };
+  await store.update("agentReports/bot", (cur) => ({ outboxQueue: [...(Array.isArray(cur.outboxQueue) ? cur.outboxQueue : []), item] }));
 }
 
 // מדריך שלא הופעל ועונה להודעה של שולה (למשל לסיכום האימון) — שומרים כסיכום אימון ומודים לו
@@ -64,7 +70,7 @@ export async function handleCoach(m, env, store, wa, coach, gemini) {
   const tools = {
     ...Object.fromEntries(COACH_TOOLS.filter((n) => n !== "list_groups").map((n) => [n, all[n]])),
     list_groups: async () => JSON.stringify(coach.groups.map((g) => g.name)),
-    session_note: async ({ text: note }) => (await addCoachNote(store, coach, note || text, m.id), "נשמר. שחר יקבל את זה בדוח הבוקר."),
+    session_note: async ({ text: note }) => (await addCoachNote(store, coach, note || text, m.id), "נשמר והועבר לשחר."),
   };
   const decls = [
     ...TOOL_DEFS.filter((d) => COACH_TOOLS.includes(d.name)).map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters })),

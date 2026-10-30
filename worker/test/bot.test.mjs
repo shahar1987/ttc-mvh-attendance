@@ -1323,6 +1323,11 @@ console.log("google-via-claude ok");
   assert.deepEqual([notes[0].coach, notes[0].groups, notes[0].text], ["יוסי מדריך", ["מתחילים שאר ישוב"], "היה אימון טוב, עבדנו על הגשות"]);
   assert.equal(texts().at(-1), "תודה! העברתי לשחר 🙏");
   assert.equal(geminiCalls.length, gc, "לא עובר למודל");
+  // ✉️ שחר מתעדכן מיד: פריט אחד בתור לבעלים, גם כשאותה הודעה הגיעה פעמיים
+  const toOwner = (docs.get("agentReports/bot")?.outboxQueue || []).filter((x) => x.from === "coach-note");
+  assert.equal(toOwner.length, 1);
+  assert.equal(toOwner[0].to, undefined, "לבעלים, לא למדריך");
+  assert.match(toOwner[0].text, /^📝 יוסי מדריך \(מתחילים שאר ישוב\) כתב\/ה:\nהיה אימון טוב, עבדנו על הגשות$/);
 
   assert.match(await callTool("תפעילי את שולה ליוסי", { name: "coach_access", args: { name: "יוסי מד" } }), /לא בוצע עדיין/);
   assert.equal(docs.has("agentReports/coaches"), false);

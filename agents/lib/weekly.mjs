@@ -1,4 +1,4 @@
-// 📊 הסיכום השבועי (שישי 14:00): מה חסר לסדר ואיך להשתפר. פונקציה טהורה, בלי Firestore ובלי מודל —
+// 📊 הסיכום השבועי (שישי 08:00): מה חסר לסדר ואיך להשתפר. פונקציה טהורה, בלי Firestore ובלי מודל —
 // כל שורה נשענת על מספר מהנתונים, כדי שאפשר לבדוק אותה ושהיא לא תמציא.
 import { addDays, analyze, isValidPhone, normalizePhone, onlyHeldTrainings } from "./analysis.mjs";
 
@@ -40,7 +40,10 @@ export function coachMessages({ players, groups, users, attendance, cancellation
       const missing = unmarked.filter((x) => x.g.id === g.id).map((x) => x.day);
       const noPhone = roster.filter((p) => !isValidPhone(p.parentPhone)).map((p) => (p.name || "").trim());
       const noDays = (g.days || []).length > 1 ? roster.filter((p) => !(Array.isArray(p.trainingDays) && p.trainingDays.length)).map((p) => (p.name || "").trim()) : [];
-      const absent = roster.map((p) => riskById.get(p.id)).filter(Boolean).map((r) => `${r.playerName} (${r.reason})`);
+      // נוצר קשר = נשלחה הודעה על היעדרות מהשבועיים האחרונים (msgSentAt), או שההתראה על השחקן טופלה
+      const from14 = addDays(today, -14);
+      const contacted = (p) => (p.alertHandledDate && p.alertHandledDate >= from14) || attendance.some((a) => a.playerId === p.id && a.status === "Absent" && a.msgSentAt && a.date >= from14);
+      const absent = roster.filter((p) => riskById.has(p.id)).map((p) => `${riskById.get(p.id).playerName} (${riskById.get(p.id).reason}, ${contacted(p) ? "נוצר קשר ✓" : "עוד לא נוצר קשר"})`);
       const items = [];
       if (missing.length) items.push(`📝 לא מולאה נוכחות: יום ${missing.join(", ")}`);
       if (absent.length) items.push(`⚠️ הרבה חיסורים: ${list(absent, 4)}`);

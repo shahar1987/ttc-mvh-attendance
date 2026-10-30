@@ -1,4 +1,4 @@
-// 📊 הסיכום השבועי לשולה — שישי ב-14:00: נוכחות השבוע, מה חסר לסדר ואיך להשתפר.
+// 📊 הסיכום השבועי לשולה — שישי ב-08:00: נוכחות השבוע, מה חסר לסדר ואיך להשתפר.
 // קריאה בלבד מ-Firestore; לא שולח שום דבר להורים. ביומן (ציבורי) מודפסים רק מספרים.
 import { firestore, loadAll, heartbeat } from "./lib/firebase.mjs";
 import { addDays, israelToday } from "./lib/analysis.mjs";
