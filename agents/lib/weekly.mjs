@@ -1,11 +1,67 @@
 // 📊 הסיכום השבועי (שישי 14:00): מה חסר לסדר ואיך להשתפר. פונקציה טהורה, בלי Firestore ובלי מודל —
 // כל שורה נשענת על מספר מהנתונים, כדי שאפשר לבדוק אותה ושהיא לא תמציא.
-import { addDays, analyze, isValidPhone, onlyHeldTrainings } from "./analysis.mjs";
+import { addDays, analyze, isValidPhone, normalizePhone, onlyHeldTrainings } from "./analysis.mjs";
 
 const pct = (recs) => (recs.length ? Math.round((100 * recs.filter((a) => a.status === "Present").length) / recs.length) : null);
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const dow = (d) => new Date(d + "T00:00:00Z").getUTCDay();
 const list = (names, max = 5) => names.slice(0, max).join(", ") + (names.length > max ? ` ועוד ${names.length - max}` : "");
+
+// אימון שהיה אמור להתקיים בטווח (לפי ימי הקבוצה), לא בוטל ואף אחד לא סומן בו
+function unmarkedTrainings(groups, attendance, cancellations, from, to) {
+  const cancelled = new Set((cancellations || []).map((c) => `${c.date}_${c.groupId}`));
+  const marked = new Set(attendance.map((a) => `${a.date}_${a.groupId}`));
+  const out = [];
+  for (let d = from; d <= to; d = addDays(d, 1))
+    for (const g of groups)
+      if (Array.isArray(g.days) && g.days.includes(dow(d)) && !cancelled.has(`${d}_${g.id}`) && !marked.has(`${d}_${g.id}`))
+        out.push({ g, day: DAYS[dow(d)] });
+  return out;
+}
+
+// הודעה שבועית לכל מדריך על הקבוצות שלו. text = גרסה מסודרת בשורות (כשהמדריך כתב לשולה ב-24 השעות האחרונות),
+// param = אותו תוכן בשורה אחת לתבנית club_message (Meta לא מקבלת ירידות שורה בתבנית).
+// מנהל לא מקבל — הוא מקבל את הסיכום המלא. מדריך שביקש שקט (agentReports/coaches.quiet) מדולג.
+export function coachMessages({ players, groups, users, attendance, cancellations, today, quiet = [] }) {
+  const weekStart = addDays(today, -dow(today));
+  const held = onlyHeldTrainings(attendance, cancellations, today).filter((a) => !a.excused);
+  const live = groups.filter((g) => !g.deleted && g.isActive !== false);
+  const riskById = new Map(analyze({ players, groups, attendance, cancellations, today }).atRisk.map((r) => [r.playerId, r]));
+  const unmarked = unmarkedTrainings(live, attendance, cancellations, weekStart, today);
+  const out = [];
+  for (const u of users) {
+    if (u.deleted || quiet.includes(u.id) || String(u.role || "").toLowerCase() === "admin" || !isValidPhone(u.phone || "")) continue;
+    const mine = live.filter((g) => g.coachId === u.id || (Array.isArray(g.coachIds) && g.coachIds.includes(u.id)));
+    if (!mine.length) continue;
+    const blocks = mine.map((g) => {
+      const roster = players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted && !p.trial);
+      const week = held.filter((a) => a.groupId === g.id && a.date >= weekStart && a.date <= today);
+      const pc = week.length ? Math.round((100 * week.filter((a) => a.status === "Present").length) / week.length) : null;
+      const missing = unmarked.filter((x) => x.g.id === g.id).map((x) => x.day);
+      const noPhone = roster.filter((p) => !isValidPhone(p.parentPhone)).map((p) => (p.name || "").trim());
+      const noDays = (g.days || []).length > 1 ? roster.filter((p) => !(Array.isArray(p.trainingDays) && p.trainingDays.length)).map((p) => (p.name || "").trim()) : [];
+      const absent = roster.map((p) => riskById.get(p.id)).filter(Boolean).map((r) => `${r.playerName} (${r.reason})`);
+      const items = [];
+      if (missing.length) items.push(`📝 לא מולאה נוכחות: יום ${missing.join(", ")}`);
+      if (absent.length) items.push(`⚠️ הרבה חיסורים: ${list(absent, 4)}`);
+      if (noPhone.length) items.push(`📞 חסר טלפון: ${list(noPhone)}`);
+      if (noDays.length) items.push(`📅 לא סומנו ימי אימון: ${list(noDays)}`);
+      if (!items.length) items.push("✅ הכל מסודר, כל הכבוד");
+      return { head: `${g.name}${pc === null ? "" : ` — נוכחות השבוע ${pc}%`}`, items };
+    });
+    const first = (u.name || "").trim().split(/\s+/)[0] || "";
+    const hello = `היי ${first}, הסיכום השבועי של הקבוצה שלך 📋`;
+    const bye = "אפשר לתקן הכל באפליקציה. שבת שלום!";
+    out.push({
+      uid: u.id,
+      name: u.name || "מדריך",
+      phone: normalizePhone(u.phone),
+      text: [hello, ...blocks.map((b) => `\n*${b.head}*\n${b.items.join("\n")}`), "", bye].join("\n"),
+      param: `${hello} ${blocks.map((b) => `${b.head}: ${b.items.join(" · ")}`).join(" | ")}. ${bye}`.slice(0, 900),
+    });
+  }
+  return out;
+}
 
 export function weeklySummary({ players, groups, attendance, cancellations, today }) {
   const weekStart = addDays(today, -dow(today));
@@ -13,8 +69,6 @@ export function weeklySummary({ players, groups, attendance, cancellations, toda
   const held = onlyHeldTrainings(attendance, cancellations, today).filter((a) => !a.excused);
   const active = players.filter((p) => p.isActive && !p.deleted && !p.trial);
   const live = groups.filter((g) => !g.deleted);
-  const cancelled = new Set((cancellations || []).map((c) => `${c.date}_${c.groupId}`));
-  const marked = new Set(attendance.map((a) => `${a.date}_${a.groupId}`));
 
   const rows = live
     .map((g) => {
@@ -25,12 +79,7 @@ export function weeklySummary({ players, groups, attendance, cancellations, toda
     })
     .filter((r) => r.now !== null);
 
-  // אימון שהיה אמור להתקיים השבוע (לפי ימי הקבוצה), לא בוטל ואף אחד לא סומן בו
-  const unmarked = [];
-  for (let d = weekStart; d <= today; d = addDays(d, 1))
-    for (const g of live)
-      if (Array.isArray(g.days) && g.days.includes(dow(d)) && !cancelled.has(`${d}_${g.id}`) && !marked.has(`${d}_${g.id}`))
-        unmarked.push(`${g.name} (${DAYS[dow(d)]})`);
+  const unmarked = unmarkedTrainings(live, attendance, cancellations, weekStart, today).map((u) => `${u.g.name} (${u.day})`);
 
   const report = analyze({ players, groups, attendance, cancellations, today });
   const noPhone = active.filter((p) => !isValidPhone(p.parentPhone)).map((p) => (p.name || "").trim());

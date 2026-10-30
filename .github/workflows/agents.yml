@@ -28,6 +28,10 @@ on:
         description: "איזה סוכן להריץ"
         type: choice
         options: [scan, bugcheck, ideas, supervisor, content, insights, weekly]
+      preview:
+        description: "weekly: רק תצוגה מקדימה לבעלים, בלי לשלוח למדריכים"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -127,6 +131,8 @@ jobs:
         id: weekly
         if: ${{ !cancelled() && contains(steps.pick.outputs.run, ',weekly,') }}
         working-directory: agents
+        env:
+          WEEKLY_PREVIEW: ${{ inputs.preview && '1' || '0' }}
         run: node weekly.mjs
 
       - name: 🛡️ Supervisor

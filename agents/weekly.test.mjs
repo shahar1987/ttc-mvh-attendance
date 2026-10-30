@@ -11,7 +11,7 @@ const groups = [
 const players = [
   { id: "p1", name: "שחקן 1", groupId: "a", isActive: true, parentPhone: "0521234567" },
   { id: "p2", name: "שחקן 2", groupId: "a", isActive: true, parentPhone: "", notPaying: true },
-  { id: "q1", name: "שחקן 3", groupId: "b", isActive: true, parentPhone: "0521234568" },
+  { id: "q1", name: "שחקן 3", groupId: "b", isActive: true, parentPhone: "0527654321" },
   { id: "t", name: "ניסיון", groupId: "a", isActive: true, trial: true },
 ];
 const A = (date, groupId, playerId, status) => ({ date, groupId, playerId, status, msgSentAt: "x" });
@@ -43,4 +43,28 @@ test("weekly summary: nothing to fix", () => {
   const ok = players.filter((p) => p.id === "q1");
   const { text } = weeklySummary({ players: ok, groups: [groups[1]], attendance: att.filter((a) => a.groupId === "b"), cancellations: [], today });
   assert.match(text, /הכל מסודר השבוע/);
+});
+
+import { coachMessages } from "./lib/weekly.mjs";
+test("coach messages: only the coach's own group, readable and one-line", () => {
+  const g2 = [{ ...groups[0], coachId: "c1" }, { ...groups[1], coachId: "c2" }];
+  const users = [
+    { id: "c1", name: "מדריך א", phone: "0521111111" },
+    { id: "c2", name: "מדריך ב", phone: "0521112222" },
+    { id: "c3", name: "בלי קבוצה", phone: "0500000003" },
+    { id: "adm", name: "מנהל", role: "admin", phone: "0500000004" },
+  ];
+  g2[1].coachIds = ["adm"];
+  const msgs = coachMessages({ players, groups: g2, users, attendance: att, cancellations: [], today, quiet: ["c2"] });
+  assert.deepEqual(msgs.map((m) => m.uid), ["c1"]); // c2 quiet, c3 no group, admin skipped
+  const m = msgs[0];
+  assert.equal(m.phone, "972521111111");
+  assert.match(m.text, /\*קבוצה א — נוכחות השבוע 50%\*/);
+  assert.match(m.text, /לא מולאה נוכחות: יום חמישי/);
+  assert.match(m.text, /חסר טלפון: שחקן 2/);
+  assert.match(m.text, /לא סומנו ימי אימון: שחקן 1, שחקן 2/);
+  assert.doesNotMatch(m.text, /שחקן 3|ניסיון/);
+  assert.doesNotMatch(m.param, /\n/);
+  const ok = coachMessages({ players: [], groups: g2, users, attendance: [], cancellations: [{ date: "2026-10-25", groupId: "a" }, { date: "2026-10-29", groupId: "a" }], today });
+  assert.match(ok.find((x) => x.uid === "c1").text, /הכל מסודר/);
 });
