@@ -36,6 +36,13 @@ export function planReply(bot, text, now = Date.now()) {
   if (/^(מאושר|מאשרת?)(?![א-ת])/.test(t) && !(bot.planApprovedAt > plan.at)) return "approve";
   return null;
 }
+// ⚡ לחיצה על כפתור "מוח N": מפעילים מיד את משימת האישורים דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
+export async function queueTap(env, store, code) {
+  const id = Math.random().toString(36).slice(2, 8);
+  const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "מוח שני: הכנסת מה שאושר" עם fire_trigger trig_019TEg8oAuB8DWWokWL3EU8B, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
+  await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open", silent: true });
+  return fireRoutine(env, store, id);
+}
 export async function queuePlanReply(env, store, text, kind) {
   const id = Math.random().toString(36).slice(2, 8);
   const at = new Date().toISOString();
@@ -91,18 +98,19 @@ export async function inboxRoute(req, env, store, wa) {
   }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
   if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
-  const { id, answer, notify, buttons } = await req.json();
+  const { id, answer, notify, buttons, reply_to } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
     const text = Array.isArray(buttons) ? String(notify).slice(0, 3500) : offerKorazim(String(notify).slice(0, 3500));
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), claude: { at: new Date().toISOString(), text } } }));
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900), buttons: Array.isArray(buttons) ? buttons : undefined });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900), buttons: Array.isArray(buttons) ? buttons : undefined, replyTo: reply_to && (bot.cards || {})[String(reply_to)] });
     return Response.json({ ok: true });
   }
   const item = id && (await store.get(`agentReports/ask_${id}`));
   if (!item || item.inboxStatus !== "open" || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
   await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
+  if (item.silent) return Response.json({ ok: true }); // הפעלה שקטה (לחיצת כפתור) — אין מה לבשר לבעלים
   const text = offerKorazim(`📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`);
   // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה).
   // בהיסטוריה זה נכנס כתוכן חיצוני בתפקיד user — לא כאילו שולה אמרה את זה, וההוראות שבו לא מחייבות אותה.

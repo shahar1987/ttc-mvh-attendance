@@ -28,10 +28,12 @@ async function post(cfg, body) {
 // "1. כן\n2. לא" בסוף הודעה יוצא ככפתורים ללחיצה (30.10: "כל העניין הזה של המספרים מאוד מעצבן").
 // buttons מפורשים: [{id, title}] — id הוא מה שחוזר כשלוחצים (למשל "מוח 9"), title עד 20 תווים.
 const OPTIONS = /\n+((?:[1-3]\. [^\n]{1,20}(?:\n|$)){2,3})\s*$/;
-export async function sendText(cfg, to, text, buttons) {
+// replyTo = מזהה הודעה קודמת: התשובה מופיעה כציטוט שלה (כמו "עדכון על הכרטיס" בבוטים של Slack)
+export async function sendText(cfg, to, text, buttons, replyTo) {
+  const ctx = replyTo ? { context: { message_id: replyTo } } : {};
   const m = !buttons?.length && text.match(OPTIONS);
   if (m) buttons = m[1].trim().split("\n").map((l) => l.replace(/^\d\. /, "").trim());
-  if (!buttons?.length) return post(cfg, { to, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
+  if (!buttons?.length) return post(cfg, { to, ...ctx, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
   let body = (m ? text.slice(0, m.index) : text).trim();
   // גוף הודעה עם כפתורים מוגבל ל-1024 תווים — הארוך יוצא קודם כטקסט, והכפתורים עם השורה האחרונה
   if (body.length > 1000) {
@@ -40,6 +42,7 @@ export async function sendText(cfg, to, text, buttons) {
   }
   return post(cfg, {
     to,
+    ...ctx,
     type: "interactive",
     interactive: {
       type: "button",
@@ -83,11 +86,11 @@ export async function sendTemplate(cfg, to, name, params = [], lang = "he", who 
 
 // הודעה לשולה: טקסט מלא אם היא כתבה לבוט ב-24 השעות האחרונות (חלון השירות של Meta),
 // אחרת תבנית עם שורת סיכום, והפרטים המלאים מחכים לה כשהיא עונה.
-export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templateParam, buttons }) {
+export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templateParam, buttons, replyTo }) {
   if (!cfg || !cfg.owner) return "skipped: WhatsApp not configured";
   const open = lastOwnerMsgAt && Date.now() - new Date(lastOwnerMsgAt).getTime() < 23 * 3600 * 1000;
   if (open) {
-    await sendText(cfg, cfg.owner, text, buttons);
+    await sendText(cfg, cfg.owner, text, buttons, replyTo);
     return "text";
   }
   await sendTemplate(cfg, cfg.owner, template, [templateParam]);
