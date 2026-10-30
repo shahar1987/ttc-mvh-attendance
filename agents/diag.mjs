@@ -1,6 +1,7 @@
 // 🩺 אבחון התור לוואטסאפ (הפעלה ידנית: Agents ⟵ diag). קריאה בלבד. מדפיס ליומן הציבורי רק ספירות,
 // גילאים ושגיאות — כל רצף של 7 ספרות ומעלה מוסתר, ושמות לא מודפסים.
-import { firestore } from "./lib/firebase.mjs";
+import { firestore, loadAll } from "./lib/firebase.mjs";
+import { weeklyHealth } from "./lib/weekly.mjs";
 
 const db = firestore();
 const bot = (await db.collection("agentReports").doc("bot").get()).data() || {};
@@ -27,3 +28,11 @@ if (bot.lastCoachError) console.log(`::notice::coachError ${clean(bot.lastCoachE
 for (const f of (bot.failLog || []).slice(-5)) console.log(`::notice::fail age=${age(f.at)} ${clean(JSON.stringify(f.errors || ""))}`);
 const t = bot.templates;
 if (t) console.log(`::notice::templates age=${age(t.at)} ${clean((t.result || []).join(" | "))}`);
+
+// בדיקת המערכת של הסיכום השבועי — שמות המדריכים מוסתרים ביומן הציבורי
+const [groups, users] = await Promise.all([loadAll(db, "groups"), loadAll(db, "users")]);
+const quiet = (await db.collection("agentReports").doc("coaches").get()).data()?.quiet || [];
+const hide = (s) => users.reduce((t, u) => (u.name ? t.split(u.name).join("[מדריך]") : t), clean(s));
+const h = weeklyHealth({ groups, users, quiet, bot });
+for (const x of h.problems) console.log(`::notice::health problem: ${hide(x)}`);
+for (const x of h.notes) console.log(`::notice::health note: ${hide(x)}`);
