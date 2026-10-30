@@ -251,7 +251,7 @@ async function handle(m, env) {
       // התשובה מצטטת את הכרטיס שעליו לחץ, והמזהה שלו נשמר — כך גם "נשלח לדור" שיגיע אחר כך יופיע על אותו כרטיס
       const card = m.context?.id || (bot.cards || {})[n];
       const title = m.interactive?.button_reply?.title || "";
-      const answer = shift ? "מה לשנות? תכתוב את הנוסח החדש" : code ? `${title || "התקבל"} · בטיפול` : "הנוסח החדש התקבל · בטיפול";
+      const answer = shift ? "מה לשנות? תכתוב את הנוסח החדש" : /^מוח לא /.test(user) ? "דילגתי" : code ? `${title || "התקבל"} · בטיפול` : "הנוסח החדש התקבל · בטיפול";
       await sendText(wa, m.from, answer, undefined, card).catch(() => reply(answer));
       replied = true;
       await store.update("agentReports/bot", (cur) => ({
