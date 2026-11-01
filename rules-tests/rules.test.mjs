@@ -620,6 +620,9 @@ await t('קישור תשלום רק לאתר של המתנ"ס', async () => {
   await assertFails(setDoc(doc(as('payer'), 'paymentMappings/bad'), { registrationUrl: 'https://evil.example/pay' }));
   await assertFails(setDoc(doc(as('payer'), 'paymentMappings/bad2'), { registrationUrl: 'https://www.hugim.org.il.evil.example/' }));
   await assertFails(updateDoc(doc(as('payer'), 'paymentMappings/okUrl'), { registrationUrl: 'javascript:alert(1)' }));
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'paymentMappings/legacy'), { registrationUrl: 'http://old.example/x', price: 1 }));
+  await assertSucceeds(updateDoc(doc(as('payer'), 'paymentMappings/legacy'), { price: 2 }));
+  await assertFails(updateDoc(doc(as('payer'), 'paymentMappings/legacy'), { registrationUrl: 'https://evil.example/pay' }));
   await assertSucceeds(deleteDoc(doc(as('payer'), 'paymentMappings/okUrl')));
 });
 

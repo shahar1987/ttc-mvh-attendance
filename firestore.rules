@@ -256,7 +256,10 @@ service cloud.firestore {
     }
     match /paymentMappings/{id} {
       allow read: if hasPerm('payments');
-      allow create, update: if hasPerm('payments') && paymentLinkOk();
+      allow create: if hasPerm('payments') && paymentLinkOk();
+      // שורה ישנה עם קישור אחר עדיין מתעדכנת (מחיר וכו'), כל עוד לא נוגעים בקישור עצמו
+      allow update: if hasPerm('payments')
+        && (paymentLinkOk() || request.resource.data.get('registrationUrl', '') == resource.data.get('registrationUrl', ''));
       allow delete: if hasPerm('payments');
     }
 
