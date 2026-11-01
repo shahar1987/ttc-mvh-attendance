@@ -45,7 +45,7 @@ export async function drainQueue(store, path, field, { due = () => true, run, ma
       else next.push({ ...rest, attempts });
     }
     return { [field]: next };
-  });
+  }, 14); // הפריטים כבר נשלחו: כתיבה שנופלת כאן שולחת אותם שוב אחרי 10 דקות, וב-cron חלקים רבים כותבים לאותו מסמך במקביל
   if (error || dropped.length) {
     const msg = [error && String(error.message || error), dropped.length && `${dropped.length} פריטים ב-${field} נזרקו אחרי ${maxAttempts} ניסיונות`].filter(Boolean).join(" · ");
     const e = new Error(msg);
