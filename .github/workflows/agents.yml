@@ -153,7 +153,6 @@ jobs:
         env:
           DIAG_FIX: ${{ inputs.fix && '1' || '0' }}
           DIAG_TELL: ${{ inputs.tell && '1' || '0' }}
-          DIAG_PHONE: ${{ inputs.phone }}
         run: node diag.mjs
 
       - name: 🛡️ Supervisor

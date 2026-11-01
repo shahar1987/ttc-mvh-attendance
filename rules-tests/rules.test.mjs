@@ -595,6 +595,37 @@ await t('בלי מסמך בעלים — אף אחד לא בעלים', async () =
   await assertFails(getDocs(collection(owner(), 'boardMembers')));
 });
 
+console.log('\n— מסמכי מערכת ומיפוי תשלומים —');
+await t('הרשאת תשלומים לא תופסת בעלות על הלוח', async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'system/boardOwner'), { hash: 'real' }));
+  await assertFails(setDoc(doc(as('payer'), 'system/boardOwner'), { hash: 'attacker' }));
+  await assertFails(deleteDoc(doc(as('payer'), 'system/boardOwner')));
+  await assertFails(getDoc(doc(as('payer'), 'system/boardOwner')));
+  await assertFails(setDoc(doc(as('admin1'), 'system/boardOwner'), { hash: 'attacker' }));
+});
+await t('הרשאת תשלומים כותבת רק את מסמכי המערכת של התשלומים', async () => {
+  await assertSucceeds(setDoc(doc(as('payer'), 'system/paymentSyncRequest'), { requestedAt: 'x' }));
+  await assertSucceeds(setDoc(doc(as('payer'), 'system/paymentSyncIgnores'), { keys: [] }));
+  await assertSucceeds(setDoc(doc(as('payer'), 'system/paymentMappingsSeeded'), { at: 'x' }));
+  await assertSucceeds(setDoc(doc(as('payer'), 'system/paymentLinksSeeded'), { version: 2 }));
+  await assertFails(setDoc(doc(as('payer'), 'system/paymentSync'), { at: 'forged' }));
+  await assertSucceeds(getDoc(doc(as('payer'), 'system/paymentSync')));
+});
+await t('קישור תשלום רק לאתר של המתנ"ס', async () => {
+  const good = 'https://www.hugim.org.il/HugimWeb.dll?FromMatnasSite=1';
+  await assertSucceeds(setDoc(doc(as('payer'), 'paymentMappings/okUrl'), { mtnsLabel: 'א', registrationUrl: good }));
+  await assertSucceeds(setDoc(doc(as('payer'), 'paymentMappings/noUrl'), { mtnsLabel: 'ב' }));
+  await assertSucceeds(setDoc(doc(as('payer'), 'paymentMappings/nullUrl'), { mtnsLabel: 'ג', registrationUrl: null }));
+  await assertSucceeds(updateDoc(doc(as('payer'), 'paymentMappings/okUrl'), { price: 290 }));
+  await assertFails(setDoc(doc(as('payer'), 'paymentMappings/bad'), { registrationUrl: 'https://evil.example/pay' }));
+  await assertFails(setDoc(doc(as('payer'), 'paymentMappings/bad2'), { registrationUrl: 'https://www.hugim.org.il.evil.example/' }));
+  await assertFails(updateDoc(doc(as('payer'), 'paymentMappings/okUrl'), { registrationUrl: 'javascript:alert(1)' }));
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'paymentMappings/legacy'), { registrationUrl: 'http://old.example/x', price: 1 }));
+  await assertSucceeds(updateDoc(doc(as('payer'), 'paymentMappings/legacy'), { price: 2 }));
+  await assertFails(updateDoc(doc(as('payer'), 'paymentMappings/legacy'), { registrationUrl: 'https://evil.example/pay' }));
+  await assertSucceeds(deleteDoc(doc(as('payer'), 'paymentMappings/okUrl')));
+});
+
 console.log('\n— אוסף לא מוכר —');
 await t('עותק צפייה של תחרות: כל אחד קורא מסמך בודד, רק מי שמנהל תחרויות כותב', async () => {
   await assertSucceeds(setDoc(doc(as('coachA'), 'tournamentsPublic/t1'), { state: '{}', name: 'מחנה' }));

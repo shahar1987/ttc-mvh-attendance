@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- __INLINE_SCRIPT_HASH__ מתמלא ב-deploy.yml אחרי שהגרסה נכנסת לסקריפט. GitHub Pages לא מאפשר כותרות, ולכן meta. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' '__INLINE_SCRIPT_HASH__' https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; manifest-src 'self'; worker-src 'self'; frame-src https://ttcmh-2a752.firebaseapp.com https://www.google.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>נוכחות מועדון טניס שולחן מבואות החרמון</title>
 
   <link rel="manifest" href="./manifest.json" />

@@ -6,6 +6,7 @@ import { confirmed } from "./tools.js";
 import { sign, issueKey, checkKey, dropKey } from "./google.js";
 import { waConfig } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
+import { esc } from "./dashboard.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 import { clubPage } from "../../agents/lib/club.mjs";
 
@@ -42,7 +43,7 @@ export async function metaRoute(req, env, store) {
   const short = await get("oauth/access_token", { ...app, redirect_uri: redirect, code: url.searchParams.get("code") || "" });
   const long = short.access_token && (await get("oauth/access_token", { ...app, grant_type: "fb_exchange_token", fb_exchange_token: short.access_token }));
   const pages = long?.access_token && (await get("me/accounts", { fields: "id,name,access_token,instagram_business_account{id,username}", access_token: long.access_token }));
-  if (!pages?.data?.length) return html(`החיבור נכשל: ${short.error?.message || pages?.error?.message || "לא נמצא דף פייסבוק שאתה מנהל"}.`, 400);
+  if (!pages?.data?.length) return html(`החיבור נכשל: ${esc(short.error?.message || pages?.error?.message || "לא נמצא דף פייסבוק שאתה מנהל")}.`, 400);
   // דף שחובר בחיבור הקבוע (משתמש מערכת) לא נדרס בטוקן של המשתמש האישי, שמתנתק בכל החלפת סיסמה
   const kept = ((await store.get("agentReports/social")) || {}).pages?.filter((p) => p.permanent) || [];
   await store.merge("agentReports/social", {
@@ -64,7 +65,7 @@ async function permanentRoute(req, store, url) {
   const tok = String((await req.formData()).get("token") || "").trim();
   const g = async (path, q) => (await fetch(`${GRAPH}/${path}?${new URLSearchParams({ ...q, access_token: tok })}`)).json();
   const acc = await g("me/accounts", { fields: "id,name,access_token,instagram_business_account{id,username}" });
-  if (acc.error) return html(`הטוקן לא עבד: ${acc.error.message}. לחזור אחורה ולהדביק שוב.`, 400);
+  if (acc.error) return html(`הטוקן לא עבד: ${esc(acc.error.message)}. לחזור אחורה ולהדביק שוב.`, 400);
   const club = clubPage({ pages: (acc.data || []).map(toPage) });
   if (!club) return html("הטוקן תקין, אבל למשתמש המערכת אין גישה לדף של המועדון. בהגדרות העסק: משתמשי מערכת ← שולה ← הקצאת נכסים ← דפים ← הדף של המועדון (שליטה מלאה). ואז ליצור טוקן חדש.", 400);
   if (!club.ig) return html("הדף של המועדון נמצא, אבל בלי האינסטגרם. בהקצאת הנכסים להוסיף גם את חשבון האינסטגרם ttcmhr, וליצור טוקן חדש.", 400);

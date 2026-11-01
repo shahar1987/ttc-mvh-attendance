@@ -1,5 +1,6 @@
 // 🩺 אבחון התור לוואטסאפ (הפעלה ידנית: Agents ⟵ diag). קריאה בלבד. מדפיס ליומן הציבורי רק ספירות,
 // גילאים ושגיאות — כל רצף של 7 ספרות ומעלה מוסתר, ושמות לא מודפסים.
+import { readFileSync } from "node:fs";
 import { firestore, loadAll } from "./lib/firebase.mjs";
 import { weeklyHealth } from "./lib/weekly.mjs";
 import { tellOwner } from "./lib/owner.mjs";
@@ -13,13 +14,13 @@ const q = Array.isArray(bot.outboxQueue) ? bot.outboxQueue : [];
 // GitHub מציג רק 10 הערות לכל צעד — הבדיקות החשובות קודם
 const [groups, users] = await Promise.all([loadAll(db, "groups"), loadAll(db, "users")]);
 // DIAG_PHONE: בודק אם הטלפון שהבעלים מסר תואם למה שרשום למנהלים באפליקציה. מדפיס רק כן/לא
-if (process.env.DIAG_PHONE) {
+// הקלט נקרא מקובץ האירוע ולא ממשתנה env: env של צעד מודפס ביומן, והיומן ציבורי
+const diagPhone = process.env.GITHUB_EVENT_PATH && JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs?.phone;
+if (diagPhone) {
   const { normalizePhone } = await import("./lib/analysis.mjs");
-  const want = normalizePhone(process.env.DIAG_PHONE);
+  const want = normalizePhone(diagPhone);
   const admins = users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted);
   console.log(`::notice::admins=${admins.length} match=${admins.map((u) => normalizePhone(u.phone || "") === want).join(",")}`);
-  if (0) for (const u of users.filter((u) => String(u.role || "").toLowerCase() === "admin" && !u.deleted))
-    console.log(`::notice::admin phone matches=${normalizePhone(u.phone || "") === want} hasPhone=${Boolean(u.phone)}`);
 }
 console.log(`::notice::env whatsapp=${Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID)} owner=${Boolean(process.env.OWNER_PHONE)}`);
 // DIAG_FIX=1: מוציא מהתור את הודעות הסיכום השבועי שנתקעו (ישלחו מחדש ישירות), ומשחרר נעילות של השאר

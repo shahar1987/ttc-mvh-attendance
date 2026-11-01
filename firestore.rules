@@ -249,9 +249,18 @@ service cloud.firestore {
 
     // ---------- בדיקת תשלומים ----------
     // נתוני תשלומים — רק למי שרואה את מסך "מי לא משלם" (PaymentsScreen נפתח רק עם הרשאת payments)
+    // קישור התשלום נשלח להורים בוואטסאפ, ולכן רק לאתר ההרשמה של המתנ"ס
+    function paymentLinkOk() {
+      let u = request.resource.data.get('registrationUrl', '');
+      return u == null || u == '' || (u is string && u.matches('https://www[.]hugim[.]org[.]il/.*'));
+    }
     match /paymentMappings/{id} {
       allow read: if hasPerm('payments');
-      allow write: if hasPerm('payments');
+      allow create: if hasPerm('payments') && paymentLinkOk();
+      // שורה ישנה עם קישור אחר עדיין מתעדכנת (מחיר וכו'), כל עוד לא נוגעים בקישור עצמו
+      allow update: if hasPerm('payments')
+        && (paymentLinkOk() || request.resource.data.get('registrationUrl', '') == resource.data.get('registrationUrl', ''));
+      allow delete: if hasPerm('payments');
     }
 
     // ---------- הודעות המועדון ----------
@@ -302,7 +311,7 @@ service cloud.firestore {
     // אף אחד לא כותב אליהן מהדפדפן. רק הבעלים (לפי האימייל, isJoinOwner)
     // רואה, מאשר (יוצר שחקן כרגיל) ומוחק. מנהלים אחרים לא רואים את הבקשות ולא את ההגדרות.
     function isJoinOwner() {
-      // הבעלים מזוהה לפי האימייל (אותו גיבוב של system/boardOwner, נקבע בסקריפט) — אף אחד לא יכול "לתפוס" בעלות מהאפליקציה
+      // הבעלים מזוהה לפי האימייל (אותו גיבוב של system/boardOwner, נקבע בסקריפט) — גם מי שיש לו הרשאת תשלומים לא יכול "לתפוס" בעלות (ראו match /system)
       return isAdmin()
         && request.auth.token.email is string
         && hashing.sha256(request.auth.token.email.lower().toUtf8()).toHexString().lower()
@@ -315,9 +324,12 @@ service cloud.firestore {
     match /joinConfig/{id} {
       allow read, write: if isJoinOwner();
     }
+    // רק המסמכים שהאפליקציה עצמה כותבת. system/boardOwner קובע מי בעל הלוח וטופס ההצטרפות,
+    // ולכן נקבע רק בסקריפט (Admin SDK): הרשאת תשלומים לא פותחת אותו, לא לקריאה ולא לכתיבה.
     match /system/{id} {
-      allow read: if hasPerm('payments');
-      allow write: if hasPerm('payments');
+      allow read: if hasPerm('payments') && id != 'boardOwner';
+      allow write: if hasPerm('payments')
+        && id in ['paymentSyncIgnores', 'paymentSyncRequest', 'paymentMappingsSeeded', 'paymentLinksSeeded'];
     }
     match /adminTasks/{id} {
       allow read, write: if isAdmin();

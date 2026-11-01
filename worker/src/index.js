@@ -88,7 +88,7 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 const ALIASES = { WHATSAPP_TOKEN: "WA_TOKEN", WHATSAPP_PHONE_ID: "WA_PHONE_ID", OWNER_PHONE: "ALLOWED_FROM", WEBHOOK_VERIFY_TOKEN: "VERIFY_TOKEN" };
 const withAliases = (env) => ({ ...env, ...Object.fromEntries(Object.entries(ALIASES).filter(([k, old]) => !env[k] && env[old]).map(([k, old]) => [k, env[old]])) });
 
-export default {
+const app = {
   // wrangler.toml → triggers: 🕵️ מפקח השיחות פעם ביום, ⏰ תזכורת נוכחות למאמנים כל שעה
   async scheduled(event, rawEnv, ctx) {
     const env = withAliases(rawEnv);
@@ -177,6 +177,20 @@ export default {
     return new Response("ok");
   },
 };
+
+// כותרות אבטחה על כל תשובה: הקישורים כאן נושאים מפתחות, אז בלי Referrer ובלי הטמעה באתר אחר
+const SECURITY_HEADERS = {
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+};
+const hardened = (res) => {
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
+};
+export default { ...app, fetch: (req, env, ctx) => app.fetch(req, env, ctx).then(hardened) };
 
 // הבעלים — השיחה המלאה. מדריך מופעל — שיחה על הקבוצות שלו. מדריך שלא הופעל — מה שכתב נשמר כסיכום אימון.
 // כל מספר אחר — מתעלמים בשקט. לא זורק לעולם.
