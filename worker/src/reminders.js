@@ -145,7 +145,9 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
     const prev = cur.coachSummaries?.date === today ? cur.coachSummaries.groups || [] : [];
     return { coachSummaries: { date: today, groups: [...new Set([...prev, ...ids])] } };
   });
-  const problems = [], watch = {}, out = [];
+  // 1.11: הבעלים מקבל גם את תוכן הסיכום של כל קבוצה (לא רק "שלחתי"), חוץ מקבוצות שהוא עצמו המאמן שלהן (כבר קיבל ב-toCoach)
+  const problems = [], watch = {}, out = [], sums = [];
+  const ownerPhone = wa?.owner ? normalizePhone(wa.owner) : "";
   for (const g of due) {
     const mine = recs.filter((a) => a.groupId === g.id);
     const here = mine.filter((a) => a.status === "Present").map((a) => nameOf(a.playerId));
@@ -157,6 +159,8 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
       away.length && `לא הגיעו: ${away.map((a) => nameOf(a.playerId)).join(", ")}`,
       contact.length ? `ליצור קשר: ${contact.join(", ")}` : away.length && "כל מי שלא הגיע כבר קיבל הודעה",
     ].filter(Boolean).join(" · ").slice(0, 900);
+    const ownerCoaches = coachIds(g).filter((x) => !quiet.includes(x)).some((id) => { const u = users.find((x) => x.id === id); return u && isValidPhone(u.phone || "") && normalizePhone(u.phone) === ownerPhone; });
+    if (!ownerCoaches) sums.push(text);
     for (const id of coachIds(g).filter((x) => !quiet.includes(x))) {
       const c = users.find((u) => u.id === id) || { name: "מאמן" };
       if (!isValidPhone(c.phone || "")) { problems.push(`• ${g.name} — ${c.name}: אין טלפון שמור`); continue; }
@@ -170,11 +174,14 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
     }
   }
   if (Object.keys(watch).length) await watchReads(store, watch, now);
-  if (out.length && !problems.length) {
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📋 שלחתי סיכום אימון למאמנים: ${out.join(", ")}`, template: "agent_alert", templateParam: `סיכום אימון נשלח: ${out.join(", ")}` });
+  const sumsText = sums.length ? `📋 *סיכומי אימון היום*:\n${sums.join("\n")}\n\n` : "";
+  if ((out.length || sums.length) && !problems.length) {
+    const msg = `${sumsText}${out.length ? `📋 שלחתי סיכום אימון למאמנים: ${out.join(", ")}` : ""}`.trim();
+    await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: (sums.length ? `סיכום אימון: ${sums.join(" | ")}` : `סיכום אימון נשלח: ${out.join(", ")}`).slice(0, 1000) });
   }
   if (problems.length) {
-    const msg = `📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${out.length ? `נשלח: ${out.join(", ")}\n` : ""}${problems.join("\n")}`;
+    const msg = `${sumsText}📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${out.length ? `נשלח: ${out.join(", ")}\n` : ""}${problems.join("\n")}`;
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
     await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: `סיכום אימון לא נשלח ל-${problems.length} מאמנים. אפשר להשיב כדי לקבל פרטים` });
   }

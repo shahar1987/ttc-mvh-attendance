@@ -349,6 +349,7 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   const n2 = sent.length;
   assert.match(await coachSummaries(env, db(env), waConfig(env), sunday), /בוגרים — יוסי ✓/);
   assert.match(JSON.stringify(sent.slice(n2).at(-1)), /סיכום אימון.*בוגרים — יוסי ✓/, "הבעלים מקבל אישור ששלחנו");
+  assert.match(JSON.stringify(sent.slice(n2).at(-1)), /סיכום אימון בוגרים היום: הגיעו 1 מתוך 3/, "הבעלים מקבל גם את תוכן הסיכום");
   const tpl = sent.slice(n2).filter((b) => b.type === "template" && b.template.name === "coach_notice");
   assert.equal(tpl.length, 1, "נוער לא מולאה — אין סיכום (התזכורת מטפלת בה)");
   assert.equal(tpl[0].to, "972501234567");
