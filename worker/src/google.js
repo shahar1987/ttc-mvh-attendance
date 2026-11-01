@@ -3,6 +3,7 @@
 // ב-agentReports/google (האוסף חסום לאפליקציה בחוקי Firestore).
 // מה מותר: לחפש ולקרוא קבצים בדרייב (קריאה בלבד), לקרוא מיילים, ליצור *טיוטות* (לא שולחים מייל אף פעם), לקרוא יומן, ולהוסיף אירוע רק אחרי אישור מפורש.
 import { APPROVAL } from "./tools.js";
+import { esc } from "./dashboard.js";
 
 // רק יומן ומשימות: לחשבון של הבעלים יש "הגנה מתקדמת" של גוגל, שחוסמת גישה של אפליקציה לא מאומתת למייל ולדרייב
 // (policy_enforced). מייל ודרייב עוברים לקלוד (ask_claude), שהחיבור שלו מאושר.
@@ -80,7 +81,7 @@ export async function oauthRoute(req, env, store) {
     body: new URLSearchParams({ code: url.searchParams.get("code") || "", client_id: c.id, client_secret: c.secret, redirect_uri: redirect, grant_type: "authorization_code" }),
   });
   const j = await r.json();
-  if (!j.refresh_token) return html(`החיבור נכשל: ${j.error_description || j.error || "אין refresh token"}. אפשר לנסות שוב מהקישור.`, 400);
+  if (!j.refresh_token) return html(`החיבור נכשל: ${esc(j.error_description || j.error || "אין refresh token")}. אפשר לנסות שוב מהקישור.`, 400);
   await store.merge("agentReports/google", { refreshToken: j.refresh_token, connectedAt: new Date().toISOString() });
   await dropKey(store, "google");
   cached = { token: "", exp: 0 };

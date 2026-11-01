@@ -4737,9 +4737,7 @@ function Q() {
       return (
         F.then((C) => {
           C &&
-            (N = Fe(C, (d) => {
-              console.log("Foreground push received:", d);
-            }));
+            (N = Fe(C, () => {}));
         }),
         () => N && N()
       );

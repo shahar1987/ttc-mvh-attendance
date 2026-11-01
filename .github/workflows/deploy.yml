@@ -109,6 +109,10 @@ jobs:
           VERSION=$(cat site/app.js site/tailwind.css index.html sw.js manifest.json logo.png | sha256sum | cut -c1-8)
           echo "app version: $VERSION"
           sed "s|./app.js|./app.js?v=$VERSION|g; s|./tailwind.css|./tailwind.css?v=$VERSION|g" index.html > site/index.html
+          # ה-CSP מתיר רק את הסקריפט המוטבע הזה, אחרי שה-sed למעלה שינה אותו
+          HASH=$(node -e "const h=require('fs').readFileSync('site/index.html','utf8');const m=[...h.matchAll(/<script type=\"module\">([\s\S]*?)<\/script>/g)];if(m.length!==1)process.exit(1);console.log('sha256-'+require('crypto').createHash('sha256').update(m[0][1]).digest('base64'))")
+          sed -i "s|__INLINE_SCRIPT_HASH__|$HASH|" site/index.html
+          ! grep -q '__INLINE_SCRIPT_HASH__' site/index.html || (echo "ERROR: CSP hash not injected" && exit 1)
           sed "s|__BUILD_VERSION__|$VERSION|g" sw.js > site/sw.js
           cp manifest.json site/manifest.json
           grep -q "app.js?v=$VERSION" site/index.html || (echo "ERROR: cache-busting failed" && exit 1)
@@ -137,6 +141,7 @@ jobs:
           const page = await browser.newPage({ viewport: { width: 400, height: 850 } });
           const errs = [];
           page.on('pageerror', e => errs.push(e.message));
+          page.on('console', m => { if (/Content Security Policy/i.test(m.text())) errs.push(m.text()); });
           await page.goto('http://127.0.0.1:8080/index.html', { waitUntil: 'load' });
           await page.waitForTimeout(6000);
           const rootLen = await page.$eval('#root', el => el.innerHTML.length);
