@@ -1482,3 +1482,57 @@ console.log("buttons ok");
   assert.equal(offerKorazim(open), open, "הודעה ששואלת שאלה — בלי שאלת העברה שנייה");
 }
 console.log("tapped question ok");
+
+// 2.11: פנקס פתוחים — "מאשר הכל" מגיע לכל הכרטיסים, גם של משימות אחרות, ורק אחרי שרואים רשימה
+{
+  const key = "fixedinboxkey";
+  const { sha256, planReply, PLAN_HEADER } = await import("../src/inbox.js");
+  const e = { ...env, INBOX_KEY_SHA256: await sha256(key) };
+  const inbox = (body) => worker.fetch(new Request(`https://x/inbox?k=${key}`, { method: "POST", body: JSON.stringify(body) }), e, { waitUntil() {} });
+  const tap = (id, context) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", ...(context ? { context: { id: context } } : {}), interactive: { type: "button_reply", button_reply: { id, title: id } } });
+  const card = (text, a, b) => inbox({ notify: text, buttons: [{ id: a, title: "אישור" }, { id: b, title: "דלג" }] });
+  docs.delete("agentReports/open");
+  await webhook("היי");
+  await inbox({ notify: `${PLAN_HEADER}\n1. סטורי` });
+  assert.equal(sent.at(-1).interactive.action.buttons[0].reply.title, "אשר את התוכנית", "תוכנית בלי כפתורים מקבלת כפתור");
+  await card("הודעה לדור", "מוח 7", "מוח לא 7");
+  await card("רשימת היעדרות", "הודעות כן", "הודעות לא");
+  await card("1. הורה א", "הודעות כן 1", "הודעות לא 1");
+  await card("הודעה לחבר", "מוח 8", "מוח לא 8");
+  await card("רק לדלג", "מוח 9", "מוח לא 9");
+  await tap("מוח לא 9");
+  await inbox({ notify: "הודעה אחרת מקלוד" });
+
+  const calls = geminiCalls.length;
+  await webhook("מאשר הכל");
+  assert.equal(geminiCalls.length, calls, "לא עובר למודל");
+  const list = sent.at(-1);
+  const label = list.interactive.action.buttons[0].reply.title;
+  assert.equal(label, "אשר 4 פריטים", "כרטיס הפריט של ההיעדרות מכוסה ברשימה, ומה שדולג לא נספר");
+  assert.ok(!list.interactive.body.text.includes("רק לדלג"));
+  assert.ok(!docs.get("agentReports/bot").log.some((x) => x.user === "מוח 7"), "כלום לא בוצע לפני האישור");
+  await card("נוסף אחרי הרשימה", "מוח 11", "מוח לא 11");
+  await tap("פנקס אשר");
+  const users = docs.get("agentReports/bot").log.map((x) => x.user);
+  for (const k of ["מוח 7", "הודעות כן", "מוח 8"]) assert.ok(users.includes(k), k);
+  assert.ok(!users.includes("מוח 11"), "רק מה שהוצג ברשימה");
+  assert.ok(docs.get("agentReports/bot").planApprovedAt, "התוכנית אושרה אף שהודעה אחרת דרסה את outbox");
+  assert.ok(sent.at(-1).text.body.includes("עדיין לא אומר"), "לא מדווח שבוצע");
+  await tap("פנקס אשר");
+  assert.ok(sent.at(-1).text.body.includes("פג"), "אישור פעם אחת");
+
+  // כרטיס ישן עם אותו מספר לא מפעיל את הפריט החדש
+  await card("אתמול", "הרכב לקבוצה", "הרכב בטל");
+  const oldCard = docs.get("agentReports/open").items.at(-1).wamid;
+  await card("היום", "הרכב לקבוצה", "הרכב בטל");
+  const before = docs.get("agentReports/bot").log.length;
+  await tap("הרכב לקבוצה", oldCard + "-old");
+  assert.ok(sent.at(-1).text.body.includes("ישן"));
+  assert.equal(docs.get("agentReports/bot").log.length, before, "לא נרשם, אז אף משימה לא תבצע");
+
+  geminiQueue.push([{ text: "ok" }]);
+  await webhook("מה פתוח?");
+  assert.ok(geminiCalls.at(-1).systemInstruction.parts[0].text.includes("מחכים עכשיו לבעלים"), "שולה רואה את הפנקס");
+  assert.equal(planReply({ plan: { at: new Date().toISOString(), text: PLAN_HEADER } }, "מאושר"), "approve");
+}
+console.log("open ledger ok");
