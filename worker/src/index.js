@@ -17,6 +17,7 @@ import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
 import { joinRoute } from "./join.js";
+import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
@@ -257,7 +258,23 @@ async function handle(m, env) {
     // תשובה למשימה מתוזמנת (כפתור "מוח 9" / "הודעות כן" / "הרכב לקבוצה", או "✏️ לשנות" ואז הנוסח) — רק נרשמת ביומן,
     // שם המשימה קוראת אותה. לא עוברת למודל, כדי ששולה לא תבצע אותה בעצמה פעם שנייה.
     const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem.n : "";
-    const code = m.type === "interactive" && /^(מוח|הודעות|הרכב)( |$)/.test(text);
+    const code = m.type === "interactive" && /^(מוח|הודעות|הרכב|פנקס)( |$)/.test(text);
+    if (code) {
+      if (staleTap(await cards(store).catch(() => []), text, m.context?.id)) return void (await reply("הכרטיס הזה ישן והוחלף בכרטיס חדש, אז לא ביצעתי כלום."));
+      if (text.startsWith("פנקס")) {
+        const logged = [];
+        const perform = async (key) => {
+          logged.push({ at: now, user: key, shula: "אושר ברשימה" });
+          await closeTap(store, key);
+          if (key === PLAN_KEY) await queuePlanReply(env, store, PLAN_KEY, "approve");
+          else if (key.startsWith("מוח") && logged.filter((e) => e.user.startsWith("מוח")).length === 1) await queueTap(env, store, key).catch(() => {});
+        };
+        const answer = await ledgerTap(store, text, bot, perform);
+        await reply(answer);
+        await store.update("agentReports/bot", (cur) => ({ log: [...(cur.log || []), ...logged, { at: now, user: text, shula: answer }].slice(-LOG_KEEP) }));
+        return;
+      }
+    }
     if (code || (edit && m.type === "text")) {
       const shift = /^מוח שינוי (\d+)$/.exec(text);
       const user = edit && !code ? `מוח ${edit} נוסח: ${text}` : text;
@@ -273,6 +290,7 @@ async function handle(m, env) {
         ...(n && card ? { cards: Object.fromEntries(Object.entries({ ...(cur.cards || {}), [n]: card }).slice(-40)) } : {}),
         log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP),
       }));
+      if (code) await closeTap(store, text).catch(() => {});
       if (!shift && /^מוח/.test(user)) await queueTap(env, store, user).catch(() => {});
       return;
     }
@@ -311,6 +329,16 @@ async function handle(m, env) {
     if (/^דשבורד/.test(text.trim())) {
       await reply(`📊 דשבורד הפרסום (קישור פרטי, מתעדכן כל לילה מפייסבוק ומאינסטגרם):\n${await dashboardUrl(env, ORIGIN || bot.workerUrl)}`);
       return;
+    }
+    // "מאשר הכל" מגיע רק למה שרשום בפנקס. אין שם כלום — ממשיכים לשיחה הרגילה
+    if (/^(מאשר|מאשרת|אשר)\s+(את\s+)?הכו?ל/.test(text.trim())) {
+      const card = await approveAllCard(store).catch(() => null);
+      if (card) {
+        await sendText(wa, m.from, card.text, card.buttons);
+        replied = true;
+        await store.update("agentReports/bot", (cur) => ({ log: [...(cur.log || []), { at: now, user: text, shula: card.text }].slice(-LOG_KEEP) }));
+        return;
+      }
     }
     const plan = planReply(bot, text);
     if (plan) return void (await reply(await queuePlanReply(env, store, text, plan)));
@@ -450,13 +478,14 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // בלי השעה במפורש Gemini ממציא אותה (2026-10-07: ענה 14:38 כשהשעה הייתה 13:45)
   const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 
+  const waiting = openNote(await openCards(store).catch(() => []));
   let askedClaude = false, nudged = false, remindNudged = false;
   const used = []; // שמות הכלים שהופעלו בתור הזה (✗ = נכשל) — נשמרים בהיסטוריה, ראו TOOLS_MEMO
   const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}
+      systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}${waiting}
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
@@ -517,7 +546,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // מה נמצא עד עכשיו ושאלה אחת על מה שחסר, במקום לבקש מהבעלים לנסח מחדש.
   contents.push({ role: "user", parts: [{ text: "[מערכת] נגמרו הצעדים לתור הזה. בלי כלים: כתבי לבעלים בקצרה מה מצאת ומה כבר בוצע, ושאלה אחת ממוקדת על מה שחסר כדי לסיים." }] });
   const last = await gemini(env, {
-    systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+    systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
     tools: [{ functionDeclarations: FUNCTION_DECLS }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
@@ -549,7 +578,8 @@ async function transcribe(env, audio) {
 const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפנייך השיחות של היממה האחרונה בין הבעלים לשולה.
 בדקי כל בקשה של הבעלים: האם שולה ביצעה אותה עד הסוף ובדיוק כמו שביקש? חפשי: משימה שנשארה באמצע, הבטחה ("אבדוק", "אחזור אלייך") בלי המשך, תשובה שלא עונה על השאלה, פעולה שנכשלה בלי שדווח, טיוטה שלא תאמה את הבקשה.
 אם הכל נסגר — החזירי בדיוק: OK
-אחרת — רשימה ממוספרת קצרה בעברית, שורה לכל בעיה: מה ביקש, מה חסר, ומה להציע עכשיו. בלי הקדמות.`;
+אחרת — רשימה ממוספרת קצרה בעברית, שורה לכל בעיה: מה ביקש, מה חסר, ומה להציע עכשיו. בלי הקדמות.
+בסוף מופיעים הכרטיסים שעדיין מחכים לבעלים. לא לדווח על משהו כתקוע בלי ראיה בשיחה או ברשימה הזאת.`;
 
 // כל ריצת cron עטופה: שגיאה נרשמת ב-agentReports/bot.lastCronError (המפקח רואה), ולא נבלעת בשקט
 async function runCron(env, cron) {
@@ -692,9 +722,10 @@ export async function review(env) {
   const day = (bot.log || []).filter((e) => e.at > since);
   if (!day.length) return "no conversations";
   const transcript = day.map((e) => `[${new Date(e.at).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" })}] הבעלים: ${e.user}\nשולה: ${e.shula}`).join("\n\n");
+  const waiting = openNote(await openCards(store).catch(() => []));
   const parts = await gemini(env, {
     systemInstruction: { parts: [{ text: REVIEW }] },
-    contents: [{ role: "user", parts: [{ text: transcript }] }],
+    contents: [{ role: "user", parts: [{ text: transcript + waiting }] }],
     // גיבוי Claude חושב לפני שעונה: ב-1000 החשיבה על יום שלם אכלה הכל והמפקח נפל (MAX_TOKENS, 28.10)
     generationConfig: { maxOutputTokens: 4096, temperature: 0.2 },
   }, [], LITE);
