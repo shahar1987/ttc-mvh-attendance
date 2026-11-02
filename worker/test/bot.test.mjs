@@ -1450,3 +1450,35 @@ console.log("24h window ok");
   assert.equal(geminiCalls.length > calls, true);
 }
 console.log("buttons ok");
+
+// 2.11: "כן" הגיע למודל בלי הקשר ושולה ענתה על נושא אחר — הכפתור נושא את השאלה, גם כשנלחץ על הודעה ישנה
+{
+  geminiQueue.push([{ text: "להעביר את הקישור לקלוד?\n1. כן\n2. לא" }]);
+  await webhook("קישור לתמונות");
+  const { id, title } = sent.at(-1).interactive.action.buttons[0].reply;
+  assert.equal(title, "כן");
+  assert.ok(id.length <= 256);
+  geminiQueue.push([{ text: "נושא אחר לגמרי" }]);
+  await webhook("נושא אחר");
+  geminiQueue.push([{ text: "ok" }]);
+  await webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", context: { id: "old" }, interactive: { type: "button_reply", button_reply: { id, title } } });
+  const asked = geminiCalls.at(-1).contents.at(-1).parts.at(-1).text;
+  assert.ok(asked.includes("להעביר את הקישור לקלוד?") && asked.endsWith("\nכן"), "המודל יודע על מה הלחיצה");
+  assert.equal(docs.get("agentReports/bot").history.at(-2).owner, "כן", "השערים רואים רק את מילת הכפתור");
+  assert.equal(docs.get("agentReports/bot").log.at(-1).user, "כן");
+
+  const { sendText } = await import("../../agents/lib/whatsapp.mjs");
+  const real = globalThis.fetch, ids = [];
+  globalThis.fetch = async (_, init) => {
+    ids.push(JSON.parse(init.body).interactive.action.buttons[0].reply.id);
+    return new Response(JSON.stringify(ids.length === 1 ? { error: { message: "bad id" } } : { messages: [{ id: "w1" }] }), { status: ids.length === 1 ? 400 : 200 });
+  };
+  assert.equal(await sendText({ token: "t", phoneId: "1" }, "1", "לשלוח?\n1. כן\n2. לא"), "w1", "Meta דחתה את המזהה — נשלח כפתור רגיל");
+  assert.equal(ids[1], "כן");
+  globalThis.fetch = real;
+
+  const { offerKorazim } = await import("../src/messages.js");
+  const open = "יש משימה ברמת כורזים. להעביר לקלוד?";
+  assert.equal(offerKorazim(open), open, "הודעה ששואלת שאלה — בלי שאלת העברה שנייה");
+}
+console.log("tapped question ok");

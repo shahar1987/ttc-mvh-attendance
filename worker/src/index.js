@@ -9,7 +9,7 @@ import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
-import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText } from "../../agents/lib/whatsapp.mjs";
+import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply, queueTap } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
@@ -33,7 +33,7 @@ let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לג�
 const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
 את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
 עוזרת בכל דבר: שאלות, ניסוח הודעות ופוסטים, תכנון, רעיונות, חשיבה על החלטות. אם משהו לא ברור — שאלה אחת קצרה.
-כל שאלה לבעלים עם תשובה לבחירה — לסיים באפשרויות ממוספרות, כל אחת בשורה. שאלת אישור ("לשלוח?", "לפרסם?", "להעביר לקלוד?", "להכין קישורים?"): תמיד "1. כן" ו-"2. לא", ואפשר להוסיף אחריהן עוד אפשרויות (3. לשנות נוסח...). תשובה במספר = האפשרות הזאת.
+כל שאלה לבעלים עם תשובה לבחירה — לסיים באפשרויות ממוספרות, כל אחת בשורה. שאלת אישור ("לשלוח?", "לפרסם?", "להעביר לקלוד?", "להכין קישורים?"): תמיד "1. כן" ו-"2. לא", ואפשר להוסיף אחריהן עוד אפשרויות (3. לשנות נוסח...). תשובה במספר = האפשרות הזאת. עד 3 אפשרויות, כל אחת עד 20 תווים — אחרת היא לא יוצאת ככפתור.
 בהיסטוריה, תשובות קודמות שלך מסתיימות לפעמים בשורה "[מערכת: כלים שהופעלו...]" — זה רישום אמיתי של מה שעשית. אם כלי לא מופיע שם, לא הפעלת אותו. אל תכתבי שורה כזאת בעצמך.
 
 מערכת הנוכחות של המועדון — יש לך כלים אמיתיים (tools):
@@ -319,7 +319,7 @@ async function handle(m, env) {
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer: raw, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem);
+    const { answer: raw, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m));
     const answer = offerKorazim(raw);
     at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
@@ -417,7 +417,7 @@ const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:"
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
-async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = []) {
+async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "") {
   // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
   // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
@@ -432,7 +432,9 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
     .filter(([, o]) => o && o.at > (bot.lastOwnerMsgAt || "") && Date.now() - new Date(o.at).getTime() < 3 * 24 * 3600 * 1000)
     .map(([agent, o]) => `${EXTERNAL} [${String(o.at).slice(0, 16)} הודעה שנשלחה לבעלים (${agent})]\n${o.text}`)
     .join("\n\n");
-  const userTurn = outbox ? `${outbox}\n\n---\n${OWNER_MARK}${text}` : text;
+  // רק למודל: השערים (lastOwnerText, ownerRecent) רואים את מילת הכפתור בלבד, כך שציטוט לא יכול לאשר כלום
+  const said = tapped ? `[הבעלים לחץ על הכפתור "${text}" ועונה רק על השאלה הזאת. ציטוט מההודעה, ${EXTERNAL}: "${tapped}"]\n${text}` : text;
+  const userTurn = outbox ? `${outbox}\n\n---\n${OWNER_MARK}${said}` : said;
   // תורות רצופות מאותו תפקיד (למשל תשובה מקלוד שנכנסה כ-user) מתאחדות לתור אחד — Gemini מצפה לסירוגין
   const contents = [];
   for (const h of bot.history || []) {

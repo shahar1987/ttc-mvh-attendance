@@ -28,11 +28,16 @@ async function post(cfg, body) {
 // "1. כן\n2. לא" בסוף הודעה יוצא ככפתורים ללחיצה (30.10: "כל העניין הזה של המספרים מאוד מעצבן").
 // buttons מפורשים: [{id, title}] — id הוא מה שחוזר כשלוחצים (למשל "מוח 9"), title עד 20 תווים.
 const OPTIONS = /\n+((?:[1-3]\. [^\n]{1,20}(?:\n|$)){2,3})\s*$/;
+// מזהה של כפתור אוטומטי: "כן¦סוף השאלה". כך הלחיצה חוזרת עם השאלה עצמה, גם בהודעות שנשלחו מה-cron ומהסוכנים (2.11: "כן" הגיע למודל בלי שום הקשר)
+const TAP = "¦";
 // replyTo = מזהה הודעה קודמת: התשובה מופיעה כציטוט שלה (כמו "עדכון על הכרטיס" בבוטים של Slack)
 export async function sendText(cfg, to, text, buttons, replyTo) {
   const ctx = replyTo ? { context: { message_id: replyTo } } : {};
   const m = !buttons?.length && text.match(OPTIONS);
-  if (m) buttons = m[1].trim().split("\n").map((l) => l.replace(/^\d\. /, "").trim());
+  if (m) {
+    const asked = text.slice(0, m.index).replace(/\s+/g, " ").trim().slice(-200);
+    buttons = m[1].trim().split("\n").map((l) => l.replace(/^\d\. /, "").trim()).map((title) => ({ id: `${title}${TAP}${asked}`, title }));
+  }
   if (!buttons?.length) return post(cfg, { to, ...ctx, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
   let body = (m ? text.slice(0, m.index) : text).trim();
   // גוף הודעה עם כפתורים מוגבל ל-1024 תווים — הארוך יוצא קודם כטקסט, והכפתורים עם השורה האחרונה
@@ -40,7 +45,7 @@ export async function sendText(cfg, to, text, buttons, replyTo) {
     await post(cfg, { to, type: "text", text: { body: body.slice(0, 4000), preview_url: false } });
     body = body.split("\n").filter(Boolean).pop().slice(0, 1000);
   }
-  return post(cfg, {
+  const send = (list) => post(cfg, {
     to,
     ...ctx,
     type: "interactive",
@@ -48,16 +53,20 @@ export async function sendText(cfg, to, text, buttons, replyTo) {
       type: "button",
       body: { text: body || "?" },
       action: {
-        buttons: buttons.slice(0, 3).map((b) => (typeof b === "string" ? { id: b, title: b } : b))
+        buttons: list.slice(0, 3).map((b) => (typeof b === "string" ? { id: b, title: b } : b))
           .map((b) => ({ type: "reply", reply: { id: String(b.id).slice(0, 256), title: String(b.title || b.id).slice(0, 20) } })),
       },
     },
   });
+  // אם Meta דוחה מזהה עם השאלה — כפתור רגיל עדיף על הודעה שלא יצאה
+  return m ? send(buttons).catch(() => send(buttons.map((b) => b.title))) : send(buttons);
 }
 
 // הטקסט של הודעה נכנסת: כתיבה, כפתור של תבנית, או לחיצה על כפתור (חוזר ה-id שלו)
 export const incomingText = (m) =>
-  (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.type === "interactive" ? m.interactive?.button_reply?.id || "" : "").trim();
+  (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.type === "interactive" ? (m.interactive?.button_reply?.id || "").split(TAP)[0] : "").trim();
+// על איזו שאלה נלחץ הכפתור (ריק בכפתורים עם מזהה משלהם, כמו "מוח 9")
+export const tappedQuestion = (m) => (m.interactive?.button_reply?.id || "").split(TAP)[1] || "";
 
 // club_message סווגה ב-Meta כשיווקית, ונמענים חסומים לה (131049). קודם התבנית התפעולית, ואם היא עוד לא קיימת/מאושרת — הישנה.
 const PREFER = { club_message: "coach_notice" };
