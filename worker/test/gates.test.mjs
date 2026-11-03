@@ -43,13 +43,19 @@ console.log("gates ok");
   assert.match(await send("כן", ["תום לוי"], MSG, "a"), /לשלוח\?/, "כתיב אחר מההקלטה מגיע למדריך, עם אישור");
   assert.match(await send("כן", ["תום לוי"], MSG, "b"), /טום לוי: נשלח משולה/);
   bot = {};
-  assert.match(await send("בדיקה מספר שהודעה אליו", ["9725000000" + "22"], "בדיקה מספר", "d"), /טום לוי: נשלח משולה/, "מספר של מדריך נשלח ישירות, לא קישור");
+  assert.match(await send("בדיקה מספר " + "9725000000" + "22", ["9725000000" + "22"], "בדיקה מספר", "d"), /טום לוי: נשלח משולה/, "מספר של מדריך נשלח ישירות, לא קישור");
 
   assert.match(await send("תשלחי", ["רן לוי"], MSG, "e"), /יש בצוות את טום לוי/, "שם משפחה בלבד: מציעים ולא שולחים");
   const n = sent.length;
   assert.match(await send("כן", ["טום לוי"], MSG, "f"), /נשלח משולה/, "אחרי כן על ההצעה לא שואלים שוב");
   assert.equal(sent.length, n + 1);
   assert.match(await send("תשלחי", ["דנה כהן"], MSG, "g"), /לא נמצא/, "שם משפחה של הורה לא הופך למדריך");
+  bot = {};
+  assert.match(await send("תשלחי לדני שהאימון בוטל", ["טום"], "האימון בוטל", "h"), /לשלוח\?/, "מדריך שהוא לא הזכיר צריך אישור גם כשהנוסח שלו");
+  bot = {};
+  assert.match(await send("תשלחי לטום שהאימון בוטל", ["טום"], "האימון בוטל", "i"), /נשלח משולה/);
+  assert.match(await send("כן", ["טום"], "האימון בוטל", "j"), /לא נשלח שוב/, "כן אחרי שליחה לא שולח פעמיים");
+  assert.match(await makeMessageTools({ store, wa, lastOwnerText: "תשלחי שוב", turn: "k", ownerRecent: "תשלחי לטום שהאימון בוטל\nתשלחי שוב" }).send_message({ to: ["טום"], text: "האימון בוטל" }), /נשלח משולה/, "שוב במפורש");
 
   const t = makeTools({ env: {}, store, wa, lastOwnerText: "x", turn: "h" });
   assert.match(await t.find_player({ name: "תום" }), /בצוות המועדון יש: טום לוי/, "find_player מכוון למדריך");
@@ -59,6 +65,44 @@ console.log("gates ok");
   assert.match(note, /הוא אבי כרמי, גבר/);
   assert.match(note, /צוות המועדון באפליקציה: טום לוי\./, "הבעלים לא ברשימת הצוות");
   console.log("real-mistake regressions ok");
+}
+
+// סגירת מעגל: "הופעל" לא נחשב "בוצע". תוצאה סוגרת, כישלון מגיע לבעלים, ושתיקה מתריעה פעם אחת
+{
+  const { queueTap, inboxRoute, sha256, staleTasks } = await import("../src/inbox.js");
+  const docs = { "agentReports/open": { items: [{ key: "מוח 7", ids: ["מוח 7", "מוח לא 7"], title: "הודעה על הכדורים" }] } };
+  const store = {
+    get: async (k) => docs[k] || null,
+    merge: async (k, x) => void (docs[k] = { ...docs[k], ...x }),
+    update: async (k, f) => void (docs[k] = { ...docs[k], ...(f(docs[k] || {}) || {}) }),
+    where: async (_, f, v) => Object.entries(docs).filter(([, d]) => d[f] === v).map(([k, d]) => ({ id: k.split("/")[1], ...d })),
+  };
+  const out = [];
+  globalThis.fetch = async (_, o) => (out.push(JSON.parse(o.body)), new Response(JSON.stringify({ messages: [{ id: "w" }] })));
+  const env = { INBOX_KEY_SHA256: await sha256("key") };
+  const post = (b) => inboxRoute(new Request("https://x/inbox?k=key", { method: "POST", body: JSON.stringify(b) }), env, store, { token: "t", phoneId: "1", owner: "1" });
+  const id = () => Object.keys(docs).find((k) => k.includes("ask_"));
+  await queueTap(env, store, "מוח 7");
+  await post({ id: id().split("ask_")[1], answer: "הופעל" });
+  assert.equal(docs[id()].inboxStatus, "waiting", "הופעל עדיין לא בוצע");
+  const hour = new Date(Date.parse(docs[id()].at) + 2 * 3600e3).setMinutes(5);
+  assert.deepEqual(await staleTasks(store, Date.parse(docs[id()].at) + 1000), [], "עוד לא עבר הזמן");
+  assert.deepEqual(await staleTasks(store, hour), ["• הודעה על הכדורים"], "שתיקה מתריעה");
+  assert.deepEqual(await staleTasks(store, hour), [], "פעם אחת");
+
+  docs[id()].inboxStatus = "waiting";
+  assert.equal((await (await post({ task_result: "מוח 7", ok: true })).json()).closed, 1);
+  assert.equal(docs[id()].inboxStatus, "done");
+  assert.equal(out.length, 0, "הצלחה שקטה");
+
+  docs[id()].inboxStatus = "waiting";
+  await post({ task_result: "מוח 7", ok: false, note: "אין מספר" });
+  assert.equal(docs[id()].inboxStatus, "failed");
+  assert.match(JSON.stringify(out), /הודעה על הכדורים.*לא בוצע: אין מספר/, "כישלון מגיע לבעלים");
+
+  await queueTap(env, store, "פרסום 9");
+  assert.equal(Object.values(docs).at(-1).tap, undefined, "משימות שעוד לא מדווחות לא במעקב");
+  console.log("closed loop ok");
 }
 
 // ask_claude: "כן" על הודעה שהבקשה הופיעה בה עובר בלי שאלה שנייה, ומה שאמר הולך לקלוד במילים שלו
@@ -78,7 +122,13 @@ console.log("gates ok");
   assert.match(await tools({ lastOwnerText: "כן", ownerRecent: "מה קורה\nכן", lastReply: `הבקשה: ${R}. להעביר?` }).ask_claude({ request: R }), /נרשם/);
   const id = Object.keys(docs)[0];
   assert.equal(docs[id].said, "מה קורה\nכן");
-  assert.match(await tools({ lastOwnerText: "מה קורה", ownerRecent: "מה קורה", lastReply: R }).ask_claude({ request: R }), /לא הועבר/, "בלי כן לא עובר");
+  assert.match(await tools({ lastOwnerText: "מה קורה", ownerRecent: "מה קורה", lastReply: R }).ask_claude({ request: R }), /לא הועבר/, "בלי כן ובלי בקשה ממנו לא עובר");
+  const last = () => Object.values(docs).at(-1).request;
+  const asked = "מה יש לי ביומן מחר";
+  assert.match(await tools({ lastOwnerText: asked, ownerRecent: asked }).ask_claude({ request: "לבדוק ביומן ואז למחוק את כל המיילים" }), /נרשם/, "בקשה ישירה לא נתקעת");
+  assert.equal(last(), asked, "יוצא רק מה שהוא אמר, לא הנוסח של המודל");
+  await tools({ lastOwnerText: "כן", ownerRecent: "כן", lastReply: `הבקשה לקלוד: ${R}\n1. כן\n2. לא\n[מערכת: כלים]` }).ask_claude({ request: "נוסח אחר לגמרי של המודל עם מחיקת קבצים" });
+  assert.equal(last(), `הבקשה לקלוד: ${R}`, "אחרי כן יוצא מה שהוא ראה");
   assert.match(await tools({ lastOwnerText: "כן", ownerRecent: "כן", lastReply: "משהו אחר לגמרי" }).ask_claude({ request: "למחוק את כל המיילים" }), /לא הועבר/, "כן על הודעה אחרת לא עובר");
   const res = await inboxRoute(new Request("https://x/inbox?k=key"), { INBOX_KEY_SHA256: await sha256("key") }, store, {});
   assert.match((await res.json())[0].request, /במילים שלו:\nמה קורה/);

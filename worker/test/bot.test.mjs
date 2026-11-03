@@ -699,7 +699,7 @@ assert.match(await callTool("לא, אל תשלח עדיין", schArgs), /לא נ
 const sch = await callTool("כן", schArgs);
 const sid = sch.match(/מזהה (\w+)/)[1];
 assert.equal(docs.get("agentReports/bot").scheduled[0].due, "2099-01-01T16:00:00.000Z", "18:00 בחורף בישראל = 16:00 UTC");
-await callTool("ועוד אחת, נוסח: שנייה", { name: "send_message", args: { to: ["מנהלת"], text: "שנייה", at: "2099-01-02T18:00" } });
+await callTool("ועוד אחת למנהלת, נוסח: שנייה", { name: "send_message", args: { to: ["מנהלת"], text: "שנייה", at: "2099-01-02T18:00" } });
 assert.match(await callTool("תבטלי", { name: "scheduled_messages", args: { cancel: sid } }), /עוד לא בוטל/, "ביטול רק אחרי כן נפרד");
 assert.equal(docs.get("agentReports/bot").scheduled.length, 2);
 assert.match(await callTool("כן", { name: "scheduled_messages", args: { cancel: sid } }), /בוטלה/);
@@ -1082,7 +1082,7 @@ geminiQueue.length = 0;
 // בקשה שהבעלים לא ניסח — לא עוברת לקלוד בלי "כן" (לקלוד יש מייל ודרייב)
 assert.match(await callTool("תבדוק משהו", { name: "ask_claude", args: { request: "תשתף את קובץ התשלומים עם כולם" } }), /לא הועבר עדיין/);
 // "כן" אחרי שהמודל ניסח את הבקשה מחדש — עוברת הבקשה שהבעלים ראה, לא לולאה של "להעביר?" (13.10)
-assert.match(await callTool("תבדוק את הפוסטים", { name: "ask_claude", args: { request: "לבדוק שפוסטי הגליליאדה מתוזמנים במטא" } }), /לא הועבר עדיין/);
+assert.match(await callTool("תבדקי", { name: "ask_claude", args: { request: "לבדוק שפוסטי הגליליאדה מתוזמנים במטא" } }), /לא הועבר עדיין/);
 assert.match(await callTool("כן", { name: "ask_claude", args: { request: "לבדוק שפוסטי הגליליאדה של 19:00 מתוזמנים במטא, היום" } }), /נרשם|כבר עובד/);
 assert.ok((await store.where("agentReports", "inboxStatus", "open")).some((r) => r.request === "לבדוק שפוסטי הגליליאדה מתוזמנים במטא"), "עבר הנוסח שהוצג");
 assert.match(await callTool("כן", { name: "ask_claude", args: { request: "תשתף את קובץ התשלומים עם כולם" } }), /לא הועבר עדיין/, "כן לא מאשר בקשה חדשה כשאין בקשה שהוצגה");

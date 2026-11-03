@@ -11,6 +11,7 @@ import { confirmed, findGroup, ownerWrote, sameSound } from "./tools.js";
 import { drainQueue } from "./queue.js";
 import { watchReads, staffSend } from "./reminders.js";
 
+const RESEND_MS = 15 * 60 * 1000; // "כן" אחרי שליחה שלח את אותה הודעה פעם שנייה (3.11)
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
 const isStaff = (u) => !u.deleted && !!u.name && ["coach", "admin"].includes(role(u));
@@ -20,7 +21,7 @@ export const staffNames = (users) => users.filter(isStaff).map((u) => u.name);
 export function teamNote(users, ownerPhone) {
   const me = users.filter(isStaff).find((u) => normalizePhone(u.phone) === normalizePhone(ownerPhone));
   const team = staffNames(users).filter((n) => n !== me?.name);
-  return `\n\nמי זה מי: הבעלים שאת מדברת איתו הוא ${me?.name || "מנהל המועדון"}, גבר. פונים אליו ישירות בלשון זכר, בלי המילה "הבעלים". כשהשם שלו מופיע ברשימות, כמאמן או כנמען, זה הוא עצמו.${team.length ? ` צוות המועדון באפליקציה: ${team.join(", ")}. שם שנשמע דומה לאחד מהם הוא כנראה אותו אדם.` : ""}`;
+  return `\n\nמי זה מי: הבעלים שאת מדברת איתו הוא ${me?.name || "מנהל המועדון"}, גבר. פונים אליו ישירות בלשון זכר, בלי המילה "הבעלים". כשהשם שלו מופיע ברשימות, כמאמן או כנמען, זה הוא עצמו.${team.length ? ` צוות המועדון באפליקציה: ${team.join(", ")}.` : ""} הודעה לאדם: ישר send_message עם השם כמו שהוא אמר, הכלי מזהה כתיב שונה. בלי להחליף שם באדם אחר מהרשימה: אם הכלי לא מצא, שואלים אותו. כשהוא שואל על עצמו, עונים "זה אתה".`;
 }
 
 // "שם", "מאמנים", "קבוצת X" (ההורים של כל השחקנים הפעילים בקבוצה), או מספר → [{name, phone}] + שמות שלא נמצאו / לא חד-משמעיים
@@ -135,7 +136,14 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       if (at && due <= new Date().toISOString()) return `לא נשלח ולא תוזמן: ${at.replace("T", " ")} כבר עבר. לשליחה עכשיו — לקרוא שוב בלי at.`;
       // הודעה שיוצאת משולה למאמנים: מיד אם הבעלים כתב את הנוסח בעצמו, אחרת רק אחרי "כן" נפרד
       // (מגן מטקסט שהוזרק דרך שם של קבוצה/שחקן). קישורים להורים — הבעלים לוחץ בעצמו, אין צורך.
-      if (recipients.some((r) => r.staff) && !ownerWrote(text, ownerRecent)
+      // יעד שהוא לא הזכיר: 3.11 "תשלחי לדני" יצא למאמן עם שם דומה, כי הנוסח היה שלו
+      const said = sameSound(ownerRecent).split(/[^\p{L}\p{N}]+/u).flatMap((w) => [w, w.slice(1)]);
+      const named = (r) => to.some((q) => COACHES.test(q)) || r.name.split(/\s+/).some((w) => said.includes(sameSound(w))) || ownerRecent.replace(/\D/g, "").includes(r.phone.slice(-9));
+      const sentKey = (r) => `${r.phone}|${text.trim()}`.slice(0, 200);
+      const again = !at && !/שוב/.test(lastOwnerText) && (await store.get("agentReports/bot"))?.recentSends || {};
+      const dup = recipients.find((r) => Date.now() - Date.parse(again[sentKey(r)] || 0) < RESEND_MS);
+      if (dup) return `לא נשלח שוב: בדיוק ההודעה הזאת כבר יצאה ל${dup.name} לפני כמה דקות. להגיד לו את זה. לשליחה חוזרת הוא צריך לכתוב "שוב".`;
+      if (recipients.some((r) => r.staff) && (!ownerWrote(text, ownerRecent) || !recipients.every((r) => !r.staff || named(r)))
         && !(await confirmed(store, "message", { to: recipients.map((r) => r.phone), text, at: at || "" }, lastOwnerText, turn)))
         return `לא נשלח עדיין. להציג לבעלים את הנוסח ואת הנמענים (${recipients.map((r) => r.name).join(", ")}) ולשאול "לשלוח?". אחרי "כן" — לקרוא שוב עם אותם פרטים בדיוק.`;
       if (at) {
@@ -158,6 +166,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       }
       // הבעלים יקבל "✓✓ קרא" כשהמאמן פותח את ההודעה; כישלון כאן לא מבטל את מה שכבר נשלח
       if (Object.keys(watch).length) await watchReads(store, watch).catch(() => {});
+      if (Object.keys(watch).length) await store.update("agentReports/bot", (bot) => ({ recentSends: Object.fromEntries([...Object.entries(bot.recentSends || {}).filter(([, t]) => Date.now() - Date.parse(t) < RESEND_MS), ...recipients.filter((r) => r.staff).map((r) => [sentKey(r), new Date().toISOString()])]) })).catch(() => {});
       // ✓ = Meta קיבלה, לא שנמסר. כישלון מסירה מגיע אחר כך ב-webhook (readReceipts) ומעדכן את הבעלים
       if (Object.keys(watch).length) direct.push("(✓ = יצא לוואטסאפ. אם לא יימסר — תגיע הודעת ❌ עם הסיבה)");
       return [direct.join("\n"), links.length ? `ללחוץ על כל קישור ואז "שלח":\n${deliver(links, text)}` : ""].filter(Boolean).join("\n") + note;
