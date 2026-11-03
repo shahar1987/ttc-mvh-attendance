@@ -10,6 +10,7 @@ name: Agents
 #   📈 insights    — כל לילה ב-03:30: נתוני חשיפה ומעורבות מ-Meta (קריאה בלבד)
 #   📣 content     — ראשון ב-09:00: דוח "מה עבד השבוע" + 3 טיוטות פוסטים לשבוע (לאישור בוואטסאפ)
 #   🛡️ supervisor  — כל שעה: שכולם רצו, שהבוט עונה, שלא דלף מידע
+#   📨 autosend    — כל ערב אחרי 20:30 (עד 22:59, ראשון עד שישי): הודעות היעדרות וברוך הבא מהמספר של שלום, בלי סוכן AI
 #   כל 10 דקות: בודק אם שולה ביקשה מהבוט "תריץ עכשיו"
 #
 # פרטיות: הריפו ציבורי והיומנים גלויים — הסוכנים מדפיסים רק מספרים. השמות והטלפונים
@@ -22,12 +23,13 @@ on:
     - cron: "0 6 * * 5"
     - cron: "17 * * * *"
     - cron: "*/10 * * * *"
+    - cron: "41 17-20 * * 0-5"
   workflow_dispatch:
     inputs:
       agent:
         description: "איזה סוכן להריץ"
         type: choice
-        options: [scan, bugcheck, ideas, supervisor, content, insights, weekly, diag]
+        options: [scan, bugcheck, ideas, supervisor, content, insights, weekly, diag, autosend]
       preview:
         description: "weekly: רק תצוגה מקדימה לבעלים, בלי לשלוח למדריכים"
         type: boolean
@@ -92,6 +94,7 @@ jobs:
             "0 6 * * 0")    RUN=ideas ;;  # הקמפיין השבועי עבר למשימה של קלוד (ראשון 08:30, /insights/campaign) — content רק בהפעלה ידנית
             "0 6 * * 5")    RUN=weekly ;;  # שישי 08:00 בחורף (09:00 בשעון קיץ)
             "17 * * * *")   RUN=supervisor ;;
+            "41 17-20 * * 0-5") RUN=autosend ;;
             "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
             *)              RUN="${{ inputs.agent }}" ;;
           esac
@@ -154,6 +157,16 @@ jobs:
           DIAG_FIX: ${{ inputs.fix && '1' || '0' }}
           DIAG_TELL: ${{ inputs.tell && '1' || '0' }}
         run: node diag.mjs
+
+      # שום שם או טלפון לא מודפס כאן. autosend.mjs מדווח לשלום בעצמו, גם בכישלון
+      - name: 📨 Absence and welcome messages
+        id: autosend
+        if: contains(steps.pick.outputs.run, ',autosend,')
+        working-directory: agents
+        env:
+          WA_SENDER_TOKEN: ${{ secrets.WA_SENDER_TOKEN }}
+          AUTOSEND_REQUESTED: ${{ github.event.schedule != '41 17-20 * * 0-5' && '1' || '0' }}
+        run: node autosend.mjs run
 
       - name: 🛡️ Supervisor
         id: supervisor

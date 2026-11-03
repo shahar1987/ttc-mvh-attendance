@@ -102,8 +102,10 @@ console.log("gates ok");
 
   const { makeInboxTools } = await import("../src/inbox.js");
   assert.match(await makeInboxTools({ env, store, origin: "https://x", turn: "t" }).send_parents_now(), /השליחה הופעלה/);
-  assert.equal(Object.values(docs).at(-1).tap, "הודעות עכשיו", "שליחה לפי בקשה במעקב");
-  assert.match(Object.values(docs).at(-1).request, /trig_01FiU3HnrPxdoQK29vAGVq2r/);
+  const asked = Object.values(docs).filter((d) => d.tap === "הודעות עכשיו").at(-1);
+  assert.equal(asked.inboxStatus, "waiting", "שליחה לפי בקשה במעקב");
+  assert.equal(asked.request, undefined, "לא עובר דרך קלוד");
+  assert.deepEqual(docs["agentReports/bot"]?.requests, ["autosend"]);
   await queueTap(env, store, "פרסום 9");
   assert.equal(Object.values(docs).at(-1).tap, undefined, "משימות שעוד לא מדווחות לא במעקב");
   console.log("closed loop ok");

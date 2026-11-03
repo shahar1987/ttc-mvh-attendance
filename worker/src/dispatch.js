@@ -6,7 +6,7 @@
 //   sync-payments.yml — "רענון עכשיו" באפליקציה (system/paymentSyncRequest ממתין)
 //   admin-tools.yml   — משימות ניהול ממתינות (adminTasks עם status=pending)
 //   board-members.yml / gameday.yml — הפורטל, כל רבע שעה / כל שעה (סעיף 4)
-const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content"]);
+const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "autosend"]);
 
 async function dispatch(env, workflow, inputs) {
   const repo = env.GH_REPO || "shahar1987/ttc-mvh-attendance";

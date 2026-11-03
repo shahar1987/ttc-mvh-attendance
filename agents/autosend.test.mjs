@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, parseMarks, welcomeText, CUTOFF } from "./autosend.mjs";
+import { plan, parseMarks, welcomeText, CUTOFF, deliver, chunks, LIMIT } from "./autosend.mjs";
 import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const groups = [
@@ -60,4 +60,73 @@ test("marks: only well-formed id keys pass", () => {
   assert.deepEqual(parseMarks(`absence:${today}:g1:a, welcome:${today}:g1:b`).map((m) => m.kind), ["absence", "welcome"]);
   assert.throws(() => parseMarks("absence:2026-10-29:g1:a;rm"), /לא תקינים/);
   assert.throws(() => parseMarks("note:2026-10-29:g1:a"));
+});
+
+const msg = (i, kind = "absence") => ({ key: `${kind}:2026-11-03:g1:p${i}`, to: "972500000000", text: `נוסח ${i}`, who: `שחקן ${i}` });
+function fakeIo(send) {
+  const c = { sent: [], logged: [], marked: [], told: [], holds: 0 };
+  return [c, {
+    send: async (m) => { c.sent.push(m); return send ? send(m) : { sent: m.map((x) => x.key), failed: [] }; },
+    log: async (k) => c.logged.push(...k), mark: async (k) => c.marked.push(...k), tell: async (t) => c.told.push(t), hold: async () => c.holds++,
+  }];
+}
+const day = "2026-11-03";
+
+test("deliver: goes out with no approval, then logs, marks and reports the exact text", async () => {
+  const [c, io] = fakeIo();
+  const r = await deliver({ today: day, messages: [msg(1, "welcome")] }, io);
+  assert.equal(r.sent, 1);
+  assert.equal(c.sent.length, 1);
+  assert.deepEqual(c.logged, [msg(1, "welcome").key]);
+  assert.deepEqual(c.marked, [msg(1, "welcome").key]);
+  assert.match(c.told.join(), /נשלחו 1 הודעות:[\s\S]*שחקן 1 \(ברוך הבא\):\nנוסח 1/);
+});
+
+test("deliver: failed recipient is reported and neither logged nor marked", async () => {
+  const [c, io] = fakeIo((m) => ({ sent: [m[0].key], failed: [{ key: m[1].key, reason: "אין וואטסאפ" }] }));
+  const r = await deliver({ today: day, messages: [msg(1), msg(2)] }, io);
+  assert.equal(r.ok, false);
+  assert.deepEqual(c.logged, [msg(1).key]);
+  assert.match(c.told.join(), /לא יצא: שחקן 2 — אין וואטסאפ/);
+});
+
+test("deliver: over the limit nothing goes out until he asks, and he is told once", async () => {
+  const many = Array.from({ length: LIMIT + 1 }, (_, i) => msg(i));
+  const [c, io] = fakeIo();
+  await deliver({ today: day, messages: many }, io);
+  await deliver({ today: day, messages: many, held: day }, io);
+  assert.equal(c.sent.length, 0);
+  assert.equal(c.holds, 1);
+  assert.equal(c.told.length, 1);
+  await deliver({ today: day, messages: many, requested: true }, io);
+  assert.equal(c.sent.length, 0, "בקשה לפני שהוזהר לא עוקפת את התקרה");
+  await deliver({ today: day, messages: many, held: day, requested: true }, io);
+  assert.equal(c.sent.length, 1);
+});
+
+test("deliver: unknown send outcome holds further sends, so nothing goes twice", async () => {
+  const [c, io] = fakeIo(() => { throw Object.assign(new Error("אין תוצאה"), { unknown: true }); });
+  const r = await deliver({ today: day, messages: [msg(1)] }, io);
+  assert.equal(r.ok, false);
+  assert.equal(c.holds, 1);
+  assert.equal(c.logged.length, 0);
+  await deliver({ today: day, messages: [msg(1)], held: day }, io);
+  assert.equal(c.sent.length, 1, "הריצה הבאה לא שולחת שוב");
+});
+
+test("deliver: nothing waiting is silent unless he asked; missing phones reported once a day", async () => {
+  const [c, io] = fakeIo();
+  await deliver({ today: day, messages: [] }, io);
+  assert.equal(c.told.length, 0);
+  await deliver({ today: day, messages: [], requested: true }, io);
+  assert.match(c.told[0], /אין כרגע/);
+  await deliver({ today: day, messages: [], noPhone: ["א"], noPhoneTold: true }, io);
+  assert.equal(c.told.length, 1);
+  await deliver({ today: day, messages: [], noPhone: ["א"] }, io);
+  assert.equal(c.told.length, 2);
+  assert.deepEqual(c.logged, [`nophone:${day}`]);
+});
+
+test("chunks split at item boundaries", () => {
+  assert.deepEqual(chunks(["a".repeat(2000), "b".repeat(2000), "c"]), ["a".repeat(2000), `${"b".repeat(2000)}\n\nc`]);
 });
