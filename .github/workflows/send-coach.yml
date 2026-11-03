@@ -16,6 +16,9 @@ on:
         description: "לא לשלוח — להפסיק הודעות אוטומטיות למדריך הזה"
         type: boolean
         default: false
+      gender:
+        description: "לא לשלוח — לרשום מין לשחקן בשם המלא: f או m"
+        required: false
       resume:
         description: "לא לשלוח — להחזיר הודעות אוטומטיות למדריך הזה"
         type: boolean

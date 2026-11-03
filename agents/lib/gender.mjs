@@ -60,6 +60,8 @@ export function guessGender(name) {
   if (maleNameExceptions.includes(first)) return "m";
   return /[הת]$/.test(first) ? "f" : "m";
 }
+// ניחוש לפי שם טועה בשמות כמו יהב (3.11), אז הודעה להורה נפרדת ללשון זכר/נקבה רק לפי מה שרשום באפליקציה
+export const knownGender = (p) => (p?.gender === "f" || p?.gender === "m" ? p.gender : "");
 export function playerGender(p) {
   return p && (p.gender === "f" || p.gender === "m") ? p.gender : guessGender(p ? p.name : "");
 }

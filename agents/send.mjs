@@ -25,13 +25,21 @@ export function pickCoaches(users, ids, to) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { to, text, quiet, resume } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
-  const silent = String(quiet) === "true", back = String(resume) === "true";
-  if (!silent && !back && !String(text || "").trim()) throw new Error("missing text");
+  const { to, text, quiet, resume, gender } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
+  const silent = String(quiet) === "true", back = String(resume) === "true", sex = ["f", "m"].includes(gender) ? gender : "";
+  if (!silent && !back && !sex && !String(text || "").trim()) throw new Error("missing text");
   const { firestore, loadAll } = await import("./lib/firebase.mjs");
   const { randomUUID } = await import("node:crypto");
   const admin = (await import("firebase-admin")).default;
   const db = firestore();
+  // מין של שחקן, כמו הכפתור באפליקציה (setPlayerGender). שם מלא בלבד, ושחקן אחד פעיל בדיוק
+  if (sex) {
+    const hits = (await loadAll(db, "players")).filter((p) => !p.deleted && p.isActive && p.name === String(to || "").trim());
+    if (hits.length !== 1) throw new Error(`gender: name matches ${hits.length} players (need exactly 1)`);
+    await db.collection("players").doc(hits[0].id).set({ gender: sex }, { merge: true });
+    console.log("gender: 1 player updated");
+    process.exit(0);
+  }
   const groups = (await loadAll(db, "groups")).filter((g) => !g.deleted && g.isActive !== false);
   const ids = [
     ...((await db.collection("agentReports").doc("coaches").get()).data()?.ids || []),

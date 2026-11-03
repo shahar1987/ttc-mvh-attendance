@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { plan, parseMarks, welcomeText, CUTOFF } from "./autosend.mjs";
+import { absenceTemplate, renderTemplate, TEMPLATES } from "./templates.mjs";
 
 const groups = [
   { id: "g1", name: "מתחילים", days: [0, 4], startTime: "16:30" },
@@ -12,7 +13,7 @@ const anchor = (date, groupId = "g1") => A("_anchor", date, "Present", groupId);
 const today = "2026-10-29"; // חמישי
 
 test("absence today: one message to the parent, in the app's wording", () => {
-  const r = plan({ players: [P("a"), P("b", { parentPhone: "" })], groups, attendance: [A("a", today, "Absent"), A("b", today, "Absent"), anchor(today)], cancellations: [] }, today);
+  const r = plan({ players: [P("a", { gender: "m" }), P("b", { parentPhone: "" })], groups, attendance: [A("a", today, "Absent"), A("b", today, "Absent"), anchor(today)], cancellations: [] }, today);
   assert.equal(r.messages.length, 1);
   assert.equal(r.messages[0].key, `absence:${today}:g1:a`);
   assert.equal(r.messages[0].to, "972501234567");
@@ -30,11 +31,25 @@ test("nothing before the cutoff, nothing already sent", () => {
 });
 
 test("welcome only for players who joined since the cutoff, adults addressed directly", () => {
-  const r = plan({ players: [P("old"), P("new", { joinDate: today, parentName: "רונית כהן" }), P("ad", { groupId: "g2", name: "יעל לוי", joinDate: CUTOFF }), P("sent", { joinDate: today, welcomeSentAt: "x" })], groups, attendance: [], cancellations: [] }, today);
+  const r = plan({ players: [P("old"), P("new", { joinDate: today, parentName: "רונית כהן", gender: "m" }), P("ad", { groupId: "g2", name: "יעל לוי", joinDate: CUTOFF }), P("sent", { joinDate: today, welcomeSentAt: "x" })], groups, attendance: [], cancellations: [] }, today);
   assert.deepEqual(r.messages.map((m) => m.key), [`welcome:${today}:g1:new`, `welcome:${CUTOFF}:g2:ad`]);
   assert.match(r.messages[0].text, /^היי רונית, איזה כיף! 🏓\nשמחים שדני new הצטרף לקבוצת מתחילים, והשולחן כבר מחכה לו/);
   assert.match(r.messages[0].text, /בימי ראשון וחמישי ב-16:30/);
   assert.match(r.messages[1].text, /^היי יעל, ברוכים הבאים למועדון! 🏓\nשמחים שהצטרפת לקבוצת מבוגרים דפנה/);
+});
+
+test("no recorded gender: neutral text, never a guess", () => {
+  const t = welcomeText({ name: "יהב לוי" }, groups[0]);
+  assert.match(t, /שמחים לקבל את יהב לוי לקבוצת מתחילים, והשולחן כבר מחכה\./);
+  assert.doesNotMatch(t, /הצטרף|מחכה לו|מחכה לה/);
+  const item = { adult: false, genderKnown: false, gender: "m", playerName: "יהב לוי", whenText: "היום" };
+  const a = absenceTemplate({ ...item, kind: "absence" });
+  assert.match(renderTemplate(a.name, a.params), /^שלום, לא ראינו את יהב לוי באימון היום\./);
+  const r = absenceTemplate({ ...item, kind: "repeat" });
+  assert.match(renderTemplate(r.name, r.params), /^שלום, לא ראינו את יהב לוי בשני האימונים האחרונים\./);
+  const f = absenceTemplate({ ...item, kind: "absence", genderKnown: true, gender: "f" });
+  assert.match(renderTemplate(f.name, f.params), /בתכם יהב לוי לא הגיעה/);
+  assert.doesNotMatch(JSON.stringify(TEMPLATES), /neutral_/, "לא נשלח ל-Meta");
 });
 
 test("welcome text for a girl", () => {

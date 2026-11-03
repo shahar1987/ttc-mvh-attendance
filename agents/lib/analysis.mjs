@@ -4,7 +4,7 @@
 // (pendingAbsenceMsgs, absenceAlerts, lastTwoAbsences ב-part-a.js), כדי שהסוכן
 // והמאמנים יראו את אותה רשימה ואף הורה לא יקבל שתי הודעות על אותה היעדרות.
 // "סכנת נשירה" חדש, ומוגדר ב-dropoutRisk למטה.
-import { playerGender } from "./gender.mjs";
+import { playerGender, knownGender } from "./gender.mjs";
 
 export function addDays(date, n) {
   const d = new Date(date + "T00:00:00Z");
@@ -192,6 +192,7 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
     groupName: g ? g.name || "" : "",
     adult: isAdultGroup(g),
     gender: playerGender(p),
+    genderKnown: !!knownGender(p),
     phone: isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "",
     whenText: whenText(date, today),
     ...extra,
