@@ -32,13 +32,13 @@ test("nothing before the cutoff, nothing already sent", () => {
 test("welcome only for players who joined since the cutoff, adults addressed directly", () => {
   const r = plan({ players: [P("old"), P("new", { joinDate: today, parentName: "רונית כהן" }), P("ad", { groupId: "g2", name: "יעל לוי", joinDate: CUTOFF }), P("sent", { joinDate: today, welcomeSentAt: "x" })], groups, attendance: [], cancellations: [] }, today);
   assert.deepEqual(r.messages.map((m) => m.key), [`welcome:${today}:g1:new`, `welcome:${CUTOFF}:g2:ad`]);
-  assert.match(r.messages[0].text, /^היי רונית, שמחים שדני new הצטרף לקבוצת מתחילים/);
+  assert.match(r.messages[0].text, /^היי רונית, איזה כיף! 🏓\nשמחים שדני new הצטרף לקבוצת מתחילים, והשולחן כבר מחכה לו/);
   assert.match(r.messages[0].text, /בימי ראשון וחמישי ב-16:30/);
-  assert.match(r.messages[1].text, /^היי יעל, שמחים שהצטרפת לקבוצת מבוגרים דפנה/);
+  assert.match(r.messages[1].text, /^היי יעל, ברוכים הבאים למועדון! 🏓\nשמחים שהצטרפת לקבוצת מבוגרים דפנה/);
 });
 
 test("welcome text for a girl", () => {
-  assert.match(welcomeText({ name: "נועה לוי", gender: "f" }, groups[0]), /שנועה לוי הצטרפה/);
+  assert.match(welcomeText({ name: "נועה לוי", gender: "f" }, groups[0]), /שנועה לוי הצטרפה לקבוצת .*מחכה לה/);
 });
 
 test("marks: only well-formed id keys pass", () => {
