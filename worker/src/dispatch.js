@@ -6,6 +6,7 @@
 //   sync-payments.yml — "רענון עכשיו" באפליקציה (system/paymentSyncRequest ממתין)
 //   admin-tools.yml   — משימות ניהול ממתינות (adminTasks עם status=pending)
 //   board-members.yml / gameday.yml — הפורטל, כל רבע שעה / כל שעה (סעיף 4)
+//   agents.yml (autosend)  — הודעות להורים כל ערב (dispatchEvening). 3.11: ה-cron של GitHub רץ פעם בשעות
 const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "autosend"]);
 
 async function dispatch(env, workflow, inputs) {
@@ -92,6 +93,32 @@ export async function dispatchWorkflows(env, store) {
 }
 
 // ❌ ריצות שנכשלו ב-GitHub — נבדק כאן כל רבע שעה, כי GitHub מדלג על רוב הריצות המתוזמנות של המפקח השעתי.
+// ראשון עד שישי, 20:40 עד 22:59 שעון ישראל, פעם בשעה. אותן שעות כמו ה-cron של agents.yml, שנשאר כגיבוי:
+// הנעילה והיומן ב-autosend.mjs מונעים שליחה כפולה.
+export function eveningSlot(now) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jerusalem", hourCycle: "h23", weekday: "short", hour: "numeric", minute: "numeric" }).formatToParts(new Date(now)).map((x) => [x.type, x.value]));
+  return p.weekday !== "Sat" && +p.hour >= 20 && +p.hour <= 22 && +p.minute >= 40;
+}
+
+export async function dispatchEvening(env, store, now = Date.now()) {
+  if (!env.GH_DISPATCH_TOKEN || !eveningSlot(now)) return "not now";
+  let previous, due = false;
+  await store.update("agentReports/bot", (bot) => { // כתיבה מותנית: Cloudflare מריץ לפעמים את אותו cron פעמיים
+    const sent = bot.dispatched || {};
+    previous = sent.autosend || null;
+    due = now - (Date.parse(previous || "") || 0) >= 50 * 6e4;
+    return due ? { dispatched: { ...sent, autosend: new Date(now).toISOString() } } : null;
+  });
+  if (!due) return "already";
+  try {
+    await dispatch(env, "agents.yml", { agent: "autosend", evening: "true" });
+  } catch (e) {
+    await store.update("agentReports/bot", (bot) => ({ dispatched: { ...(bot.dispatched || {}), autosend: previous } })); // ינסה שוב ברבע השעה הבא
+    throw e;
+  }
+  return "autosend";
+}
+
 // הריפו ציבורי, אז אין צורך בטוקן (אם יש GH_DISPATCH_TOKEN — משתמשים בו בשביל מכסת בקשות גבוהה יותר).
 // מחזיר שורה לכל ריצה שעוד לא דווחה, ואת כל הריצות שנכשלו ב-6 השעות האחרונות (ids) לסימון אחרי השליחה.
 export async function failedRuns(env, store) {
