@@ -185,16 +185,19 @@ export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRe
     },
     async ask_claude({ request }) {
       // לקלוד יש גישה למייל ולדרייב — בקשה שלא נשמעת כמו מה שהבעלים כתב צריכה "כן" נפרד
-      // "כן" על הודעה שהבקשה הופיעה בה במילים האלה: הוא כבר ראה אותה, בלי שאלה שנייה (3.11: 4 פעמים ביומיים)
-      const seen = ownerWrote(request, ownerRecent) || (APPROVAL.test(lastOwnerText) && ownerWrote(request, lastReply));
-      const shown = seen ? null : await approvedShown(store, "claude", lastOwnerText, turn);
-      if (shown) request = shown.request;
-      else if (!seen && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
+      // המודל מרחיב את הבקשה, ואז "מה ביומן מחר?" נתקע על שאלת אישור (3.11). לכן לא מאשרים את הנוסח שלו אלא עוקפים אותו:
+      // יוצא רק מה שהבעלים אמר או ראה, ככה תוכן חיצוני בהיסטוריה לא יכול להוסיף כלום לבקשה
+      const approved = APPROVAL.test(lastOwnerText);
+      const words = (String(lastOwnerText).match(/[\p{L}\p{N}]{2,}/gu) || []).length;
+      const authored = ownerWrote(request, ownerRecent);
+      if (!authored && approved && /קלוד|להעביר/.test(lastReply)) request = String(lastReply).split("\n").filter((l) => !/^(\d\. |\[מערכת)/.test(l)).join("\n").trim();
+      else if (!authored && !approved && words >= 3) request = String(lastOwnerText).slice(0, 1500);
+      else if (!authored && !(await approvedShown(store, "claude", lastOwnerText, turn).then((s) => s && (request = s.request))) && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
         return `לא הועבר עדיין. להציג לבעלים את הבקשה ("${String(request).slice(0, 120)}") ולשאול אם להעביר לקלוד. אחרי "כן" — לקרוא שוב עם אותה בקשה בדיוק.`;
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
       // said: מה שהוא אמר בפועל. המודל מנסח מחדש, וב-3.11 בדיקה שביקש הפכה לשלוש טיוטות לדוגמה
-      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, ...(ownerWrote(request, ownerRecent) ? {} : { said: String(ownerRecent).slice(-1500) }), inboxStatus: "open" });
+      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, ...(authored ? {} : { said: String(ownerRecent).slice(-1500) }), inboxStatus: "open" });
       if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע אליך בוואטסאפ בעוד דקה-שתיים.";
       const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע אליך בוואטסאפ.";
       // קישור ההפעלה המיידית נשלח לכל היותר פעם ביום, כדי לא לנדנד בכל בקשה
