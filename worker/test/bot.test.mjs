@@ -1304,21 +1304,6 @@ geminiQueue.push([{ text: "בלי תור" }]);
 await webhook("התור נפל", env.OWNER_PHONE, "q2");
 assert.equal(texts().at(-1), "בלי תור", "תור שנכשל — עונים ישירות");
 delete env.MESSAGES;
-// רמת כורזים → שולה מציעה להעביר לדניאל; לא שואלת כשאין כורזים או כשדניאל כבר מוזכר
-{
-  const { offerKorazim, KORAZIM_ASK } = await import("../src/messages.js");
-  assert.ok(offerKorazim("באימון ברמת כורזים לצלם ילדים").endsWith(KORAZIM_ASK));
-  assert.equal(offerKorazim("האימון בשאר ישוב בוטל"), "האימון בשאר ישוב בוטל");
-  assert.equal(offerKorazim("נשלח לדניאל ✓ (רמת כורזים)"), "נשלח לדניאל ✓ (רמת כורזים)");
-  const absence = "הכנתי את הודעות ההיעדרות עבור:\n3. עמית (מתחילים רמת כורזים)\n\nלהכין קישורים?";
-  assert.equal(offerKorazim(absence), absence);
-  assert.equal(offerKorazim("3. עמית (רמת כורזים): wa.me/972500000000"), "3. עמית (רמת כורזים): wa.me/972500000000");
-  const toDaniel = "לדניאל: \"יש אצלך ברמת כורזים שחקנים שנעדרו\"";
-  assert.equal(offerKorazim(`${toDaniel} ↪️ זה קשור לרמת כורזים. להעביר לדניאל? (הסבר)\n\nלשלוח?`), `${toDaniel}\n\nלשלוח?`, "שאלה שהמודל כתב נמחקת");
-  const own = "רעי (רמת כורזים), להורה. להכין קישורים?\n\n1. כן\n2. לא";
-  assert.equal(offerKorazim(own), own, "שולה כבר שואלת 1/2 — בלי שאלה שנייה");
-  assert.equal(offerKorazim(`משימה ברמת כורזים\n\n${KORAZIM_ASK}`), `משימה ברמת כורזים\n\n${KORAZIM_ASK}`, "לא כפול");
-}
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
@@ -1476,10 +1461,6 @@ console.log("buttons ok");
   assert.equal(await sendText({ token: "t", phoneId: "1" }, "1", "לשלוח?\n1. כן\n2. לא"), "w1", "Meta דחתה את המזהה — נשלח כפתור רגיל");
   assert.equal(ids[1], "כן");
   globalThis.fetch = real;
-
-  const { offerKorazim } = await import("../src/messages.js");
-  const open = "יש משימה ברמת כורזים. להעביר לקלוד?";
-  assert.equal(offerKorazim(open), open, "הודעה ששואלת שאלה — בלי שאלת העברה שנייה");
 }
 console.log("tapped question ok");
 

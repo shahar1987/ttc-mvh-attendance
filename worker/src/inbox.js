@@ -5,7 +5,6 @@
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { outboxMap } from "./queue.js";
-import { offerKorazim } from "./messages.js";
 import { approvedShown, confirmed, ownerWrote } from "./tools.js";
 import { recordCard, closeTap, PLAN_KEY } from "./open.js";
 
@@ -105,7 +104,7 @@ export async function inboxRoute(req, env, store, wa) {
   const { id, answer, notify, buttons, reply_to } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
-    const text = Array.isArray(buttons) ? String(notify).slice(0, 3500) : offerKorazim(String(notify).slice(0, 3500));
+    const text = String(notify).slice(0, 3500);
     const isPlan = text.includes(PLAN_HEADER);
     const sent = new Date().toISOString();
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), claude: { at: sent, text } }, ...(isPlan ? { plan: { at: sent, text } } : {}) }));
@@ -120,7 +119,7 @@ export async function inboxRoute(req, env, store, wa) {
   const at = new Date().toISOString();
   await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
   if (item.silent) return Response.json({ ok: true }); // הפעלה שקטה (לחיצת כפתור) — אין מה לבשר לבעלים
-  const text = offerKorazim(`📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`);
+  const text = `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`;
   // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה).
   // בהיסטוריה זה נכנס כתוכן חיצוני בתפקיד user — לא כאילו שולה אמרה את זה, וההוראות שבו לא מחייבות אותה.
   await store.update("agentReports/bot", (cur) => ({

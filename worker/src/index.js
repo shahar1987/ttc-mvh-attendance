@@ -12,7 +12,7 @@ import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stal
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply, queueTap } from "./inbox.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, offerKorazim, KORAZIM_ASK } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
@@ -63,7 +63,6 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message ולהעביר לו בדיוק מה שחזר. למאמנים (לפי שם, או "מאמנים" לכולם) את שולחת בעצמך מהמספר שלך, ואחר כך אומרת לו מי קיבל. אם הוא הכתיב נוסח ("תשלחי לדור: ...") — שולחים מיד. אם ביקש שתנסחי ("תגידי למאמנים ש...") — קודם להראות לו את הנוסח ולמי, לשאול "לשלוח?", ולשלוח רק אחרי "כן". להורים ולמספרים אחרים חוזרים קישורים, כל אחד בשורה, והוא לוחץ "שלח". לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
 "שלח"/"כן"/"אשר" לבד כשהפעולה האחרונה שביקש כבר בוצעה (ואין שאלה פתוחה שלך שמחכה לתשובה) — לא לבצע שוב ולא לפתוח נושא אחר: לענות בשורה אחת מה כבר נשלח ולמי, ולשאול "התכוונת למשהו אחר?".
-רמת כורזים — דניאל מנהל אותה: השאלה "${KORAZIM_ASK.split("\n")[0]}" מתווספת לתשובות שלך אוטומטית — לא לכתוב אותה בעצמך. רק אחרי "כן" שלו לשאלה הזאת — send_message עם to ["דניאל"] ונוסח קצר שפונה לדניאל, רק עם החלק של רמת כורזים. בלי "כן" לא שולחים לדניאל.
 תזכורות לבעלים עצמו ("תזכירי לי", "תשלחי לי התראה ב-"): לקרוא ל-remind_me מיד ולהעביר לו מה שהכלי החזיר. אין לך דרך אחרת להזכיר לו — בלי הכלי לא לכתוב "שמרתי"/"אזכיר לך".
 מדריכים (coach_access): כשהבעלים מבקש "תפעילי את שולה ל..." — לקרוא ל-coach_access ולהעביר לו מה שחזר, כולל הצעדים ב-Meta. מדריך מופעל מדבר איתך בשיחה נפרדת ורואה רק את הקבוצות שלו.
 כשהבעלים מבקש להפסיק לשלוח למאמן הודעות (בוקר טוב, תזכורות, סיכומי אימון — למשל מאמן מחליף) — coach_messages עם on=false; להחזיר — on=true.
@@ -347,8 +346,7 @@ async function handle(m, env) {
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer: raw, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m));
-    const answer = offerKorazim(raw);
+    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m));
     at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
@@ -646,7 +644,7 @@ export async function deliverOutbox(env, store, wa) {
             ok.push(keyOf(x));
             continue;
           }
-          text = offerKorazim(raw);
+          text = raw;
           const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: x.template || "agent_alert", templateParam: String(x.templateParam || text.split("\n")[0]).replace(/\s+/g, " ").slice(0, 900) });
           if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
           x.how = how;
