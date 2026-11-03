@@ -1,5 +1,5 @@
 // 🎯 מבחן שיחות: מקרים אמיתיים מהיומן של שולה (בשמות בדויים) מול המודל האמיתי. כך "חכמה יותר" נמדד ולא מורגש.
-// רץ ב-.github/workflows/shula-replay.yml, בכל שינוי בשולה ובהפעלה ידנית. עולה סנטים מקרדיט ה-API.
+// רץ ב-.github/workflows/shula-replay.yml ידנית או כשהמבחן משתנה. צורך סנטים מקרדיט ה-API החודשי, בלי הוצאה נוספת.
 // מקומית: ANTHROPIC_API_KEY=... node test/replay.mjs
 // בלי רשת חוץ מהמודל: Firestore בזיכרון, ושליחות וואטסאפ נרשמות ולא יוצאות.
 import { appendFileSync } from "node:fs";
@@ -71,6 +71,7 @@ async function run(c) {
   if (c.sent !== undefined && sent.length !== c.sent) bad.push(`יצאו ${sent.length} הודעות במקום ${c.sent}`);
   if (c.asked !== undefined && asks.length !== c.asked) bad.push(`${asks.length} בקשות לקלוד במקום ${c.asked}`);
   if (c.askedHas && !asks.some((a) => c.askedHas.test(`${a.request} ${a.said || ""}`))) bad.push("המילים שלו לא הגיעו לקלוד");
+  if (bad.length) console.log(`✗ ${c.name} | ${used.join(",")} | ${asks.length} | ${JSON.stringify(sent.map((m) => m.to))} | ${asks[0]?.request?.slice(0, 120) || ""} | ${answer.replace(/\s+/g, " ").slice(0, 260)}`);
   return { bad, answer, used };
 }
 

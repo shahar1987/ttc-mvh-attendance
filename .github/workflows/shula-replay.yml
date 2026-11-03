@@ -1,9 +1,10 @@
 name: Shula replay
 
 # 🎯 מקרים אמיתיים מהיומן של שולה מול המודל האמיתי (worker/test/replay.mjs). הציון מופיע בסיכום הריצה.
+# רץ רק כשהמבחן עצמו משתנה או ידנית: כל ריצה צורכת סנטים מקרדיט ה-API החודשי, בלי הוצאה נוספת.
 on:
   pull_request:
-    paths: ["worker/src/**", "worker/test/replay.mjs", "agents/lib/whatsapp.mjs"]
+    paths: ["worker/test/replay.mjs"]
   workflow_dispatch:
 
 permissions:
