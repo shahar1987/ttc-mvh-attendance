@@ -1204,6 +1204,28 @@ await assert.rejects(dispatchWorkflows(genv, store), /GitHub dispatch agents\.ym
 globalThis.ghFail = false;
 assert.deepEqual(bot().requests, ["ideas"], "נכשל — חוזר לתור");
 
+// הודעות להורים: ה-worker מפעיל בערב, פעם בשעה, גם כשה-cron של GitHub מתעכב
+const { dispatchEvening, eveningSlot } = await import("../src/dispatch.js");
+const il = (s) => Date.parse(s); // 3.11.2026 יום שלישי, 20:45Z = 22:45 שעון ישראל
+assert.equal(eveningSlot(il("2026-11-03T18:45:00Z")), true);
+assert.equal(eveningSlot(il("2026-11-03T20:45:00Z")), true);
+assert.equal(eveningSlot(il("2026-11-03T18:30:00Z")), false, "לפני 20:40");
+assert.equal(eveningSlot(il("2026-11-03T21:00:00Z")), false, "23:00");
+assert.equal(eveningSlot(il("2026-11-07T18:45:00Z")), false, "שבת");
+assert.equal(eveningSlot(il("2026-11-06T18:45:00Z")), true, "שישי");
+assert.equal(await dispatchEvening(env, store, il("2026-11-03T18:45:00Z")), "not now", "בלי טוקן");
+put("agentReports/bot", {});
+dispatches.length = 0;
+assert.equal(await dispatchEvening(genv, store, il("2026-11-03T12:00:00Z")), "not now");
+assert.equal(await dispatchEvening(genv, store, il("2026-11-03T18:45:00Z")), "autosend");
+assert.deepEqual(dispatches.map((d) => d.body), [{ ref: "main", inputs: { agent: "autosend", evening: "true" } }]);
+assert.equal(await dispatchEvening(genv, store, il("2026-11-03T18:50:00Z")), "already", "cron כפול לא מפעיל פעמיים");
+globalThis.ghFail = true;
+await assert.rejects(dispatchEvening(genv, store, il("2026-11-03T19:45:00Z")), /GitHub dispatch/);
+globalThis.ghFail = false;
+assert.equal(await dispatchEvening(genv, store, il("2026-11-03T20:00:00Z")), "not now");
+assert.equal(await dispatchEvening(genv, store, il("2026-11-03T19:50:00Z")), "autosend", "נכשל — מנסה שוב ברבע השעה הבא");
+
 // 4ב. cron כל רבע שעה: חלק שנכשל לא עוצר את האחרים, והשגיאה נרשמת ב-lastCronError
 put("agentReports/bot", { outboxQueue: [{ id: "o4", from: "supervisor", at: "2026-10-05T07:00:00.000Z", text: "🛡️ בדיקה" }] });
 globalThis.ghFail = true;

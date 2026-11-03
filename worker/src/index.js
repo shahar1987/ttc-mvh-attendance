@@ -14,7 +14,7 @@ import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures,
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, staleTasks, planReply, queuePlanReply, queueTap } from "./inbox.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
-import { dispatchWorkflows, failedRuns } from "./dispatch.js";
+import { dispatchEvening, dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
 import { joinRoute } from "./join.js";
 import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
@@ -719,6 +719,7 @@ async function everyQuarter(env) {
     deliverOutbox(env, store, wa),
     dailyDashboard(env, store, ORIGIN || env.PUBLIC_URL, (text) => tell(store, wa, "dashboard", text, "הדשבורד התעדכן")),
     dispatchWorkflows(env, store),
+    dispatchEvening(env, store),
     failedRuns(env, store).then(async ({ lines, ids }) => {
       if (lines.length) await tell(store, wa, "github", `❌ *נכשל ב-GitHub:*\n${lines.join("\n")}`, `נכשל ב-GitHub: ${summary(lines)}`);
       if (ids) await store.merge("agentReports/bot", { reportedRuns: ids });

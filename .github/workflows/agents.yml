@@ -30,6 +30,10 @@ on:
         description: "איזה סוכן להריץ"
         type: choice
         options: [scan, bugcheck, ideas, supervisor, content, insights, weekly, diag, autosend]
+      evening:
+        description: "autosend: הריצה הקבועה של הערב (מה-worker), לא בקשה של שלום"
+        type: boolean
+        default: false
       preview:
         description: "weekly: רק תצוגה מקדימה לבעלים, בלי לשלוח למדריכים"
         type: boolean
@@ -165,7 +169,7 @@ jobs:
         working-directory: agents
         env:
           WA_SENDER_TOKEN: ${{ secrets.WA_SENDER_TOKEN }}
-          AUTOSEND_REQUESTED: ${{ github.event.schedule != '41 17-20 * * 0-5' && '1' || '0' }}
+          AUTOSEND_REQUESTED: ${{ (github.event.schedule == '41 17-20 * * 0-5' || inputs.evening) && '0' || '1' }}
         run: node autosend.mjs run
 
       - name: 🛡️ Supervisor
