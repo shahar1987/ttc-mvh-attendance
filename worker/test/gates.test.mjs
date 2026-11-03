@@ -61,6 +61,44 @@ console.log("gates ok");
   console.log("real-mistake regressions ok");
 }
 
+// סגירת מעגל: "הופעל" לא נחשב "בוצע". תוצאה סוגרת, כישלון מגיע לבעלים, ושתיקה מתריעה פעם אחת
+{
+  const { queueTap, inboxRoute, sha256, staleTasks } = await import("../src/inbox.js");
+  const docs = { "agentReports/open": { items: [{ key: "מוח 7", ids: ["מוח 7", "מוח לא 7"], title: "הודעה על הכדורים" }] } };
+  const store = {
+    get: async (k) => docs[k] || null,
+    merge: async (k, x) => void (docs[k] = { ...docs[k], ...x }),
+    update: async (k, f) => void (docs[k] = { ...docs[k], ...(f(docs[k] || {}) || {}) }),
+    where: async (_, f, v) => Object.entries(docs).filter(([, d]) => d[f] === v).map(([k, d]) => ({ id: k.split("/")[1], ...d })),
+  };
+  const out = [];
+  globalThis.fetch = async (_, o) => (out.push(JSON.parse(o.body)), new Response(JSON.stringify({ messages: [{ id: "w" }] })));
+  const env = { INBOX_KEY_SHA256: await sha256("key") };
+  const post = (b) => inboxRoute(new Request("https://x/inbox?k=key", { method: "POST", body: JSON.stringify(b) }), env, store, { token: "t", phoneId: "1", owner: "1" });
+  const id = () => Object.keys(docs).find((k) => k.includes("ask_"));
+  await queueTap(env, store, "מוח 7");
+  await post({ id: id().split("ask_")[1], answer: "הופעל" });
+  assert.equal(docs[id()].inboxStatus, "waiting", "הופעל עדיין לא בוצע");
+  const hour = new Date(Date.parse(docs[id()].at) + 2 * 3600e3).setMinutes(5);
+  assert.deepEqual(await staleTasks(store, Date.parse(docs[id()].at) + 1000), [], "עוד לא עבר הזמן");
+  assert.deepEqual(await staleTasks(store, hour), ["• הודעה על הכדורים"], "שתיקה מתריעה");
+  assert.deepEqual(await staleTasks(store, hour), [], "פעם אחת");
+
+  docs[id()].inboxStatus = "waiting";
+  assert.equal((await (await post({ task_result: "מוח 7", ok: true })).json()).closed, 1);
+  assert.equal(docs[id()].inboxStatus, "done");
+  assert.equal(out.length, 0, "הצלחה שקטה");
+
+  docs[id()].inboxStatus = "waiting";
+  await post({ task_result: "מוח 7", ok: false, note: "אין מספר" });
+  assert.equal(docs[id()].inboxStatus, "failed");
+  assert.match(JSON.stringify(out), /הודעה על הכדורים.*לא בוצע: אין מספר/, "כישלון מגיע לבעלים");
+
+  await queueTap(env, store, "פרסום 9");
+  assert.equal(Object.values(docs).at(-1).tap, undefined, "משימות שעוד לא מדווחות לא במעקב");
+  console.log("closed loop ok");
+}
+
 // ask_claude: "כן" על הודעה שהבקשה הופיעה בה עובר בלי שאלה שנייה, ומה שאמר הולך לקלוד במילים שלו
 {
   const { makeInboxTools, inboxRoute, sha256 } = await import("../src/inbox.js");

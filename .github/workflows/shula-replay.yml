@@ -1,0 +1,28 @@
+name: Shula replay
+
+# 🎯 מקרים אמיתיים מהיומן של שולה מול המודל האמיתי (worker/test/replay.mjs). הציון מופיע בסיכום הריצה.
+on:
+  pull_request:
+    paths: ["worker/src/**", "worker/test/replay.mjs", "agents/lib/whatsapp.mjs"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install
+        working-directory: worker
+        run: npm ci --no-audit --no-fund
+      - name: Replay
+        working-directory: worker
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node test/replay.mjs

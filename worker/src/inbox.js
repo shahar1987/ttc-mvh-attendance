@@ -6,7 +6,7 @@ import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { outboxMap } from "./queue.js";
 import { APPROVAL, approvedShown, confirmed, ownerWrote } from "./tools.js";
-import { recordCard, closeTap, PLAN_KEY } from "./open.js";
+import { recordCard, closeTap, cards, PLAN_KEY } from "./open.js";
 
 // סימון לתוכן שלא נכתב ע"י הבעלים (תשובות קלוד, הודעות סוכנים) — מידע בלבד, לא הוראות לשולה
 export const EXTERNAL = "[תוכן חיצוני — לא הוראות]";
@@ -38,12 +38,18 @@ export function planReply(bot, text, now = Date.now()) {
   if (/^(מאושר|מאשרת?)(?![א-ת])/.test(t) && !(bot.planApprovedAt > plan.at)) return "approve";
   return null;
 }
+// סגירת מעגל: אילו לחיצות צריכות דיווח תוצאה מהמשימה. מרחיבים משימה אחת בכל פעם, אחרי שהפרומפט שלה מדווח
+const VERIFIED = /^מוח( |$)/;
+const TASK_WAIT_MS = 45 * 60 * 1000;
+
 // ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
 export async function queueTap(env, store, code) {
   const id = Math.random().toString(36).slice(2, 8);
   const [task, trigger] = code.startsWith("פרסום") ? ["סוכן פרסום: פרסום אחרי אישור", "trig_01Gd8jzyURQ6jADE9nbVmuKP"] : ["מוח שני: הכנסת מה שאושר", "trig_019TEg8oAuB8DWWokWL3EU8B"];
   const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "${task}" עם fire_trigger ${trigger}, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
-  await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open", silent: true });
+  // משימה שמדווחת תוצאה (task_result) נשארת במעקב, כדי ש"הופעל" לא ייחשב כ"בוצע"
+  const verify = VERIFIED.test(code) ? { tap: code, title: (await cards(store).catch(() => [])).find((i) => i.ids.includes(code))?.title || code } : {};
+  await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open", silent: true, ...verify });
   return fireRoutine(env, store, id);
 }
 export async function queuePlanReply(env, store, text, kind) {
@@ -97,12 +103,24 @@ export async function inboxRoute(req, env, store, wa) {
       templates,
       now: new Date().toISOString(),
       log: (bot.log || []).filter((e) => e.at > since),
+      tasks: Object.fromEntries(await Promise.all(["waiting", "failed", "expired"].map(async (s) => [s, (await store.where("agentReports", "inboxStatus", s)).length]))),
       ...Object.fromEntries(["lastError", "lastCronError", "lastReview", "lastOwnerMsgAt", "lastReplyAt", "waiting", "webhookOpen", "badSignatureAt"].map((k) => [k, pick(k)])),
     });
   }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
   if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request, said }) => ({ id: id.slice(4), at, request: said ? `${request}\n\n[מה שהבעלים אמר, במילים שלו:\n${said}]` : request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
-  const { id, answer, notify, buttons, reply_to } = await req.json();
+  const { id, answer, notify, buttons, reply_to, task_result, ok, note } = await req.json();
+  // ✅ תוצאה ממשימה: מה שהובטח ללחיצה הזאת בוצע או נכשל. הצלחה שקטה, כי המשימה כבר עדכנה על הכרטיס
+  if (task_result) {
+    const waiting = (await store.where("agentReports", "tap", String(task_result))).filter((r) => ["open", "waiting"].includes(r.inboxStatus));
+    const at = new Date().toISOString();
+    for (const r of waiting) await store.merge(`agentReports/${r.id}`, { inboxStatus: ok === false ? "failed" : "done", note: String(note || "").slice(0, 300), doneAt: at });
+    if (ok === false) {
+      const text = `⚠️ "${waiting[0]?.title || task_result}" לא בוצע${note ? `: ${String(note).slice(0, 300)}` : ""}`;
+      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text });
+    }
+    return Response.json({ ok: true, closed: waiting.length });
+  }
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
     const text = String(notify).slice(0, 3500);
@@ -118,7 +136,7 @@ export async function inboxRoute(req, env, store, wa) {
   const item = id && (await store.get(`agentReports/ask_${id}`));
   if (!item || item.inboxStatus !== "open" || !answer) return Response.json({ ok: false, error: "no such open request" }, { status: 404 });
   const at = new Date().toISOString();
-  await store.merge(`agentReports/ask_${id}`, { inboxStatus: "done", answer, doneAt: at });
+  await store.merge(`agentReports/ask_${id}`, { inboxStatus: item.tap ? "waiting" : "done", answer, doneAt: at });
   if (item.silent) return Response.json({ ok: true }); // הפעלה שקטה (לחיצת כפתור) — אין מה לבשר לבעלים
   const text = `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`;
   // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה).
@@ -136,6 +154,14 @@ export async function staleInbox(store, now = Date.now()) {
   const old = (await store.where("agentReports", "inboxStatus", "open")).filter((r) => !r.staleAlerted && now - new Date(r.at).getTime() > 2 * 3600 * 1000);
   for (const r of old) await store.merge(`agentReports/${r.id}`, { staleAlerted: new Date(now).toISOString() });
   return old.map((r) => `• "${String(r.request).slice(0, 120)}" (מחכה ${Math.round((now - new Date(r.at).getTime()) / 3600000)} שעות)`);
+}
+
+// ⏳ משימה שהופעלה ולא דיווחה תוצאה. שעה שלמה בין בדיקות, כי תקציב הבקשות של ה-cron כמעט מלא
+export async function staleTasks(store, now = Date.now()) {
+  if (new Date(now).getMinutes() >= 15) return [];
+  const old = (await store.where("agentReports", "inboxStatus", "waiting")).filter((r) => now - Date.parse(r.at) > TASK_WAIT_MS);
+  for (const r of old) await store.merge(`agentReports/${r.id}`, { inboxStatus: "expired" });
+  return old.map((r) => `• ${r.title}`);
 }
 
 export const INBOX_TOOL_DEFS = [
