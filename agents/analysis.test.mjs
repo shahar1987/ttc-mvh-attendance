@@ -115,7 +115,7 @@ test("adult group and templates", () => {
   const t = absenceTemplate(r.pending[0]);
   assert.equal(t.name, "club_absence_adult");
   assert.match(renderTemplate(t.name, t.params), /^שלום תמר, ראינו שלא הגעת לאימון אתמול/);
-  const child = absenceTemplate({ ...r.pending[0], adult: false, gender: "f" });
+  const child = absenceTemplate({ ...r.pending[0], adult: false, gender: "f", genderKnown: true });
   assert.match(renderTemplate(child.name, child.params), /בתכם תמר לא הגיעה לאימון אתמול/);
   for (const [name, t] of Object.entries(TEMPLATES)) {
     assert.ok(!/^\{\{|\}\}$/.test(t.body), `${name} starts/ends with a variable`);

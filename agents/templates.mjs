@@ -68,7 +68,15 @@ export const TEMPLATES = {
 };
 
 // הפרמטרים של הודעה להורה/לשחקן, לפי סוג ההתראה. item מגיע מ-analysis.mjs.
+// בלי מין רשום באפליקציה: נוסח בלי לשון זכר או נקבה. לא נשלח דרך Meta, רק מהמספר של הבעלים, ולכן מחוץ ל-TEMPLATES
+const NEUTRAL = {
+  neutral_absence: { body: `שלום, לא ראינו את {{1}} באימון {{2}}.\nנשמח לדעת שהכל בסדר.\nנתראה באימון הבא!\n${SIGNATURE}` },
+  neutral_missed_two: { body: `שלום, לא ראינו את {{1}} בשני האימונים האחרונים.\nהכל בסדר? נשמח לדעת אם יש משהו שאפשר לעזור בו.\n${SIGNATURE}` },
+};
+
 export function absenceTemplate(item) {
+  if (!item.adult && item.genderKnown === false)
+    return item.kind === "repeat" ? { name: "neutral_missed_two", params: [item.playerName] } : { name: "neutral_absence", params: [item.playerName, item.whenText] };
   const who = item.gender === "f" ? `בתכם ${item.playerName} לא הגיעה` : `בנכם ${item.playerName} לא הגיע`;
   if (item.kind === "repeat") {
     return item.adult
@@ -82,5 +90,5 @@ export function absenceTemplate(item) {
 
 // הטקסט המלא של התבנית אחרי מילוי — כדי להראות לשולה בדיוק מה ייצא.
 export function renderTemplate(name, params) {
-  return TEMPLATES[name].body.replace(/\{\{(\d)\}\}/g, (_, i) => params[Number(i) - 1] ?? "");
+  return (TEMPLATES[name] || NEUTRAL[name]).body.replace(/\{\{(\d)\}\}/g, (_, i) => params[Number(i) - 1] ?? "");
 }

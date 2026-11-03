@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { analyze, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
-import { playerGender } from "./lib/gender.mjs";
+import { knownGender } from "./lib/gender.mjs";
 
 export const CUTOFF = "2026-10-28"; // לא שולחים על מה שקרה לפני שהאוטומציה הופעלה
 const KEY = /^(absence|repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
@@ -23,13 +23,13 @@ function daysText(days) {
 export function welcomeText(p, g) {
   const name = (p.name || "").trim(), first = name.split(/\s+/)[0];
   const parent = String(p.parentName || "").trim().split(/\s+/)[0];
-  const f = playerGender(p) === "f";
+  const gender = knownGender(p);
   const when = [daysText(g.days), g.startTime && `ב-${g.startTime}`].filter(Boolean).join(" ");
   const sched = when ? `האימונים ${when}.\n` : "";
   const end = `כל שאלה, אפשר לכתוב לי כאן.\nנתראה באימון!\nשלום, ${CLUB}`;
   return isAdultGroup(g)
     ? `היי ${first}, ברוכים הבאים למועדון! 🏓\nשמחים שהצטרפת לקבוצת ${g.name}, והשולחן כבר מחכה לך.\n${sched}${end}`
-    : `היי${parent ? " " + parent : ""}, איזה כיף! 🏓\nשמחים ש${name} ${f ? "הצטרפה" : "הצטרף"} לקבוצת ${g.name}, והשולחן כבר מחכה ${f ? "לה" : "לו"}.\n${sched}${end}`;
+    : `היי${parent ? " " + parent : ""}, איזה כיף! 🏓\n${gender ? `שמחים ש${name} ${gender === "f" ? "הצטרפה" : "הצטרף"} לקבוצת ${g.name}, והשולחן כבר מחכה ${gender === "f" ? "לה" : "לו"}` : `שמחים לקבל את ${name} לקבוצת ${g.name}, והשולחן כבר מחכה`}.\n${sched}${end}`;
 }
 
 const rows = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, ...v }));
