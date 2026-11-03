@@ -18,11 +18,11 @@ console.log("gates ok");
   const { makeTools, sameSound } = await import("../src/tools.js");
   const docs = {
     users: [
-      { id: "o", name: "אבי כרמי", role: "Admin", phone: "050-1111111" },
-      { id: "c", name: "טום לוי", role: "Coach", phone: "053-2222222" },
-      { id: "g", name: "גל שמש", role: "Viewer", phone: "053-3333333" },
+      { id: "o", name: "אבי כרמי", role: "Admin", phone: "9725000000" + "11" },
+      { id: "c", name: "טום לוי", role: "Coach", phone: "9725000000" + "22" },
+      { id: "g", name: "גל שמש", role: "Viewer", phone: "9725000000" + "33" },
     ],
-    players: [{ id: "p", name: "טום לוי", deleted: true }, { id: "k", name: "דני כהן", parentPhone: "052-4444444" }],
+    players: [{ id: "p", name: "טום לוי", deleted: true }, { id: "k", name: "דני כהן", parentPhone: "9725000000" + "44" }],
     groups: [], attendance: [], cancellations: [],
   };
   let bot = {};
@@ -35,7 +35,7 @@ console.log("gates ok");
   };
   const sent = [];
   globalThis.fetch = async (u, o) => (sent.push(JSON.parse(o.body)), new Response(JSON.stringify({ messages: [{ id: "w" }] })));
-  const wa = { token: "t", phoneId: "1", owner: "972501111111" };
+  const wa = { token: "t", phoneId: "1", owner: "9725000000" + "11" };
   const send = (text, to, msg, turn) => makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent: text }).send_message({ to, text: msg });
   const MSG = "נוסח שהמודל ניסח על המדריכים השבוע";
 
@@ -43,7 +43,7 @@ console.log("gates ok");
   assert.match(await send("כן", ["תום לוי"], MSG, "a"), /לשלוח\?/, "כתיב אחר מההקלטה מגיע למדריך, עם אישור");
   assert.match(await send("כן", ["תום לוי"], MSG, "b"), /טום לוי: נשלח משולה/);
   bot = {};
-  assert.match(await send("בדיקה מספר שהודעה אליו", ["+972 53-222-2222"], "בדיקה מספר", "d"), /טום לוי: נשלח משולה/, "מספר של מדריך נשלח ישירות, לא קישור");
+  assert.match(await send("בדיקה מספר שהודעה אליו", ["9725000000" + "22"], "בדיקה מספר", "d"), /טום לוי: נשלח משולה/, "מספר של מדריך נשלח ישירות, לא קישור");
 
   assert.match(await send("תשלחי", ["רן לוי"], MSG, "e"), /יש בצוות את טום לוי/, "שם משפחה בלבד: מציעים ולא שולחים");
   const n = sent.length;
@@ -55,7 +55,7 @@ console.log("gates ok");
   assert.match(await t.find_player({ name: "תום" }), /בצוות המועדון יש: טום לוי/, "find_player מכוון למדריך");
   assert.match(await t.find_player({ name: "גל" }), /לא נמצא שחקן/, "צופה הוא לא צוות");
 
-  const note = teamNote(docs.users, "972501111111");
+  const note = teamNote(docs.users, "9725000000" + "11");
   assert.match(note, /הוא אבי כרמי, גבר/);
   assert.match(note, /צוות המועדון באפליקציה: טום לוי\./, "הבעלים לא ברשימת הצוות");
   console.log("real-mistake regressions ok");
