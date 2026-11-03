@@ -4,9 +4,9 @@
 import { israelToday } from "../../agents/lib/analysis.mjs";
 
 const DOC = "agentReports/open";
-const CODED = /^(מוח|הודעות|הרכב)( |$)/;
+const CODED = /^(מוח|הודעות|הרכב|פרסום)( |$)/;
 // לפי מזהה ולא לפי מיקום: הכפתור השני לא אחיד בין המשימות
-const APPROVE = /^(מוח \d+|הודעות כן( \d+)?|הרכב לקבוצה|מאושר)$/;
+const APPROVE = /^(מוח \d+|הודעות כן( \d+)?|הרכב לקבוצה|פרסום \d+|מאושר)$/;
 const WEEK = 7 * 24 * 3600 * 1000;
 const CONFIRM_MS = 10 * 60 * 1000;
 export const PLAN_KEY = "מאושר";
@@ -59,6 +59,16 @@ export async function ledgerTap(store, id, bot, perform, now = Date.now()) {
   if (!list.length) return "הפריטים כבר טופלו בינתיים, ולא ביצעתי כלום.";
   for (const i of list) await perform(i.key);
   return `הועברו לביצוע ${list.length} פריטים:\n${list.map((i) => `• ${i.title}`).join("\n")}\nזה עדיין לא אומר שהם בוצעו.`;
+}
+
+// תמונה או סרטון מהבעלים לפריט פרסום. לכל כרטיס פרסום יש כפתור "פרסום לא N"; בלי כפתור "פרסום N" הכרטיס מחכה לתמונה.
+const publishN = (i) => i.ids.map((x) => /^פרסום לא (\d+)$/.exec(x)?.[1]).find(Boolean);
+const waitsPhoto = (i) => publishN(i) && !i.ids.some((x) => /^פרסום \d+$/.test(x));
+// ציטוט של כרטיס פרסום קובע. ציטוט של משהו אחר, או כיתוב בלי ציטוט, הם שיחה רגילה
+export function photoTarget(items, context, caption) {
+  if (context) return { n: publishN(items.find((i) => i.wamid === context) || { ids: [] }), waiting: [] };
+  const waiting = caption ? [] : items.filter(waitsPhoto).map((i) => ({ n: publishN(i), title: i.title }));
+  return waiting.length === 1 ? { n: waiting[0].n, waiting: [] } : { n: undefined, waiting };
 }
 
 export const openNote = (items) => (items.length ? `\n\nכרטיסים שמחכים עכשיו לבעלים (מהפנקס):\n${items.map((i) => `- ${i.title}`).join("\n")}` : "");

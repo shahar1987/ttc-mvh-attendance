@@ -15,7 +15,7 @@ const GRAPH = "https://graph.facebook.com/v24.0";
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,read_insights,instagram_basic,instagram_content_publish,instagram_manage_insights,business_management";
 export const metaLink = async (store, origin) => `${origin}/meta/start?k=${await issueKey(store, "meta")}`;
 export const metaPermanentLink = async (store, origin) => `${origin}/meta/permanent?k=${await issueKey(store, "metaperm")}`;
-const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?t=${await sign(env, `media:${id}`)}`;
+export const mediaUrl = async (env, origin, id) => `${origin}/meta/media/${id}?t=${await sign(env, `media:${id}`)}`;
 
 // /meta/start, /meta/callback, /meta/media/<id של תמונה מהוואטסאפ> (כדי שאינסטגרם תוכל להוריד אותה)
 export async function metaRoute(req, env, store) {

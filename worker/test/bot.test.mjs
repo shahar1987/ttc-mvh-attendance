@@ -1464,6 +1464,46 @@ console.log("buttons ok");
 }
 console.log("tapped question ok");
 
+// 3.11: כרטיס פרסום לכל פריט. כפתורים, עריכת נוסח ותמונה מהוואטסאפ מגיעים ליומן ומפעילים את משימת הפרסום
+{
+  const { photoTarget } = await import("../src/open.js");
+  const wait = { key: "פרסום לא 5", ids: ["פרסום לא 5"], title: "דרבי", wamid: "c5" };
+  const wait2 = { key: "פרסום לא 6", ids: ["פרסום לא 6"], title: "תייגו חבר", wamid: "c6" };
+  const ready = { key: "פרסום 9", ids: ["פרסום 9", "פרסום שינוי 9", "פרסום לא 9"], title: "להורים", wamid: "c9" };
+  const brain = { key: "מוח 2", ids: ["מוח 2", "מוח לא 2"], title: "x", wamid: "b" };
+  assert.equal(photoTarget([wait, ready], undefined, "").n, "5", "כרטיס אחד מחכה לתמונה, והיא נכנסת אליו בלי ציטוט");
+  assert.equal(photoTarget([wait, ready], "c9", "").n, "9", "ציטוט מחליף תמונה גם בפוסט מוכן");
+  assert.equal(photoTarget([wait, ready], "c9", "כיתוב").n, "9", "ציטוט קובע גם עם כיתוב");
+  assert.equal(photoTarget([wait, brain], "b", "").n, undefined, "ציטוט של כרטיס אחר הוא לא פרסום");
+  assert.deepEqual(photoTarget([wait], undefined, "מה דעתך?"), { n: undefined, waiting: [] }, "כיתוב בלי ציטוט הוא שיחה");
+  assert.deepEqual(photoTarget([wait, wait2], undefined, "").waiting.map((w) => w.n), ["5", "6"], "כמה כרטיסים: שואלים");
+  assert.deepEqual(photoTarget([ready, brain], undefined, ""), { n: undefined, waiting: [] }, "אף אחד לא מחכה");
+
+  const { recordCard } = await import("../src/open.js");
+  docs.delete("agentReports/open");
+  await recordCard(store, { text: "דרבי ליגה א'\nחסרה תמונה", buttons: [{ id: "פרסום לא 5", title: "דלג" }], wamid: "c5" });
+  await recordCard(store, { text: "תייגו חבר\nחסרה תמונה", buttons: [{ id: "פרסום לא 6", title: "דלג" }], wamid: "c6" });
+  const logged = () => docs.get("agentReports/bot").log.map((e) => e.user);
+  const tap = (id, context) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", context: { id: context }, interactive: { type: "button_reply", button_reply: { id, title: "ערוך נוסח" } } });
+  await webhook("", env.OWNER_PHONE, "p1", { type: "image", image: { id: "777" } });
+  const q = sent.at(-1);
+  assert.deepEqual(q.interactive.action.buttons.map((b) => b.reply.id), ["פרסום תמונה 5", "פרסום תמונה 6"], "שתי אפשרויות: כפתורים");
+  await tap("פרסום תמונה 6", "q");
+  assert.match(logged().at(-1), /^פרסום 6 תמונה: .*\/meta\/media\/777\?t=/);
+  assert.ok(docs.get("agentReports/open").items.find((i) => i.key === "פרסום לא 6").answered, "הכרטיס נסגר");
+  assert.equal(docs.get("agentReports/bot").photoWait, null);
+  assert.ok([...docs.keys()].some((k) => k.startsWith("agentReports/ask_") && docs.get(k).request.includes("פרסום 6 תמונה") && docs.get(k).request.includes("trig_01Gd8jzyURQ6jADE9nbVmuKP")), "מפעיל את משימת הפרסום");
+  await webhook("", env.OWNER_PHONE, "p2", { type: "image", image: { id: "778" } });
+  assert.match(logged().at(-1), /^פרסום 5 תמונה: .*778/, "נשאר כרטיס אחד, נכנס בלי לשאול");
+  await tap("פרסום שינוי 9", "c9");
+  await webhook("פתיח חדש");
+  assert.deepEqual(logged().slice(-2), ["פרסום שינוי 9", "פרסום 9 נוסח: פתיח חדש"]);
+  assert.equal(docs.get("agentReports/bot").cards["פרסום 9"], "c9");
+  await tap("פרסום לא 9", "c9");
+  assert.equal(docs.get("agentReports/bot").log.at(-1).shula, "דילגתי");
+}
+console.log("publish cards ok");
+
 // 2.11: פנקס פתוחים — "מאשר הכל" מגיע לכל הכרטיסים, גם של משימות אחרות, ורק אחרי שרואים רשימה
 {
   const key = "fixedinboxkey";

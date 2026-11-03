@@ -38,10 +38,11 @@ export function planReply(bot, text, now = Date.now()) {
   if (/^(מאושר|מאשרת?)(?![א-ת])/.test(t) && !(bot.planApprovedAt > plan.at)) return "approve";
   return null;
 }
-// ⚡ לחיצה על כפתור "מוח N": מפעילים מיד את משימת האישורים דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
+// ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
 export async function queueTap(env, store, code) {
   const id = Math.random().toString(36).slice(2, 8);
-  const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "מוח שני: הכנסת מה שאושר" עם fire_trigger trig_019TEg8oAuB8DWWokWL3EU8B, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
+  const [task, trigger] = code.startsWith("פרסום") ? ["סוכן פרסום: פרסום אחרי אישור", "trig_01Gd8jzyURQ6jADE9nbVmuKP"] : ["מוח שני: הכנסת מה שאושר", "trig_019TEg8oAuB8DWWokWL3EU8B"];
+  const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "${task}" עם fire_trigger ${trigger}, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
   await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open", silent: true });
   return fireRoutine(env, store, id);
 }

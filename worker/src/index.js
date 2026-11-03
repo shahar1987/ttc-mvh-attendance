@@ -8,7 +8,7 @@ import { db } from "./firestore.js";
 import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
 import { oauthRoute } from "./google.js";
-import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink } from "./meta.js";
+import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink, mediaUrl } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply, queueTap } from "./inbox.js";
@@ -17,7 +17,7 @@ import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
 import { joinRoute } from "./join.js";
-import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, PLAN_KEY } from "./open.js";
+import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
@@ -254,11 +254,22 @@ async function handle(m, env) {
     at("קבלת ההודעה");
     await typing(wa, m.id).catch(() => {});
     let text = incomingText(m) || (m.image?.caption || "").trim();
-    // תשובה למשימה מתוזמנת (כפתור "מוח 9" / "הודעות כן" / "הרכב לקבוצה", או "✏️ לשנות" ואז הנוסח) — רק נרשמת ביומן,
+    // תשובה למשימה מתוזמנת (כפתור "מוח 9" / "פרסום 4" / "הודעות כן" / "הרכב לקבוצה", או "✏️ לשנות" ואז הנוסח) — רק נרשמת ביומן,
     // שם המשימה קוראת אותה. לא עוברת למודל, כדי ששולה לא תבצע אותה בעצמה פעם שנייה.
-    const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem.n : "";
-    const code = m.type === "interactive" && /^(מוח|הודעות|הרכב|פנקס)( |$)/.test(text);
+    const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem : null;
+    const code = m.type === "interactive" && /^(מוח|הודעות|הרכב|פנקס|פרסום)( |$)/.test(text);
+    // תמונה לפריט פרסום נכנסת ליומן עם קישור חתום, ומשימת הפרסום מורידה אותה ומכניסה לפוסט
+    const takePhoto = async (n, id) => {
+      const answer = "התמונה התקבלה · בטיפול";
+      await reply(answer);
+      const user = `פרסום ${n} תמונה: ${await mediaUrl(env, ORIGIN || bot.workerUrl, id)}`;
+      await store.update("agentReports/bot", (cur) => ({ photoWait: null, log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP) }));
+      await closeTap(store, `פרסום לא ${n}`).catch(() => {});
+      await queueTap(env, store, `פרסום ${n} תמונה`).catch(() => {});
+    };
     if (code) {
+      const pick = /^פרסום תמונה (\d+)$/.exec(text);
+      if (pick) return void (await (bot.photoWait?.id ? takePhoto(pick[1], bot.photoWait.id) : reply("התמונה כבר לא אצלי. אפשר לשלוח אותה שוב?")));
       if (staleTap(await cards(store).catch(() => []), text, m.context?.id)) return void (await reply("הכרטיס הזה ישן והוחלף בכרטיס חדש, אז לא ביצעתי כלום."));
       if (text.startsWith("פנקס")) {
         const logged = [];
@@ -266,7 +277,7 @@ async function handle(m, env) {
           logged.push({ at: now, user: key, shula: "אושר ברשימה" });
           await closeTap(store, key);
           if (key === PLAN_KEY) await queuePlanReply(env, store, PLAN_KEY, "approve");
-          else if (key.startsWith("מוח") && logged.filter((e) => e.user.startsWith("מוח")).length === 1) await queueTap(env, store, key).catch(() => {});
+          else if (/^(מוח|פרסום)/.test(key) && logged.filter((e) => e.user.split(" ")[0] === key.split(" ")[0]).length === 1) await queueTap(env, store, key).catch(() => {});
         };
         const answer = await ledgerTap(store, text, bot, perform);
         await reply(answer);
@@ -275,23 +286,35 @@ async function handle(m, env) {
       }
     }
     if (code || (edit && m.type === "text")) {
-      const shift = /^מוח שינוי (\d+)$/.exec(text);
-      const user = edit && !code ? `מוח ${edit} נוסח: ${text}` : text;
-      const n = shift?.[1] || /(\d+)$/.exec(user.split(" נוסח:")[0])?.[1];
+      const shift = /^(מוח|פרסום) שינוי (\d+)$/.exec(text);
+      const user = edit && !code ? `${edit.kind || "מוח"} ${edit.n} נוסח: ${text}` : text;
+      const n = shift?.[2] || /(\d+)$/.exec(user.split(" נוסח:")[0])?.[1];
+      const cardKey = user.startsWith("פרסום") ? `פרסום ${n}` : n; // מספרי פרסום ומוח נפרדים
       // התשובה מצטטת את הכרטיס שעליו לחץ, והמזהה שלו נשמר — כך גם "נשלח לדור" שיגיע אחר כך יופיע על אותו כרטיס
-      const card = m.context?.id || (bot.cards || {})[n];
+      const card = m.context?.id || (bot.cards || {})[cardKey];
       const title = m.interactive?.button_reply?.title || "";
-      const answer = shift ? "מה לשנות? תכתוב את הנוסח החדש" : /^מוח לא /.test(user) ? "דילגתי" : code ? `${title || "התקבל"} · בטיפול` : "הנוסח החדש התקבל · בטיפול";
+      const answer = shift ? "מה לשנות? תכתוב את הנוסח החדש" : /^(מוח|פרסום) לא /.test(user) ? "דילגתי" : code ? `${title || "התקבל"} · בטיפול` : "הנוסח החדש התקבל · בטיפול";
       await sendText(wa, m.from, answer, undefined, card).catch(() => reply(answer));
       replied = true;
       await store.update("agentReports/bot", (cur) => ({
-        editItem: shift ? { n: shift[1], at: now } : null,
-        ...(n && card ? { cards: Object.fromEntries(Object.entries({ ...(cur.cards || {}), [n]: card }).slice(-40)) } : {}),
+        editItem: shift ? { n: shift[2], kind: shift[1], at: now } : null,
+        ...(n && card ? { cards: Object.fromEntries(Object.entries({ ...(cur.cards || {}), [cardKey]: card }).slice(-40)) } : {}),
         log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP),
       }));
       if (code) await closeTap(store, text).catch(() => {});
-      if (!shift && /^מוח/.test(user)) await queueTap(env, store, user).catch(() => {});
+      if (!shift && /^(מוח|פרסום)/.test(user)) await queueTap(env, store, user).catch(() => {});
       return;
+    }
+    const sentMedia = m.image?.id || m.video?.id;
+    if (sentMedia) {
+      const { n, waiting } = photoTarget(await openCards(store).catch(() => []), m.context?.id, (m.image?.caption || m.video?.caption || "").trim());
+      if (n) return void (await takePhoto(n, sentMedia));
+      if (waiting.length) {
+        await store.merge("agentReports/bot", { photoWait: { id: sentMedia, at: now } });
+        await sendText(wa, m.from, "לאיזה פרסום התמונה?", waiting.slice(0, 3).map((w) => ({ id: `פרסום תמונה ${w.n}`, title: w.title.slice(0, 20) })));
+        replied = true;
+        return;
+      }
     }
     let media = null;
     if (m.type === "audio") {
