@@ -31,7 +31,7 @@ function memoryStore() {
 
 const said = (user, assistant) => [{ role: "user", text: user, owner: user }, { role: "assistant", text: assistant }];
 const CASES = [
-  { name: "כתיב אחר של מדריך", text: "תשלחי לתאו לוי: האימון מחר מתקיים", tools: ["send_message"], sent: 1 },
+  { name: "כתיב אחר של מדריך", text: "תשלחי לתום לוי: האימון מחר מתקיים", tools: ["send_message"], sent: 1 },
   { name: "שם מדריך מהקלטה", text: "🎤 תום לוי המדריך שלי, תבקשי ממנו כמה מילים על הרקע שלו", avoid: /לא מצאתי|לא נמצא במערכת/ },
   { name: "מספר של מדריך", history: said("תנסחי לטום בקשה לפרטים", 'הנוסח: "היי טום, אשמח לכמה מילים על הרקע שלך". לשלוח?'), text: COACH, avoid: /wa\.me|לא מופיע|לא שם/ },
   { name: "מי זה הבעלים", text: "מי זה אבי כרמי?", expect: /אתה/ },
