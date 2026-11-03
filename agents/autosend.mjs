@@ -25,10 +25,11 @@ export function welcomeText(p, g) {
   const parent = String(p.parentName || "").trim().split(/\s+/)[0];
   const f = playerGender(p) === "f";
   const when = [daysText(g.days), g.startTime && `ב-${g.startTime}`].filter(Boolean).join(" ");
-  const sched = when ? `האימונים ${when}. ` : "";
+  const sched = when ? `האימונים ${when}.\n` : "";
+  const end = `כל שאלה, אפשר לכתוב לי כאן.\nנתראה באימון!\nשלום, ${CLUB}`;
   return isAdultGroup(g)
-    ? `היי ${first}, ${f ? "שמחים שהצטרפת" : "שמחים שהצטרפת"} לקבוצת ${g.name} 🏓\n${sched}כל שאלה, אפשר לכתוב לי כאן.\nנתראה באימון!\nשלום, ${CLUB}`
-    : `היי${parent ? " " + parent : ""}, שמחים ש${name} ${f ? "הצטרפה" : "הצטרף"} לקבוצת ${g.name} 🏓\n${sched}כל שאלה, אפשר לכתוב לי כאן.\nנתראה באימון!\nשלום, ${CLUB}`;
+    ? `היי ${first}, ברוכים הבאים למועדון! 🏓\nשמחים שהצטרפת לקבוצת ${g.name}, והשולחן כבר מחכה לך.\n${sched}${end}`
+    : `היי${parent ? " " + parent : ""}, איזה כיף! 🏓\nשמחים ש${name} ${f ? "הצטרפה" : "הצטרף"} לקבוצת ${g.name}, והשולחן כבר מחכה ${f ? "לה" : "לו"}.\n${sched}${end}`;
 }
 
 const rows = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, ...v }));
