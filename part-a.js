@@ -1,5 +1,6 @@
 import xt from "react";
 import { createRoot as bt } from "react-dom/client";
+import { createPortal } from "react-dom";
 import e, { useState as b, useEffect as j } from "react";
 import {
   Users as H,
@@ -1194,20 +1195,400 @@ function downloadCsv(filename, headers, rows) {
     document.body.removeChild(link),
     setTimeout(() => URL.revokeObjectURL(url), 1000));
 }
-function PrintStyleTag() {
+// 3.11: כל דוח בונה אובייקט doc אחד, וממנו יוצאים גם מסמך ההדפסה/PDF וגם קובץ האקסל, כדי שלא ייפרדו.
+// doc: { title, scope, period, file, landscape, kpis:[{label,value,tone}], highlights:[טקסט], note,
+//        tables:[{title, cols:[{h, w, center, pct, bar, ltr, sheetOnly}], rows:[[תא]], foot:[תא]}] }
+// תא: ערך פשוט או { v, tone }. בעמודת pct הערך הוא 0-100 או null. tone: good/warn/bad/muted.
+const REPORT_CLUB = `מועדון טניס שולחן מבואות החרמון ${W}`;
+const REPORT_TONES = {
+  good: ["#0F6B4F", "#E6F4EE"],
+  warn: ["#8A5300", "#FDF3DF"],
+  bad: ["#B3261E", "#FBE9E7"],
+  muted: ["#64748B", ""],
+};
+const reportPctTone = (v) => (v === null || v === void 0 ? "muted" : v >= 75 ? "good" : v >= 50 ? "warn" : "bad");
+const reportPct = (v) => ({ v, tone: reportPctTone(v) });
+const reportCell = (c) => (c !== null && typeof c === "object" ? c : { v: c });
+const reportPeriod = (from, to) => `${formatHeDate(from)} עד ${formatHeDate(to)}`;
+const reportFile = (...parts) => parts.filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]/g, "");
+const REPORT_CSS = `
+#ttc-report-print{display:none}
+@media print{
+  @page{margin:13mm 12mm 15mm;@bottom-center{content:"עמוד " counter(page) " מתוך " counter(pages);font-size:8.5pt;color:#64748B}}
+  html,body{background:#fff!important;height:auto!important;min-height:0!important;overflow:visible!important}
+  body>*:not(#ttc-report-print){display:none!important}
+  #ttc-report-print{display:block;direction:rtl;color:#0B1F3A;font-size:10.5pt;line-height:1.45}
+  #ttc-report-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .rp-head{display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:2.5px solid #0B1F3A}
+  .rp-head img{width:54px;height:54px;object-fit:contain}
+  .rp-club{font-size:10pt;font-weight:600;color:#475569}
+  .rp-title{font-size:20pt;font-weight:800;line-height:1.2}
+  .rp-meta{margin-inline-start:auto;text-align:end;font-size:9.5pt;color:#475569}
+  .rp-meta b{display:block;font-size:10.5pt;color:#0B1F3A}
+  .rp-kpis{display:flex;gap:8px;margin-top:12px}
+  .rp-kpi{flex:1;border:1px solid #CBD5E1;border-radius:6px;padding:7px 10px}
+  .rp-kpi b{display:block;font-size:17pt;font-weight:800;line-height:1.15}
+  .rp-kpi span{font-size:9pt;color:#475569}
+  .rp-high{margin:12px 0 0;padding:8px 12px;background:#F1F5F9;border-radius:6px;list-style:none}
+  .rp-high li{padding:1px 0}
+  .rp-tt{margin:14px 0 5px;font-size:12pt;font-weight:800;break-after:avoid}
+  .rp-t{width:100%;border-collapse:collapse;font-size:9.5pt}
+  .rp-t th{background:#0B1F3A;color:#fff;font-weight:700;padding:5px 6px;text-align:start;border:1px solid #0B1F3A}
+  .rp-t td{padding:4px 6px;border:1px solid #D5DCE5;text-align:start;vertical-align:middle}
+  .rp-t .c{text-align:center}
+  .rp-t tr{break-inside:avoid}
+  .rp-t thead{display:table-header-group}
+  .rp-t .rp-foot td{background:#F1F5F9;font-weight:800;border-top:2px solid #0B1F3A}
+  .rp-dense{table-layout:fixed;font-size:8pt}
+  .rp-dense th,.rp-dense td{padding:3px 1px}
+  .rp-dense th:first-child,.rp-dense td:first-child{padding-inline:5px;overflow:hidden;white-space:nowrap}
+  .rp-vert .d{writing-mode:vertical-rl;height:32px;font-size:7.5pt;font-weight:600}
+  .rp-t svg{width:12px;height:12px;display:block;margin:auto}
+  .rp-bar{height:4px;margin-top:2px;background:#E2E8F0;border-radius:2px;overflow:hidden}
+  .rp-bar i{display:block;height:100%}
+  .rp-note{margin-top:10px;font-size:8.5pt;color:#64748B}
+}`;
+function reportCellText(c, col) {
+  let x = reportCell(c);
+  return col.pct ? (x.v === null || x.v === void 0 ? "–" : `${x.v}%`) : x.v === null || x.v === void 0 ? "" : x.v;
+}
+function ReportDocumentTable({ table }) {
+  let cols = table.cols.map((c, i) => ({ ...c, i })).filter((c) => !c.sheetOnly),
+    pick = (row) => cols.map((c) => row[c.i]),
+    dense = cols.length > 11,
+    vert = cols.length > 19,
+    cell = (c, col, key) => {
+      let x = reportCell(c),
+        tone = REPORT_TONES[x.tone],
+        cls = col.center || col.pct ? "c" : void 0,
+        text = reportCellText(c, col);
+      return e.createElement(
+        "td",
+        { key, className: cls, style: tone ? { color: tone[0], background: tone[1] || void 0, fontWeight: 700 } : void 0 },
+        text === "✓" ? e.createElement(Z, { "aria-label": "הגיע" })
+          : text === "✗" ? e.createElement(T, { "aria-label": "לא הגיע" })
+          : col.ltr ? e.createElement("span", { dir: "ltr" }, text)
+          : text,
+        col.bar && x.v !== null && x.v !== void 0 &&
+          e.createElement("div", { className: "rp-bar" },
+            e.createElement("i", { style: { width: `${x.v}%`, background: tone ? tone[0] : "#64748B" } })),
+      );
+    };
   return e.createElement(
-    "style",
+    e.Fragment,
     null,
-    "@media print { body * { visibility: hidden; } #ttc-report-print, #ttc-report-print * { visibility: visible; } #ttc-report-print { position: absolute; inset: 0; padding: 10px; } .no-print { display: none !important; } }",
+    table.title && e.createElement("div", { className: "rp-tt" }, table.title),
+    table.rows.length === 0 && e.createElement("p", null, "אין נתונים בטווח שנבחר"),
+    table.rows.length > 0 && e.createElement(
+      "table",
+      { className: `rp-t${dense ? " rp-dense" : ""}${vert ? " rp-vert" : ""}` },
+      e.createElement(
+        "thead",
+        null,
+        e.createElement(
+          "tr",
+          null,
+          cols.map((c) =>
+            e.createElement("th", { key: c.i, className: c.center || c.pct ? `c${c.date ? " d" : ""}` : void 0, style: c.w ? { width: c.w } : void 0 }, c.h),
+          ),
+        ),
+      ),
+      e.createElement(
+        "tbody",
+        null,
+        table.rows.map((row, r) =>
+          e.createElement("tr", { key: r }, pick(row).map((c, k) => cell(c, cols[k], k))),
+        ),
+        table.foot &&
+          e.createElement("tr", { className: "rp-foot" }, pick(table.foot).map((c, k) => cell(c, cols[k], k))),
+      ),
+    ),
   );
+}
+// שוכן ישירות תחת body ומוסתר במסך: כך ההדפסה לא גוררת עמודים ריקים מגובה האפליקציה
+const reportHost = () =>
+  document.getElementById("ttc-report-print") ||
+  document.body.appendChild(Object.assign(document.createElement("div"), { id: "ttc-report-print" }));
+function ReportDocument({ doc }) {
+  return createPortal(
+    e.createElement(
+      e.Fragment,
+      null,
+      e.createElement("style", null, REPORT_CSS + `@media print{@page{size:A4 ${doc.landscape ? "landscape" : "portrait"}}}`),
+      e.createElement(
+        "div",
+        { className: "rp-head" },
+        e.createElement("img", { src: "logo.png", alt: "" }),
+        e.createElement(
+          "div",
+          null,
+          e.createElement("div", { className: "rp-club" }, REPORT_CLUB),
+          e.createElement("div", { className: "rp-title" }, doc.title),
+        ),
+        e.createElement(
+          "div",
+          { className: "rp-meta" },
+          doc.scope && e.createElement("b", null, doc.scope),
+          e.createElement("div", null, doc.period),
+          e.createElement("div", null, `הופק: ${formatHeDate(E())}`),
+        ),
+      ),
+      doc.kpis?.length > 0 &&
+        e.createElement(
+          "div",
+          { className: "rp-kpis" },
+          doc.kpis.map((k) =>
+            e.createElement(
+              "div",
+              { key: k.label, className: "rp-kpi" },
+              e.createElement("b", { style: REPORT_TONES[k.tone] ? { color: REPORT_TONES[k.tone][0] } : void 0 }, k.value),
+              e.createElement("span", null, k.label),
+            ),
+          ),
+        ),
+      doc.highlights?.length > 0 &&
+        e.createElement("ul", { className: "rp-high" }, doc.highlights.map((h) => e.createElement("li", { key: h }, h))),
+      doc.tables.map((t, i) => e.createElement(ReportDocumentTable, { key: i, table: t })),
+      doc.note && e.createElement("div", { className: "rp-note" }, doc.note),
+    ),
+    reportHost(),
+  );
+}
+function printReport(doc) {
+  // שם הקובץ שמוצע בשמירה כ-PDF הוא כותרת הדף
+  let title = document.title,
+    restore = () => ((document.title = title), window.removeEventListener("afterprint", restore)),
+    img = document.querySelector("#ttc-report-print img");
+  document.title = doc.file;
+  window.addEventListener("afterprint", restore);
+  (img && img.decode ? img.decode().catch(() => {}) : Promise.resolve()).then(() => window.print());
+}
+// קובץ xlsx נכתב ישירות: ספרייה עם עיצוב תאים שוקלת מאות KB, וזו אפליקציה שמאמן פותח באולם ברגע שהאימון מתחיל.
+function xlsxEsc(s) {
+  return String(s)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+    .replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+function xlsxCol(n) {
+  let s = "";
+  for (n += 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+}
+function xlsxStyles() {
+  let font = (extra, color) => `<font>${extra}<sz val="11"/><color rgb="FF${color}"/><name val="Arial"/></font>`,
+    fill = (c) => `<fill><patternFill patternType="solid"><fgColor rgb="FF${c}"/></patternFill></fill>`,
+    line = (t) => `<${t} style="thin"><color rgb="FFD5DCE5"/></${t}>`,
+    xf = (fontId, fillId, border, numFmt, align) =>
+      `<xf numFmtId="${numFmt}" fontId="${fontId}" fillId="${fillId}" borderId="${border}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="${align}" vertical="center" wrapText="${align === "right" ? 1 : 0}"/></xf>`,
+    body = [[0, 0], [4, 3], [5, 4], [6, 5], [7, 0]],
+    kinds = [[0, "right"], [0, "center"], [9, "center"]],
+    xfs = [
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+      xf(2, 0, 0, 0, "right"), // 1 כותרת
+      xf(1, 0, 0, 0, "right"), // 2 מודגש
+      xf(7, 0, 0, 0, "right"), // 3 משני
+      xf(3, 2, 1, 0, "center"), // 4 כותרת עמודה
+    ];
+  body.forEach(([f, b]) => kinds.forEach(([n, a]) => xfs.push(xf(f, b, 1, n, a)))); // 5-19 גוף: גוון × סוג
+  kinds.forEach(([n, a]) => xfs.push(xf(1, 6, 1, n, a))); // 20-22 שורת סיכום
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="8">${font("", "1E293B")}${font("<b/>", "0B1F3A")}<font><b/><sz val="18"/><color rgb="FF0B1F3A"/><name val="Arial"/></font>${font("<b/>", "FFFFFF")}${font("<b/>", "0F6B4F")}${font("<b/>", "8A5300")}${font("<b/>", "B3261E")}${font("", "64748B")}</fonts><fills count="7"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fill("0B1F3A")}${fill("E6F4EE")}${fill("FDF3DF")}${fill("FBE9E7")}${fill("F1F5F9")}</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${line("left")}${line("right")}${line("top")}${line("bottom")}<diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+}
+const xlsxBodyStyle = (tone, kind, foot) =>
+  foot ? 20 + kind : 5 + 3 * Math.max(0, ["", "good", "warn", "bad", "muted"].indexOf(tone || "")) + kind;
+function xlsxCell(ref, c) {
+  let v = c.v;
+  if (v === null || v === void 0 || v === "") return `<c r="${ref}" s="${c.s}"/>`;
+  return typeof v === "number"
+    ? `<c r="${ref}" s="${c.s}"><v>${v}</v></c>`
+    : `<c r="${ref}" s="${c.s}" t="inlineStr"><is><t xml:space="preserve">${xlsxEsc(v)}</t></is></c>`;
+}
+function xlsxSheet(rows, widths, { freeze, filter, merges, landscape } = {}) {
+  let ncol = widths.length,
+    pane = !freeze ? "" : freeze === 2
+      ? '<pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/>'
+      : '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>',
+    data = rows
+      .map((r, y) => `<row r="${y + 1}"${r.ht ? ` ht="${r.ht}" customHeight="1"` : ""}>${r.cells.map((c, x) => xlsxCell(xlsxCol(x) + (y + 1), c)).join("")}</row>`)
+      .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView rightToLeft="1" showGridLines="0" workbookViewId="0">${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18" customHeight="1"/><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols><sheetData>${data}</sheetData>${filter ? `<autoFilter ref="A1:${xlsxCol(ncol - 1)}${filter}"/>` : ""}${merges?.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : ""}<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="${landscape ? "landscape" : "portrait"}" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+}
+function xlsxTableSheet(t, landscape) {
+  let cols = t.cols,
+    kind = (c) => (c.pct ? 2 : c.center ? 1 : 0),
+    cellFor = (c, col, foot) => {
+      let x = reportCell(c),
+        pctV = x.v === null || x.v === void 0 ? "–" : x.v / 100;
+      return { v: col.pct ? pctV : x.v, s: xlsxBodyStyle(x.tone, col.pct && typeof pctV === "string" ? 1 : kind(col), foot) };
+    },
+    rows = [{ cells: cols.map((c) => ({ v: c.h, s: 4 })), ht: 24 }]
+      .concat(t.rows.map((r) => ({ cells: r.map((c, i) => cellFor(c, cols[i])) })))
+      .concat(t.foot ? [{ cells: t.foot.map((c, i) => cellFor(c, cols[i], !0)) }] : []),
+    widths = cols.map((c, i) =>
+      c.pct ? 9 : Math.min(44, Math.max(6, ...rows.map((r) => String(r.cells[i].v ?? "").length * 1.15 + 3))),
+    );
+  return xlsxSheet(rows, widths, {
+    freeze: cols.length > 6 ? 2 : 1,
+    filter: t.rows.length ? t.rows.length + 1 : 0,
+    landscape: landscape || cols.length > 6,
+  });
+}
+function xlsxSummarySheet(doc) {
+  let text = (v, s) => ({ cells: [{ v, s }, { v: "", s }] }),
+    rows = [
+      text(doc.title, 1),
+      text(REPORT_CLUB, 2),
+      ...(doc.scope ? [text(doc.scope, 2)] : []),
+      text(doc.period, 3),
+      text(`הופק: ${formatHeDate(E())}`, 3),
+      text("", 0),
+    ],
+    merges = [];
+  rows[0].ht = 30;
+  rows.forEach((_, y) => merges.push(`A${y + 1}:B${y + 1}`));
+  (doc.kpis || []).forEach((k) =>
+    rows.push({ cells: [{ v: k.label, s: 5 }, { v: k.value, s: xlsxBodyStyle(k.tone, 1) }] }),
+  );
+  (doc.highlights || []).concat(doc.note ? [doc.note] : []).forEach((h, i) => {
+    i === 0 && rows.push(text("", 0));
+    rows.push({ ...text(h, 3), ht: 18 * Math.ceil(h.length / 62) });
+    merges.push(`A${rows.length}:B${rows.length}`);
+  });
+  return xlsxSheet(rows, [34, 34], { merges });
+}
+function crc32(bytes) {
+  let c = -1;
+  for (let i = 0; i < bytes.length; i++) {
+    c ^= bytes[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return (c ^ -1) >>> 0;
+}
+// zip בלי דחיסה: אקסל ו-Google Sheets מקבלים אותו, והקובץ קטן ממילא
+function zipStore(files) {
+  let enc = new TextEncoder(),
+    chunks = [],
+    central = [],
+    offset = 0,
+    head = (size) => {
+      let u = new Uint8Array(size);
+      return { u, v: new DataView(u.buffer) };
+    };
+  files.forEach(({ name, text }) => {
+    let nm = enc.encode(name),
+      data = enc.encode(text),
+      crc = crc32(data),
+      a = head(30),
+      c = head(46);
+    a.v.setUint32(0, 0x04034b50, !0);
+    a.v.setUint16(4, 20, !0);
+    a.v.setUint16(12, 0x5021, !0); // תאריך קבוע: אין לקובץ תלות בשעון
+    a.v.setUint32(14, crc, !0);
+    a.v.setUint32(18, data.length, !0);
+    a.v.setUint32(22, data.length, !0);
+    a.v.setUint16(26, nm.length, !0);
+    c.v.setUint32(0, 0x02014b50, !0);
+    c.v.setUint16(4, 20, !0);
+    c.v.setUint16(6, 20, !0);
+    c.v.setUint16(14, 0x5021, !0);
+    c.v.setUint32(16, crc, !0);
+    c.v.setUint32(20, data.length, !0);
+    c.v.setUint32(24, data.length, !0);
+    c.v.setUint16(28, nm.length, !0);
+    c.v.setUint32(42, offset, !0);
+    chunks.push(a.u, nm, data);
+    central.push(c.u, nm);
+    offset += 30 + nm.length + data.length;
+  });
+  let size = central.reduce((n, u) => n + u.length, 0),
+    end = head(22);
+  end.v.setUint32(0, 0x06054b50, !0);
+  end.v.setUint16(8, files.length, !0);
+  end.v.setUint16(10, files.length, !0);
+  end.v.setUint32(12, size, !0);
+  end.v.setUint32(16, offset, !0);
+  let all = chunks.concat(central, end.u),
+    out = new Uint8Array(all.reduce((n, u) => n + u.length, 0)),
+    pos = 0;
+  all.forEach((u) => (out.set(u, pos), (pos += u.length)));
+  return out;
+}
+function buildXlsx(doc) {
+  let used = new Set(["סיכום"]),
+    sheetName = (t, i) => {
+      let n = (t.title || `נתונים ${i + 1}`).replace(/[\[\]:*?/\\']/g, "").slice(0, 31);
+      n = used.has(n) ? `${n.slice(0, 28)} ${i + 1}` : n;
+      used.add(n);
+      return n;
+    },
+    sheets = [{ name: "סיכום", xml: xlsxSummarySheet(doc) }].concat(
+      doc.tables.map((t, i) => ({ name: sheetName(t, i), xml: xlsxTableSheet(t, doc.landscape) })),
+    ),
+    xmlHead = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return zipStore([
+    {
+      name: "[Content_Types].xml",
+      text: `${xmlHead}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`,
+    },
+    {
+      name: "_rels/.rels",
+      text: `${xmlHead}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    },
+    {
+      name: "xl/workbook.xml",
+      text: `${xmlHead}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="${sheets.length > 1 ? 1 : 0}"/></bookViews><sheets>${sheets.map((s, i) => `<sheet name="${xlsxEsc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`,
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      text: `${xmlHead}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    },
+    { name: "xl/styles.xml", text: xlsxStyles() },
+    ...sheets.map((s, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, text: s.xml })),
+  ]);
+}
+function downloadReportXlsx(doc) {
+  let url = URL.createObjectURL(
+      new Blob([buildXlsx(doc)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    ),
+    link = document.createElement("a");
+  link.href = url;
+  link.download = `${doc.file}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
   j(() => {
     startDate && startDate < ATT_HISTORY_FROM && requestOlderAttendance(startDate);
   }, [startDate]);
+  let ymd = (d) => d.toLocaleDateString("en-CA"),
+    now = new Date(),
+    season = new Date(now.getFullYear() - (now.getMonth() < 8 ? 1 : 0), 8, 1),
+    presets = [
+      ["החודש", firstOfMonthStr(), E()],
+      ["חודש קודם", ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), ymd(new Date(now.getFullYear(), now.getMonth(), 0))],
+      ["3 חודשים", ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)), E()],
+      ["העונה", ymd(season), E()],
+    ];
   return e.createElement(
     e.Fragment,
     null,
+    e.createElement(
+      "div",
+      { className: "grid grid-cols-4 gap-1.5" },
+      presets.map(([label, from, to]) =>
+        e.createElement(
+          "button",
+          {
+            key: label,
+            onClick: () => (onChangeStart(from), onChangeEnd(to)),
+            "aria-pressed": startDate === from && endDate === to,
+            className: `rounded-lg text-sm font-semibold ${startDate === from && endDate === to ? "bg-blue-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`,
+          },
+          label,
+        ),
+      ),
+    ),
     e.createElement(
       "div",
       { className: "flex items-center gap-2 flex-wrap" },
@@ -1240,14 +1621,15 @@ function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
     ),
   );
 }
-function ReportActionBar({ onPrint, onExportCsv }) {
+function ReportActionBar({ doc }) {
   return e.createElement(
     "div",
     { className: "flex gap-2 no-print" },
+    e.createElement(ReportDocument, { doc }),
     e.createElement(
       "button",
       {
-        onClick: onPrint,
+        onClick: () => printReport(doc),
         className:
           "flex-1 bg-blue-900 text-white text-sm font-semibold rounded-xl py-2.5",
       },
@@ -1256,11 +1638,11 @@ function ReportActionBar({ onPrint, onExportCsv }) {
     e.createElement(
       "button",
       {
-        onClick: onExportCsv,
+        onClick: () => downloadReportXlsx(doc),
         className:
-          "flex-1 bg-emerald-500 text-white text-sm font-semibold rounded-xl py-2.5",
+          "flex-1 bg-emerald-700 text-white text-sm font-semibold rounded-xl py-2.5",
       },
-      "ייצוא ל-CSV",
+      "Excel",
     ),
   );
 }
@@ -1320,28 +1702,66 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
           : t === "flat"
             ? e.createElement(MinusIcon, { className: "w-4 h-4 mx-auto text-slate-500", "aria-label": "יציב" })
             : e.createElement("span", { className: "text-slate-400" }, "–"),
-    exportCsv = () => {
-      let headers = ["שחקן", ...dates.map(formatHeDate), "אחוז נוכחות"],
-        rows = groupPlayers.map((p) => {
-          let presentCount = 0,
-            totalCount = 0,
-            cells = dates.map((d) => {
-              let st = cellStatus(p.id, d);
-              return (
-                st && (totalCount++, st === "Present" && presentCount++),
-                st === "Present" ? "נכח" : st === "Absent" ? "נעדר" : ""
-              );
-            }),
-            pct =
-              totalCount > 0 ? Math.round((presentCount / totalCount) * 100) + "%" : "";
-          return [p.name, ...cells, pct];
-        });
-      downloadCsv(`נוכחות-${group ? group.name : ""}.csv`, headers, rows);
-    };
+    doc = (() => {
+      let stats = groupPlayers.map((p) => ({ p, ...playerStats(p.id) })),
+        all = groupAttendance.filter((r) => groupPlayers.some((p) => p.id === r.playerId)),
+        present = all.filter((r) => r.status === "Present").length,
+        avg = all.length ? Math.round((present / all.length) * 100) : null,
+        low = stats.filter((x) => x.pct !== null && x.pct < 50),
+        down = stats.filter((x) => x.trend === "down"),
+        names = (a) => a.map((x) => x.p.name).join(", "),
+        perDate = dates.map((d) => {
+          let rs = all.filter((r) => r.date === d);
+          return { d, here: rs.filter((r) => r.status === "Present").length, of: rs.length };
+        }),
+        worst = perDate.slice().sort((a, c) => a.here / (a.of || 1) - c.here / (c.of || 1))[0],
+        trendCellDoc = (t) =>
+          t === "up" ? { v: "עלייה", tone: "good" } : t === "down" ? { v: "ירידה", tone: "bad" } : t === "flat" ? { v: "יציבה", tone: "muted" } : { v: "–", tone: "muted" };
+      return {
+        title: "דוח נוכחות קבוצתי",
+        scope: group ? group.name : "",
+        period: reportPeriod(startDate, endDate),
+        file: reportFile("דוח נוכחות", group && group.name, `${startDate} עד ${endDate}`),
+        landscape: dates.length > 8,
+        kpis: [
+          { label: "שחקנים", value: groupPlayers.length },
+          { label: "מפגשים", value: dates.length },
+          { label: "נוכחות ממוצעת", value: avg === null ? "–" : `${avg}%`, tone: reportPctTone(avg) },
+          { label: "מתחת ל-50%", value: low.length, tone: low.length ? "bad" : "good" },
+          { label: "במגמת ירידה", value: down.length, tone: down.length ? "warn" : "good" },
+        ],
+        highlights: [
+          low.length ? `מתחת ל-50% נוכחות: ${names(low)}` : "",
+          down.length ? `במגמת ירידה: ${names(down)}` : "",
+          worst && dates.length > 1 ? `המפגש עם הנוכחות הנמוכה ביותר: ${formatHeDate(worst.d)} (${worst.here} מתוך ${worst.of})` : "",
+        ].filter(Boolean),
+        note: "✓ הגיע. ✗ לא הגיע. מקף: לא נרשם. מגמה: שלושת האימונים האחרונים מול הקודמים. היעדרות מוצדקת ואימון שבוטל אינם נספרים.",
+        tables: [
+          {
+            title: "נוכחות לפי שחקן",
+            cols: [
+              { h: "שחקן", w: dates.length > 8 ? "34mm" : void 0 },
+              { h: "%", pct: !0, w: "10mm" },
+              { h: "מגמה", center: !0, w: "12mm" },
+              ...dates.map((d) => ({ h: ptShort(d), center: !0, date: !0 })),
+            ],
+            rows: stats.map((x) => [
+              x.p.name,
+              reportPct(x.pct),
+              trendCellDoc(x.trend),
+              ...dates.map((d) => {
+                let st = cellStatus(x.p.id, d);
+                return st === "Present" ? { v: "✓", tone: "good" } : st === "Absent" ? { v: "✗", tone: "bad" } : { v: "–", tone: "muted" };
+              }),
+            ]),
+            foot: ["נכחו", reportPct(avg), "", ...perDate.map((x) => x.here)],
+          },
+        ],
+      };
+    })();
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "flex flex-col gap-3 no-print" },
@@ -1366,14 +1786,11 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
         onChangeStart: setStartDate,
         onChangeEnd: setEndDate,
       }),
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-3" },
+      { className: "flex flex-col gap-3" },
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
@@ -1488,7 +1905,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
                     e.createElement(
                       "td",
                       {
-                        colSpan: dates.length + 2,
+                        colSpan: dates.length + 3,
                         className: "text-center text-slate-400 py-4",
                       },
                       "אין שחקנים",
@@ -1517,19 +1934,71 @@ function ReportPlayer({ players, groups, attendance }) {
     presentCount = records.filter((r) => r.status === "Present").length,
     pct = records.length > 0 ? Math.round((presentCount / records.length) * 100) : null,
     groupName = (groupId) => groups.find((g) => g.id === groupId)?.name || "—",
-    exportCsv = () => {
-      let headers = ["תאריך", "קבוצה", "סטטוס"],
-        rows = records.map((r) => [
-          formatHeDate(r.date),
-          groupName(r.groupId),
-          r.status === "Present" ? "נכח" : "נעדר",
-        ]);
-      downloadCsv(`דוח-שחקן-${player ? player.name : ""}.csv`, headers, rows);
-    };
+    doc = (() => {
+      let streak = 0,
+        byMonth = {},
+        lastHere = records.find((r) => r.status === "Present"),
+        groupRecs = attendance.filter(
+          (r) => player && r.groupId === player.groupId && r.date >= startDate && r.date <= endDate,
+        ),
+        groupPct = groupRecs.length
+          ? Math.round((groupRecs.filter((r) => r.status === "Present").length / groupRecs.length) * 100)
+          : null;
+      for (let r of records) {
+        if (r.status !== "Absent") break;
+        streak++;
+      }
+      records.forEach((r) => {
+        let k = r.date.slice(0, 7),
+          m2 = (byMonth[k] = byMonth[k] || { here: 0, of: 0 });
+        m2.of++;
+        r.status === "Present" && m2.here++;
+      });
+      return {
+        title: "דוח נוכחות אישי",
+        scope: player ? player.name : "",
+        period: reportPeriod(startDate, endDate),
+        file: reportFile("דוח שחקן", player && player.name, `${startDate} עד ${endDate}`),
+        kpis: [
+          { label: "מפגשים", value: records.length },
+          { label: "הגיע", value: presentCount },
+          { label: "לא הגיע", value: records.length - presentCount },
+          { label: "נוכחות", value: pct === null ? "–" : `${pct}%`, tone: reportPctTone(pct) },
+          { label: "ממוצע הקבוצה", value: groupPct === null ? "–" : `${groupPct}%` },
+        ],
+        highlights: [
+          player ? `קבוצה: ${groupName(player.groupId)}` : "",
+          lastHere ? `אימון אחרון שהגיע אליו: ${formatHeDate(lastHere.date)}` : "",
+          streak >= 2 ? `${streak} אימונים אחרונים ברצף בלי להגיע` : "",
+        ].filter(Boolean),
+        note: "היעדרות מוצדקת ואימון שבוטל אינם נספרים.",
+        tables: [
+          {
+            title: "לפי חודש",
+            cols: [{ h: "חודש" }, { h: "מפגשים", center: !0 }, { h: "הגיע", center: !0 }, { h: "לא הגיע", center: !0 }, { h: "נוכחות", pct: !0, bar: !0 }],
+            rows: Object.keys(byMonth).sort().map((k) => [
+              `${k.slice(5)}/${k.slice(0, 4)}`,
+              byMonth[k].of,
+              byMonth[k].here,
+              byMonth[k].of - byMonth[k].here,
+              reportPct(Math.round((byMonth[k].here / byMonth[k].of) * 100)),
+            ]),
+          },
+          {
+            title: "פירוט מפגשים",
+            cols: [{ h: "תאריך" }, { h: "קבוצה" }, { h: "סטטוס", center: !0 }],
+            rows: records.map((r) => [
+              formatHeDate(r.date),
+              groupName(r.groupId),
+              r.status === "Present" ? { v: "נכח", tone: "good" } : { v: "נעדר", tone: "bad" },
+            ]),
+          },
+        ],
+      };
+    })();
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "flex flex-col gap-3 no-print" },
@@ -1556,14 +2025,11 @@ function ReportPlayer({ players, groups, attendance }) {
         onChangeStart: setStartDate,
         onChangeEnd: setEndDate,
       }),
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-3" },
+      { className: "flex flex-col gap-3" },
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
@@ -1672,31 +2138,54 @@ function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
         };
       })
       .sort((a, c) => (a.fillPct ?? -1) - (c.fillPct ?? -1)),
-    exportCsv = () => {
-      let headers = [
-          "קבוצה",
-          "מאמן",
-          "מפגשים צפויים",
-          "מפגשים שמולאו",
-          "אחוז מילוי",
-          "אימונים שבוטלו",
-          "תאריכים שלא מולאו",
+    doc = (() => {
+      let expected = rows.reduce((n, r) => n + r.expected, 0),
+        filled = rows.reduce((n, r) => n + r.filled, 0),
+        pctAll = expected ? Math.round((filled / expected) * 100) : null,
+        fillTone = (v) => (v === null ? "muted" : v === 100 ? "good" : v >= 70 ? "warn" : "bad"),
+        noSchedule = rows.filter((r) => !r.hasSchedule);
+      return {
+        title: "דוח מילוי נוכחות",
+        period: reportPeriod(startDate, endDate),
+        file: reportFile("דוח מילוי נוכחות", `${startDate} עד ${endDate}`),
+        landscape: !0,
+        kpis: [
+          { label: "קבוצות", value: rows.length },
+          { label: "מפגשים צפויים", value: expected },
+          { label: "מולאו", value: filled },
+          { label: "לא מולאו", value: expected - filled, tone: expected - filled ? "bad" : "good" },
+          { label: "אחוז מילוי", value: pctAll === null ? "–" : `${pctAll}%`, tone: fillTone(pctAll) },
         ],
-        rowsData = rows.map((r) => [
-          r.group.name,
-          r.coach ? r.coach.name : "—",
-          r.expected,
-          r.filled,
-          r.fillPct === null ? "—" : r.fillPct + "%",
-          r.cancelled,
-          r.missedDates.map(formatHeDate).join(" | "),
-        ]);
-      downloadCsv("דוח-מילוי-מאמנים.csv", headers, rowsData);
-    };
+        highlights: noSchedule.length ? [`ללא ימי פעילות מוגדרים: ${noSchedule.map((r) => r.group.name).join(", ")}`] : [],
+        note: "היום ואימונים שבוטלו אינם נספרים.",
+        tables: [
+          {
+            title: "מילוי לפי קבוצה",
+            cols: [
+              { h: "קבוצה", w: "42mm" },
+              { h: "מאמן", w: "34mm" },
+              { h: "צפוי", center: !0, w: "14mm" },
+              { h: "מולא", center: !0, w: "14mm" },
+              { h: "בוטל", center: !0, w: "14mm" },
+              { h: "מילוי", pct: !0, bar: !0, w: "20mm" },
+              { h: "תאריכים שלא מולאו" },
+            ],
+            rows: rows.map((r) => [
+              r.group.name,
+              r.coach ? r.coach.name : "ללא מאמן",
+              r.expected,
+              r.filled,
+              r.cancelled,
+              { v: r.fillPct, tone: fillTone(r.fillPct) },
+              r.missedDates.map(ptShort).join(", "),
+            ]),
+          },
+        ],
+      };
+    })();
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "flex flex-col gap-3 no-print" },
@@ -1706,14 +2195,11 @@ function ReportCoachFillRate({ groups, users, attendance, cancellations }) {
         onChangeStart: setStartDate,
         onChangeEnd: setEndDate,
       }),
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-2.5" },
+      { className: "flex flex-col gap-2.5" },
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
@@ -1828,21 +2314,48 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
       })
       .filter((x) => x.flagged)
       .sort((a, c) => c.streak - a.streak || (c.beforePct || 0) - (a.beforePct || 0)),
-    exportCsv = () => {
-      let headers = ["שחקן", "קבוצה", "הורה", "טלפון", "היעדרות אחרונה"],
-        rowsData = atRisk.map((x) => [
-          x.player.name,
-          groupName(x.player.groupId),
-          x.player.parentName,
-          x.player.parentPhone,
-          x.lastDate ? formatHeDate(x.lastDate) : "—",
-        ]);
-      downloadCsv("ילדים-בסיכון-נשירה.csv", headers, rowsData);
-    };
+    doc = (() => {
+      let why = (x) =>
+          x.drop
+            ? `ירידה: ${x.drop.recentPct}% בחודש האחרון, לעומת ${x.drop.prevPct}% לפני כן`
+            : `${x.streak} אימונים ברצף בלי להגיע` + (x.beforePct !== null ? `, לפני כן ${x.beforePct}%` : ""),
+        byStreak = atRisk.filter((x) => !x.drop).length;
+      return {
+        title: "שחקנים בסיכון נשירה",
+        period: reportPeriod(startDate, endDate),
+        file: reportFile("סיכון נשירה", `${startDate} עד ${endDate}`),
+        landscape: !0,
+        kpis: [
+          { label: "שחקנים בסיכון", value: atRisk.length, tone: atRisk.length ? "bad" : "good" },
+          { label: "היעדרות ברצף", value: byStreak },
+          { label: "ירידה הדרגתית", value: atRisk.length - byStreak },
+        ],
+        tables: [
+          {
+            title: "רשימה לטיפול",
+            cols: [
+              { h: "שחקן" },
+              { h: "קבוצה" },
+              { h: "הורה" },
+              { h: "טלפון", ltr: !0, sheetOnly: !0 },
+              { h: "סיבה" },
+              { h: "רישום אחרון", center: !0 },
+            ],
+            rows: atRisk.map((x) => [
+              x.player.name,
+              groupName(x.player.groupId),
+              x.player.parentName || "",
+              x.player.parentPhone || "",
+              { v: why(x), tone: x.drop ? "warn" : "bad" },
+              x.lastDate ? formatHeDate(x.lastDate) : "–",
+            ]),
+          },
+        ],
+      };
+    })();
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "flex flex-col gap-3 no-print" },
@@ -1852,18 +2365,15 @@ function ReportDropoutRisk({ players, groups, attendance, readOnly: RO }) {
         onChangeStart: setStartDate,
         onChangeEnd: setEndDate,
       }),
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-2.5" },
+      { className: "flex flex-col gap-2.5" },
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
-        "ילדים בסיכון נשירה",
+        "שחקנים בסיכון נשירה",
       ),
       atRisk.length === 0
         ? e.createElement(
@@ -1961,24 +2471,46 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
           presentCount = records.filter((r) => r.status === "Present").length,
           pct = records.length > 0 ? Math.round((presentCount / records.length) * 100) : null,
           activePlayers = players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted).length;
-        return { group: g, coach, sessions, pct, activePlayers };
+        return { group: g, coach, sessions, pct, activePlayers, presentCount, total: records.length };
       })
       .sort((a, c) => (c.pct ?? -1) - (a.pct ?? -1)),
-    exportCsv = () => {
-      let headers = ["קבוצה", "מאמן", "שחקנים פעילים", "מפגשים בטווח", "אחוז נוכחות"],
-        rowsData = rows.map((r) => [
-          r.group.name,
-          r.coach ? r.coach.name : "—",
-          r.activePlayers,
-          r.sessions,
-          r.pct === null ? "—" : r.pct + "%",
-        ]);
-      downloadCsv("השוואת-קבוצות.csv", headers, rowsData);
-    };
+    doc = (() => {
+      let total = rows.reduce((n, r) => n + r.total, 0),
+        here = rows.reduce((n, r) => n + r.presentCount, 0),
+        avg = total ? Math.round((here / total) * 100) : null,
+        ids = new Set(groups.map((g) => g.id)),
+        // שחקן שרשום בשתי קבוצות נספר פעם אחת
+        people = new Set(players.filter((p) => ids.has(p.groupId) && p.isActive && !p.deleted).map((p) => p.name.trim())).size,
+        ranked = rows.filter((r) => r.pct !== null);
+      return {
+        title: "השוואת קבוצות",
+        period: reportPeriod(startDate, endDate),
+        file: reportFile("השוואת קבוצות", `${startDate} עד ${endDate}`),
+        kpis: [
+          { label: "קבוצות", value: rows.length },
+          { label: "שחקנים פעילים", value: people },
+          { label: "מפגשים", value: rows.reduce((n, r) => n + r.sessions, 0) },
+          { label: "נוכחות ממוצעת", value: avg === null ? "–" : `${avg}%`, tone: reportPctTone(avg) },
+        ],
+        highlights: ranked.length > 1
+          ? [
+              `הנוכחות הגבוהה ביותר: ${ranked[0].group.name} (${ranked[0].pct}%)`,
+              `הנוכחות הנמוכה ביותר: ${ranked[ranked.length - 1].group.name} (${ranked[ranked.length - 1].pct}%)`,
+            ]
+          : [],
+        note: "היעדרות מוצדקת ואימון שבוטל אינם נספרים.",
+        tables: [
+          {
+            title: "דירוג לפי נוכחות",
+            cols: [{ h: "קבוצה" }, { h: "מאמן" }, { h: "שחקנים", center: !0, w: "16mm" }, { h: "מפגשים", center: !0, w: "16mm" }, { h: "נוכחות", pct: !0, bar: !0, w: "24mm" }],
+            rows: rows.map((r) => [r.group.name, r.coach ? r.coach.name : "ללא מאמן", r.activePlayers, r.sessions, reportPct(r.pct)]),
+          },
+        ],
+      };
+    })();
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "flex flex-col gap-3 no-print" },
@@ -1988,14 +2520,11 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
         onChangeStart: setStartDate,
         onChangeEnd: setEndDate,
       }),
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-2.5" },
+      { className: "flex flex-col gap-2.5" },
       e.createElement("h3", { className: "font-bold text-blue-950 text-sm" }, "השוואת קבוצות"),
       e.createElement(
         "div",
@@ -2051,7 +2580,7 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
                 e.createElement(
                   "td",
                   {
-                    className: `border border-slate-200 px-2 py-1 text-center font-semibold ${r.pct === null ? "text-slate-400" : r.pct >= 80 ? "text-emerald-600" : r.pct >= 50 ? "text-amber-600" : "text-red-500"}`,
+                    className: `border border-slate-200 px-2 py-1 text-center font-semibold ${r.pct === null ? "text-slate-400" : r.pct >= 75 ? "text-emerald-600" : r.pct >= 50 ? "text-amber-600" : "text-red-500"}`,
                   },
                   r.pct === null ? "—" : `${r.pct}%`,
                 ),
@@ -2066,32 +2595,47 @@ function ReportGroupComparison({ groups, users, players, attendance }) {
 function ReportQuota({ players, groups, attendance }) {
   useYearAttendance(players);
   let alerts = quotaAlerts(players, groups, attendance),
-    exportCsv = () => {
-      let headers = ["שחקן", "קבוצה", "תקופה", "בפועל", "מכסה"],
-        rowsData = alerts.map((o) => [
-          o.player.name,
-          o.group ? o.group.name : "—",
-          o.period,
-          o.actual,
-          o.target,
-        ]);
-      downloadCsv("דוח-חריגת-מכסת-אימונים.csv", headers, rowsData);
+    doc = {
+      title: "חריגה ממכסת אימונים",
+      period: `נכון ל-${formatHeDate(E())}`,
+      file: reportFile("חריגת מכסה", E()),
+      kpis: [
+        { label: "חריגות", value: alerts.length, tone: alerts.length ? "warn" : "good" },
+        { label: "שחקנים", value: new Set(alerts.map((o) => o.player.id)).size },
+      ],
+      tables: [
+        {
+          title: "שחקנים שחרגו מהמכסה",
+          cols: [
+            { h: "שחקן" },
+            { h: "קבוצה" },
+            { h: "תקופה", center: !0 },
+            { h: "מכסה", center: !0 },
+            { h: "בפועל", center: !0 },
+            { h: "מעל המכסה", center: !0 },
+          ],
+          rows: alerts.map((o) => [
+            o.player.name,
+            o.group ? o.group.name : "ללא קבוצה",
+            o.period,
+            o.target,
+            o.actual,
+            { v: o.actual - o.target, tone: "warn" },
+          ]),
+        },
+      ],
     };
   return e.createElement(
     "div",
     { className: "flex flex-col gap-4" },
-    e.createElement(PrintStyleTag, null),
     e.createElement(
       "div",
       { className: "no-print" },
-      e.createElement(ReportActionBar, {
-        onPrint: () => window.print(),
-        onExportCsv: exportCsv,
-      }),
+      e.createElement(ReportActionBar, { doc }),
     ),
     e.createElement(
       "div",
-      { id: "ttc-report-print", className: "flex flex-col gap-2.5" },
+      { className: "flex flex-col gap-2.5" },
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
