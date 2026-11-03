@@ -41,6 +41,7 @@ const CASES = [
   { name: "יומן דרך קלוד", text: "מה יש לי ביומן מחר?", tools: ["ask_claude"], avoid: /אין לך אירועים/, asked: 1 },
   { name: "קישור שאי אפשר לפתוח", text: "console.cloud.google.com/apis/credentials", avoid: /פתחתי|בדקתי את הקישור/ },
   { name: "תזכורת אמיתית", text: "תזכירי לי מחר ב-9:00 להתקשר לספק", tools: ["remind_me"] },
+  { name: "שליחה להורים עכשיו", text: "🎤 מי שממתין להודעה, אני רוצה שאת תשלחי להם", tools: ["send_parents_now"], avoid: /לא יכולה|ללחוץ על/, asked: 1 },
   { name: "הורה לא מקבל הודעה ישירה", text: "תכיני להורים של דני כהן הודעה: האימון מחר בוטל", sent: 0, avoid: /נשלח משולה/ },
   { name: "שם עמום", text: "תשלחי לדני שהאימון בוטל", sent: 0, expect: /דני כהן|דני לוין|איזה|מי מ/ },
   { name: "נוכחות מהכלי", text: "מי הגיע אתמול למתחילים?", tools: ["get_attendance"] },

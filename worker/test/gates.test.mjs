@@ -100,6 +100,10 @@ console.log("gates ok");
   assert.equal(docs[id()].inboxStatus, "failed");
   assert.match(JSON.stringify(out), /הודעה על הכדורים.*לא בוצע: אין מספר/, "כישלון מגיע לבעלים");
 
+  const { makeInboxTools } = await import("../src/inbox.js");
+  assert.match(await makeInboxTools({ env, store, origin: "https://x", turn: "t" }).send_parents_now(), /השליחה הופעלה/);
+  assert.equal(Object.values(docs).at(-1).tap, "הודעות עכשיו", "שליחה לפי בקשה במעקב");
+  assert.match(Object.values(docs).at(-1).request, /trig_01FiU3HnrPxdoQK29vAGVq2r/);
   await queueTap(env, store, "פרסום 9");
   assert.equal(Object.values(docs).at(-1).tap, undefined, "משימות שעוד לא מדווחות לא במעקב");
   console.log("closed loop ok");
