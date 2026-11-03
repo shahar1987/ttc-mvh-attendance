@@ -39,13 +39,14 @@ export function planReply(bot, text, now = Date.now()) {
   return null;
 }
 // סגירת מעגל: אילו לחיצות צריכות דיווח תוצאה מהמשימה. מרחיבים משימה אחת בכל פעם, אחרי שהפרומפט שלה מדווח
-const VERIFIED = /^מוח( |$)/;
+const VERIFIED = /^(מוח( |$)|הודעות עכשיו$)/;
+const SEND_NOW = "הודעות עכשיו";
 const TASK_WAIT_MS = 45 * 60 * 1000;
 
 // ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
 export async function queueTap(env, store, code) {
   const id = Math.random().toString(36).slice(2, 8);
-  const [task, trigger] = code.startsWith("פרסום") ? ["סוכן פרסום: פרסום אחרי אישור", "trig_01Gd8jzyURQ6jADE9nbVmuKP"] : ["מוח שני: הכנסת מה שאושר", "trig_019TEg8oAuB8DWWokWL3EU8B"];
+  const [task, trigger] = code === SEND_NOW ? ["הודעות היעדרות וברוך הבא — שליחה אוטומטית", "trig_01FiU3HnrPxdoQK29vAGVq2r"] : code.startsWith("פרסום") ? ["סוכן פרסום: פרסום אחרי אישור", "trig_01Gd8jzyURQ6jADE9nbVmuKP"] : ["מוח שני: הכנסת מה שאושר", "trig_019TEg8oAuB8DWWokWL3EU8B"];
   const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "${task}" עם fire_trigger ${trigger}, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
   // משימה שמדווחת תוצאה (task_result) נשארת במעקב, כדי ש"הופעל" לא ייחשב כ"בוצע"
   const verify = VERIFIED.test(code) ? { tap: code, title: (await cards(store).catch(() => [])).find((i) => i.ids.includes(code))?.title || code } : {};
@@ -172,6 +173,11 @@ export const INBOX_TOOL_DEFS = [
     input_schema: { type: "object", properties: { request: { type: "string" } }, required: ["request"], additionalProperties: false },
   },
   {
+    name: "send_parents_now",
+    description: "שולח עכשיו, מהמספר של הבעלים, את כל ההודעות שמחכות: היעדרות להורים ולשחקנים, שתי היעדרויות וברוך הבא. בלי לשאול אישור, גם בלי מספרים. אותה שליחה שקורית לבד כל ערב ב-20:41, ואף הודעה לא יוצאת פעמיים. דיווח מי קיבל מגיע אליו בנפרד.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
     name: "claude_link",
     description: "קישור חד-פעמי לדף שבו הבעלים מדביק את מפתח ההפעלה המיידית של קלוד (כדי שתשובות יגיעו תוך דקות במקום עד שעה). רק כשהבעלים מבקש את הקישור או שואל למה התשובות מקלוד איטיות. להעביר את הקישור כמו שהוא.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
@@ -180,6 +186,10 @@ export const INBOX_TOOL_DEFS = [
 
 export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn, lastReply = "" }) {
   return {
+    async send_parents_now() {
+      const fast = await queueTap(env, store, SEND_NOW);
+      return `השליחה הופעלה${fast ? "" : " ותרוץ תוך שעה"}. דיווח מי קיבל הודעה יגיע אליך בנפרד.`;
+    },
     async claude_link() {
       return `${origin}/claude/start?k=${await issueKey(store, "claude")} (תקף 30 דקות. בדף: המשימה של שולה בקלוד ← עריכה ← Add another trigger ← API ← Generate token ← להדביק ← שמירה)`;
     },
