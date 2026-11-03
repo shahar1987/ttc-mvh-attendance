@@ -5,7 +5,7 @@
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { outboxMap } from "./queue.js";
-import { approvedShown, confirmed, ownerWrote } from "./tools.js";
+import { APPROVAL, approvedShown, confirmed, ownerWrote } from "./tools.js";
 import { recordCard, closeTap, PLAN_KEY } from "./open.js";
 
 // סימון לתוכן שלא נכתב ע"י הבעלים (תשובות קלוד, הודעות סוכנים) — מידע בלבד, לא הוראות לשולה
@@ -101,7 +101,7 @@ export async function inboxRoute(req, env, store, wa) {
     });
   }
   // כל בקשה במסמך משלה (agentReports/ask_<id>), כדי ששתי כתיבות במקביל לא ידרסו זו את זו
-  if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request }) => ({ id: id.slice(4), at, request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
+  if (req.method === "GET") return Response.json((await store.where("agentReports", "inboxStatus", "open")).map(({ id, at, request, said }) => ({ id: id.slice(4), at, request: said ? `${request}\n\n[מה שהבעלים אמר, במילים שלו:\n${said}]` : request, status: "open" })).sort((a, b) => a.at.localeCompare(b.at)));
   const { id, answer, notify, buttons, reply_to } = await req.json();
   // 📣 הודעה יזומה מקלוד לבעלים (בריף בוקר, קמפיין). מחוץ לחלון 24 השעות יוצאת כתבנית, והטקסט המלא נשאר ב-outbox
   if (notify && !id) {
@@ -142,7 +142,7 @@ export const INBOX_TOOL_DEFS = [
   {
     name: "ask_claude",
     description:
-      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב, כולל עריכת Google Docs/Sheets) וסקילים: תדריך בוקר לפי בקשה, מחקר, מסמכים/אקסל/מצגות/PDF, תמונות וסרטונים, עיצוב אתרים, SEO, שכתוב טקסט, שינוי באפליקציית הנוכחות, יצירת סקיל חדש. התשובה (טקסט או קישור לקובץ) מגיעה לבעלים בוואטסאפ; כמה זמן זה ייקח — רק מה שהכלי מחזיר, לא להבטיח פחות. request = הבקשה המלאה במילים של הבעלים: מה, בשביל מי, פורמט, מקור נתונים, דגשים.",
+      "מעביר בקשה לקלוד, שיש לו את חיבורי הגוגל של הבעלים (ג'ימייל, יומן, דרייב, כולל עריכת Google Docs/Sheets) וסקילים: תדריך בוקר לפי בקשה, מחקר, מסמכים/אקסל/מצגות/PDF, תמונות וסרטונים, עיצוב אתרים, SEO, שכתוב טקסט, שינוי באפליקציית הנוכחות, יצירת סקיל חדש. התשובה (טקסט או קישור לקובץ) מגיעה לבעלים בוואטסאפ; כמה זמן זה ייקח — רק מה שהכלי מחזיר, לא להבטיח פחות ולא לנחש בינתיים את התשובה. request = הבקשה המלאה במילים של הבעלים: מה, בשביל מי, פורמט, מקור נתונים, דגשים.",
     input_schema: { type: "object", properties: { request: { type: "string" } }, required: ["request"], additionalProperties: false },
   },
   {
@@ -152,22 +152,25 @@ export const INBOX_TOOL_DEFS = [
   },
 ];
 
-export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn }) {
+export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn, lastReply = "" }) {
   return {
     async claude_link() {
       return `${origin}/claude/start?k=${await issueKey(store, "claude")} (תקף 30 דקות. בדף: המשימה של שולה בקלוד ← עריכה ← Add another trigger ← API ← Generate token ← להדביק ← שמירה)`;
     },
     async ask_claude({ request }) {
       // לקלוד יש גישה למייל ולדרייב — בקשה שלא נשמעת כמו מה שהבעלים כתב צריכה "כן" נפרד
-      const shown = ownerWrote(request, ownerRecent) ? null : await approvedShown(store, "claude", lastOwnerText, turn);
+      // "כן" על הודעה שהבקשה הופיעה בה במילים האלה: הוא כבר ראה אותה, בלי שאלה שנייה (3.11: 4 פעמים ביומיים)
+      const seen = ownerWrote(request, ownerRecent) || (APPROVAL.test(lastOwnerText) && ownerWrote(request, lastReply));
+      const shown = seen ? null : await approvedShown(store, "claude", lastOwnerText, turn);
       if (shown) request = shown.request;
-      else if (!ownerWrote(request, ownerRecent) && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
+      else if (!seen && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
         return `לא הועבר עדיין. להציג לבעלים את הבקשה ("${String(request).slice(0, 120)}") ולשאול אם להעביר לקלוד. אחרי "כן" — לקרוא שוב עם אותה בקשה בדיוק.`;
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
-      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open" });
-      if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע לבעלים בוואטסאפ בעוד דקה-שתיים. לא לנחש בינתיים את התשובה.";
-      const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע לבעלים בוואטסאפ. לא לנחש בינתיים את התשובה.";
+      // said: מה שהוא אמר בפועל. המודל מנסח מחדש, וב-3.11 בדיקה שביקש הפכה לשלוש טיוטות לדוגמה
+      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, ...(ownerWrote(request, ownerRecent) ? {} : { said: String(ownerRecent).slice(-1500) }), inboxStatus: "open" });
+      if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע אליך בוואטסאפ בעוד דקה-שתיים.";
+      const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע אליך בוואטסאפ.";
       // קישור ההפעלה המיידית נשלח לכל היותר פעם ביום, כדי לא לנדנד בכל בקשה
       if (Date.now() - new Date(bot.claudeLinkAt || 0).getTime() < 24 * 3600 * 1000) return base;
       await store.merge("agentReports/bot", { claudeLinkAt: new Date().toISOString() });

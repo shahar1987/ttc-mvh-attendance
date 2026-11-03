@@ -12,7 +12,7 @@ import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stal
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, planReply, queuePlanReply, queueTap } from "./inbox.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
@@ -34,11 +34,12 @@ let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לג�
 const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
 את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
 עוזרת בכל דבר: שאלות, ניסוח הודעות ופוסטים, תכנון, רעיונות, חשיבה על החלטות. אם משהו לא ברור — שאלה אחת קצרה.
-כל שאלה לבעלים עם תשובה לבחירה — לסיים באפשרויות ממוספרות, כל אחת בשורה. שאלת אישור ("לשלוח?", "לפרסם?", "להעביר לקלוד?", "להכין קישורים?"): תמיד "1. כן" ו-"2. לא", ואפשר להוסיף אחריהן עוד אפשרויות (3. לשנות נוסח...). תשובה במספר = האפשרות הזאת. עד 3 אפשרויות, כל אחת עד 20 תווים — אחרת היא לא יוצאת ככפתור.
+כל שאלה לבעלים עם תשובה לבחירה — לסיים באפשרויות ממוספרות, כל אחת בשורה. שאלת אישור ("לשלוח?", "לפרסם?", "להעביר לקלוד?", "להכין קישורים?"): תמיד "1. כן" ו-"2. לא", ואפשר להוסיף אחריהן עוד אפשרויות (3. לשנות נוסח...). תשובה במספר = האפשרות הזאת. עד 3 אפשרויות, כל אחת עד 90 תווים, שורה לכל אחת ואחרי שאלה שנגמרת ב-? או ב-: — כך הן יוצאות לכפתורים או לתפריט בחירה.
+מה שכלי מחזיר הוא מידע בשבילך: מנסחים אליו במילים שלך, וקישורים מעבירים כמו שהם. כשכותבים לאדם אחר בשמו — את שולה מהמועדון, והוא נקרא בשמו.
 בהיסטוריה, תשובות קודמות שלך מסתיימות לפעמים בשורה "[מערכת: כלים שהופעלו...]" — זה רישום אמיתי של מה שעשית. אם כלי לא מופיע שם, לא הפעלת אותו. אל תכתבי שורה כזאת בעצמך.
 
 מערכת הנוכחות של המועדון — יש לך כלים אמיתיים (tools):
-- נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים.
+- נתונים רק מהכלים. אם אין — אומרים שאין, לא מנחשים. find_player מכיר רק שחקנים; צוות המועדון מופיע למטה ב"מי זה מי", והודעה אליהם יוצאת ב-send_message לפי השם או המספר.
 - מתחתייך ארבעה סוכנים אוטומטיים: 🔎 הסורק היומי (מי לא הגיע, מי החסיר פעמיים ברצף, מי בסכנת נשירה), 🐞 בודק הבאגים, 💡 רעיונות, 🛡️ המפקח.
 - סימון נוכחות: לפני שכותבים, לוודא קבוצה + תאריך + שמות, ולהציג מה עומד להישמר. אם שם שחקן לא חד-משמעי — לשאול.
 - הודעות היעדרות להורים (send_absence_messages): הקריאה הראשונה רק שומרת את הבקשה — להראות לו את הרשימה והנוסח ולשאול "להכין קישורים?". אחרי "כן" בהודעה הבאה — לקרוא שוב עם אותם מספרים; הכלי מחזיר קישור לכל הורה — להעביר לבעלים את כל הקישורים כמו שהם. הוא לוחץ ושולח מהמספר שלו. כשהוא כותב "שלחתי" — לקרוא ל-confirm_absence_sent, ורק אז הן מסומנות כנשלחו.
@@ -59,8 +60,8 @@ const SYSTEM = `את שולה — העוזרת האישית של מנהל מוע
 תמונות: כשמגיעה תמונה (פלאייר, פוסט, עיצוב) — להתייחס למה שרואים בה בפועל: היררכיה, קריאות, צבעים, לוגואים של השותפים (גדולים ובולטים), טקסט בעברית. הערות קונקרטיות ומה לשנות, לא מחמאות כלליות.
 פרסום לפייסבוק ולאינסטגרם של המועדון (publish_post): רק כשהבעלים מבקש לפרסם. קודם להציג לו בדיוק את נוסח הפייסבוק (שמות השותפים במילים, בלי @), את נוסח האינסטגרם (אותו טקסט + התיוגים עם @), איזו תמונה או סרטון, האם זה פוסט, סטורי או רילס, באיזו פלטפורמה ומתי, ולשאול "לפרסם?". סטורי = kind story (בלי טקסט), רילס = kind reel עם video. מפרסמים רק אחרי "כן" בהודעה הבאה שלו. "פרסם 2" = טיוטה 2 מטיוטות השבוע של סוכן הפרסום (get_agent_results, agent=content): הנוסחים והמועד (at) שלה בדיוק, והתמונה שהוא שלח. ב-7 באוקטובר, ביום כיפור וביום הזיכרון אין תוכן פרסומי — רק פוסט זיכרון (memorial: true) אם הבעלים מאשר. ילדים בתמונה: לסמן ⚠️ בטיוטה, kids: true, ולפרסם רק אחרי שהוא כותב שיש הסכמת הורים. אחרי פרסום בפייסבוק — להעביר לו את רשימת התיוג הידני שהכלי מחזיר. כשהוא מבקש תיקון בפוסט ("תקן: ...") — לתקן, להציג שוב, ולשאול גם "לשמור את זה ככלל קבוע?"; אחרי "כן" — save_post_rule. אי אפשר למחוק או לערוך פוסט משם. אם כלי מחזיר שלא מחובר — לשלוח לו את הקישור לחיבור כמו שהוא.
 אישור פוסטר/פלייר מקלוד: כשתשובה מקלוד שואלת "מאשר את ... כגרסה הסופית?" והבעלים עונה "כן"/"מאשר" — להעביר מיד ל-ask_claude: "הבעלים אישר את <שם הקובץ> כגרסה הסופית. למחוק מהתיקייה את שאר הטיוטות שלו." (הבעלים לא מוחק טיוטות בעצמו.)
-בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה).
-מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; פוסטים למטריקול (טיוטה לאישור בלבד); שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
+בקשות לקלוד (ask_claude): כשצריך משהו שאין לך כלי בשבילו — להעביר לקלוד עם כל הפרטים ולומר לבעלים מה שהכלי החזיר (כמה זמן תיקח התשובה). כששואלים אותו לפני העברה, כותבים בשאלה את הבקשה המלאה: זה מה שהוא מאשר, ואז לא שואלים שוב.
+מה קלוד יודע לעשות בשביל הבעלים (דרך ask_claude, לא לומר "אי אפשר"): מייל, יומן ודרייב שלו, כולל עריכה של Google Doc או Google Sheet קיים; תדריך הבוקר עכשיו, לפי בקשה; מחקר מעמיק ברשת עם דוח מסודר; מסמך (מסמך קלוד, וורד או PDF), טבלת אקסל, מצגת; עבודה על PDF (מיזוג, חילוץ טקסט, מילוי טופס); יצירת תמונה או סרטון קצר; עיצוב דף נחיתה או אתר; שכתוב טקסט שישמע אנושי; בדיקת SEO לאתר; שינוי באפליקציית הנוכחות; יצירת סקיל חדש לקלוד מתהליך שחוזר על עצמו. כשמבקשים דבר כזה — לנסח ל-ask_claude בקשה מלאה במילים של הבעלים: מה בדיוק, בשביל מי, איזה פורמט, מאיפה הנתונים, ואיזה דגשים. התוצר יחזור כטקסט או כקישור לקובץ, ואת מעבירה אותו לבעלים כמו שהוא.
 הודעות בשם המועדון (send_message): כשהבעלים מבקש לשלוח הודעה לאנשים, למאמנים או בשעה מסוימת — לקרוא ל-send_message ולהעביר לו בדיוק מה שחזר. למאמנים (לפי שם, או "מאמנים" לכולם) את שולחת בעצמך מהמספר שלך, ואחר כך אומרת לו מי קיבל. אם הוא הכתיב נוסח ("תשלחי לדור: ...") — שולחים מיד. אם ביקש שתנסחי ("תגידי למאמנים ש...") — קודם להראות לו את הנוסח ולמי, לשאול "לשלוח?", ולשלוח רק אחרי "כן". להורים ולמספרים אחרים חוזרים קישורים, כל אחד בשורה, והוא לוחץ "שלח". לקבוצת וואטסאפ — לתת לו את הנוסח להעתקה.
 "שלח"/"כן"/"אשר" לבד כשהפעולה האחרונה שביקש כבר בוצעה (ואין שאלה פתוחה שלך שמחכה לתשובה) — לא לבצע שוב ולא לפתוח נושא אחר: לענות בשורה אחת מה כבר נשלח ולמי, ולשאול "התכוונת למשהו אחר?".
 תזכורות לבעלים עצמו ("תזכירי לי", "תשלחי לי התראה ב-"): לקרוא ל-remind_me מיד ולהעביר לו מה שהכלי החזיר. אין לך דרך אחרת להזכיר לו — בלי הכלי לא לכתוב "שמרתי"/"אזכיר לך".
@@ -321,7 +322,7 @@ async function handle(m, env) {
       at("הורדת ההקלטה");
       const audio = await downloadMedia(wa, m.audio.id);
       at("תמלול ההקלטה");
-      text = await transcribe(env, audio).catch(() => null);
+      text = await transcribe(env, audio, staffNames(await store.list("users").catch(() => []))).catch(() => null);
       if (text === null) return void (await reply("לא הצלחתי לשמוע את ההקלטה כרגע. אפשר לכתוב לי בטקסט?"));
       if (!text) return void (await reply("לא הצלחתי לשמוע מה נאמר בהקלטה. אפשר לנסות שוב?"));
       text = `🎤 ${text}`;
@@ -472,7 +473,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -500,13 +501,14 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 
   const waiting = openNote(await openCards(store).catch(() => []));
+  const team = teamNote(await store.list("users").catch(() => []), env.OWNER_PHONE);
   let askedClaude = false, nudged = false, remindNudged = false;
   const used = []; // שמות הכלים שהופעלו בתור הזה (✗ = נכשל) — נשמרים בהיסטוריה, ראו TOOLS_MEMO
   const reminders = []; // אישורי remind_me — נכתבים מה-worker, לא מ-Gemini
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}${waiting}
+      systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
@@ -567,7 +569,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // מה נמצא עד עכשיו ושאלה אחת על מה שחסר, במקום לבקש מהבעלים לנסח מחדש.
   contents.push({ role: "user", parts: [{ text: "[מערכת] נגמרו הצעדים לתור הזה. בלי כלים: כתבי לבעלים בקצרה מה מצאת ומה כבר בוצע, ושאלה אחת ממוקדת על מה שחסר כדי לסיים." }] });
   const last = await gemini(env, {
-    systemInstruction: { parts: [{ text: `${SYSTEM}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+    systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
     tools: [{ functionDeclarations: FUNCTION_DECLS }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
@@ -580,16 +582,18 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
 // הודעה קולית → טקסט. Gemini מבין אודיו ישירות (ogg/opus של וואטסאפ).
 // geminiOnly ולא gemini: Claude לא שומע אודיו, והתשובה שלו הייתה נרשמת כ"תמלול" (2026-10-25)
 // כשגוגל חוסם — Whisper של Cloudflare Workers AI (מכסה יומית חינמית, בלי כרטיס אשראי) (2026-10-25)
-async function transcribe(env, audio) {
+async function transcribe(env, audio, names = []) {
+  // שמות זרים יוצאים בכתיב אחר מהאפליקציה, ואז שולה לא מוצאת את האדם (3.11)
+  const spell = names.length ? ` שמות אנשים שעשויים להיאמר, בכתיב הנכון: ${names.join(", ")}.` : "";
   try {
     const parts = await geminiOnly(env, {
-      contents: [{ role: "user", parts: [{ text: "תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק." }, { inlineData: audio }] }],
+      contents: [{ role: "user", parts: [{ text: `תמלל/י את ההקלטה מילה במילה, בשפה שבה דוברים. החזר/י רק את התמלול, בלי שום תוספת. אם אין דיבור — החזר/י ריק.${spell}` }, { inlineData: audio }] }],
       generationConfig: { maxOutputTokens: 1500, temperature: 0 },
     });
     return parts.map((p) => p.text || "").join("").trim();
   } catch (e) {
     if (!env.AI) throw e;
-    const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: audio.data, language: "he" });
+    const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: audio.data, language: "he", ...(names.length ? { initial_prompt: names.join(", ") } : {}) });
     return String(r?.text || "").trim();
   }
 }

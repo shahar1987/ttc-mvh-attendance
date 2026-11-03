@@ -1464,6 +1464,28 @@ console.log("buttons ok");
 }
 console.log("tapped question ok");
 
+// 3.11: אפשרות ארוכה לא נשארת רשימה להקלדה: תפריט בחירה, והלחיצה חוזרת עם השאלה
+{
+  const { sendText, incomingText, tappedQuestion } = await import("../../agents/lib/whatsapp.mjs");
+  const real = globalThis.fetch;
+  let body;
+  globalThis.fetch = async (_, o) => ((body = JSON.parse(o.body)), new Response(JSON.stringify({ messages: [{ id: "w" }] })));
+  await sendText({ token: "t", phoneId: "1" }, "1", "איך להמשיך?\n1. לנסות שם אחר או מספר טלפון שלו\n2. לא לשלוח, ולבקש את הפרטים ממישהו אחר");
+  const rows = body.interactive.action.sections[0].rows;
+  assert.equal(body.interactive.type, "list");
+  assert.ok(rows.every((r) => r.title.length <= 24 && (r.description || "").length <= 72 && r.id.length <= 200), "מגבלות של Meta");
+  assert.equal(rows[0].title + " " + rows[0].description, "לנסות שם אחר או מספר טלפון שלו");
+  const tap = { type: "interactive", interactive: { type: "list_reply", list_reply: { id: rows[1].id } } };
+  assert.equal(incomingText(tap), "לא לשלוח, ולבקש את הפרטים ממישהו אחר");
+  assert.equal(tappedQuestion(tap), "איך להמשיך?");
+  await sendText({ token: "t", phoneId: "1" }, "1", "הממצאים:\n1. משפט ראשון שמסתיים בנקודה אחת ארוכה מספיק.\n2. משפט שני ארוך גם הוא ומספיק כדי לעבור עשרים.\n\nזה הכל.");
+  assert.equal(body.type, "text", "רשימה באמצע הודעה נשארת טקסט");
+  await sendText({ token: "t", phoneId: "1" }, "1", "סיכום היום.\n1. משפט ראשון שמסתיים בנקודה אחת ארוכה מספיק.\n2. משפט שני ארוך גם הוא ומספיק כדי לעבור עשרים.");
+  assert.equal(body.type, "text", "רשימה בלי שאלה נשארת טקסט");
+  globalThis.fetch = real;
+}
+console.log("long options ok");
+
 // 3.11: כרטיס פרסום לכל פריט. כפתורים, עריכת נוסח ותמונה מהוואטסאפ מגיעים ליומן ומפעילים את משימת הפרסום
 {
   const { photoTarget } = await import("../src/open.js");

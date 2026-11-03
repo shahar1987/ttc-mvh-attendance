@@ -25,8 +25,9 @@ export function pickCoaches(users, ids, to) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { to, text, quiet } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
-  if (String(quiet) !== "true" && !String(text || "").trim()) throw new Error("missing text");
+  const { to, text, quiet, resume } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")).inputs || {};
+  const silent = String(quiet) === "true", back = String(resume) === "true";
+  if (!silent && !back && !String(text || "").trim()) throw new Error("missing text");
   const { firestore, loadAll } = await import("./lib/firebase.mjs");
   const { randomUUID } = await import("node:crypto");
   const admin = (await import("firebase-admin")).default;
@@ -38,12 +39,13 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   ];
   // quiet: המדריך לא יקבל שום הודעה אוטומטית (תזכורות, סיכומים, הסיכום השבועי) — כמו הפקודה לשולה בוואטסאפ.
   // לא נוגע בקבוצות ובמשתמשים באפליקציה. אין צורך בטלפון תקין כדי להשתיק.
-  if (String(quiet) === "true") {
+  if (silent || back) {
     const q = String(to || "").trim();
     const hits = (await loadAll(db, "users")).filter((u) => !u.deleted && q && (u.name === q || (u.name || "").includes(q)));
     if (hits.length !== 1) throw new Error(`quiet: name matches ${hits.length} users (need exactly 1)`);
-    await db.collection("agentReports").doc("coaches").set({ quiet: admin.firestore.FieldValue.arrayUnion(hits[0].id) }, { merge: true });
-    console.log("quiet: 1 user will not get automatic messages");
+    const { arrayUnion, arrayRemove } = admin.firestore.FieldValue;
+    await db.collection("agentReports").doc("coaches").set({ quiet: back ? arrayRemove(hits[0].id) : arrayUnion(hits[0].id) }, { merge: true });
+    console.log(back ? "resume: 1 user gets automatic messages again" : "quiet: 1 user will not get automatic messages");
     process.exit(0);
   }
   const targets = pickCoaches(await loadAll(db, "users"), ids, to);

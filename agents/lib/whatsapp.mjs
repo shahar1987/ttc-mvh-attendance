@@ -28,6 +28,13 @@ async function post(cfg, body) {
 // "1. כן\n2. לא" בסוף הודעה יוצא ככפתורים ללחיצה (30.10: "כל העניין הזה של המספרים מאוד מעצבן").
 // buttons מפורשים: [{id, title}] — id הוא מה שחוזר כשלוחצים (למשל "מוח 9"), title עד 20 תווים.
 const OPTIONS = /\n+((?:[1-3]\. [^\n]{1,20}(?:\n|$)){2,3})\s*$/;
+// אפשרות ארוכה מ-20 תווים לא נכנסת לכפתור, והיתה יוצאת כרשימה להקלדה (3.11: 18 מתוך 26 שאלות). יוצאת בתפריט בחירה של וואטסאפ
+const LONG_OPTIONS = /\n+((?:[1-3]\. [^\n]{1,90}(?:\n|$)){2,3})\s*$/;
+const listRow = (option, asked) => {
+  const cut = option.length <= 24 ? option.length : option.lastIndexOf(" ", 24) > 0 ? option.lastIndexOf(" ", 24) : 24;
+  const description = option.slice(cut).trim().slice(0, 72);
+  return { id: `${option}${TAP}${asked}`.slice(0, 200), title: option.slice(0, cut), ...(description ? { description } : {}) };
+};
 // מזהה של כפתור אוטומטי: "כן¦סוף השאלה". כך הלחיצה חוזרת עם השאלה עצמה, גם בהודעות שנשלחו מה-cron ומהסוכנים (2.11: "כן" הגיע למודל בלי שום הקשר)
 const TAP = "¦";
 // replyTo = מזהה הודעה קודמת: התשובה מופיעה כציטוט שלה (כמו "עדכון על הכרטיס" בבוטים של Slack)
@@ -37,6 +44,16 @@ export async function sendText(cfg, to, text, buttons, replyTo) {
   if (m) {
     const asked = text.slice(0, m.index).replace(/\s+/g, " ").trim().slice(-200);
     buttons = m[1].trim().split("\n").map((l) => l.replace(/^\d\. /, "").trim()).map((title) => ({ id: `${title}${TAP}${asked}`, title }));
+  }
+  const long = !buttons?.length && text.match(LONG_OPTIONS);
+  if (long && /[?:]\s*$/.test(text.slice(0, long.index))) {
+    const before = text.slice(0, long.index).trim();
+    const asked = before.replace(/\s+/g, " ").slice(-200);
+    const rows = long[1].trim().split("\n").map((l) => listRow(l.replace(/^\d\. /, "").trim(), asked));
+    const body = before.length > 1000 ? before.split("\n").filter(Boolean).pop().slice(0, 1000) : before;
+    const plain = () => post(cfg, { to, ...ctx, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
+    if (before.length > 1000) await post(cfg, { to, type: "text", text: { body: before.slice(0, 4000), preview_url: false } });
+    return post(cfg, { to, ...ctx, type: "interactive", interactive: { type: "list", body: { text: body }, action: { button: "בחירה", sections: [{ rows }] } } }).catch(plain);
   }
   if (!buttons?.length) return post(cfg, { to, ...ctx, type: "text", text: { body: text.slice(0, 4000), preview_url: false } });
   let body = (m ? text.slice(0, m.index) : text).trim();
@@ -62,11 +79,12 @@ export async function sendText(cfg, to, text, buttons, replyTo) {
   return m ? send(buttons).catch(() => send(buttons.map((b) => b.title))) : send(buttons);
 }
 
-// הטקסט של הודעה נכנסת: כתיבה, כפתור של תבנית, או לחיצה על כפתור (חוזר ה-id שלו)
+const tapId = (m) => m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || "";
+// הטקסט של הודעה נכנסת: כתיבה, כפתור של תבנית, או לחיצה על כפתור או שורה בתפריט (חוזר ה-id שלהם)
 export const incomingText = (m) =>
-  (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.type === "interactive" ? (m.interactive?.button_reply?.id || "").split(TAP)[0] : "").trim();
+  (m.type === "text" ? m.text.body : m.type === "button" ? m.button.text : m.type === "interactive" ? tapId(m).split(TAP)[0] : "").trim();
 // על איזו שאלה נלחץ הכפתור (ריק בכפתורים עם מזהה משלהם, כמו "מוח 9")
-export const tappedQuestion = (m) => (m.interactive?.button_reply?.id || "").split(TAP)[1] || "";
+export const tappedQuestion = (m) => tapId(m).split(TAP)[1] || "";
 
 // club_message סווגה ב-Meta כשיווקית, ונמענים חסומים לה (131049). קודם התבנית התפעולית, ואם היא עוד לא קיימת/מאושרת — הישנה.
 const PREFER = { club_message: "coach_notice" };
