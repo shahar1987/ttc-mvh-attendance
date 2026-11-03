@@ -17,6 +17,10 @@ export const APPROVAL = { test: (t) => /^\s*1\s*[.!]?\s*$/.test(t || "") || (APP
 
 // הבעלים כתב בעצמו את רוב המילים של הטקסט (בהודעה הזאת או באחרונות) — אז זה לא תוכן שהוזרק
 // דרך שם של שחקן/קבוצה או תשובה חיצונית. מילה עם אות-תחילית (ה/ו/ל/ב/ש) נחשבת גם בלעדיה.
+// שם שנשמע אותו דבר: בהקלטה ט/ת, ק/כ ו-א/ע מתחלפים, והשם לא נמצא באפליקציה (3.11)
+const SOUND = { ט: "ת", ק: "כ", ע: "א", ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ" };
+export const sameSound = (s) => String(s || "").replace(/[טקעךםןףץ]/g, (c) => SOUND[c]);
+
 export function ownerWrote(text, ownerText) {
   const words = String(text || "").match(/[\p{L}\p{N}]{2,}/gu) || [];
   const o = String(ownerText || "");
@@ -331,7 +335,11 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
       if (!q) return "צריך שם.";
       const [players, groups, cancellations] = await Promise.all([store.list("players"), store.list("groups"), store.list("cancellations")]);
       const hits = players.filter((p) => !p.deleted && (p.name || "").includes(q)).slice(0, 5);
-      if (!hits.length) return `לא נמצא שחקן בשם "${q}".`;
+      if (!hits.length) {
+        // find_player מכיר רק שחקנים, ושם של מדריך החזיר "לא נמצא" אף שהוא באפליקציה (3.11)
+        const staff = (await store.list("users")).filter((u) => !u.deleted && ["coach", "admin"].includes(String(u.role || "").toLowerCase()) && sameSound(u.name).includes(sameSound(q)));
+        return staff.length ? `"${q}" לא שחקן, אבל בצוות המועדון יש: ${staff.map((u) => u.name).join(", ")}. הודעה אליו: send_message עם השם הזה.` : `לא נמצא שחקן בשם "${q}".`;
+      }
       const today = israelToday();
       const out = [];
       for (const p of hits) {

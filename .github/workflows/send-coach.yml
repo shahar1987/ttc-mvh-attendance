@@ -16,6 +16,10 @@ on:
         description: "לא לשלוח — להפסיק הודעות אוטומטיות למדריך הזה"
         type: boolean
         default: false
+      resume:
+        description: "לא לשלוח — להחזיר הודעות אוטומטיות למדריך הזה"
+        type: boolean
+        default: false
 
 permissions:
   contents: read

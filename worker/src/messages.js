@@ -7,12 +7,21 @@ import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
-import { confirmed, findGroup, ownerWrote } from "./tools.js";
+import { confirmed, findGroup, ownerWrote, sameSound } from "./tools.js";
 import { drainQueue } from "./queue.js";
 import { watchReads, staffSend } from "./reminders.js";
 
 const COACHES = /^(כל )?ה?מאמנים$|^(כל )?ה?מדריכים$|^צוות$/;
 const role = (u) => String(u.role || "").trim().toLowerCase();
+const isStaff = (u) => !u.deleted && !!u.name && ["coach", "admin"].includes(role(u));
+export const staffNames = (users) => users.filter(isStaff).map((u) => u.name);
+
+// מי זה מי, מהאפליקציה ולא מהקוד (הריפו ציבורי). בלי זה שולה דיברה על הבעלים כעל מאמן אחר ועצרה לו הודעות (1.11)
+export function teamNote(users, ownerPhone) {
+  const me = users.filter(isStaff).find((u) => normalizePhone(u.phone) === normalizePhone(ownerPhone));
+  const team = staffNames(users).filter((n) => n !== me?.name);
+  return `\n\nמי זה מי: הבעלים שאת מדברת איתו הוא ${me?.name || "מנהל המועדון"}, גבר. פונים אליו ישירות בלשון זכר, בלי המילה "הבעלים". כשהשם שלו מופיע ברשימות, כמאמן או כנמען, זה הוא עצמו.${team.length ? ` צוות המועדון באפליקציה: ${team.join(", ")}. שם שנשמע דומה לאחד מהם הוא כנראה אותו אדם.` : ""}`;
+}
 
 // "שם", "מאמנים", "קבוצת X" (ההורים של כל השחקנים הפעילים בקבוצה), או מספר → [{name, phone}] + שמות שלא נמצאו / לא חד-משמעיים
 async function resolve(store, to) {
@@ -23,6 +32,7 @@ async function resolve(store, to) {
   ];
   const out = [];
   const problems = [];
+  const similar = [];
   for (const q of to.map((x) => String(x).trim()).filter(Boolean)) {
     const group = q.match(/^קבוצ(?:ת|ה)\s+(.+)/);
     if (COACHES.test(q)) out.push(...people.filter((p) => p.staff));
@@ -30,7 +40,7 @@ async function resolve(store, to) {
       const { g, roster } = await findGroup(store, group[1], undefined, players);
       if (g) out.push(...roster.map((p) => ({ name: p.name || "", phone: p.parentPhone })));
       else problems.push(roster);
-    } else if (isValidPhone(q)) out.push({ name: q, phone: q });
+    } else if (isValidPhone(q)) out.push(people.find((p) => p.staff && normalizePhone(p.phone) === normalizePhone(q)) || { name: q, phone: q });
     else {
       const hits = people.filter((p) => p.name.includes(q));
       const exact = hits.filter((p) => p.name === q);
@@ -38,7 +48,17 @@ async function resolve(store, to) {
       if (hits.length === 1 || exact.length === 1) out.push(exact[0] || hits[0]);
       // "דניאל" כשיש מדריך אחד בשם הזה ועוד שחקנים — הכוונה למדריך
       else if (staff.length === 1) out.push(staff[0]);
-      else problems.push(hits.length ? `"${q}" מתאים לכמה: ${hits.map((h) => h.name).join(", ")}` : `"${q}" לא נמצא`);
+      else if (hits.length) problems.push(`"${q}" מתאים לכמה: ${hits.map((h) => h.name).join(", ")}`);
+      else {
+        const crew = people.filter((p) => p.staff);
+        const sounds = crew.filter((p) => sameSound(p.name).includes(sameSound(q)));
+        // שם משפחה לבד יכול להיות הורה אחר, אז רק מציעים ולא שולחים
+        const last = q.split(/\s+/).at(-1);
+        const family = last.length > 2 && last !== q ? crew.filter((p) => sameSound(p.name).includes(sameSound(last))) : [];
+        if (sounds.length === 1) out.push(sounds[0]);
+        else if (family.length === 1) similar.push(family[0]);
+        else problems.push(`"${q}" לא נמצא`);
+      }
     }
   }
   const seen = new Set();
@@ -50,7 +70,7 @@ async function resolve(store, to) {
       recipients.push({ name: p.name, phone: normalizePhone(p.phone), staff: !!p.staff });
     }
   }
-  return { recipients, problems };
+  return { recipients, problems, similar };
 }
 
 const deliver = (recipients, text) => recipients.map((r) => `${r.name}: ${waLink(r.phone, text)}`).join("\n");
@@ -102,7 +122,11 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
     },
 
     async send_message({ to, text, at }) {
-      const { recipients, problems } = await resolve(store, to);
+      const { recipients, problems, similar } = await resolve(store, to);
+      if (!recipients.length && similar.length === 1 && isValidPhone(similar[0].phone || "")) {
+        await confirmed(store, "message", { to: [normalizePhone(similar[0].phone)], text, at: at || "" }, lastOwnerText, turn);
+        return `לא נשלח עדיין: השם לא נמצא, אבל יש בצוות את ${similar[0].name}. לשאול "לשלוח ל${similar[0].name}?" עם הנוסח. אחרי "כן": send_message עם השם הזה ואותו נוסח בדיוק.`;
+      }
       if (!recipients.length) return `לא נשלח: אין נמענים. ${problems.join("; ")}`;
       const note = problems.length ? ` (דילגתי: ${problems.join("; ")})` : "";
       // שעה לא תקינה או שכבר עברה — שגיאה מפורשת, לא קישורים מיידיים שהבעלים לא ביקש עכשיו
@@ -112,7 +136,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       // הודעה שיוצאת משולה למאמנים: מיד אם הבעלים כתב את הנוסח בעצמו, אחרת רק אחרי "כן" נפרד
       // (מגן מטקסט שהוזרק דרך שם של קבוצה/שחקן). קישורים להורים — הבעלים לוחץ בעצמו, אין צורך.
       if (recipients.some((r) => r.staff) && !ownerWrote(text, ownerRecent)
-        && !(await confirmed(store, "message", { to, text, at: at || "" }, lastOwnerText, turn)))
+        && !(await confirmed(store, "message", { to: recipients.map((r) => r.phone), text, at: at || "" }, lastOwnerText, turn)))
         return `לא נשלח עדיין. להציג לבעלים את הנוסח ואת הנמענים (${recipients.map((r) => r.name).join(", ")}) ולשאול "לשלוח?". אחרי "כן" — לקרוא שוב עם אותם פרטים בדיוק.`;
       if (at) {
         const id = Math.random().toString(36).slice(2, 7);
