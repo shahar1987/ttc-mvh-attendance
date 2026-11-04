@@ -1,0 +1,100 @@
+// סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
+// סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
+// שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
+// (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
+// רץ מ-board-members.yml כל רבע שעה. הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
+//   FIREBASE_SERVICE_ACCOUNT=... node scripts/status_sheet.mjs   (אחרי `cd agents && npm ci`)
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { firestore, loadAll } from "../agents/lib/firebase.mjs";
+
+const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
+
+export const SHEET_ID = "13xzdQCpxGrJj4oMm3CQwee44bQRIRqw9s60G08ooVj4";
+export const PAID = "✓ רשום ושילם";
+export const UNPAID = "◐ רשום, לא שילם";
+export const OFF = "— לא במעקב";
+const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה עמודה שנמחקה או הודבקה בטעות, לא עדכון אמיתי
+
+// rows: [{ id, status, mirrored }]; players: Map(id → player); last: { id: { s, a } }
+export function plan(rows, players, last) {
+  const app = [], sheet = [], next = {};
+  for (const r of rows) {
+    const p = players.get(r.id);
+    if (!p || !p.isActive || p.deleted || !r.status) continue;
+    const a = p.notPaying === true;
+    const was = last[r.id];
+    if (!was) { next[r.id] = { s: r.status, a }; continue; } // פעם ראשונה: רק מתעדים, בלי לגעת באף צד
+    let s = r.status, want = a;
+    if (s !== was.s) {
+      if (s !== OFF) want = !s.startsWith("✓");
+      if (want !== a) app.push({ id: r.id, notPaying: want });
+    } else if (a !== was.a && s !== OFF && !r.mirrored && s.startsWith("✓") === a) {
+      s = a ? UNPAID : PAID;
+      sheet.push({ id: r.id, status: s });
+    }
+    next[r.id] = { s, a: want };
+  }
+  return { app, sheet, next };
+}
+
+async function sheetsFetch(tok, path, body) {
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!r.ok) throw new Error(`Sheets ${path.split("?")[0]} failed (${r.status})`);
+  return r.json();
+}
+
+// קורא את כל לשוניות הקבוצות (כל לשונית שיש בה עמודות סטטוס רישום + מזהה)
+async function readRows(tok) {
+  const meta = await sheetsFetch(tok, "?fields=sheets.properties.title");
+  const ranges = meta.sheets.map((s) => `'${s.properties.title}'!A2:K60`);
+  const q = ranges.map((x) => `ranges=${encodeURIComponent(x)}`).join("&");
+  const [vals, forms] = await Promise.all(["FORMATTED_VALUE", "FORMULA"].map((o) => sheetsFetch(tok, `/values:batchGet?${q}&valueRenderOption=${o}`)));
+  const rows = [];
+  vals.valueRanges.forEach((vr, i) => {
+    const grid = vr.values || [], tab = meta.sheets[i].properties.title;
+    const [st, note, id] = ["סטטוס רישום", "הערה", "מזהה"].map((h) => (grid[0] || []).indexOf(h));
+    if (st < 0 || id < 0) return;
+    const col = (c) => String.fromCharCode(65 + c);
+    grid.slice(1).forEach((row, j) => {
+      if (!row[id]) return;
+      const n = j + 3, f = forms.valueRanges[i].values?.[j + 1]?.[st];
+      rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}` });
+    });
+  });
+  return rows;
+}
+
+async function main() {
+  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
+  const { token: tok } = await new JWT({ email: sa.client_email, key: sa.private_key, scopes: ["https://www.googleapis.com/auth/spreadsheets"] }).getAccessToken();
+  if (!tok) throw new Error("no Sheets access token");
+  const db = firestore();
+  const ref = db.collection("system").doc("statusSheetSync");
+  const [rows, players, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), ref.get()]);
+  const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
+  if (app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length} app writes in one run`);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  if (sheet.length) {
+    const today = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit" }).format(new Date());
+    const data = sheet.flatMap(({ id, status }) => {
+      const r = byId.get(id);
+      return [{ range: r.statusCell, values: [[status]] }, ...(r.noteCell ? [{ range: r.noteCell, values: [[`עודכן מהאפליקציה ${today}`]] }] : [])];
+    });
+    await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data });
+  }
+  if (app.length) {
+    const b = db.batch();
+    app.forEach(({ id, notPaying }) => b.update(db.collection("players").doc(id), { notPaying, notPayingSource: "manual" }));
+    await b.commit();
+  }
+  await ref.set({ players: next, updatedAt: new Date().toISOString() });
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet`);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
+  main().catch((e) => { console.error(e.message); process.exit(1); });
