@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, newRow, draftPlayer, PAID, UNPAID, OFF } from "../scripts/status_sheet.mjs";
+import { plan, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -64,4 +64,10 @@ test("שורה מהגיליון: בלי טלפון תקין ממתינה, עם �
   assert.match(a.id, /^sheet_[0-9a-f]{16}$/);
   assert.equal(draftPlayer({ name: "דנה כהן", phone: "0501234567" }, "g", "2026-12-01").id, a.id);
   assert.equal(draftPlayer({ name: "דנה כהן", phone: "050-1234567" }, "g", "2026-11-04").notPaying, true);
+});
+
+test("לבדיקה לא נוגע באפליקציה, והכרעה אחריו כן", () => {
+  assert.deepEqual(plan([{ id: "a", status: CHECK }], players({ a: false }), { a: { s: NO, a: false } }).app, []);
+  assert.deepEqual(plan([{ id: "a", status: CHECK }], players({ a: true }), { a: { s: CHECK, a: false } }).sheet, []);
+  assert.deepEqual(plan([{ id: "a", status: NO }], players({ a: false }), { a: { s: CHECK, a: false } }).app, [{ id: "a", notPaying: true }]);
 });

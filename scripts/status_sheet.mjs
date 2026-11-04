@@ -20,6 +20,8 @@ export const SHEET_ID = "13xzdQCpxGrJj4oMm3CQwee44bQRIRqw9s60G08ooVj4";
 export const PAID = "✓ רשום ושילם";
 export const UNPAID = "◐ רשום, לא שילם";
 export const OFF = "— לא במעקב";
+export const CHECK = "⏳ לבדיקה"; // פער שמחכה להכרעה: לא משנה כלום באפליקציה, כמו "לא במעקב"
+const neutral = (s) => s === OFF || s === CHECK;
 export const NOT_REGISTERED = "✗ לא רשום";
 const UNTRACKED_GROUP = "חוגים רמת כורזים";
 const MAX_NEW_ROWS = 30;
@@ -36,9 +38,9 @@ export function plan(rows, players, last) {
     if (!was) { next[r.id] = { s: r.status, a }; continue; } // פעם ראשונה: רק מתעדים, בלי לגעת באף צד
     let s = r.status, want = a;
     if (s !== was.s) {
-      if (s !== OFF) want = !s.startsWith("✓");
+      if (!neutral(s)) want = !s.startsWith("✓");
       if (want !== a) app.push({ id: r.id, notPaying: want });
-    } else if (a !== was.a && s !== OFF && !r.mirrored && s.startsWith("✓") === a) {
+    } else if (a !== was.a && !neutral(s) && !r.mirrored && s.startsWith("✓") === a) {
       s = a ? UNPAID : PAID;
       sheet.push({ id: r.id, status: s });
     }
