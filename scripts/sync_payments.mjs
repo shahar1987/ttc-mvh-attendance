@@ -279,7 +279,7 @@ export function playersMatchingPhone(byPhone, nameSet, filePersonal) {
 
 export function parseCsv(text) {
   let rows = [];
-  let lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
+  let lines = text.replace(/^\ufeff/, "").replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
   for (let line of lines) {
     let cells = [],
       cur = "",
@@ -552,7 +552,7 @@ async function main() {
     ).arrayBuffer();
     buffer = Buffer.from(arrayBuf);
   }
-  const parsedFile = rowsFromFile(buffer, { isSpreadsheetExport });
+  const parsedFile = rowsFromFile(buffer, { isSpreadsheetExport: isSpreadsheetExport || file.mimeType === "text/csv" }); // XLSX.read מפענח CSV בלי BOM כ-Latin-1
   const rows = parsedFile.rows;
   if (parsedFile.perSheet.length)
     console.log(
@@ -585,6 +585,8 @@ async function main() {
   const cols = detectColumns(header);
   const phoneCols = detectPhoneColumns(header);
   const dataRows = rows.slice(1).filter((r) => r.some((c) => (c || "").trim()));
+  // כותרות לא מזוהות (למשל קידוד שגוי) נראות כמו "אף אחד לא שילם": עוצרים לפני שמסמנים את כולם (4.11.2026)
+  if (cols.groupCol === -1 || (cols.familyCol === -1 && cols.nameCol === -1)) throw new Error("registration file: columns not recognised, nothing changed");
 
   // שלב 3.5: השוואה ל-snapshot הקודם + הגנה מפני קובץ חלקי.
   // זו ההגנה החשובה ביותר כאן: קובץ שנקטע באמצע נראה בדיוק כמו "פתאום כולם

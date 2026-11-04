@@ -2,11 +2,13 @@
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
 // (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
+// שחקן פעיל שנוסף באפליקציה ועוד אין לו שורה נכנס ללשונית הקבוצה שלו (הגיליון הוא הבקרה של המועדון).
 // רץ מ-board-members.yml כל רבע שעה. הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
 //   FIREBASE_SERVICE_ACCOUNT=... node scripts/status_sheet.mjs   (אחרי `cd agents && npm ci`)
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
+import { safeCell } from "./export_event_signups.mjs";
 
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
 
@@ -14,6 +16,9 @@ export const SHEET_ID = "13xzdQCpxGrJj4oMm3CQwee44bQRIRqw9s60G08ooVj4";
 export const PAID = "✓ רשום ושילם";
 export const UNPAID = "◐ רשום, לא שילם";
 export const OFF = "— לא במעקב";
+export const NOT_REGISTERED = "✗ לא רשום";
+const UNTRACKED_GROUP = "חוגים רמת כורזים";
+const MAX_NEW_ROWS = 30;
 const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה עמודה שנמחקה או הודבקה בטעות, לא עדכון אמיתי
 
 // rows: [{ id, status, mirrored }]; players: Map(id → player); last: { id: { s, a } }
@@ -38,6 +43,24 @@ export function plan(rows, players, last) {
   return { app, sheet, next };
 }
 
+const phone = (raw) => {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (!d) return "חסר";
+  const n = d.startsWith("972") ? `0${d.slice(3)}` : d;
+  return `${n.slice(0, 3)}-${n.slice(3)}`;
+};
+
+// שורה לשחקן חדש, לפי כותרות הלשונית (ילדים ומבוגרים שונים בעמודות)
+export function newRow(p, group, headers, index) {
+  const off = group === UNTRACKED_GROUP;
+  const cell = {
+    "#": index, "שם": String(p.name || "").trim(), "הורה": String(p.parentName || "").trim(), "טלפון": phone(p.parentPhone), "טלפון הורה": phone(p.parentPhone),
+    "הצטרף": String(p.joinDate || "").split("-").reverse().join("/"), "אימון ראשון": "",
+    "סטטוס רישום": off ? OFF : p.notPaying === false ? PAID : NOT_REGISTERED, "הערה": off ? "" : "נוסף מהאפליקציה", "מזהה": p.id,
+  };
+  return headers.map((h) => safeCell(cell[h] ?? ""));
+}
+
 async function sheetsFetch(tok, path, body) {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
     method: body ? "POST" : "GET",
@@ -54,11 +77,12 @@ async function readRows(tok) {
   const ranges = meta.sheets.map((s) => `'${s.properties.title}'!A2:K60`);
   const q = ranges.map((x) => `ranges=${encodeURIComponent(x)}`).join("&");
   const [vals, forms] = await Promise.all(["FORMATTED_VALUE", "FORMULA"].map((o) => sheetsFetch(tok, `/values:batchGet?${q}&valueRenderOption=${o}`)));
-  const rows = [];
+  const rows = [], tabs = {};
   vals.valueRanges.forEach((vr, i) => {
     const grid = vr.values || [], tab = meta.sheets[i].properties.title;
     const [st, note, id] = ["סטטוס רישום", "הערה", "מזהה"].map((h) => (grid[0] || []).indexOf(h));
     if (st < 0 || id < 0) return;
+    tabs[tab] = { headers: grid[0], used: grid.length + 1, count: grid.filter((r, k) => k && r[1]).length }; // used: שורת הגיליון האחרונה בשימוש
     const col = (c) => String.fromCharCode(65 + c);
     grid.slice(1).forEach((row, j) => {
       if (!row[id]) return;
@@ -66,7 +90,7 @@ async function readRows(tok) {
       rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}` });
     });
   });
-  return rows;
+  return { rows, tabs };
 }
 
 async function main() {
@@ -75,7 +99,7 @@ async function main() {
   if (!tok) throw new Error("no Sheets access token");
   const db = firestore();
   const ref = db.collection("system").doc("statusSheetSync");
-  const [rows, players, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), ref.get()]);
+  const [{ rows, tabs }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
   const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
   if (app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length} app writes in one run`);
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -92,8 +116,22 @@ async function main() {
     app.forEach(({ id, notPaying }) => b.update(db.collection("players").doc(id), { notPaying, notPayingSource: "manual" }));
     await b.commit();
   }
+  // שחקנים חדשים מהאפליקציה: USER_ENTERED כדי שתאריך ההצטרפות יישמר כתאריך; safeCell מונע נוסחאות מהשמות
+  const known = new Set(rows.map((r) => r.id));
+  const groupName = new Map(groups.map((g) => [g.id, g.name]));
+  const fresh = players.filter((p) => p.isActive !== false && !p.deleted && p.name && !known.has(p.id));
+  if (fresh.length > MAX_NEW_ROWS) throw new Error(`refusing ${fresh.length} new rows in one run`);
+  const add = [];
+  let noTab = 0;
+  for (const p of fresh) {
+    const g = groupName.get(p.groupId) || "", t = tabs[g.replace("קובצת", "קבוצת")];
+    if (!t) { noTab++; continue; }
+    t.used++; t.count++;
+    add.push({ range: `'${g.replace("קובצת", "קבוצת")}'!A${t.used}`, values: [newRow(p, g, t.headers, t.count)] });
+  }
+  if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, updatedAt: new Date().toISOString() });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet`);
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${noTab} without a tab`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
