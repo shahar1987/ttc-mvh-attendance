@@ -76,6 +76,15 @@
     button { min-height: 44px; }
     button[class~="w-6"], button[class~="w-7"], button[class~="w-8"] { min-width: 44px; }
     select, input[type="date"], input[type="text"], input[type="search"], input[type="tel"], input[type="email"], input[type="number"], input:not([type]) { min-height: 44px; }
+    /* 4.11 תצוגת מחשב: התפריט קבוע בצד, התוכן ברוחב מלא בשתי עמודות, וחלונות במרכז המסך */
+    @media (min-width: 1024px) {
+      .desk-screen { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+      .desk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+      .desk-grid > * { grid-column: 1 / -1; }
+      .desk-grid > .desk-half { grid-column: auto; }
+      .fixed.inset-0.bg-black\/40.items-end { align-items: center; }
+      .fixed.inset-0.bg-black\/40.items-end > * { border-radius: 20px; }
+    }
     /* מי שביקש במערכת ההפעלה פחות תנועה — בלי אנימציות */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }

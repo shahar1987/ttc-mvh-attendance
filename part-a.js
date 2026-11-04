@@ -3327,7 +3327,7 @@ function st({
     todayDone = todayG.filter((d) => l.some((y) => y.groupId === d.id && y.date === E()) || findCancellation(CX, d.id, E())).length;
   return e.createElement(
     "div",
-    { className: "px-4 pt-4 pb-6 flex flex-col gap-5" },
+    { className: "desk-grid px-4 pt-4 pb-6 flex flex-col gap-5" },
     dashErr &&
       e.createElement(
         "div",
@@ -3349,7 +3349,7 @@ function st({
     // 28.10 עיצוב "בריאות וכושר": טבעת נוכחות החודש (חוץ) ואימוני היום שמולאו (פנים)
     e.createElement(
       "div",
-      { className: "rounded-2xl bg-white ios-card p-4 flex items-center gap-5" },
+      { className: "desk-half lg:self-stretch rounded-2xl bg-white ios-card p-4 flex items-center gap-5" },
       e.createElement(ActivityRings, {
         outer: g,
         inner: todayG.length ? (100 * todayDone) / todayG.length : 0,
@@ -3373,11 +3373,11 @@ function st({
     ),
     e.createElement(
       "div",
-      { className: "grid grid-cols-3 gap-2" },
+      { className: "desk-half lg:self-stretch grid grid-cols-3 gap-2" },
       [[uniqueActiveCount, "שחקנים"], [s.length, "קבוצות"], [r, "אימונים החודש"]].map(([v, lb]) =>
         e.createElement(
           "div",
-          { key: lb, className: "rounded-2xl bg-white ios-card px-2 py-3 text-center" },
+          { key: lb, className: "rounded-2xl bg-white ios-card px-2 py-3 text-center lg:flex lg:flex-col lg:justify-center" },
           e.createElement("div", { className: "text-xl font-extrabold text-blue-950 tabular-nums" }, v),
           e.createElement("div", { className: "text-xs font-semibold text-slate-500 mt-0.5" }, lb),
         ),
@@ -3486,10 +3486,10 @@ function st({
       ),
     e.createElement(
       "div",
-      { className: "flex flex-col gap-3" },
+      { className: "flex flex-col gap-3 lg:grid lg:grid-cols-2" },
       e.createElement(
         "h2",
-        { className: "text-xl font-extrabold text-blue-950 px-1 mt-1" },
+        { className: "text-xl font-extrabold text-blue-950 px-1 mt-1 lg:col-span-2" },
         "קבוצות",
       ),
       s.map((d) => {
@@ -3568,7 +3568,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
       .filter((m) => m.players.length > 0);
   return e.createElement(
     "div",
-    { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    { className: "desk-grid px-4 pt-4 pb-6 flex flex-col gap-4" },
     e.createElement(
       "div",
       { className: "relative" },
@@ -3594,7 +3594,7 @@ function lt({ players: t, groups: s, onEditPlayer: EP }) {
     n.map(({ group: m, players: o }) =>
       e.createElement(
         "div",
-        { key: m.id, className: "flex flex-col gap-2" },
+        { key: m.id, className: "desk-half flex flex-col gap-2" },
         e.createElement(
           "h3",
           { className: "text-xs font-semibold text-slate-500 px-1" },

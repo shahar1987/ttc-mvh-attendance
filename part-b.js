@@ -128,7 +128,7 @@ function SectionTabs({ view, setView, isAdmin, isViewer, profile }) {
     ? null
     : e.createElement(
         "div",
-        { className: "flex gap-1 p-1 mx-4 mt-3 bg-slate-100 rounded-xl no-print", role: "tablist" },
+        { className: "flex gap-1 p-1 mx-4 mt-3 lg:mt-5 lg:max-w-md bg-slate-100 rounded-xl no-print", role: "tablist" },
         items.map((it) =>
           e.createElement(
             "button",
@@ -582,7 +582,7 @@ function it({ groups: t, users: s, players: a, readOnly: RO }) {
       ),
     e.createElement(
       "div",
-      { className: "flex flex-col gap-2.5" },
+      { className: "flex flex-col gap-2.5 lg:grid lg:grid-cols-2" },
       t.map((o) => {
         let x = groupCoachLabel(o, s),
           h = a.filter((u) => u.groupId === o.id && u.isActive && !u.deleted).length;
@@ -1367,7 +1367,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
         );
   return e.createElement(
     "div",
-    { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    { className: "desk-grid px-4 pt-4 pb-6 flex flex-col gap-4" },
     e.createElement(
       "button",
       {
@@ -1447,7 +1447,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       ),
     e.createElement(
       "div",
-      { className: "flex flex-col gap-2" },
+      { className: "desk-half flex flex-col gap-2" },
       e.createElement(
         "h3",
         { className: "text-sm font-semibold text-slate-500 px-1" },
@@ -1555,7 +1555,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
     ),
     e.createElement(
       "div",
-      { className: "flex flex-col gap-2" },
+      { className: "desk-half flex flex-col gap-2" },
       e.createElement(
         "h3",
         { className: "text-sm font-semibold text-slate-500 px-1" },
@@ -2535,7 +2535,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     note = (txt) => e.createElement("p", { className: "text-xs text-slate-500 leading-relaxed" }, txt);
   return e.createElement(
     "div",
-    { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    { className: "desk-grid px-4 pt-4 pb-6 flex flex-col gap-4" },
     sync?.needsReview && sync?.partialFile
       ? e.createElement(
           "div",
@@ -2812,7 +2812,7 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     n.map(({ group: m, players: o }) =>
       e.createElement(
         "div",
-        { key: m.id, className: "flex flex-col gap-1.5" },
+        { key: m.id, className: "desk-half flex flex-col gap-1.5" },
         e.createElement(
           "h3",
           { className: "text-sm font-semibold text-slate-600 px-1 flex items-center gap-2" },
@@ -3129,14 +3129,14 @@ function dt({
     e.Fragment,
     null,
     e.createElement("div", {
-      className: `fixed inset-0 bg-black/40 z-40 transition-opacity ${t ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`,
+      className: `fixed inset-0 bg-black/40 z-40 lg:hidden transition-opacity ${t ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`,
       onClick: s,
     }),
     e.createElement(
       "aside",
       {
         dir: "rtl",
-        className: `fixed top-0 right-0 h-full w-72 bg-white z-50 shadow-xl flex flex-col transition-transform drawer-ease ${t ? "translate-x-0" : "translate-x-full"}`,
+        className: `fixed top-0 right-0 h-full w-72 bg-white z-50 lg:z-20 shadow-xl lg:shadow-none lg:border-l lg:border-slate-200 flex flex-col transition-transform drawer-ease no-print ${t ? "translate-x-0" : "translate-x-full"} lg:translate-x-0`,
       },
       e.createElement(
         "div",
@@ -3956,7 +3956,7 @@ function re({
       "div",
       {
         // 28.10: רשימה אחת מקובצת בכרטיס לבן, כמו ב-Apple Health
-        className: "flex flex-col bg-white rounded-2xl ios-card overflow-hidden divide-y divide-slate-100",
+        className: "flex flex-col lg:grid lg:grid-cols-2 lg:gap-x-6 bg-white rounded-2xl ios-card overflow-hidden divide-y lg:divide-y-0 divide-slate-100",
       },
       n.map((p) => {
         let w = x[p.id] || null,
@@ -4397,7 +4397,8 @@ function mt({
         )
       : e.createElement(
           "div",
-          { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+          { className: "px-4 pt-4 pb-6 flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start" },
+          e.createElement("div", { className: "contents lg:flex lg:flex-col lg:gap-4 lg:min-w-0" },
           // 28.10: מסך הפתיחה בסגנון Apple Health — כותרת "היום", טבעות, ואז האימונים של היום.
           e.createElement(
             "div",
@@ -4510,6 +4511,8 @@ function mt({
                 ),
               ),
             ),
+          ),
+          e.createElement("div", { className: "contents lg:flex lg:flex-col lg:gap-4 lg:min-w-0" },
           !RO &&
           e.createElement(AlertsCard, {
             alerts: myAlerts,
@@ -4522,6 +4525,7 @@ function mt({
             onWhatsapp: WA,
             currentUserId: t.id,
           }),
+          ),
         );
 }
 function ut() {
@@ -4846,13 +4850,13 @@ function Q() {
       "div",
       {
         className:
-          "max-w-md mx-auto min-h-screen bg-slate-50 relative shadow-sm",
+          "max-w-md lg:max-w-none mx-auto lg:ml-0 lg:mr-72 min-h-screen bg-slate-50 relative shadow-sm lg:shadow-none",
       },
       e.createElement(
         "header",
         {
           className:
-            "sticky top-0 z-30 glass-bar text-blue-950 px-4 py-2.5 flex items-center gap-3 no-print",
+            "sticky top-0 z-30 glass-bar text-blue-950 px-4 lg:px-8 py-2.5 flex items-center gap-3 no-print",
         },
         e.createElement("img", {
           src: "./logo.png",
@@ -4864,7 +4868,7 @@ function Q() {
           {
             onClick: () => h(!0),
             className:
-              "text-blue-900 shrink-0 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:bg-slate-200",
+              "text-blue-900 shrink-0 min-w-[44px] min-h-[44px] rounded-full flex lg:hidden items-center justify-center active:bg-slate-200",
             "aria-label": "תפריט",
           },
           e.createElement(Pe, { className: "w-6 h-6" }),
@@ -4880,7 +4884,7 @@ function Q() {
           ),
           e.createElement(
             "div",
-            { className: "text-sm text-slate-500 truncate" },
+            { className: "text-sm text-slate-500 truncate lg:hidden" },
             s.name,
             " \xB7 ",
             r ? "מנהל" : vw ? "צופה" : "מאמן",
@@ -4888,7 +4892,7 @@ function Q() {
         ),
       ),
       !g && e.createElement(ct, null),
-      e.createElement(SectionTabs, { view: m, setView: goToScreen, isAdmin: r, isViewer: vw, profile: s }),
+      e.createElement("div", { className: "desk-screen" }, e.createElement(SectionTabs, { view: m, setView: goToScreen, isAdmin: r, isViewer: vw, profile: s })),
       dataError &&
         e.createElement(
           "div",
@@ -4897,7 +4901,7 @@ function Q() {
         ),
       e.createElement(
         "div",
-        { ref: screenRef },
+        { ref: screenRef, className: "desk-screen" },
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
