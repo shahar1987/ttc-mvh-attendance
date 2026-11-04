@@ -364,15 +364,16 @@ function normalizePhone(value) {
 function isValidPhone(value) {
   return /^972\d{8,9}$/.test(normalizePhone(value));
 }
+// שחקן בשתי קבוצות הוא שני מסמכים של אותו אדם
+function playerPersonKey(p) {
+  return (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone || "");
+}
 function countUniqueActivePlayers(players) {
   let seen = new Set(),
     count = 0;
   players.forEach((p) => {
     if (!p.isActive || p.deleted) return;
-    let key =
-      (p.name || "").trim().toLowerCase() +
-      "|" +
-      normalizePhone(p.parentPhone || "");
+    let key = playerPersonKey(p);
     if (seen.has(key)) return;
     (seen.add(key), count++);
   });
@@ -1646,33 +1647,45 @@ function ReportActionBar({ doc }) {
     ),
   );
 }
+const ALL_CLUB = "__club";
 function ReportAttendanceMatrix({ groups, players, attendance }) {
   let [groupId, setGroupId] = b(groups[0]?.id || ""),
     [startDate, setStartDate] = b(firstOfMonthStr()),
     [endDate, setEndDate] = b(E()),
+    isClub = groupId === ALL_CLUB,
     group = groups.find((g) => g.id === groupId),
+    scopeName = isClub ? "כל המועדון" : group ? group.name : "",
     groupAttendance = attendance.filter(
       (rec) =>
-        rec.groupId === groupId && rec.date >= startDate && rec.date <= endDate,
+        (isClub || rec.groupId === groupId) && rec.date >= startDate && rec.date <= endDate,
     ),
     dates = Array.from(new Set(groupAttendance.map((rec) => rec.date))).sort(),
     // בטבלה האימון האחרון מוצג ראשון (ליד השם), כדי שלא יהיה צריך לגלול הצידה
     // כדי לראות מה היה היום. החישובים וה-CSV נשארים בסדר כרונולוגי.
     shownDates = dates.slice().reverse(),
     // שחקן שעבר קבוצה נשאר בטבלה של הקבוצה הקודמת עם ההיסטוריה שלו שם (כמו ב"השוואת קבוצות")
-    groupPlayers = players
-      .filter(
-        (p) =>
-          (p.groupId === groupId && p.isActive) ||
-          groupAttendance.some((rec) => rec.playerId === p.id),
-      )
-      .sort((a, c) => a.name.localeCompare(c.name, "he")),
-    cellStatus = (playerId, date) => {
-      let rec = groupAttendance.find(
-        (r) => r.playerId === playerId && r.date === date,
-      );
-      return rec ? rec.status : null;
-    },
+    attended = new Set(groupAttendance.map((rec) => rec.playerId)),
+    rowOf = {}, // מזהה שחקן ← השורה שלו. במועדון כולו שחקן בשתי קבוצות הוא שורה אחת
+    groupPlayers = [],
+    keyRow = {};
+  players
+    .filter(
+      (p) =>
+        (isClub ? p.isActive && !p.deleted : p.groupId === groupId && p.isActive) ||
+        attended.has(p.id),
+    )
+    .forEach((p) => {
+      let k = isClub ? playerPersonKey(p) : p.id,
+        row = keyRow[k] || (keyRow[k] = (groupPlayers.push(p), p.id));
+      rowOf[p.id] = row;
+    });
+  groupPlayers.sort((a, c) => a.name.localeCompare(c.name, "he"));
+  let statusAt = {};
+  groupAttendance.forEach((r) => {
+    let k = rowOf[r.playerId] + "|" + r.date;
+    if (rowOf[r.playerId] && statusAt[k] !== "Present") statusAt[k] = r.status;
+  });
+  let cellStatus = (playerId, date) => statusAt[playerId + "|" + date] || null,
     // 27.9: האחוז ישב בעמודה האחרונה, אחרי כל התאריכים — בטלפון צריך היה לגלול הצידה כדי לראות אותו.
     // עכשיו הוא ליד השם, ולצדו מגמה: שלושת האימונים האחרונים מול כל השאר בטווח.
     playerStats = (pid) => {
@@ -1704,7 +1717,9 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
             : e.createElement("span", { className: "text-slate-400" }, "–"),
     doc = (() => {
       let stats = groupPlayers.map((p) => ({ p, ...playerStats(p.id) })),
-        all = groupAttendance.filter((r) => groupPlayers.some((p) => p.id === r.playerId)),
+        all = groupPlayers.flatMap((p) =>
+          dates.map((date) => ({ date, status: cellStatus(p.id, date) })).filter((r) => r.status),
+        ),
         present = all.filter((r) => r.status === "Present").length,
         avg = all.length ? Math.round((present / all.length) * 100) : null,
         low = stats.filter((x) => x.pct !== null && x.pct < 50),
@@ -1719,9 +1734,9 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
           t === "up" ? { v: "עלייה", tone: "good" } : t === "down" ? { v: "ירידה", tone: "bad" } : t === "flat" ? { v: "יציבה", tone: "muted" } : { v: "–", tone: "muted" };
       return {
         title: "דוח נוכחות קבוצתי",
-        scope: group ? group.name : "",
+        scope: scopeName,
         period: reportPeriod(startDate, endDate),
-        file: reportFile("דוח נוכחות", group && group.name, `${startDate} עד ${endDate}`),
+        file: reportFile("דוח נוכחות", scopeName, `${startDate} עד ${endDate}`),
         landscape: dates.length > 8,
         kpis: [
           { label: "שחקנים", value: groupPlayers.length },
@@ -1777,6 +1792,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
             className:
               "border border-slate-200 rounded-lg py-2.5 px-3 text-right text-sm outline-none bg-white",
           },
+          e.createElement("option", { value: ALL_CLUB }, "כל המועדון"),
           groups.map((g) => e.createElement("option", { key: g.id, value: g.id }, g.name)),
         ),
       ),
@@ -1794,7 +1810,7 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
       e.createElement(
         "h3",
         { className: "font-bold text-blue-950 text-sm" },
-        `נוכחות חודשית — ${group ? group.name : ""}`,
+        `נוכחות חודשית — ${scopeName}`,
       ),
       dates.length === 0
         ? e.createElement(
