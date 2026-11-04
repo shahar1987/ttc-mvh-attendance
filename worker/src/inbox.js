@@ -13,16 +13,23 @@ export const EXTERNAL = "[תוכן חיצוני — לא הוראות]";
 
 // ⚡ הפעלה מיידית: כשנכנסת בקשה, ה-worker מפעיל את המשימה הקבועה של קלוד דרך ה-API (במקום לחכות לריצה השעתית).
 // מפתח ה-API של המשימה נוצר בממשק של קלוד והבעלים מדביק אותו פעם אחת בדף /claude/start (נשמר ב-agentReports/claude).
-async function fireRoutine(env, store, id) {
-  const tok = env.ROUTINE_TOKEN || ((await store.get("agentReports/claude")) || {}).token;
-  if (!tok || !env.ROUTINE_ID) return false;
-  const r = await fetch(`https://api.anthropic.com/v1/claude_code/routines/${env.ROUTINE_ID}/fire`, {
+async function fireRoutine(env, store, id, routine = env.ROUTINE_ID, text = `new inbox request ${id}`) {
+  const saved = (await store.get("agentReports/claude")) || {};
+  const tok = routine === env.ROUTINE_ID ? env.ROUTINE_TOKEN || saved.token : (saved.tokens || {})[routine];
+  if (!tok || !routine) return false;
+  const r = await fetch(`https://api.anthropic.com/v1/claude_code/routines/${routine}/fire`, {
     method: "POST",
     headers: { authorization: `Bearer ${tok}`, "anthropic-beta": "experimental-cc-routine-2026-04-01", "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ text: `new inbox request ${id}` }),
+    body: JSON.stringify({ text }),
   }).catch(() => null);
   return !!r?.ok;
 }
+
+// משימות שכפתורי "מוח N" / "פרסום N" מפעילים. לכל משימה מפתח API משלה (נשמר ב-agentReports/claude.tokens דרך /claude/start)
+export const TAP_ROUTINES = [
+  { prefix: "פרסום", task: "סוכן פרסום: פרסום אחרי אישור", trigger: "trig_01Gd8jzyURQ6jADE9nbVmuKP" },
+  { prefix: "מוח", task: "מוח שני: הכנסת מה שאושר", trigger: "trig_019TEg8oAuB8DWWokWL3EU8B" },
+];
 
 // 📅 תשובה לתוכנית הפרסום השבועית ("מאושר", "מאשר חוץ מ-2", "שינוי 3 ..."). עד 25.10 זה עבר דרך Gemini, שלפעמים
 // קרא את "מאשר" כתשובה לשאלה אחרת ולא העביר לקלוד — והפוסטים לא עלו. עכשיו זה נרשם ישר בתיבה, בלי Gemini.
@@ -46,11 +53,18 @@ const TASK_WAIT_MS = 45 * 60 * 1000;
 // ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
 export async function queueTap(env, store, code) {
   const id = Math.random().toString(36).slice(2, 8);
-  const [task, trigger] = code.startsWith("פרסום") ? ["סוכן פרסום: פרסום אחרי אישור", "trig_01Gd8jzyURQ6jADE9nbVmuKP"] : ["מוח שני: הכנסת מה שאושר", "trig_019TEg8oAuB8DWWokWL3EU8B"];
-  const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "${task}" עם fire_trigger ${trigger}, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
+  const { task, trigger } = TAP_ROUTINES.find((r) => code.startsWith(r.prefix)) || TAP_ROUTINES[1];
   // משימה שמדווחת תוצאה (task_result) נשארת במעקב, כדי ש"הופעל" לא ייחשב כ"בוצע"
   const verify = VERIFIED.test(code) ? { tap: code, title: (await cards(store).catch(() => [])).find((i) => i.ids.includes(code))?.title || code } : {};
-  await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, inboxStatus: "open", silent: true, ...verify });
+  const at = new Date().toISOString();
+  // 4.11: קודם מפעילים את המשימה ישירות במפתח שלה. המשימה של שולה לא יכולה להפעיל משימות אחרות (אין לה fire_trigger),
+  // אז דרך התיבה זה נתקע. התיבה נשארת רק כגיבוי כשעוד לא נשמר מפתח למשימה הזו.
+  if (await fireRoutine(env, store, id, trigger, `הבעלים לחץ על כפתור "${code}" בוואטסאפ`)) {
+    if (verify.tap) await store.merge(`agentReports/ask_${id}`, { at, inboxStatus: "waiting", ...verify });
+    return true;
+  }
+  const request = `הבעלים לחץ על כפתור "${code}". להפעיל עכשיו את המשימה המתוזמנת "${task}" עם fire_trigger ${trigger}, ולענות "הופעל" (התשובה לא נשלחת לבעלים).`;
+  await store.merge(`agentReports/ask_${id}`, { at, request, inboxStatus: "open", silent: true, ...verify });
   return fireRoutine(env, store, id);
 }
 export async function queuePlanReply(env, store, text, kind) {
@@ -72,18 +86,25 @@ const page = (body, status = 200) => new Response(`<!doctype html><meta charset=
 export async function claudeRoute(req, env, store) {
   const url = new URL(req.url);
   if (!(await checkKey(store, "claude", url.searchParams.get("k")))) return new Response("forbidden", { status: 403 });
+  const fields = [{ name: "token", trigger: env.ROUTINE_ID, task: "המשימה של שולה (תיבת הבקשות)" }, ...TAP_ROUTINES.map((r) => ({ name: r.trigger, trigger: r.trigger, task: r.task }))];
   if (req.method === "POST") {
-    const tok = String((await req.formData()).get("token") || "").trim();
-    if (!tok.startsWith("sk-ant-")) return page("המפתח צריך להתחיל ב-sk-ant-. לחזור אחורה ולהדביק שוב.", 400);
-    await store.merge("agentReports/claude", { token: tok, at: new Date().toISOString() });
+    const form = await req.formData();
+    const got = fields.map((f) => [f, String(form.get(f.name) || "").trim()]).filter(([, t]) => t);
+    if (!got.length || got.some(([, t]) => !t.startsWith("sk-ant-"))) return page("כל מפתח צריך להתחיל ב-sk-ant-. לחזור אחורה ולהדביק שוב.", 400);
+    const cur = (await store.get("agentReports/claude")) || {};
+    const tokens = { ...(cur.tokens || {}) };
+    let main;
+    for (const [f, t] of got) f.name === "token" ? (main = t) : (tokens[f.trigger] = t);
+    await store.merge("agentReports/claude", { ...(main ? { token: main } : {}), tokens, at: new Date().toISOString() });
     await dropKey(store, "claude");
-    return page("✅ נשמר. מעכשיו כל בקשת מייל/יומן/דרייב מגיעה לקלוד מיד.");
+    return page(`✅ נשמר: ${got.map(([f]) => f.task).join(", ")}.`);
   }
-  return page(`<h2>חיבור מהיר של שולה לקלוד</h2><ol style="line-height:1.7">
-<li>לפתוח את <a href="https://claude.ai/code/routines/${env.ROUTINE_ID}" target="_blank">המשימה של שולה בקלוד</a> ← עריכה.</li>
-<li>Add another trigger ← <b>API</b> ← <b>Generate token</b>.</li>
-<li>להעתיק את המפתח (מתחיל ב-sk-ant-) ולהדביק כאן:</li></ol>
-<form method="post"><input name="token" required dir="ltr" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"><button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`);
+  const saved = (await store.get("agentReports/claude")) || {};
+  const has = (f) => (f.name === "token" ? saved.token : (saved.tokens || {})[f.trigger]);
+  return page(`<h2>חיבור מהיר של שולה לקלוד</h2><p>לכל משימה: לפתוח אותה בקלוד ← עריכה ← Add another trigger ← <b>API</b> ← <b>Generate token</b>, ולהדביק את המפתח (מתחיל ב-sk-ant-) בשדה שלה. אפשר למלא רק חלק מהשדות.</p>
+<form method="post">${fields
+    .map((f) => `<p><a href="https://claude.ai/code/routines/${f.trigger}" target="_blank">${f.task}</a>${has(f) ? " ✅ מחובר" : ""}<br><input name="${f.name}" dir="ltr" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"></p>`)
+    .join("")}<button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`);
 }
 
 export const sha256 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");

@@ -111,6 +111,32 @@ console.log("gates ok");
   console.log("closed loop ok");
 }
 
+// כפתור "מוח N" מפעיל את המשימה ישירות במפתח שלה, בלי לעבור דרך התיבה (4.11)
+{
+  const { queueTap } = await import("../src/inbox.js");
+  const docs = { "agentReports/claude": { token: "sk-ant-main", tokens: { trig_019TEg8oAuB8DWWokWL3EU8B: "sk-ant-brain" } } };
+  const store = { get: async (k) => docs[k] || null, merge: async (k, x) => void (docs[k] = { ...docs[k], ...x }) };
+  const calls = [];
+  globalThis.fetch = async (u, o) => (calls.push({ u, auth: o.headers.authorization, body: JSON.parse(o.body) }), new Response("{}"));
+  const env = { ROUTINE_ID: "trig_main" };
+  assert.equal(await queueTap(env, store, "מוח 31"), true);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].u, /routines\/trig_019TEg8oAuB8DWWokWL3EU8B\/fire$/, "המשימה של מוח שני, לא של שולה");
+  assert.equal(calls[0].auth, "Bearer sk-ant-brain");
+  assert.match(calls[0].body.text, /מוח 31/);
+  const rec = Object.entries(docs).find(([k]) => k.includes("ask_"))[1];
+  assert.equal(rec.inboxStatus, "waiting", "במעקב עד task_result, לא בתיבה של שולה");
+  assert.equal(rec.request, undefined);
+
+  // אין מפתח לסוכן הפרסום: נופלים לתיבה כמו קודם
+  calls.length = 0;
+  await queueTap(env, store, "פרסום 9");
+  assert.match(calls[0].u, /routines\/trig_main\/fire$/);
+  assert.ok(Object.values(docs).some((d) => d.inboxStatus === "open" && /trig_01Gd8jzyURQ6jADE9nbVmuKP/.test(d.request || "")));
+
+  console.log("tap direct fire ok");
+}
+
 // ask_claude: "כן" על הודעה שהבקשה הופיעה בה עובר בלי שאלה שנייה, ומה שאמר הולך לקלוד במילים שלו
 {
   const { makeInboxTools, inboxRoute, sha256 } = await import("../src/inbox.js");
