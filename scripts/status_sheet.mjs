@@ -3,11 +3,15 @@
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
 // (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
 // שחקן פעיל שנוסף באפליקציה ועוד אין לו שורה נכנס ללשונית הקבוצה שלו (הגיליון הוא הבקרה של המועדון).
+// שורה חדשה בגיליון עם שם וטלפון תקין נוצרת כשחקן באפליקציה (autosend שולח לו ברוכים הבאים). בלי טלפון השורה ממתינה:
+// ההרצה עלולה לתפוס שורה באמצע הקלדה, ושחקן שנוצר בלי טלפון לא יקבל הודעה לעולם.
 // רץ מ-board-members.yml כל רבע שעה. הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
 //   FIREBASE_SERVICE_ACCOUNT=... node scripts/status_sheet.mjs   (אחרי `cd agents && npm ci`)
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
+import { isValidPhone, normalizePhone } from "../agents/lib/analysis.mjs";
 import { safeCell } from "./export_event_signups.mjs";
 
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
@@ -61,6 +65,18 @@ export function newRow(p, group, headers, index) {
   return headers.map((h) => safeCell(cell[h] ?? ""));
 }
 
+// שחקן לאפליקציה משורה שהוקלדה בגיליון, באותו מבנה של אישור טופס הצטרפות (part-b.js). null = עוד לא מוכנה
+export function draftPlayer(d, groupId, today) {
+  const name = String(d.name || "").trim();
+  if (name.length < 2 || name.length > 60 || !isValidPhone(d.phone)) return null;
+  const parentPhone = normalizePhone(d.phone);
+  return {
+    id: `sheet_${createHash("sha1").update(`${groupId}|${name}|${parentPhone}`).digest("hex").slice(0, 16)}`, // קבוע: הרצה חוזרת לא יוצרת כפילות
+    name, groupId, parentName: String(d.parent || "").trim().slice(0, 60), parentPhone, joinDate: today, endDate: null, isActive: true,
+    notPaying: !String(d.status || "").startsWith("✓"), notPayingSource: "manual",
+  };
+}
+
 async function sheetsFetch(tok, path, body) {
   const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
     method: body ? "POST" : "GET",
@@ -77,20 +93,25 @@ async function readRows(tok) {
   const ranges = meta.sheets.map((s) => `'${s.properties.title}'!A2:K60`);
   const q = ranges.map((x) => `ranges=${encodeURIComponent(x)}`).join("&");
   const [vals, forms] = await Promise.all(["FORMATTED_VALUE", "FORMULA"].map((o) => sheetsFetch(tok, `/values:batchGet?${q}&valueRenderOption=${o}`)));
-  const rows = [], tabs = {};
+  const rows = [], tabs = {}, drafts = [];
   vals.valueRanges.forEach((vr, i) => {
     const grid = vr.values || [], tab = meta.sheets[i].properties.title;
     const [st, note, id] = ["סטטוס רישום", "הערה", "מזהה"].map((h) => (grid[0] || []).indexOf(h));
     if (st < 0 || id < 0) return;
     tabs[tab] = { headers: grid[0], used: grid.length + 1, count: grid.filter((r, k) => k && r[1]).length }; // used: שורת הגיליון האחרונה בשימוש
     const col = (c) => String.fromCharCode(65 + c);
+    const at = (h) => grid[0].indexOf(h);
+    const tel = at("טלפון הורה") < 0 ? at("טלפון") : at("טלפון הורה");
     grid.slice(1).forEach((row, j) => {
-      if (!row[id]) return;
+      if (!row[id]) {
+        if ((row[at("שם")] || "").trim()) drafts.push({ tab, row: j + 3, name: row[at("שם")], parent: at("הורה") < 0 ? "" : row[at("הורה")], phone: row[tel], status: row[st] || "", cols: { id: col(id), st: col(st), note: col(note), join: col(at("הצטרף")), hash: col(0) } });
+        return;
+      }
       const n = j + 3, f = forms.valueRanges[i].values?.[j + 1]?.[st];
       rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}` });
     });
   });
-  return { rows, tabs };
+  return { rows, tabs, drafts };
 }
 
 async function main() {
@@ -99,7 +120,7 @@ async function main() {
   if (!tok) throw new Error("no Sheets access token");
   const db = firestore();
   const ref = db.collection("system").doc("statusSheetSync");
-  const [{ rows, tabs }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
+  const [{ rows, tabs, drafts }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
   const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
   if (app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length} app writes in one run`);
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -119,6 +140,27 @@ async function main() {
   // שחקנים חדשים מהאפליקציה: USER_ENTERED כדי שתאריך ההצטרפות יישמר כתאריך; safeCell מונע נוסחאות מהשמות
   const known = new Set(rows.map((r) => r.id));
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
+  // שורות חדשות מהגיליון: קודם האפליקציה ואז המזהה בגיליון, כך שתקלה באמצע רק חוזרת בהרצה הבאה
+  const tabGroup = new Map(groups.filter((g) => !g.deleted).map((g) => [g.name.replace("קובצת", "קבוצת"), g.id]));
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  const links = [];
+  let created = 0, waiting = 0;
+  if (drafts.length > MAX_NEW_ROWS) throw new Error(`refusing ${drafts.length} sheet rows in one run`);
+  for (const d of drafts) {
+    const gid = tabGroup.get(d.tab);
+    const doc = gid && draftPlayer(d, gid, today);
+    if (!doc) { waiting++; continue; }
+    const same = players.find((p) => p.groupId === gid && !p.deleted && p.isActive !== false && (p.name || "").trim() === doc.name);
+    const { id, ...fields } = doc;
+    if (!same && !players.some((p) => p.id === id)) { await db.collection("players").doc(id).set(fields); created++; }
+    const pid = same ? same.id : id;
+    known.add(pid);
+    const cell = (c, v) => ({ range: `'${d.tab}'!${c}${d.row}`, values: [[v]] });
+    links.push(cell(d.cols.id, pid), cell(d.cols.join, today.split("-").reverse().join("/")), cell(d.cols.hash, tabs[d.tab].count + 1));
+    tabs[d.tab].count++;
+    if (!d.status) links.push(cell(d.cols.st, NOT_REGISTERED), cell(d.cols.note, "נוסף מהגיליון"));
+  }
+  if (links.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: links });
   const fresh = players.filter((p) => p.isActive !== false && !p.deleted && p.name && !known.has(p.id));
   if (fresh.length > MAX_NEW_ROWS) throw new Error(`refusing ${fresh.length} new rows in one run`);
   const add = [];
@@ -131,7 +173,7 @@ async function main() {
   }
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, updatedAt: new Date().toISOString() });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${noTab} without a tab`);
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)

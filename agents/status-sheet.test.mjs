@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, newRow, PAID, UNPAID, OFF } from "../scripts/status_sheet.mjs";
+import { plan, newRow, draftPlayer, PAID, UNPAID, OFF } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -54,4 +54,14 @@ test("שורה לשחקן חדש לפי כותרות הלשונית", () => {
   assert.deepEqual(newRow({ ...p, parentPhone: "", notPaying: false }, "פרקינסון", adult, 1).slice(2, 7), ["חסר", "02/11/2026", "", PAID, "נוסף מהאפליקציה"]);
   assert.equal(newRow(p, "חוגים רמת כורזים", kid, 1)[6], OFF);
   assert.equal(newRow({ ...p, name: "=HACK()" }, "פרקינסון", adult, 1)[1], "'=HACK()");
+});
+
+test("שורה מהגיליון: בלי טלפון תקין ממתינה, עם טלפון נוצרת באותו מבנה ועם מזהה קבוע", () => {
+  assert.equal(draftPlayer({ name: "דנה כהן", phone: "חסר" }, "g", "2026-11-04"), null);
+  assert.equal(draftPlayer({ name: "ד", phone: "050-1234567" }, "g", "2026-11-04"), null);
+  const a = draftPlayer({ name: " דנה כהן ", parent: "רון", phone: "050-1234567", status: PAID }, "g", "2026-11-04");
+  assert.deepEqual({ ...a, id: 0 }, { id: 0, name: "דנה כהן", groupId: "g", parentName: "רון", parentPhone: "972501234567", joinDate: "2026-11-04", endDate: null, isActive: true, notPaying: false, notPayingSource: "manual" });
+  assert.match(a.id, /^sheet_[0-9a-f]{16}$/);
+  assert.equal(draftPlayer({ name: "דנה כהן", phone: "0501234567" }, "g", "2026-12-01").id, a.id);
+  assert.equal(draftPlayer({ name: "דנה כהן", phone: "050-1234567" }, "g", "2026-11-04").notPaying, true);
 });
