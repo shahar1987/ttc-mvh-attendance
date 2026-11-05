@@ -359,7 +359,7 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
 
 // 📨 הודעות היעדרות שהמאמן עוד לא שלח להורים (18.10, שולה: "שיציק להם עד שישלחו"): כל בוקר מ-10:00, חוץ משבת,
 // כל מאמן שיש בקבוצות שלו הודעות כאלה מקבל תזכורת עם המספר וקישור לרשימה — עד שהרשימה שלו מתרוקנת.
-// אותה רשימה כמו במסך המאמן (analyze ← pendingAbsenceMsgs/absenceAlerts). פעם אחת ביום (מסומן לפני השליחה).
+// אותה רשימה כמו במסך המאמן (analyze ← absenceAlerts). פעם אחת ביום (מסומן לפני השליחה).
 // כבוי עד ששולה מאשרת את הנוסח: PARENT_MSG_NAG = "on" ב-wrangler.toml.
 const NAG_MIN = 10 * 60;
 export async function parentMsgNag(env, store, wa, now = new Date()) {

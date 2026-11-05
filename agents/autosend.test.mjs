@@ -12,13 +12,38 @@ const A = (playerId, date, status, groupId = "g1") => ({ playerId, date, status,
 const anchor = (date, groupId = "g1") => A("_anchor", date, "Present", groupId);
 const today = "2026-10-29"; // חמישי
 
-test("absence today: one message to the parent, in the app's wording", () => {
-  const r = plan({ players: [P("a", { gender: "m" }), P("b", { parentPhone: "" })], groups, attendance: [A("a", today, "Absent"), A("b", today, "Absent"), anchor(today)], cancellations: [] }, today);
+const prev = "2026-10-28"; // האימון הקודם של הקבוצה מול today (התאריך עצמו מותר על ידי CUTOFF)
+
+test("one absence: no message at all", () => {
+  const r = plan({ players: [P("a", { gender: "m" })], groups, attendance: [A("a", today, "Absent"), anchor(today)], cancellations: [] }, today);
+  assert.deepEqual(r.messages, []);
+  assert.deepEqual(r.noPhone, []);
+});
+
+test("second absence in a row: goes out that same evening, once", () => {
+  const attendance = [A("a", prev, "Absent"), anchor(prev), A("a", today, "Absent"), A("b", prev, "Absent"), A("b", today, "Absent"), anchor(today)];
+  const r = plan({ players: [P("a", { gender: "m" }), P("b", { parentPhone: "" })], groups, attendance, cancellations: [] }, today);
   assert.equal(r.messages.length, 1);
-  assert.equal(r.messages[0].key, `absence:${today}:g1:a`);
+  assert.equal(r.messages[0].key, `repeat:${today}:g1:a`);
   assert.equal(r.messages[0].to, "972501234567");
-  assert.match(r.messages[0].text, /בנכם דני a לא הגיע לאימון היום/);
+  assert.match(r.messages[0].text, /בנכם דני a לא הגיע .*שני האימונים האחרונים/);
   assert.deepEqual(r.noPhone, ["דני b"]);
+});
+
+test("came back today: no message about the two before", () => {
+  const before = "2026-10-26";
+  const attendance = [A("a", before, "Absent"), anchor(before), A("a", prev, "Absent"), anchor(prev), A("a", today, "Present")];
+  assert.deepEqual(plan({ players: [P("a")], groups, attendance, cancellations: [] }, today).messages, []);
+});
+
+test("third in a row is silent, fourth sends again", () => {
+  const d3 = "2026-11-01", d4 = "2026-11-02";
+  const attendance = [prev, today, d3, d4].flatMap((d) => [A("a", d, "Absent"), anchor(d)]);
+  const data = { players: [P("a", { alertHandledDate: today })], groups, attendance: attendance.filter((x) => x.date <= d3), cancellations: [] };
+  const log = new Set([`repeat:${today}:g1:a`]);
+  assert.deepEqual(plan(data, d3, log).messages, []);
+  const r = plan({ ...data, attendance }, d4, log);
+  assert.deepEqual(r.messages.map((m) => m.key), [`repeat:${d4}:g1:a`]);
 });
 
 test("nothing before the cutoff, nothing already sent", () => {
@@ -26,8 +51,9 @@ test("nothing before the cutoff, nothing already sent", () => {
   assert.ok(old < CUTOFF);
   const data = { players: [P("a")], groups, attendance: [A("a", old, "Absent"), anchor(old), A("a", today, "Absent"), anchor(today)], cancellations: [] };
   const r = plan(data, today);
-  assert.deepEqual(r.messages.map((m) => m.key), [`absence:${today}:g1:a`]); // ה-25 לפני ההפעלה: רק היום
+  assert.deepEqual(r.messages.map((m) => m.key), [`repeat:${today}:g1:a`]);
   assert.equal(plan(data, today, new Set([r.messages[0].key])).messages.length, 0);
+  assert.deepEqual(plan({ ...data, attendance: data.attendance.filter((x) => x.date === old) }, old).messages, []);
 });
 
 test("welcome only for players who joined since the cutoff, adults addressed directly", () => {

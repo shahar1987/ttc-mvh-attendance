@@ -1,7 +1,7 @@
 // הלוגיקה של הסורק היומי — פונקציות טהורות, בלי Firestore, כדי שאפשר לבדוק אותן.
 //
 // "ממתין להודעה" ו"שתי היעדרויות ברצף" מחושבים בדיוק כמו באפליקציה
-// (pendingAbsenceMsgs, absenceAlerts, lastTwoAbsences ב-part-a.js), כדי שהסוכן
+// (absenceAlerts, lastTwoAbsences ב-part-a.js), כדי שהסוכן
 // והמאמנים יראו את אותה רשימה ואף הורה לא יקבל שתי הודעות על אותה היעדרות.
 // "סכנת נשירה" חדש, ומוגדר ב-dropoutRisk למטה.
 import { playerGender, knownGender } from "./gender.mjs";
@@ -177,7 +177,6 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
   // היעדרות מוצדקת (excused) לא נספרת בכלל — כמו statAtt באפליקציה
   attendance = onlyHeldTrainings(attendance, cancellations, today).filter((a) => !a.excused);
   const groupById = new Map(groups.map((g) => [g.id, g]));
-  const playerById = new Map(players.map((p) => [p.id, p]));
   const hist = historyIndex(attendance, today);
   const twoIdx = twoAbsenceIndex(attendance, today);
   const yesterday = addDays(today, -1);
@@ -200,34 +199,13 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
 
   // שתי היעדרויות ברצף שעוד לא טופלו (כמו absenceAlerts)
   const repeat = [];
-  const repeatDates = new Map();
   for (const p of players) {
     if (!active(p)) continue;
     const dates = twoIdx.get(p.id);
     if (!dates) continue;
-    repeatDates.set(p.id, dates);
     if (p.alertHandledDate && p.alertHandledDate >= dates[0]) continue;
     if (skipAbsenceMsg(p, p.groupId, attendance, dates[0])) continue;
     repeat.push(item(p, groupById.get(p.groupId), "repeat", dates[0], { dates }));
-  }
-
-  // היעדרות בודדת מהשבוע האחרון שלא נשלחה עליה הודעה — בדיוק כמו pendingAbsenceMsgs:
-  // כולל היום עצמו, ומדלגים רק על שני התאריכים שכבר בהתראת "שתי היעדרויות".
-  const from = addDays(today, -6);
-  const single = [];
-  for (const a of attendance) {
-    if (a.status !== "Absent" || a.msgSentAt) continue;
-    if (!a.date || a.date > today || a.date < from) continue;
-    // הסימון "נשלחה הודעה" נכתב למסמך ${date}_${groupId}_${playerId} — בלי הקבוצה של הרשומה
-    // עצמה אסור לנחש (הקבוצה הנוכחית של השחקן עלולה לייצר מסמך נוכחות חדש ושגוי)
-    if (!a.groupId) continue;
-    const p = playerById.get(a.playerId);
-    if (!active(p)) continue;
-    if (p.alertHandledDate && p.alertHandledDate >= a.date) continue;
-    const two = repeatDates.get(p.id);
-    if (two && two.includes(a.date)) continue;
-    if (skipAbsenceMsg(p, a.groupId, attendance, a.date)) continue;
-    single.push(item(p, groupById.get(a.groupId), "absence", a.date, { groupId: a.groupId }));
   }
 
   const atRisk = [];
@@ -247,7 +225,8 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
   atRisk.sort((a, b) => (a.level === b.level ? b.streak - a.streak : a.level === "high" ? -1 : 1));
 
   const yesterdayRecs = attendance.filter((a) => a.date === yesterday);
-  const pending = [...repeat, ...single].sort(
+  // 5.11 (שלום): הודעה רק על שתי היעדרויות ברצף, לא על אחת
+  const pending = repeat.sort(
     (x, y) => y.date.localeCompare(x.date) || x.groupName.localeCompare(y.groupName),
   );
 
@@ -319,8 +298,6 @@ export function topActions(r) {
   if (reg?.items?.length) a.push(`${reg.items.length === 1 ? "התאמת שם אחת ברישום מחכה" : `${reg.items.length} התאמות שם ברישום מחכות`} לך — "אשר ר1" או "דחה ר1"`);
   if (reg?.gaps) a.push(`${reg.gaps} משלמים על פחות אימונים ממה שהם מתאמנים — לשלוח להורים את קישור ההרשמה הנכון ממסך "מי לא משלם"`);
   if (reg?.unmatched) a.push(`${reg.unmatched} שמות בקובץ המתנ"ס לא קיימים באפליקציה — לבדוק אם צריך להוסיף אותם`);
-  const single = pend.filter(({ x }) => x.kind !== "repeat").length;
-  if (single) a.push(`${single === 1 ? "הודעת היעדרות אחת ממתינה" : `${single} הודעות היעדרות ממתינות`} — "שלח הכל" או לבחור מספרים`);
   return a.slice(0, 3);
 }
 

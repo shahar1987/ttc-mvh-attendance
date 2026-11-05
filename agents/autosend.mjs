@@ -1,5 +1,5 @@
 // 🤖 שליחה אוטומטית מהמספר של שלום (28.10, שלום: "מישהו לא יגיע לאימון, שולחים לו הודעה להורים... שלא תהיה תלויה בי").
-// שלום בחר: הודעה אחרי כל היעדרות (ושתי היעדרויות ברצף — הנוסח של "שני האימונים האחרונים"), וברוך הבא למצטרף חדש.
+// שלום בחר (5.11): הודעה רק אחרי שתי היעדרויות ברצף (הנוסח של "שני האימונים האחרונים"), לא אחרי אחת, וברוך הבא למצטרף חדש.
 // השליחה עצמה ב-shahar1987/wa-sender (מכשיר מקושר למספר שלו). הקוד כאן מחבר בין השניים, בלי סוכן AI בדרך
 // (3.11: סוכן שמשגר את השליחה נעצר אצל מנגנון הבטיחות שלו כשאין אישור באותה ריצה, אז לפעמים יצא ולפעמים לא):
 //   run                                 — ב-agents.yml: Firestore ← plan ← wa-sender ← יומן ← סימון באפליקציה ← דיווח לשלום.
@@ -10,7 +10,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { analyze, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
 import { knownGender } from "./lib/gender.mjs";
 
@@ -47,8 +47,10 @@ export function plan(data, today, sent = new Set()) {
     if (!phone) return noPhone.push(who);
     messages.push({ key, to: phone, text, who });
   };
-  for (const it of analyze({ ...data, today }).pending) {
+  // analyze לא סופר את היום בשתי היעדרויות (באפליקציה האימון עוד רץ); השליחה בערב, אז היום כבר נספר: כך ההודעה יוצאת באותו ערב, ומי שחזר היום לא מקבל
+  for (const it of analyze({ ...data, today: addDays(today, 1) }).pending) {
     if (it.date < CUTOFF) continue;
+    if (sent.has(`repeat:${it.dates[1]}:${it.groupId}:${it.playerId}`)) continue; // השלישית ברצף: כבר נשלחה על שתיים, הודעה הבאה אחרי עוד שתיים
     const t = absenceTemplate(it);
     add(`${it.kind}:${it.date}:${it.groupId}:${it.playerId}`, it.phone, renderTemplate(t.name, t.params), it.playerName);
   }

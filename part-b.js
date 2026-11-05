@@ -3430,10 +3430,7 @@ function re({
     [u, f] = b(RO ? !1 : !o),
     [g, r] = b(!1),
     [y, N] = b(""),
-    [savedNote, setSavedNote] = b(""),
-    // הסימון הוא בדיקת בטיחות (שולה, 18.10): מיד אחרי שמירה עם ילד שלא הגיע היום — מציעים להודיע להורה עכשיו
-    [askMsg, setAskMsg] = b(!1),
-    askRef = e.useRef(null);
+    [savedNote, setSavedNote] = b("");
   let daySig = l
       .filter((v) => v.groupId === t.id && v.date === m)
       .map((v) => v.playerId + ":" + v.status)
@@ -3456,10 +3453,7 @@ function re({
         : Promise.resolve(!0);
   dayKeyRef.current = dayKey;
   // "נשמר במכשיר" שייך ליום שנשמר — לא נשאר כשעוברים ליום או לקבוצה אחרים
-  j(() => (setSavedNote(""), setAskMsg(!1)), [dayKey]);
-  j(() => {
-    askMsg && askRef.current && askRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [askMsg]);
+  j(() => setSavedNote(""), [dayKey]);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
   j(() => {
     let dateKey = t.id + "|" + (ID || "") + "|" + (IN || 0);
@@ -3659,7 +3653,6 @@ function re({
           );
         } else setSavedNote("");
         (dirtyRef.current = null),
-          m === today && Object.values(saved).includes("Absent") && setAskMsg(!0),
           touchedRef.current.clear(),
           h(saved),
           f(!1);
@@ -4182,29 +4175,6 @@ function re({
       e.createElement("p", { className: "text-sm text-red-700 text-right" }, y),
     savedNote &&
       e.createElement("p", { className: "text-sm text-emerald-800 text-right font-semibold" }, savedNote),
-    (() => {
-      if (!askMsg || !WA || RO) return null;
-      let miss = n.filter((p) => !p.trial && l.some((v) => v.groupId === t.id && v.date === m && v.playerId === p.id && v.status === "Absent" && !v.msgSentAt && !v.excused) && !skipAbsenceMsg(p, t.id, l, m)); // 29.10: לא יום האימון שלו — לא מציעים הודעה
-      return miss.length
-        ? e.createElement(
-            "div",
-            { ref: askRef, className: "bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-2 text-right" },
-            e.createElement("p", { className: "font-bold text-amber-900" }, miss.length === 1 ? "לא הגיע היום — להודיע עכשיו?" : `${miss.length} לא הגיעו היום — להודיע עכשיו?`),
-            miss.map((p) =>
-              e.createElement(
-                "button",
-                {
-                  key: p.id,
-                  onClick: () => WA(p, "absence", t.id, m),
-                  className: "bg-emerald-600 text-white rounded-xl py-3 min-h-[44px] text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform",
-                },
-                e.createElement(te, { className: "w-4 h-4" }),
-                isAdultGroup(t) ? `הודעה ל${p.name}` : `הודעה להורה של ${p.name}`,
-              ),
-            ),
-          )
-        : null;
-    })(),
     u &&
       unmarked > 0 &&
       n.length > 0 &&
@@ -4287,9 +4257,6 @@ function mt({
       l,
       c.map((r) => r.id),
     ),
-    myPending = pendingAbsenceMsgs(a, s, [], l).filter((r) =>
-      c.some((gr) => gr.id === r.record.groupId),
-    ),
     myMissing = missingAttendanceDays(c, l, CX),
     o = c.length === 1 ? c[0].id : null,
     x = SG || o,
@@ -4369,12 +4336,6 @@ function mt({
             alerts: myAlerts.filter((r) => r.player.groupId === h.id),
             onWhatsapp: WA,
             onEdit: EP,
-          }),
-          !RO &&
-          e.createElement(AbsenceMsgCard, {
-            items: myPending.filter((r) => r.record.groupId === h.id),
-            onWhatsapp: WA,
-            currentUserId: t.id,
           }),
           i &&
             e.createElement(
@@ -4518,12 +4479,6 @@ function mt({
             alerts: myAlerts,
             onWhatsapp: WA,
             onEdit: EP,
-          }),
-          !RO &&
-          e.createElement(AbsenceMsgCard, {
-            items: myPending,
-            onWhatsapp: WA,
-            currentUserId: t.id,
           }),
           ),
         );

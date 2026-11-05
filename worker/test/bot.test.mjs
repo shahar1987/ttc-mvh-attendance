@@ -475,6 +475,13 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.equal(await parentMsgNag(env, db(env), waConfig(env), mon("08")), "nag off");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("06")), "not now", "09:00 — מוקדם");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), new Date("2026-10-10T08:00:00Z")), "not now", "שבת");
+  assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("08")), "nag: nothing pending", "היעדרות אחת — בלי תזכורת");
+  put("agentReports/bot", { parentMsgNag: "" });
+  put("players/n1", { name: "נעדר פעמיים", groupId: "g5", isActive: true, joinDate: "2026-09-28" });
+  for (const d of ["2026-10-01", "2026-10-04"]) {
+    put(`attendance/${d}_g5_n1`, { date: d, groupId: "g5", playerId: "n1", status: "Absent" });
+    put(`attendance/${d}_g5_n2`, { date: d, groupId: "g5", playerId: "n2", status: "Present" });
+  }
   const n5 = sent.length;
   assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /^nag: .*יוסי \(\d+ הודעות\) ✓/);
   const m = sent.slice(n5).filter((b) => b.type === "template" && b.template.name === "coach_notice" && b.to === "972501234567");
@@ -482,6 +489,8 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.match(m[0].template.components[0].parameters[1].text, /^בוקר טוב יוסי, .*היעדרות.* שעוד לא נשלחו \(.*בוגרים.*\)\. אפשר לשלוח מכאן בלחיצה: https:\/\/shahar1987/);
   assert.match(JSON.stringify(sent.slice(n5).at(-1)), /תזכורת למאמנים על הודעות היעדרות/, "הבעלים מקבל סיכום");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("09")), "done today");
+  docs.delete("players/n1");
+  for (const d of ["2026-10-01", "2026-10-04"]) { docs.delete(`attendance/${d}_g5_n1`); docs.delete(`attendance/${d}_g5_n2`); }
   // ⚠️ נשירה: שחקן שהחסיר 3 ברצף בקבוצה של יוסי — המאמן מקבל משפט ברור עם השם והסיבה, ולא שוב באותו שבוע
   put("players/r1", { name: "עומר רץ", groupId: "g5", isActive: true });
   for (const d of ["2026-09-20", "2026-09-27", "2026-10-04"]) put(`attendance/${d}_g5_r1`, { date: d, groupId: "g5", playerId: "r1", status: "Absent", msgSentAt: "x" });
