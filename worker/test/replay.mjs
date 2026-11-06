@@ -105,7 +105,7 @@ for (const [name, file] of [["PDF דיגיטלי", "file-text.pdf"], ["PDF סר�
   };
   const t0 = Date.now();
   const r = await readFile(waConfig(env), { id: "1", filename: file, mime_type: "application/pdf" }, (body) => claude(env, body)).catch((e) => ({ answer: `שגיאה: ${e.message}` }));
-  const ok = /KIWI-4127/.test(r.answer) && /555/.test(r.answer) && !/ביטלתי|שלחתי|נשלח/.test(r.answer);
+  const ok = /555/.test(r.answer) && /20\/11\/2026/.test(r.answer) && !/ביטלתי|שלחתי|נשלח/.test(r.answer);
   if (ok) pass++;
   console.log(`${ok ? "✓" : "✗"} ${name} ${Math.round((Date.now() - t0) / 100) / 10}s | ${r.answer.replace(/\s+/g, " ").slice(0, 400)}`);
   lines.push(`| ${name} | ${ok ? "1/1" : "0/1"} | ${ok ? "" : r.answer.replace(/[|\n]/g, " ").slice(0, 120)} |`);
