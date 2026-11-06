@@ -189,16 +189,17 @@ const field = (name, label) => `<input name="${name}" placeholder="${label}" req
 const setupPage = (origin) => html(`<h2>חיבור הגג הסולארי</h2><ol style="line-height:1.7">
 <li>ב-<a href="https://developer.solaredge.com" target="_blank">developer.solaredge.com</a> ליצור אפליקציה: Monitoring API, Site Access, עם SITE_DATA ו-DEVICE_DATA.</li>
 <li>Origin URL:<br><code style="user-select:all;word-break:break-all">${esc(origin)}</code></li>
-<li>Redirect URI ו-Returned URL:<br><code style="user-select:all;word-break:break-all">${esc(origin)}/solar/callback</code></li>
+<li>Redirect URI:<br><code style="user-select:all;word-break:break-all">${esc(origin)}/solar/callback</code></li>
+<li>Returned URL: להשאיר ריק.</li>
 <li>להדביק כאן את שני הערכים:</li></ol>
 <form method="post">${field("id", "Client ID")}${field("secret", "Client Secret")}<button style="font:18px system-ui;padding:10px 20px">המשך לאישור ב-SolarEdge</button></form>`);
 
 export async function solarRoute(req, env, store, tell) {
   const url = new URL(req.url);
   if (url.pathname === "/solar/callback") {
-    // SolarEdge לא מחזירה state; external_id הוא המפתח. בלעדיו מקבלים רק כשיש חיבור פתוח
+    // המדריך של SolarEdge מחזיר state, ולקוחות בשטח מדווחים על external_id בלבד. בלי שניהם מקבלים רק כשיש חיבור פתוח
     const live = ((await store.get("agentReports/bot")) || {}).keys?.solar?.key;
-    const key = url.searchParams.get("external_id") || live;
+    const key = url.searchParams.get("state") || url.searchParams.get("external_id") || live;
     if (!(await checkKey(store, "solar", key))) return new Response("forbidden", { status: 403 });
     const code = url.searchParams.get("code");
     if (!code) return html(`החיבור בוטל: ${esc(url.searchParams.get("error") || "לא התקבל אישור")}. אפשר לנסות שוב מהקישור.`, 400);
@@ -206,7 +207,7 @@ export async function solarRoute(req, env, store, tell) {
     const r = await fetch(`${API}/oauth2/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ grant_type: "authorization_code", code, client_id: s.clientId, client_secret: s.clientSecret }),
+      body: JSON.stringify({ grant_type: "authorization_code", code, client_id: s.clientId, client_secret: s.clientSecret, redirect_uri: `${url.origin}/solar/callback` }),
     });
     const j = await r.json().catch(() => ({}));
     if (!j.refresh_token) return html(`החיבור נכשל: ${esc(j.error_description || j.error || j.title || r.status)}. כדאי לבדוק את ה-Client ID וה-Secret ולנסות שוב.`, 400);
@@ -231,7 +232,7 @@ export async function solarRoute(req, env, store, tell) {
   }
   const s = (await store.get(DOC)) || {};
   if (!s.clientId) return setupPage(url.origin);
-  const q = new URLSearchParams({ client_id: s.clientId, scope: "SITE_DATA DEVICE_DATA", access_duration: "24", external_id: key, redirect_uri: `${url.origin}/solar/callback` });
+  const q = new URLSearchParams({ client_id: s.clientId, scope: "SITE_DATA DEVICE_DATA", access_duration: "24", state: key, external_id: key, redirect_uri: `${url.origin}/solar/callback` });
   return Response.redirect(`https://connect.solaredge.com/authorize?${q}`, 302);
 }
 
