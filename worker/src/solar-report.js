@@ -10,11 +10,31 @@ const MONTH = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "
 export const DEFAULT_RATE = 0.48;
 export const SELF_RATE = 0.6352;
 export const SELF_SHARE = 0.25;
+// הצריכה העצמית מחשבונות החשמל: מה שהגג ייצר (SolarEdge) פחות מה שהמונה הדו-כיווני רשם שהוזרם לרשת, באותן תקופות קריאה.
+// סופרים רק חשבון שיש עליו נתוני ייצור ל-95% מהימים מאז ההפעלה, כדי שחשבון חלקי לא יעוות
+export function billShare(s) {
+  const days = s.days || {};
+  let made = 0;
+  let sent = 0;
+  let n = 0;
+  for (const b of s.bills || []) {
+    if (!(b.kwh >= 0) || !b.from || !b.to || b.to < b.from) continue;
+    const keys = [];
+    for (let k = b.from > (s.since || "") ? b.from : s.since; k <= b.to; k = addDays(k, 1)) keys.push(k);
+    const have = keys.filter((k) => days[k]?.kwh != null);
+    if (!keys.length || have.length < keys.length * 0.95) continue;
+    made += have.reduce((t, k) => t + days[k].kwh, 0);
+    sent += b.kwh;
+    n++;
+  }
+  return made > 0 && n ? { share: Math.min(0.9, Math.max(0, 1 - sent / made)), bills: n, made, sent } : null;
+}
 export const money = (s) => {
   const exportRate = s.rate > 0 ? s.rate : DEFAULT_RATE;
   const selfRate = s.selfRate > 0 ? s.selfRate : SELF_RATE;
-  const selfShare = s.selfShare >= 0 && s.selfShare <= 1 ? s.selfShare : SELF_SHARE;
-  return { exportRate, selfRate, selfShare, rate: (1 - selfShare) * exportRate + selfShare * selfRate, fixed: s.fixed > 0 ? s.fixed : 0 };
+  const fromBills = billShare(s);
+  const selfShare = fromBills ? fromBills.share : s.selfShare >= 0 && s.selfShare <= 1 ? s.selfShare : SELF_SHARE;
+  return { exportRate, selfRate, selfShare, fromBills, rate: (1 - selfShare) * exportRate + selfShare * selfRate, fixed: s.fixed > 0 ? s.fixed : 0 };
 };
 const pct = (a, b) => (a != null && b > 0 ? Math.round((a / b - 1) * 100) : null);
 const total = (xs, f) => (xs.some((x) => x[f] != null) ? xs.reduce((t, x) => t + (x[f] || 0), 0) : null);
@@ -66,7 +86,7 @@ export function reportData(s, period, today) {
 
 // כמה כסף: היום, החודש עד אתמול, מתחילת השנה מול אותם ימים אשתקד. אותו חישוב כמו הדוחות
 export function earnings(s, today) {
-  const { rate, fixed, exportRate, selfShare } = money(s);
+  const { rate, fixed, exportRate, selfShare, fromBills } = money(s);
   const m = reportData(s, today.slice(0, 7), today);
   const y = reportData(s, today.slice(0, 4), today);
   const t = s.today?.day === today && s.today.kwh != null ? s.today.kwh * rate : null;
@@ -81,7 +101,7 @@ export function earnings(s, today) {
     const left = s.invest - earned;
     back = { earned, invest: s.invest, share: earned / s.invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
   }
-  return { rate, fixed, exportRate, selfShare, today: t, month: m.net, year: y.net, yearChange: y.change, back, expected: s.expectedKwh > 0 ? s.expectedKwh : null, yearKwh: y.kwh };
+  return { rate, fixed, exportRate, selfShare, fromBills, today: t, month: m.net, year: y.net, yearChange: y.change, back, expected: s.expectedKwh > 0 ? s.expectedKwh : null, yearKwh: y.kwh };
 }
 
 export const reportLinks = (today) => {
@@ -131,7 +151,7 @@ tfoot td{font-weight:700;border-top:2px solid #0f5fbf;background:#eef3fb!importa
 <div class="say"><b>${r.change == null ? "אין עדיין השוואה לשנה שעברה." : r.change >= 0 ? `הגג ייצר ${r.change}% יותר מאשתקד.` : `הגג ייצר ${-r.change}% פחות מאשתקד.`}</b>${esc(r.why || "")}${r.best && r.worst && r.best !== r.worst ? ` ה${head} הכי חזק: ${esc(r.best.label)} (${n(r.best.kwh, 1)} קוט״ש). הכי חלש: ${esc(r.worst.label)} (${n(r.worst.kwh, 1)}).` : ""}</div>
 <table><thead><tr><th>${head}</th><th>קוט״ש</th><th>אשתקד</th><th>שינוי</th><th>הכנסה</th><th>שמש</th><th>חום</th><th>גשם</th></tr></thead><tbody>${body}</tbody>
 <tfoot><tr><td>סה״כ</td><td>${n(r.kwh, 1)}</td><td>${n(r.prev, 1)}</td><td>${delta(r.change)}</td><td>${ils(r.gross)}</td><td>${n(r.rad, 0)}</td><td></td><td></td></tr></tfoot></table>
-<p class="note">הכנסה לפי ${n(r.rate * 100, 1)} אגורות לקוט״ש בממוצע: ${Math.round((1 - r.selfShare) * 100)}% מהייצור מוזרם לרשת ב-${n(r.exportRate * 100, 0)} אג׳, ו-${Math.round(r.selfShare * 100)}% נצרך בבית וחוסך ${n(r.selfRate * 100, 1)} אג׳ כולל מע״מ${r.fixed ? `, פחות ניכוי קבוע של ${ils(r.fixed)} בחודש` : ""}. שמש: קרינה יומית במג׳ול למ״ר (Open-Meteo). ייצור: SolarEdge. השוואה לאשתקד על אותם תאריכים בדיוק.</p>
+<p class="note">הכנסה לפי ${n(r.rate * 100, 1)} אגורות לקוט״ש בממוצע: ${Math.round((1 - r.selfShare) * 100)}% מהייצור מוזרם לרשת ב-${n(r.exportRate * 100, 0)} אג׳, ו-${Math.round(r.selfShare * 100)}% נצרך בבית וחוסך ${n(r.selfRate * 100, 1)} אג׳ כולל מע״מ${r.fromBills ? ` (הצריכה העצמית מחושבת מ-${r.fromBills.bills} חשבונות חשמל)` : ""}${r.fixed ? `, פחות ניכוי קבוע של ${ils(r.fixed)} בחודש` : ""}. שמש: קרינה יומית במג׳ול למ״ר (Open-Meteo). ייצור: SolarEdge. השוואה לאשתקד על אותם תאריכים בדיוק.</p>
 </div>
 <script nonce="${nonce}">document.getElementById("print").addEventListener("click",()=>print())</script></html>`;
 }
@@ -256,7 +276,7 @@ export function reportXlsx(r) {
     [["הנחות החישוב", 8], ["", 8], ["", 8], ["", 8]],
     [["תעריף הזנה לרשת (₪ לקוט״ש)", 3], [r.exportRate, 15], ["התעריף המובטח מחברת החשמל", 12]],
     [["חשמל שנחסך (₪ לקוט״ש)", 3], [r.selfRate, 15], ["מחיר החשמל הביתי כולל מע״מ", 12]],
-    [["חלק הייצור שנצרך בבית", 3], [r.selfShare, 18], ["כל השאר מוזרם לרשת", 12]],
+    [["חלק הייצור שנצרך בבית", 3], [r.selfShare, 18], [r.fromBills ? `מ-${r.fromBills.bills} חשבונות חשמל: ייצור ${Math.round(r.fromBills.made)} פחות ${r.fromBills.sent} שהוזרמו` : "הערכה, עד שיהיו חשבונות חשמל", 12]],
     [["ניכוי קבוע לחודש (₪)", 3], [r.fixed, 15], ["אם יש בחשבון היצרן", 12]],
     [["שווי ממוצע לקוט״ש (₪)", 16], [{ f: "(1-B15)*B13+B15*B14" }, 10], ["משנים את התאים הצהובים, וכל הדוח מתעדכן", 12]],
     [],

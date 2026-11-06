@@ -350,6 +350,12 @@ console.log("solar ok");
   assert.equal(Math.round(b.earned), Math.round(620 * 0.5 + 496 * 0.5 - 10 * (62 / 30.4)), "החזר השקעה על כל הימים מאז ההפעלה");
   assert.ok(validPeriod("2026", "2026-11-08") && validPeriod("2025-12", "2026-11-08"));
   assert.ok(!validPeriod("2026-12", "2026-11-08") && !validPeriod("2026-13", "2026-11-08") && !validPeriod("../x", "2026-11-08"));
+  // צריכה עצמית מחשבונות: 620 קוט"ש ייצור באוקטובר, 465 הוזרמו לרשת → 25%
+  const { billShare } = await import("../src/solar-report.js");
+  const withBills = { ...s, selfShare: 0.9, bills: [{ from: "2026-10-01", to: "2026-10-31", kwh: 465 }, { from: "2026-11-01", to: "2026-11-30", kwh: 100 }] };
+  assert.equal(billShare(withBills).share, 0.25);
+  assert.equal(billShare(withBills).bills, 1, "חשבון בלי נתוני ייצור לא נספר");
+  assert.equal(money(withBills).selfShare, 0.25, "החשבונות קובעים, לא ההערכה");
   const xl = reportXlsx(r);
   assert.equal(xl[0], 0x50, "ZIP");
   assert.ok(new TextDecoder().decode(xl).includes("SUM('פירוט'!B5:B35)"), "הנוסחאות על שורות הנתונים");

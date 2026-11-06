@@ -394,6 +394,11 @@ export const SOLAR_TOOL_DEFS = [
     input_schema: { type: "object", properties: { agorot: { type: "number" }, self_agorot: { type: "number" }, self_share: { type: "number" }, fixed: { type: "number" }, invest: { type: "number" }, since: { type: "string" }, expected_kwh: { type: "number" } }, additionalProperties: false },
   },
   {
+    name: "solar_bills",
+    description: "שומר קריאות מחשבונות החשמל של הבית: לכל חשבון תקופת הקריאה (from, to בפורמט YYYY-MM-DD) וכמה קוט\"ש הוזרמו לרשת לפי \"זיכוי בגין יצור\" (kwh). מזה האפליקציה מחשבת כמה מהייצור הבית צורך בעצמו. חשבון עם אותו from מחליף את הקודם.",
+    input_schema: { type: "object", properties: { bills: { type: "array", items: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, kwh: { type: "number" } }, required: ["from", "to", "kwh"], additionalProperties: false } } }, required: ["bills"], additionalProperties: false },
+  },
+  {
     name: "solar_logout",
     description: "מנתק את דשבורד הגג מכל המכשירים. רק כשהבעלים מבקש לנתק, למשל אם טלפון אבד.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
@@ -414,6 +419,19 @@ export const makeSolarTools = ({ store, origin }) => ({
     if (!Object.keys(patch).length) return "לא נמסר שום נתון לעדכון.";
     await store.merge(DOC, patch);
     return `עודכן: ${Object.keys(patch).join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
+  },
+  async solar_bills({ bills }) {
+    const day = /^20\d\d-\d\d-\d\d$/;
+    const good = (bills || []).filter((b) => day.test(b.from) && day.test(b.to) && b.from <= b.to && b.kwh >= 0 && b.kwh < 100000);
+    if (!good.length) return "לא נמצאו חשבונות תקינים. לכל חשבון צריך from, to (YYYY-MM-DD) ו-kwh.";
+    let total = 0;
+    await store.update(DOC, (cur) => {
+      const all = new Map((cur.bills || []).map((b) => [b.from, b]));
+      for (const b of good) all.set(b.from, { from: b.from, to: b.to, kwh: b.kwh });
+      total = all.size;
+      return { bills: [...all.values()].sort((a, b) => a.from.localeCompare(b.from)) };
+    });
+    return `נשמרו ${good.length} חשבונות (סה"כ ${total}). הצריכה העצמית מחושבת מהם מעכשיו.`;
   },
   async solar_logout() {
     await store.merge(AUTH, { sessions: [] });
