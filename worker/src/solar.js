@@ -6,6 +6,7 @@ import { israelToUtc } from "./time.js";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { sha256 } from "./inbox.js";
 import { solarHtml } from "./solar-dashboard.js";
+import { reportData, reportHtml, reportXlsx, reportFileName, validPeriod } from "./solar-report.js";
 import { ICON_192, ICON_512 } from "./solar-icons.js";
 // גרסה בכתובות של האייקונים והמניפסט: אייקון חדש מקבל כתובת חדשה, אחרת הטלפון מציג את הישן מהמטמון
 export const ICON_V = ICON_192.length.toString(36) + ICON_512.length.toString(36);
@@ -170,6 +171,24 @@ async function collect(s, token, today) {
   return { days: Object.fromEntries(Object.entries(days).filter(([k]) => k >= addDays(today, -KEEP_DAYS))), next: from + ok - (from ? 1 : 0), archived };
 }
 
+// ייצור היום עד עכשיו. רץ גם בריצה היומית וגם בשעתית, כך שהמספר מתעדכן גם בימים שהריצה היומית חוזרת כל שעה.
+// אם SolarEdge לא מקבלת "עד עכשיו", מנסים עד סוף היום. התקלה נשמרת ב-todayError כדי שהדשבורד יסביר במקום "ממתין"
+async function todayUpdate(s, token, store, today, now) {
+  let err = "אין חיבור ל-SolarEdge";
+  if (token) for (const to of [now.toISOString(), addDays(today, 1)]) {
+    try {
+      const kwh = (await energy(s, token, today, to))[today];
+      await store.merge(DOC, { today: { day: today, kwh: kwh ?? 0, at: now.toISOString() }, todayError: "" });
+      return true;
+    } catch (e) {
+      err = String(e.message).slice(0, 200);
+    }
+  }
+  console.log("solar today", err); // נתון נוחות: התקלות הקשות מדווחות מהריצה היומית
+  await store.merge(DOC, { todayError: err, todayErrorAt: now.toISOString() });
+  return false;
+}
+
 // tell(key, text, templateParam) — אותה שליחה של כל ההתראות לבעלים
 export async function solarRun(store, tell, now = new Date(), link = "") {
   const today = isoDay(now);
@@ -192,16 +211,7 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     return { lastRunDay: today, lastError: "", todayHour: hour };
   });
   if (!s) return "solar: skip";
-  if (hourly) {
-    try {
-      const kwh = (await energy(s, await refresh(s, store), today, now.toISOString()))[today];
-      await store.merge(DOC, { today: { day: today, kwh: kwh ?? 0, at: now.toISOString() } });
-      return "solar: today";
-    } catch (e) {
-      console.log("solar today", e.message); // נתון נוחות: התקלות מדווחות מהריצה היומית
-      return "solar: today failed";
-    }
-  }
+  if (hourly) return (await todayUpdate(s, await refresh(s, store).catch(() => null), store, today, now)) ? "solar: today" : "solar: today failed";
   try {
     const token = await refresh(s, store);
     const first = !s.backfilled && !s.backfillIdx;
@@ -210,6 +220,7 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
     const gear = sunday || s.panels == null ? await equipment(s, token) : null;
     await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
+    if (s.backfilled) await todayUpdate(s, token, store, today, now); // באמצע משיכת השנה כבר קרובים ל-10 קריאות בדקה
     const fault = hardFault(days, today);
     const sent = [];
     if (fault && !quiet) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
@@ -313,6 +324,17 @@ export async function solarRoute(req, env, store, tell) {
     const nonce = randomHex(16);
     return secure(solarHtml((await store.get(DOC)) || {}, isoDay(new Date()), nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
+  if (url.pathname === "/solar/report" || url.pathname === "/solar/report.xlsx") {
+    if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
+    const today = isoDay(new Date());
+    const p = url.searchParams.get("p") || "";
+    if (!validPeriod(p, today)) return shell("<h2>אין דוח לתקופה הזו</h2>", 400);
+    const r = reportData((await store.get(DOC)) || {}, p, today);
+    if (url.pathname.endsWith(".xlsx"))
+      return new Response(reportXlsx(r), { headers: { ...SECURITY, "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content-disposition": `attachment; filename="${reportFileName(p)}"`, "content-security-policy": "default-src 'none'" } });
+    const nonce = randomHex(16);
+    return secure(reportHtml(r, nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+  }
   if (url.pathname === "/solar/callback") {
     // המדריך של SolarEdge מחזיר state, ולקוחות בשטח מדווחים על external_id בלבד. בלי שניהם מקבלים רק כשיש חיבור פתוח
     const live = ((await store.get("agentReports/bot")) || {}).keys?.solar?.key;
@@ -365,6 +387,11 @@ export const SOLAR_TOOL_DEFS = [
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "solar_rate",
+    description: "מעדכן כמה הגג מרוויח לקוט\"ש, לחישוב השקלים בדשבורד ובדוחות. agorot: התעריף באגורות לקוט\"ש (למשל 48). fixed: ניכוי קבוע בשקלים לחודש מחשבון היצרן (דמי ניהול, קריאת מונה), 0 אם אין. רק כשהבעלים אומר מספר.",
+    input_schema: { type: "object", properties: { agorot: { type: "number" }, fixed: { type: "number" } }, required: ["agorot"], additionalProperties: false },
+  },
+  {
     name: "solar_logout",
     description: "מנתק את דשבורד הגג מכל המכשירים. רק כשהבעלים מבקש לנתק, למשל אם טלפון אבד.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
@@ -376,6 +403,11 @@ export const makeSolarTools = ({ store, origin }) => ({
   },
   async solar_dashboard() {
     return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
+  },
+  async solar_rate({ agorot, fixed }) {
+    if (!(agorot > 0 && agorot < 300) || (fixed != null && !(fixed >= 0 && fixed < 1000))) return "המספר לא נראה נכון. התעריף באגורות לקוט\"ש, בדרך כלל בין 20 ל-100.";
+    await store.merge(DOC, { rate: agorot / 100, ...(fixed != null ? { fixed } : {}) });
+    return `עודכן: ${agorot} אגורות לקוט"ש${fixed != null ? `, ניכוי קבוע ${fixed} ₪ בחודש` : ""}. הדשבורד והדוחות מחושבים לפי זה.`;
   },
   async solar_logout() {
     await store.merge(AUTH, { sessions: [] });

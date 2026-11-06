@@ -1,6 +1,7 @@
 // ☀️ דשבורד הגג: דף פרטי (הגישה ב-solar.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
 import { adjusted, analyze, addDays, hardFault, ICON_V } from "./solar.js";
 import { esc } from "./dashboard.js";
+import { earnings, reportLinks, periodName } from "./solar-report.js";
 
 const median = (xs) => {
   const s = xs.filter((x) => x != null).sort((a, b) => a - b);
@@ -369,10 +370,15 @@ export function solarHtml(s, today, nonce = "") {
     const bar = (label, val, c) => `<div class="cmp"><span>${label}</span><div class="track"><i class="grow" style="width:${Math.round((val / top) * 100)}%;background:var(${c})"></i></div><b>${num(val)}</b></div>`;
     return `<section class="card row r"><div class="rt1"><h3>${esc(r.title)}</h3><span class="delta ${r.pct >= 0 ? "up" : "down"}">${r.pct >= 0 ? "▲" : "▼"} ${Math.abs(r.pct)}%</span></div>${bar("עכשיו", r.now, "--s1")}${bar("קודם", r.then, "--s4")}<p class="say2">${esc(r.why)}</p></section>`;
   };
+  const cash = earnings(s, today);
+  const ils = (x) => (x == null ? "—" : `₪${Number(x).toLocaleString("he-IL", { maximumFractionDigits: x >= 100 ? 0 : 2, minimumFractionDigits: x >= 100 ? 0 : 2 })}`);
+  const moneyCard = a.days || today_ ? `<section class="card r"><h2>כמה הגג הכניס</h2><div class="cash">${[["היום", cash.today, "עד עכשיו"], ["החודש", cash.month, "נקי, עד אתמול"], [`שנת ${today.slice(0, 4)}`, cash.year, cash.yearChange == null ? "נקי, מינואר" : `${cash.yearChange >= 0 ? "▲" : "▼"} ${Math.abs(cash.yearChange)}% מול אשתקד`]].map(([l, val, sub]) => `<div><span>${l}</span><b>${ils(val)}</b><small>${sub}</small></div>`).join("")}</div><p class="small">לפי ${Math.round(cash.rate * 1000) / 10} אגורות לקוט״ש${cash.fixed ? `, פחות ${ils(cash.fixed)} ניכוי קבוע בחודש` : ""}. מספר אחר בחשבון? כתוב לשולה "התעריף של הגג הוא X אגורות".</p></section>` : "";
+  const reports = `<section class="card r"><h2>דוחות להורדה</h2>${reportLinks(today).map((p) => `<div class="rep"><span>${periodName(p)}</span><a href="/solar/report?p=${p}">PDF</a><a href="/solar/report.xlsx?p=${p}" download>Excel</a></div>`).join("")}<p class="small">כל דוח משווה לאותה תקופה בשנה שעברה, בקוט״ש ובשקלים.</p></section>`;
   const panels = [
-    `<header class="hero" id="hero"><div class="eye">היום עד עכשיו</div>${today_ ? `<div class="big" data-count="${Math.round(today_.kwh)}">${num(today_.kwh)}</div><div class="unit">קוט״ש, נכון ל-${esc(at)}</div>` : `<div class="big wait">ממתין</div><div class="unit">מתעדכן כל שעה ביום</div>`}<h1 class="${HEAD[0]}"><i aria-hidden="true">${HEAD[2]}</i>${HEAD[1]}</h1>${v.note ? `<p>${esc(v.note)}</p>` : ""}</header>
+    `<header class="hero" id="hero"><div class="eye">היום עד עכשיו</div>${today_ ? `<div class="big" data-count="${Math.round(today_.kwh)}">${num(today_.kwh)}</div><div class="unit">קוט״ש, נכון ל-${esc(at)}${cash.today != null ? ` · ${ils(cash.today)}` : ""}</div>` : s.todayError ? `<div class="big wait">—</div><div class="unit">SolarEdge לא ענה, מנסים שוב בשעה הבאה</div>` : `<div class="big wait">ממתין</div><div class="unit">מתעדכן כל שעה, מ-7 בבוקר</div>`}<h1 class="${HEAD[0]}"><i aria-hidden="true">${HEAD[2]}</i>${HEAD[1]}</h1>${v.note ? `<p>${esc(v.note)}</p>` : ""}</header>
 <div class="stage"></div>
 ${circles}
+${moneyCard}
 ${f.pace != null ? `<section class="card r verdict"><span class="pill ${f.onTrack ? "ok" : "warn"}">${f.onTrack ? "עומד בקצב של אשתקד" : "מאחורי הקצב של אשתקד"}</span><p class="say2">${f.pace >= 0 ? `${f.pace}% מעל ` : `${-f.pace}% מתחת ל`}אותם ימים בשנה שעברה. ${esc(monthRow?.why || "")}</p></section>` : ""}
 <div class="tiles r">${tile("7 הימים האחרונים", num(a.total), `קוט״ש${homeDays >= 1 ? `, כמו ${homeDays} ימים של בית` : ""}`)}${tile("צפי לסוף החודש", f.end == null ? "לא זמין" : num(f.end), f.target ? `קוט״ש, מול ${num(f.target)} אשתקד` : "קוט״ש, לפי הקצב")}</div>
 <section class="card r"><h2>מה כדאי לעשות</h2>${v.advice.map(([t, x], i) => `<div class="tip"><div class="num">${i + 1}</div><div><b>${esc(t)}</b><p>${esc(x)}</p></div></div>`).join("") || `<p class="say2">אחרי הדוח הראשון יופיעו כאן המלצות.</p>`}</section>`,
@@ -385,7 +391,7 @@ ${scanCard(s, a, days, end)}
 ${v.bad.length ? `<section class="card r"><h2>מה פחות טוב</h2><ul>${list(v.bad, "y", "!")}</ul></section>` : ""}
 <section class="card installbox" id="ib"><button id="install">התקן בטלפון</button><p class="small" id="ihow" hidden>בתפריט של Chrome (שלוש הנקודות) בחר "הוספה למסך הבית".</p></section>`,
 
-    `<h2 class="lt">פרטים</h2>${a.days ? `<section class="card r"><h2>השבוע, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
+    `<h2 class="lt">פרטים</h2>${reports}${a.days ? `<section class="card r"><h2>השבוע, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
 ${bestMonth || heatDrop != null || v.lift != null ? `<section class="card r"><h2>מה למדנו על הגג</h2>${bestMonth ? `<p class="say2">החודש הכי חזק בשנה האחרונה היה ${bestMonth.label}, עם ${num(bestMonth.now)} קוט״ש.</p>` : ""}${heatDrop > 0 ? `<p class="say2">בימים חמים מאוד הגג מפיק בערך ${heatDrop}% פחות. זה טבעי לפאנלים.</p>` : ""}${v.lift != null ? `<p class="say2">${v.lift >= 5 ? `גשם ראשון אחרי יובש מעלה את הייצור בערך ב-${v.lift}%, כי הוא שוטף את האבק.` : "גשם כמעט לא משנה את הייצור, אז הפאנלים נקיים יחסית."}</p>` : ""}</section>` : ""}
 <details class="card flat r"><summary>כל הגרפים והטבלה</summary><div class="more">
 <div><h3>ייצור יומי, 30 יום (קוט״ש)</h3>${chartBars(last30, 170, "--s1", (d) => d.kwh, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.kwh, 1)} קוט״ש`)}</div>
@@ -453,6 +459,8 @@ ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}li{display:flex;gap:
 .day{display:grid;grid-template-columns:58px 24px 1fr 48px;gap:10px;align-items:center;padding:6px 0}.day b{text-align:end;font-weight:600;font-variant-numeric:tabular-nums}.ic{width:24px;height:24px;display:block}
 .track{height:10px;border-radius:6px;background:rgba(255,255,255,.14);overflow:hidden}.track i{display:block;height:100%;border-radius:6px;background:var(--s1)}
 .small{margin:12px 0 0;color:var(--t2);font-size:.82rem}
+.cash{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cash div{display:grid;gap:1px;min-width:0}.cash span{font-size:.82rem;color:var(--t2)}.cash b{font-size:1.45rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cash small{font-size:.74rem;color:var(--t2)}
+.rep{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:.5px solid var(--line)}.rep:first-of-type{border-top:0}.rep span{flex:1;font-weight:600}.rep a{color:#fff;text-decoration:none;font-size:.85rem;font-weight:600;padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.14);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3);transition:transform .1s ease-out}.rep a:active{transform:scale(.94)}
 #install{font:inherit;font-weight:600;border:0;border-radius:14px;padding:13px 18px;background:#fff;color:#0d2a55;width:100%;transition:transform .1s ease-out}#install:active{transform:scale(.97)}.installbox{display:none}.installbox.on{display:block}
 .flat{padding:0}summary{cursor:pointer;list-style:none;padding:16px;font-weight:600;display:flex;justify-content:space-between;transition:transform .1s ease-out}summary:active{transform:scale(.98)}summary::-webkit-details-marker{display:none}summary::after{content:"＋";color:var(--t2)}details[open] summary::after{content:"－"}
 .more{padding:0 16px 16px;display:grid;gap:22px;animation:open .4s cubic-bezier(.2,.9,.25,1)}@keyframes open{from{opacity:0;transform:translateY(-8px)}}

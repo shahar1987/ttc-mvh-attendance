@@ -78,7 +78,8 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(s.days["2026-11-08"], undefined, "יום שלא נגמר לא נשמר");
   assert.equal(s.lastOkAt, at.toISOString());
   assert.deepEqual(sent.map((x) => x[0]), ["solar"]);
-  assert.equal(log.filter((u) => u.includes("monitoringapi")).length, 4, "3 קרדיטים ביום, ועוד אחד לציוד ביום ראשון");
+  assert.equal(log.filter((u) => u.includes("monitoringapi")).length, 5, "3 קרדיטים ביום, אחד לייצור של היום, ועוד אחד לציוד ביום ראשון");
+  assert.ok(s.today && s.today.day === "2026-11-08", "גם הריצה היומית מעדכנת את ייצור היום");
   assert.equal(await solarRun(store, async () => assert.fail(), at), "solar: skip");
 }
 // אמצע שבוע בלי תקלה: שקט
@@ -182,6 +183,8 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T08:40:00Z")), "solar: skip", "פעם בשעה");
   globalThis.fetch = async (u, i) => (String(u).includes("/energy?") ? json({}, 500) : good(u, i));
   assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T09:10:00Z")), "solar: today failed", "תקלה בנתון הנוחות לא מציקה");
+  assert.match(store.docs["agentReports/solar"].todayError, /500/, "התקלה נשמרת כדי שהדשבורד יסביר");
+  assert.equal(store.docs["agentReports/solar"].today.kwh, 12.5, "המספר הקודם נשאר");
 }
 // נפילה באמצע משיכת השנה: מה שנמשך נשמר
 {
@@ -316,3 +319,24 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal((await route(`${base}/solar/dashboard`, { headers: { cookie: token } })).status, 401, "ניתוק מכל המכשירים");
 }
 console.log("solar ok");
+// דוחות וכסף
+{
+  const { reportData, reportXlsx, reportHtml, earnings, validPeriod, money } = await import("../src/solar-report.js");
+  const days = {};
+  for (let i = 1; i <= 31; i++) { days[`2026-10-${String(i).padStart(2, "0")}`] = { kwh: 20, rad: 15 }; days[`2025-10-${String(i).padStart(2, "0")}`] = { kwh: 16, rad: 15 }; }
+  const s = { days, rate: 0.5, fixed: 10, today: { day: "2026-11-08", kwh: 4 } };
+  const r = reportData(s, "2026-10", "2026-11-08");
+  assert.equal(r.kwh, 620);
+  assert.equal(r.change, 25);
+  assert.equal(r.net, 300, "620 קוט\"ש כפול 50 אגורות, פחות 10 ₪");
+  const open = reportData(s, "2026-11", "2026-11-03");
+  assert.equal(open.rows.length, 2, "חודש פתוח: רק עד אתמול");
+  assert.equal(earnings(s, "2026-11-08").today, 2);
+  assert.equal(money({}).rate, 0.48);
+  assert.ok(validPeriod("2026", "2026-11-08") && validPeriod("2025-12", "2026-11-08"));
+  assert.ok(!validPeriod("2026-12", "2026-11-08") && !validPeriod("2026-13", "2026-11-08") && !validPeriod("../x", "2026-11-08"));
+  const xl = reportXlsx(r);
+  assert.equal(xl[0], 0x50, "ZIP");
+  assert.ok(new TextDecoder().decode(xl).includes("SUM('פירוט'!B5:B35)"), "הנוסחאות על שורות הנתונים");
+  assert.ok(!/NaN|undefined/.test(reportHtml(r, "n")));
+}
