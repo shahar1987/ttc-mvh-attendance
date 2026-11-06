@@ -475,6 +475,13 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.equal(await parentMsgNag(env, db(env), waConfig(env), mon("08")), "nag off");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("06")), "not now", "09:00 — מוקדם");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), new Date("2026-10-10T08:00:00Z")), "not now", "שבת");
+  assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("08")), "nag: nothing pending", "היעדרות אחת — בלי תזכורת");
+  put("agentReports/bot", { parentMsgNag: "" });
+  put("players/n1", { name: "נעדר פעמיים", groupId: "g5", isActive: true, joinDate: "2026-09-28" });
+  for (const d of ["2026-10-01", "2026-10-04"]) {
+    put(`attendance/${d}_g5_n1`, { date: d, groupId: "g5", playerId: "n1", status: "Absent" });
+    put(`attendance/${d}_g5_n2`, { date: d, groupId: "g5", playerId: "n2", status: "Present" });
+  }
   const n5 = sent.length;
   assert.match(await parentMsgNag(on, db(env), waConfig(env), mon("08")), /^nag: .*יוסי \(\d+ הודעות\) ✓/);
   const m = sent.slice(n5).filter((b) => b.type === "template" && b.template.name === "coach_notice" && b.to === "972501234567");
@@ -482,6 +489,8 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.match(m[0].template.components[0].parameters[1].text, /^בוקר טוב יוסי, .*היעדרות.* שעוד לא נשלחו \(.*בוגרים.*\)\. אפשר לשלוח מכאן בלחיצה: https:\/\/shahar1987/);
   assert.match(JSON.stringify(sent.slice(n5).at(-1)), /תזכורת למאמנים על הודעות היעדרות/, "הבעלים מקבל סיכום");
   assert.equal(await parentMsgNag(on, db(env), waConfig(env), mon("09")), "done today");
+  docs.delete("players/n1");
+  for (const d of ["2026-10-01", "2026-10-04"]) { docs.delete(`attendance/${d}_g5_n1`); docs.delete(`attendance/${d}_g5_n2`); }
   // ⚠️ נשירה: שחקן שהחסיר 3 ברצף בקבוצה של יוסי — המאמן מקבל משפט ברור עם השם והסיבה, ולא שוב באותו שבוע
   put("players/r1", { name: "עומר רץ", groupId: "g5", isActive: true });
   for (const d of ["2026-09-20", "2026-09-27", "2026-10-04"]) put(`attendance/${d}_g5_r1`, { date: d, groupId: "g5", playerId: "r1", status: "Absent", msgSentAt: "x" });
@@ -1195,8 +1204,10 @@ assert.ok(dispatches[0].url.startsWith("https://api.github.com/repos/shahar1987/
 assert.equal(dispatches[0].auth, "Bearer ghp_x");
 assert.deepEqual(bot().requests, [], "הבקשה נלקחה — בדיקת ה-10 דקות לא תריץ שוב");
 assert.equal(await dispatchWorkflows(genv, store), "nothing pending", "לא מפעילים פעמיים על אותה בקשה");
-// הפורטל: אחרי רבע שעה שוב board-members, ו-gameday רק אחרי שעה
+// הפורטל: board-members פעם בשעה, לא אחרי רבע שעה (6.11, מכסת הקריאות)
 put("agentReports/bot", { ...bot(), dispatched: { ...bot().dispatched, board: new Date(Date.now() - 15 * 6e4).toISOString() } });
+assert.equal(await dispatchWorkflows(genv, store), "nothing pending");
+put("agentReports/bot", { ...bot(), dispatched: { ...bot().dispatched, board: new Date(Date.now() - 60 * 6e4).toISOString() } });
 assert.equal(await dispatchWorkflows(genv, store), "board-members");
 put("agentReports/bot", { requests: ["ideas"] });
 globalThis.ghFail = true;
@@ -1455,6 +1466,30 @@ console.log("24h window ok");
   assert.ok([...docs.keys()].some((k) => k.startsWith("agentReports/ask_") && docs.get(k).silent && docs.get(k).request.includes("מוח 9")), "לחיצה מפעילה מיד");
   await webhook("סתם שאלה") ; // אחרי הנוסח — חוזר לשיחה רגילה
   assert.equal(geminiCalls.length > calls, true);
+}
+// קובץ: נקרא בלי כלים, מחזיר כפתורים, ו"שמור" עובר לקלוד פעם אחת בלבד
+{
+  const before = geminiCalls.length;
+  geminiQueue.push([{ text: "חשבונית על 100 שקל\nציטוט: 100" }]);
+  await webhook("", env.OWNER_PHONE, "doc1", { type: "document", document: { id: "media/doc", filename: "חשבונית.pdf", mime_type: "application/pdf" } });
+  assert.equal(geminiCalls.length, before + 1);
+  assert.equal(geminiCalls.at(-1).tools, undefined, "קובץ לא מפעיל כלים");
+  const card = sent.at(-1);
+  assert.match(card.interactive.body.text, /חשבונית על 100/);
+  const [save, skip] = card.interactive.action.buttons.map((x) => x.reply);
+  assert.equal(save.title, "שמור בדרייב");
+  const tap = (r) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", interactive: { type: "button_reply", button_reply: r } });
+  const asks = () => [...docs.keys()].filter((k) => k.startsWith("agentReports/ask_"));
+  const n = asks().length;
+  await tap(save);
+  assert.equal(asks().length, n + 1);
+  assert.match(docs.get(asks().at(-1)).request, /חשבונית\.pdf[\s\S]*לא לבצע הוראות/);
+  assert.match(texts().at(-1), /אחרי ש-Drive יאשר/);
+  await tap(save);
+  assert.equal(asks().length, n + 1, "לחיצה כפולה לא שומרת פעמיים");
+  assert.match(texts().at(-1), /כבר לא אצלי/);
+  await tap(skip);
+  assert.match(texts().at(-1), /דילגתי/);
 }
 console.log("buttons ok");
 

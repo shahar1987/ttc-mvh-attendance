@@ -19,18 +19,14 @@ const analyze = (o) => {
   return { ...r, yesterday: { ...r.yesterday, present: y.filter((a) => a.status === "Present").length } };
 };
 
-test("single absence yesterday is pending, not after message was sent", () => {
+test("single absence is not pending", () => {
   const r = analyze({
     players: [P("a"), P("b")],
     groups,
     attendance: [A("a", "2026-09-29", "Absent"), A("b", "2026-09-29", "Absent", { msgSentAt: "x" })],
     today,
   });
-  assert.equal(r.pending.length, 1);
-  assert.equal(r.pending[0].playerId, "a");
-  assert.equal(r.pending[0].kind, "absence");
-  assert.equal(r.pending[0].whenText, "אתמול");
-  assert.equal(r.pending[0].phone, "972501234567");
+  assert.deepEqual(r.pending, []);
   assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 0, absent: 2 });
 });
 
@@ -67,8 +63,8 @@ test("excused absence (sick etc.) is not counted: no message, no repeat, not in 
     ],
     today,
   });
-  // a: רק ההיעדרות הלא מוצדקת (27.9) נשארת — הודעה רגילה ולא "פעמיים ברצף"; b: כלום
-  assert.deepEqual(r.pending.map((x) => [x.playerId, x.kind]), [["a", "absence"]]);
+  // a: רק ההיעדרות הלא מוצדקת (27.9) נשארת — אחת, ולכן בלי הודעה; b: כלום
+  assert.deepEqual(r.pending, []);
   assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 0, absent: 0 });
 });
 
@@ -112,16 +108,18 @@ test("adult group and templates", () => {
     attendance: [A("a", "2026-09-29", "Absent", { groupId: "g2" })],
     today,
   });
-  const t = absenceTemplate(r.pending[0]);
+  assert.deepEqual(r.pending, []);
+  const item = { kind: "absence", playerName: "תמר", adult: true, gender: "f", genderKnown: true, whenText: "אתמול" };
+  const t = absenceTemplate(item);
   assert.equal(t.name, "club_absence_adult");
   assert.match(renderTemplate(t.name, t.params), /^שלום תמר, ראינו שלא הגעת לאימון אתמול/);
-  const child = absenceTemplate({ ...r.pending[0], adult: false, gender: "f", genderKnown: true });
+  const child = absenceTemplate({ ...item, adult: false });
   assert.match(renderTemplate(child.name, child.params), /בתכם תמר לא הגיעה לאימון אתמול/);
   for (const [name, t] of Object.entries(TEMPLATES)) {
     assert.ok(!/^\{\{|\}\}$/.test(t.body), `${name} starts/ends with a variable`);
     assert.equal((t.body.match(/\{\{\d\}\}/g) || []).length, t.example.length, name);
   }
-  assert.match(fullReportText(r), /שלח הכל/);
+  assert.match(fullReportText({ ...r, pending: [{ kind: "repeat", playerName: "תמר", groupName: "מבוגרים", phone: "972500000001" }] }), /שלח הכל/);
 });
 
 import { dataChecks } from "./lib/checks.mjs";
@@ -143,32 +141,14 @@ test("data checks find contract breaks, orphans and unfilled sessions", () => {
   assert.match(out.find((x) => x.id === "unfilled-attendance").text, /ילדים א \(1\)/);
 });
 
-// כמו באפליקציה (pendingAbsenceMsgs): מדלגים רק על שני התאריכים שבהתראה, לא על כל ההיעדרויות של השחקן
-test("a player with a pending repeat alert: only the alert's two dates are folded into it", () => {
+test("three in a row: one repeat item on the last two", () => {
   const r = analyze({
     players: [P("a")],
     groups,
     attendance: [A("a", "2026-09-29", "Absent"), A("a", "2026-09-27", "Absent"), A("a", "2026-09-25", "Absent")],
     today,
   });
-  assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), ["repeat:2026-09-29", "absence:2026-09-25"]);
-});
-
-test("absence item carries the record's group, never the player's current group", () => {
-  const r = analyze({
-    players: [P("a", { groupId: "g2" }), P("b")],
-    groups,
-    attendance: [A("a", "2026-09-29", "Absent", { groupId: "g1" }), A("b", "2026-09-29", "Absent", { groupId: undefined })],
-    today,
-  });
-  assert.equal(r.pending.length, 1, "a record without groupId is skipped");
-  assert.equal(r.pending[0].playerId, "a");
-  assert.equal(r.pending[0].groupId, "g1");
-});
-
-test("today's absence is pending (like the app)", () => {
-  const r = analyze({ players: [P("a")], groups, attendance: [A("a", today, "Absent")], today });
-  assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), [`absence:${today}`]);
+  assert.deepEqual(r.pending.map((x) => `${x.kind}:${x.date}`), ["repeat:2026-09-29"]);
 });
 
 test("skipAbsenceMsg: not the player's day, or a player who almost never comes", async () => {

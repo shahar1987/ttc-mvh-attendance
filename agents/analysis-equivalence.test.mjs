@@ -1,4 +1,4 @@
-// שקילות מול האפליקציה: הפונקציות absenceAlerts / pendingAbsenceMsgs / lastTwoAbsences נשלפות
+// שקילות מול האפליקציה: הפונקציות absenceAlerts / lastTwoAbsences נשלפות
 // כמו שהן מ-part-a.js (מקור האמת לפי CLAUDE.md) ורצות על אותם נתונים כמו analyze של הסוכן.
 // אם מישהו ישנה את האפליקציה בלי לשנות את agents/lib/analysis.mjs (או להפך) — הבדיקה הזו תיכשל.
 import test from "node:test";
@@ -22,9 +22,9 @@ function extract(src, name) {
 
 function appFunctions(today) {
   const src = readFileSync(APP, "utf8");
-  const code = ["onlyHeldTrainings", "skipAbsenceMsg", "lastTwoAbsences", "absenceAlerts", "pendingAbsenceMsgs"].map((n) => extract(src, n)).join("\n");
+  const code = ["onlyHeldTrainings", "skipAbsenceMsg", "lastTwoAbsences", "absenceAlerts"].map((n) => extract(src, n)).join("\n");
   // E() באפליקציה מחזיר את התאריך של היום; groupCoachLabel לא משנה את הרשימה
-  return new Function("E", "groupCoachLabel", `${code}\nreturn { onlyHeldTrainings, absenceAlerts, pendingAbsenceMsgs };`)(() => today, () => null);
+  return new Function("E", "groupCoachLabel", `${code}\nreturn { onlyHeldTrainings, absenceAlerts };`)(() => today, () => null);
 }
 
 const today = "2026-09-30";
@@ -35,6 +35,7 @@ const A = (playerId, date, status, extra = {}) => ({ playerId, date, status, gro
 
 const players = [
   P("single"),
+  P("twoInARow", { joinDate: d(5) }),
   P("repeat3"), // שלוש היעדרויות: התראה על שתיים, השלישית בודדת
   P("handled", { alertHandledDate: d(3) }),
   P("handledOld", { alertHandledDate: d(9) }),
@@ -51,6 +52,7 @@ const players = [
 ];
 const attendance0 = [
   A("single", d(1), "Absent"), A("single", d(4), "Present"),
+  A("twoInARow", d(1), "Absent"), A("twoInARow", d(3), "Absent"), A("twoInARow", d(5), "Present"),
   A("repeat3", d(1), "Absent"), A("repeat3", d(3), "Absent"), A("repeat3", d(5), "Absent"),
   A("handled", d(1), "Absent"), A("handled", d(3), "Absent"),
   A("handledOld", d(2), "Absent"), A("handledOld", d(4), "Absent"), A("handledOld", d(6), "Present"),
@@ -65,18 +67,12 @@ const attendance0 = [
   A("presentLast", d(1), "Present"), A("presentLast", d(3), "Absent"), A("presentLast", d(5), "Absent"),
 ];
 
-test("agent pending list == app (absenceAlerts + pendingAbsenceMsgs)", { skip: !existsSync(APP) && "part-a.js not found" }, () => {
+test("agent pending list == app (absenceAlerts)", { skip: !existsSync(APP) && "part-a.js not found" }, () => {
   const app = appFunctions(today);
   // באפליקציה ההתראות רצות על statAtt, שכבר עבר onlyHeldTrainings
   const attendance = app.onlyHeldTrainings(attendance0);
   const appRepeat = app.absenceAlerts(players, groups, attendance, null).map((x) => `repeat:${x.dates[0]}:${x.player.id}:${x.dates.join(",")}`);
-  const appSingle = app.pendingAbsenceMsgs(players, groups, [], attendance).map((x) => `absence:${x.record.date}:${x.player.id}:${x.record.groupId}`);
-  const agent = analyze({ players, groups, attendance: attendance0, today }).pending.map((x) =>
-    x.kind === "repeat" ? `repeat:${x.date}:${x.playerId}:${x.dates.join(",")}` : `absence:${x.date}:${x.playerId}:${x.groupId}`,
-  );
-  assert.deepEqual([...agent].sort(), [...appRepeat, ...appSingle].sort());
-  // וידוא שהנתונים באמת מכסים את שלושת ההבדלים שתוקנו
-  assert.ok(agent.includes(`absence:${d(5)}:repeat3:g1`), "single next to a repeat alert");
-  assert.ok(agent.includes(`absence:${today}:todayAbs:g1`), "today's absence");
-  assert.ok(agent.includes(`absence:${d(2)}:moved:g1`), "record's group, not player's");
+  const agent = analyze({ players, groups, attendance: attendance0, today }).pending.map((x) => `repeat:${x.date}:${x.playerId}:${x.dates.join(",")}`);
+  assert.deepEqual([...agent].sort(), [...appRepeat].sort());
+  assert.ok(agent.includes(`repeat:${d(1)}:twoInARow:${d(1)},${d(3)}`), "the fixture has a repeat");
 });

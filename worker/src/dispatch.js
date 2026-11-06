@@ -5,7 +5,7 @@
 //   agents.yml        — בקשות מהבוט (agentReports/bot.requests, run_agent_now): input agent לכל סוכן
 //   sync-payments.yml — "רענון עכשיו" באפליקציה (system/paymentSyncRequest ממתין)
 //   admin-tools.yml   — משימות ניהול ממתינות (adminTasks עם status=pending)
-//   board-members.yml / gameday.yml — הפורטל, כל רבע שעה / כל שעה (סעיף 4)
+//   board-members.yml / gameday.yml — הפורטל, כל שעה (סעיף 4)
 //   agents.yml (autosend)  — הודעות להורים כל ערב (dispatchEvening). 3.11: ה-cron של GitHub רץ פעם בשעות
 const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "autosend"]);
 
@@ -73,10 +73,11 @@ export async function dispatchWorkflows(env, store) {
   }
 
   // 4. הפורטל (לוח המועדון): ה-cron של GitHub ל-board-members.yml ול-gameday.yml לא רץ כמעט אף פעם (20.10.2026).
-  //    board-members — כל רבע שעה (התאמת נרשמים, ייצוא הרשמות, התראות מדף הניהול); gameday — פעם בשעה.
+  //    board-members (התאמת נרשמים, ייצוא הרשמות, התראות מדף הניהול) ו-gameday — פעם בשעה.
+  //    6.11: הורד מכל 14 דקות: כל ריצה קוראת כ-400 מסמכים, וזה היה רוב מכסת 50 אלף הקריאות ביום.
   //    שניהם בטוחים להרצה חוזרת. לפי זמן ההפעלה האחרון ב-dispatched, כך ששתי הפעלות צמודות לא כופלות.
   const now = Date.now(), age = (k) => now - (Date.parse(sent[k] || "") || 0);
-  for (const [key, workflow, every] of [["board", "board-members.yml", 14 * 6e4], ["gameday", "gameday.yml", 55 * 6e4]]) {
+  for (const [key, workflow, every] of [["board", "board-members.yml", 55 * 6e4], ["gameday", "gameday.yml", 55 * 6e4]]) {
     if (age(key) < every) continue;
     try {
       await dispatch(env, workflow);

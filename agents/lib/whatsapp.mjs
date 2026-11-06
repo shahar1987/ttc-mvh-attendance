@@ -131,10 +131,11 @@ export function typing(cfg, messageId) {
 }
 
 // מוריד קובץ שנשלח לבוט (הקלטה, תמונה) ומחזיר אותו כ-base64 לשליחה ל-Gemini
-export async function downloadMedia(cfg, mediaId) {
+export async function downloadMedia(cfg, mediaId, maxBytes = Infinity) {
   const auth = { Authorization: `Bearer ${cfg.token}` };
   const meta = await (await fetch(`${GRAPH}/${mediaId}`, { headers: auth })).json();
   if (!meta.url) throw new Error(`WhatsApp media: ${meta.error?.message || "no url"}`);
+  if (meta.file_size > maxBytes) throw Object.assign(new Error("הקובץ גדול מדי"), { tooBig: true });
   const res = await fetch(meta.url, { headers: auth });
   if (!res.ok) throw new Error(`WhatsApp media download ${res.status}`);
   return { mimeType: (meta.mime_type || "").split(";")[0], data: Buffer.from(await res.arrayBuffer()).toString("base64") };

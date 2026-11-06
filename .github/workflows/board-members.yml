@@ -16,11 +16,8 @@ name: Board members match
 on:
   schedule:
     - cron: "17 * * * *"   # כל שעה
-  # הלו"ז של GitHub לא הפעיל את הקובץ הזה אף פעם מאז שנוסף (20.10.2026), בזמן ש"Agents" רץ כל 10 דקות.
-  # לכן הוא רץ גם בסוף כל ריצה של Agents. ההרצה בטוחה לחזרה: מה שכבר טופל מסומן ולא נשלח פעמיים.
-  workflow_run:
-    workflows: ["Agents"]
-    types: [completed]
+  # הלו"ז של GitHub כמעט לא רץ, ולכן ה-worker מפעיל את הקובץ פעם בשעה (worker/src/dispatch.js, סעיף 4).
+  # 6.11: הוסרה ההפעלה בסוף כל ריצה של Agents, כדי לחסוך קריאות Firestore.
   workflow_dispatch:       # מאפשר גם הרצה ידנית מהלשונית Actions
 
 permissions:

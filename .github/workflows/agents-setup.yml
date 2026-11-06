@@ -88,7 +88,12 @@ jobs:
         id: sub
         run: |
           API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
-          SUB=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" | jq -r '.result.subdomain // empty')
+          # תקלה רגעית ב-API מחזירה טקסט שאינו JSON. לא עוצרים פריסה בגללה, ולא יוצרים כתובת חדשה
+          RES=$(curl -s --retry 4 --retry-delay 5 --retry-all-errors -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API") || true
+          SUB=$(echo "$RES" | jq -r '.result.subdomain // empty' 2>/dev/null) || {
+            echo "::warning::Cloudflare החזיר תשובה לא תקינה: ${RES:0:120}"
+            SUB=$(sed -n 's/.*shula-whatsapp\.\([a-z0-9-]*\)\.workers\.dev.*/\1/p' worker/wrangler.toml | head -1)
+          }
           if [ -z "$SUB" ]; then
             SUB="ttc-mvh-$(openssl rand -hex 3)"
             curl -s -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
