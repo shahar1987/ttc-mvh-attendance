@@ -7,6 +7,8 @@ import { issueKey, checkKey, dropKey } from "./google.js";
 import { sha256 } from "./inbox.js";
 import { solarHtml } from "./solar-dashboard.js";
 import { ICON_192, ICON_512 } from "./solar-icons.js";
+// גרסה בכתובות של האייקונים והמניפסט: אייקון חדש מקבל כתובת חדשה, אחרת הטלפון מציג את הישן מהמטמון
+export const ICON_V = ICON_192.length.toString(36) + ICON_512.length.toString(36);
 import { esc } from "./dashboard.js";
 
 const API = "https://monitoringapi.solaredge.com/v2";
@@ -303,7 +305,7 @@ export async function solarRoute(req, env, store, tell) {
   const url = new URL(req.url);
   if (url.pathname === "/solar/login") return login(req, store);
   if (url.pathname === "/solar/manifest.webmanifest")
-    return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#071226", theme_color: "#071226", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
+    return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#071226", theme_color: "#071226", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png?v=${ICON_V}`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
   if (url.pathname === "/solar/icon-192.png" || url.pathname === "/solar/icon-512.png")
     return new Response(Buffer.from(url.pathname.includes("192") ? ICON_192 : ICON_512, "base64"), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800" } });
   if (url.pathname === "/solar/dashboard") {

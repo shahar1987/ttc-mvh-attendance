@@ -1,5 +1,5 @@
 // ☀️ דשבורד הגג: דף פרטי (הגישה ב-solar.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
-import { adjusted, analyze, addDays, hardFault } from "./solar.js";
+import { adjusted, analyze, addDays, hardFault, ICON_V } from "./solar.js";
 import { esc } from "./dashboard.js";
 
 const median = (xs) => {
@@ -398,7 +398,7 @@ ${sc ? `<div><h3>ייצור מול שמש, שנה</h3><div class="key"><span><i 
   ];
   const titles = [today_ ? `${num(today_.kwh)} קוט״ש היום` : HEAD[1], "השוואות", "מצב הגג", "פרטים"];
   return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>הגג שלי</title>
-<link rel="manifest" href="/solar/manifest.webmanifest"><link rel="icon" href="/solar/icon-192.png"><link rel="apple-touch-icon" href="/solar/icon-192.png"><meta name="theme-color" id="tc" content="#0f5fbf"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/solar/manifest.webmanifest?v=${ICON_V}"><link rel="icon" href="/solar/icon-192.png?v=${ICON_V}"><link rel="apple-touch-icon" href="/solar/icon-192.png?v=${ICON_V}"><meta name="theme-color" id="tc" content="#0f5fbf"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script${n}>const c=document.documentElement.classList;c.add("js");try{if(sessionStorage.seen)c.add("seen");sessionStorage.seen=1}catch(e){}</script>
 <style>
 :root{color-scheme:dark;--bg:#0d1b33;--card:#1a2740;--line:rgba(255,255,255,.16);--t1:#fff;--t2:rgba(255,255,255,.74);--s1:#6cb8ff;--s2:#ffaa5a;--s3:#55dcaa;--s4:rgba(255,255,255,.42);--past:rgba(255,255,255,.34);--ok:#62e08e;--warn:#ffc760;--bad:#ff9b92;--a1:rgba(255,170,70,.24);--a2:rgba(90,170,255,.24);--a3:rgba(80,220,130,.24);--g:#0a1a36;--st:250px}
