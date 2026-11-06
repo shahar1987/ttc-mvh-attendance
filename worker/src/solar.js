@@ -149,7 +149,7 @@ async function collect(s, token, today) {
   const put = (k, x) => { if (k < today) days[k] = { ...days[k], ...Object.fromEntries(Object.entries(x).filter(([, v]) => v != null)) }; };
   const recent = [addDays(today, -9), today];
   const year = Array.from({ length: YEAR_WINDOWS }, (_, i) => [addDays(today, -30 * (i + 1)), addDays(today, -30 * i)]);
-  const windows = full(s) ? [recent] : from ? [recent, ...year.slice(from, from + BATCH - 1)] : year.slice(0, BATCH);
+  const windows = full(s) ? [recent] : from ? [recent, ...year.slice(from, from + BATCH - 3)] : year.slice(0, BATCH);
   let ok = 0;
   for (const [a, b] of windows) {
     try {
@@ -217,12 +217,14 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
   try {
     const token = await refresh(s, store);
     const first = !s.backfilled && !s.backfillIdx;
+    const from = s.backfillIdx || 0;
     const { days, next, archived } = await collect(s, token, today);
     const alerts = await openAlerts(s, token);
     const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
     const gear = sunday || s.panels == null ? await equipment(s, token) : null;
     await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: full(s) ? YEAR_WINDOWS : next, backfilled: full(s) || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
-    if (full(s)) await todayUpdate(s, token, store, today, now); // באמצע משיכת השנה כבר קרובים ל-10 קריאות בדקה
+    // ייצור היום תמיד, גם באמצע משיכת ההיסטוריה. בשביל זה ההמשך מושך 3 חלונות ישנים ולא 5, כדי להישאר מתחת ל-10 קריאות בדקה
+    if (full(s) || from > 0) await todayUpdate(s, token, store, today, now);
     const fault = hardFault(days, today);
     const sent = [];
     if (fault && !quiet) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));

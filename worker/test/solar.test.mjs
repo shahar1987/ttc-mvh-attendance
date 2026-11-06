@@ -70,8 +70,9 @@ const at = new Date("2026-11-08T05:10:00Z");
   const log = [];
   globalThis.fetch = api(log, () => json({ access_token: "a", refresh_token: "r2" }));
   await solarRun(store, async () => {}, new Date("2026-11-06T05:10:00Z"));
-  assert.equal(log.filter((u) => u.includes("/energy?")).length, 6, "הימים האחרונים ועוד 5 חלונות ישנים");
-  assert.equal(store.docs["agentReports/solar"].backfillIdx, 18);
+  assert.equal(log.filter((u) => u.includes("/energy?")).length, 5, "הימים האחרונים, 3 חלונות ישנים וייצור היום");
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 16);
+  assert.ok(store.docs["agentReports/solar"].today, "ייצור היום גם באמצע משיכת ההיסטוריה");
 }
 // ריצה רגילה: אסימון מתחלף נשמר, פעמיים באותו יום לא נוגע בו, ויום ראשון שולח דוח
 {
@@ -167,13 +168,13 @@ const at = new Date("2026-11-08T05:10:00Z");
   globalThis.fetch = api(log, () => json({ access_token: "a", refresh_token: "r2" }));
   const quiet = async () => {};
   await solarRun(store, quiet, new Date("2026-11-06T05:10:00Z"));
-  assert.equal(log.filter((u) => u.includes("/energy?")).length, 6, "הימים האחרונים ועוד 5 חלונות");
-  assert.equal(store.docs["agentReports/solar"].backfillIdx, 11);
-  store.docs["agentReports/solar"].lastRunDay = "";
-  await solarRun(store, quiet, new Date("2026-11-07T05:10:00Z"));
-  assert.equal(store.docs["agentReports/solar"].backfillIdx, 16);
-  store.docs["agentReports/solar"].lastRunDay = "";
-  await solarRun(store, quiet, new Date("2026-11-08T05:10:00Z"));
+  assert.equal(log.filter((u) => u.includes("/energy?")).length, 5, "הימים האחרונים, 3 חלונות וייצור היום");
+  assert.ok(log.filter((u) => u.includes("monitoringapi")).length <= 9, "מתחת ל-10 קריאות בדקה");
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 9);
+  for (let d = 7; d <= 13 && !store.docs["agentReports/solar"].backfilled; d++) {
+    store.docs["agentReports/solar"].lastRunDay = "";
+    await solarRun(store, quiet, new Date(`2026-11-${String(d).padStart(2, "0")}T05:10:00Z`));
+  }
   assert.equal(store.docs["agentReports/solar"].backfilled, true);
   assert.equal(store.docs["agentReports/solar"].backfillIdx, 20, "כ-600 יום אחורה");
 
