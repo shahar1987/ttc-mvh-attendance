@@ -1,4 +1,4 @@
-// ☀️ דשבורד הגג: דף פרטי (קישור חתום, כמו dashboard.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
+// ☀️ דשבורד הגג: דף פרטי (הגישה ב-solar.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
 import { adjusted, analyze, addDays, hardFault } from "./solar.js";
 import { esc } from "./dashboard.js";
 
@@ -210,7 +210,8 @@ const twoBars = (title, aL, aV, bL, bV) => {
   return `<div class="pair"><h3>${title}</h3>${row(aL, aV, "--s1")}${row(bL, bV, "--s4")}</div>`;
 };
 
-export function solarHtml(s, today) {
+export function solarHtml(s, today, nonce = "") {
+  const n = nonce ? ` nonce="${nonce}"` : "";
   const days = s.days || {};
   const end = addDays(today, -1);
   const v = insights(s, today);
@@ -239,7 +240,7 @@ export function solarHtml(s, today) {
   }).join("");
   const dark = "color-scheme:dark;--bg:#000;--card:#1c1c1e;--line:#38383a;--t1:#f5f5f7;--t2:#a1a1a6;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#636366;--past:#6d6c66;--ok:#30d158;--warn:#ffb340;--bad:#ff6961;--bar:rgba(28,28,30,.72);";
   return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>הגג שלי</title>
-<script>document.documentElement.classList.add("js")</script>
+<script${n}>document.documentElement.classList.add("js")</script>
 <style>
 :root{color-scheme:light;--bg:#f5f5f7;--card:#fff;--line:#e5e5ea;--t1:#1d1d1f;--t2:#6e6e73;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#c7c7cc;--past:#c7c7cc;--ok:#1a8f3c;--warn:#b25f00;--bad:#d70015;--bar:rgba(255,255,255,.72);--ease:cubic-bezier(.22,1,.36,1)}
 @media (prefers-color-scheme:dark){:root{${dark}}}
@@ -291,7 +292,7 @@ ${sc ? `<div><h3>ייצור מול שמש, שנה</h3><div class="key"><span><i 
 <div><h3>14 הימים האחרונים</h3><div class="scroll"><table><tr><th>יום</th><th>קוט״ש</th><th>שמש</th><th>חום</th><th>גשם</th><th>מצב</th></tr>${rowsTable}</table></div></div>
 </div></details>
 </main><div id="tip" role="status"></div>
-<script>
+<script${n}>
 const io=new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll(".r").forEach((x)=>io.observe(x));
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.querySelectorAll("[data-count]").forEach((n)=>{const to=+n.dataset.count,t0=performance.now();const f=(t)=>{const p=Math.min((t-t0)/900,1);n.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("he-IL");if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)});
 const t=document.getElementById("tip");const show=(e)=>{const m=e.target.closest("[data-t]");if(!m){t.style.display="none";return}t.textContent=m.dataset.t;t.style.display="block";t.style.left=Math.max(8,Math.min(innerWidth-t.offsetWidth-8,e.clientX-t.offsetWidth/2))+"px";t.style.top=Math.max(8,e.clientY-44)+"px"};document.addEventListener("pointermove",show);document.addEventListener("click",show);

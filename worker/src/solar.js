@@ -3,7 +3,8 @@
 // כל בוקר (wrangler.toml): 3 קרדיטים מתוך 2,000 בחודש, התראה רק על יום בלי ייצור. ביום ראשון דוח שבועי.
 // SolarEdge מחליפה את ה-refresh token בכל שימוש, ולכן כל ריצה שומרת את החדש ב-agentReports/solar (האוסף חסום לאפליקציה).
 import { israelToUtc } from "./time.js";
-import { issueKey, checkKey, dropKey, sign } from "./google.js";
+import { issueKey, checkKey, dropKey } from "./google.js";
+import { sha256 } from "./inbox.js";
 import { solarHtml } from "./solar-dashboard.js";
 import { esc } from "./dashboard.js";
 
@@ -216,13 +217,62 @@ const setupPage = (origin) => html(`<h2>חיבור הגג הסולארי</h2><ol
 <li>להדביק כאן את שני הערכים:</li></ol>
 <form method="post">${field("id", "Client ID")}${field("secret", "Client Secret")}<button style="font:18px system-ui;padding:10px 20px">המשך לאישור ב-SolarEdge</button></form>`);
 
-export const solarUrl = async (env, origin) => `${origin}/solar/dashboard?t=${await sign(env, "solar-dashboard")}`;
+// הדשבורד: קישור כניסה חד-פעמי שרק שולה שולחת למספר של הבעלים, ואז עוגייה לדפדפן הזה בלבד.
+// הקישור נשרף רק בלחיצה על "כניסה" (POST), כדי שתצוגה מקדימה של קישור לא תשרוף אותו.
+const AUTH = "agentReports/solarAuth";
+const SESSION_DAYS = 14;
+const MAX_SESSIONS = 3;
+const COOKIE = "__Host-solar";
+const SECURITY = {
+  "content-type": "text/html; charset=utf-8",
+  "cache-control": "no-store",
+  "x-robots-tag": "noindex, nofollow",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+};
+const randomHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const secure = (body, status = 200, extra = {}, csp = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'") =>
+  new Response(body, { status, headers: { ...SECURITY, "content-security-policy": csp, ...extra } });
+const shell = (msg, status = 200) => secure(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>הגג שלי</title><body style="font:20px/1.5 system-ui;padding:24px;max-width:480px;margin:auto">${msg}</body></html>`, status);
+const NO_ACCESS = `<h2>הכניסה רק מהוואטסאפ</h2><p>כתוב לשולה "הדשבורד של הגג", ופתח את הקישור שתקבל.</p>`;
+
+export const solarUrl = async (env, origin) => `${origin}/solar/dashboard`;
+export const loginUrl = async (store, origin) => `${origin}/solar/login?k=${await issueKey(store, "solar-login")}`;
+
+const cookieOf = (req) => (req.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1) || "";
+async function hasSession(req, store) {
+  const token = cookieOf(req);
+  if (!/^[0-9a-f]{64}$/.test(token)) return false;
+  const hash = await sha256(token);
+  const now = Date.now();
+  return (((await store.get(AUTH)) || {}).sessions || []).some((x) => x.hash === hash && x.exp > now);
+}
+async function login(req, store) {
+  if (req.method === "GET") {
+    const k = new URL(req.url).searchParams.get("k") || "";
+    if (!(await checkKey(store, "solar-login", k))) return shell(`<h2>הקישור כבר לא פעיל</h2><p>כתוב לשולה "הדשבורד של הגג" לקישור חדש.</p>`, 403);
+    return shell(`<h2>כניסה לדשבורד הגג</h2><form method="post"><input type="hidden" name="k" value="${esc(k)}"><button style="font:20px system-ui;padding:12px 28px;border:0;border-radius:12px;background:#2a78d6;color:#fff">כניסה</button></form>`);
+  }
+  const k = String((await req.formData()).get("k") || "");
+  if (!(await checkKey(store, "solar-login", k))) return shell(`<h2>הקישור כבר לא פעיל</h2><p>כתוב לשולה "הדשבורד של הגג" לקישור חדש.</p>`, 403);
+  await dropKey(store, "solar-login");
+  const token = randomHex(32);
+  const hash = await sha256(token);
+  const exp = Date.now() + SESSION_DAYS * 864e5;
+  await store.update(AUTH, (cur) => ({ sessions: [...(cur.sessions || []).filter((x) => x.exp > Date.now()), { hash, exp }].slice(-MAX_SESSIONS) }));
+  return secure("", 303, { location: "/solar/dashboard", "set-cookie": `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}` });
+}
 
 export async function solarRoute(req, env, store, tell) {
   const url = new URL(req.url);
+  if (url.pathname === "/solar/login") return login(req, store);
   if (url.pathname === "/solar/dashboard") {
-    if (url.searchParams.get("t") !== (await sign(env, "solar-dashboard"))) return new Response("forbidden", { status: 403 });
-    return new Response(solarHtml((await store.get(DOC)) || {}, isoDay(new Date())), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
+    if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
+    const nonce = randomHex(16);
+    return secure(solarHtml((await store.get(DOC)) || {}, isoDay(new Date()), nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
   if (url.pathname === "/solar/callback") {
     // המדריך של SolarEdge מחזיר state, ולקוחות בשטח מדווחים על external_id בלבד. בלי שניהם מקבלים רק כשיש חיבור פתוח
@@ -272,15 +322,25 @@ export const SOLAR_TOOL_DEFS = [
   },
   {
     name: "solar_dashboard",
-    description: "קישור פרטי לדשבורד הגג הסולארי של הבעלים. כשהוא שואל על הגג, הייצור או מבקש את הדשבורד. להעביר את הקישור כמו שהוא.",
+    description: "קישור כניסה חד-פעמי לדשבורד הגג הסולארי של הבעלים, תקף 30 דקות. כשהוא שואל על הגג, הייצור או מבקש את הדשבורד. להעביר את הקישור כמו שהוא.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "solar_logout",
+    description: "מנתק את דשבורד הגג מכל המכשירים. רק כשהבעלים מבקש לנתק, למשל אם טלפון אבד.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
 ];
-export const makeSolarTools = ({ env, store, origin }) => ({
+export const makeSolarTools = ({ store, origin }) => ({
   async solar_link() {
     return `${origin}/solar/start?k=${await issueKey(store, "solar")} (תקף 30 דקות)`;
   },
   async solar_dashboard() {
-    return solarUrl(env, origin);
+    return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
+  },
+  async solar_logout() {
+    await store.merge(AUTH, { sessions: [] });
+    await dropKey(store, "solar-login");
+    return "הדשבורד נותק מכל המכשירים.";
   },
 });

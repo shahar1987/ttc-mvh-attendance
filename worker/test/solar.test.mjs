@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, addDays, isoDay } from "../src/solar.js";
+import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay } from "../src/solar.js";
 import { solarHtml, insights, rainWash, heatBands, monthly } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
@@ -209,11 +209,47 @@ const at = new Date("2026-11-08T05:10:00Z");
   const empty = solarHtml({}, today2);
   assert.match(empty, /הנתונים בדרך/);
   assert.ok(!/NaN|undefined/.test(empty.replace(/<script>[\s\S]*<\/script>/, "")));
-  const env = { META_APP_SECRET: "s" };
-  const store = fakeStore({ days });
-  assert.equal((await solarRoute(new Request("https://x.dev/solar/dashboard?t=bad"), env, store, null)).status, 403);
-  const ok = await solarRoute(new Request(await solarUrl(env, "https://x.dev")), env, store, null);
-  assert.equal(ok.status, 200);
-  assert.equal(ok.headers.get("x-robots-tag"), "noindex");
+  const store = fakeStore({ days, refreshToken: "TOKEN-SECRET" });
+  const docs = store.docs;
+  const route = (url, init) => solarRoute(new Request(url, init), {}, store, null);
+  const base = "https://x.dev";
+  // בלי כניסה אין נתונים, גם עם הקישור החתום הישן
+  for (const u of [`${base}/solar/dashboard`, `${base}/solar/dashboard?t=abc`]) {
+    const res = await route(u);
+    assert.equal(res.status, 401);
+    assert.ok(!/קוט/.test(await res.text()));
+  }
+  assert.equal((await solarUrl({}, base)).includes("?"), false, "הקישור בדוח לא נותן גישה");
+  assert.equal((await route(`${base}/solar/login?k=bad`)).status, 403);
+  const link = await loginUrl(store, base);
+  const k = new URL(link).searchParams.get("k");
+  const seen = await route(link);
+  assert.equal(seen.status, 200, "תצוגה מקדימה לא שורפת את הקישור");
+  assert.equal((await route(link)).status, 200);
+  const form = () => { const f = new FormData(); f.set("k", k); return f; };
+  const ok = await route(`${base}/solar/login`, { method: "POST", body: form() });
+  assert.equal(ok.status, 303);
+  const cookie = ok.headers.get("set-cookie");
+  assert.match(cookie, /^__Host-solar=[0-9a-f]{64}; Path=\/; Secure; HttpOnly; SameSite=Lax/);
+  assert.equal((await route(`${base}/solar/login`, { method: "POST", body: form() })).status, 403, "קישור עובד פעם אחת");
+  assert.equal((await route(link)).status, 403);
+  const token = cookie.split(";")[0];
+  assert.ok(!JSON.stringify(docs["agentReports/solarAuth"]).includes(token.split("=")[1]), "העוגייה לא נשמרת גלויה");
+  const page = await route(`${base}/solar/dashboard`, { headers: { cookie: token } });
+  assert.equal(page.status, 200);
+  const csp = page.headers.get("content-security-policy");
+  const nonce = csp.match(/nonce-([0-9a-f]+)/)[1];
+  const body = await page.text();
+  assert.equal(body.match(/<script[^>]*>/g).length, 2);
+  assert.ok(body.match(/<script[^>]*>/g).every((t) => t.includes(nonce)), "כל סקריפט עם nonce");
+  assert.ok(!/TOKEN-SECRET/.test(body));
+  assert.equal(page.headers.get("cache-control"), "no-store");
+  assert.equal(page.headers.get("x-frame-options"), "DENY");
+  assert.equal((await route(`${base}/solar/dashboard`, { headers: { cookie: "__Host-solar=" + "0".repeat(64) } })).status, 401);
+  docs["agentReports/solarAuth"].sessions[0].exp = Date.now() - 1;
+  assert.equal((await route(`${base}/solar/dashboard`, { headers: { cookie: token } })).status, 401, "עוגייה שפגה");
+  docs["agentReports/solarAuth"].sessions[0].exp = Date.now() + 1000;
+  await makeSolarTools({ store, origin: base }).solar_logout();
+  assert.equal((await route(`${base}/solar/dashboard`, { headers: { cookie: token } })).status, 401, "ניתוק מכל המכשירים");
 }
 console.log("solar ok");
