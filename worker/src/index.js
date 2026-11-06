@@ -613,7 +613,7 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 async function runCron(env, cron) {
   try {
     // הגג בריצה נפרדת: ריצת הרבע שעה כבר קרובה למגבלת 50 הבקשות
-    if (cron === "10 5 * * *") return await solarRun(db(env), teller(env));
+    if (cron === "10 5-16 * * *") return await solarRun(db(env), teller(env));
     return await (cron === "0 17 * * *" ? daily(env) : everyQuarter(env));
   } catch (e) {
     await cronError(env, e);

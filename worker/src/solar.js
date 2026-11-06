@@ -14,6 +14,8 @@ const DAILY = "shortwave_radiation_sum,temperature_2m_max";
 const KEEP_DAYS = 800;
 const CLOUDY_MJ = 8; // יום מתחת לזה כמעט לא אומר כלום על הגג
 const MIN_BASELINE = 10;
+const YEAR_WINDOWS = 13;
+const BATCH = 6; // המסלול החינמי: 10 קריאות בדקה. שאר השנה נמשך בריצות הבאות
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" });
 export const isoDay = (d) => dayFmt.format(new Date(d));
@@ -123,18 +125,30 @@ async function weather(url, params) {
   return Object.fromEntries((d.time || []).map((t, i) => [t, { rad: d.shortwave_radiation_sum?.[i], tmax: d.temperature_2m_max?.[i] }]));
 }
 
-async function collect(s, token, today, fresh) {
+async function collect(s, token, today) {
   const days = { ...(s.days || {}) };
+  const from = s.backfillIdx || 0;
   const put = (k, x) => { if (k < today) days[k] = { ...days[k], ...Object.fromEntries(Object.entries(x).filter(([, v]) => v != null)) }; };
-  const windows = fresh ? Array.from({ length: 13 }, (_, i) => [addDays(today, -30 * (i + 1)), addDays(today, -30 * i)]) : [[addDays(today, -9), today]];
-  for (const [from, to] of windows) for (const [k, kwh] of Object.entries(await energy(s, token, from, to))) put(k, { kwh });
+  const recent = [addDays(today, -9), today];
+  const year = Array.from({ length: YEAR_WINDOWS }, (_, i) => [addDays(today, -30 * (i + 1)), addDays(today, -30 * i)]);
+  const windows = s.backfilled ? [recent] : from ? [recent, ...year.slice(from, from + BATCH - 1)] : year.slice(0, BATCH);
+  let ok = 0;
+  for (const [a, b] of windows) {
+    try {
+      for (const [k, kwh] of Object.entries(await energy(s, token, a, b))) put(k, { kwh });
+      ok++;
+    } catch (e) {
+      if (!ok) throw e; // מה שכבר נמשך נשמר, וההמשך בריצה הבאה
+      break;
+    }
+  }
   try {
-    if (fresh) for (const [k, w] of Object.entries(await weather("https://archive-api.open-meteo.com/v1/archive", { start_date: addDays(today, -390), end_date: addDays(today, -6) }))) put(k, w);
+    if (!s.backfilled && !from) for (const [k, w] of Object.entries(await weather("https://archive-api.open-meteo.com/v1/archive", { start_date: addDays(today, -390), end_date: addDays(today, -6) }))) put(k, w);
     for (const [k, w] of Object.entries(await weather("https://api.open-meteo.com/v1/forecast", { past_days: "9", forecast_days: "1" }))) put(k, w);
   } catch (e) {
     console.log("solar weather", e.message); // בלי קרינה מסתמכים על השוואת הייצור בלבד
   }
-  return Object.fromEntries(Object.entries(days).filter(([k]) => k >= addDays(today, -KEEP_DAYS)));
+  return { days: Object.fromEntries(Object.entries(days).filter(([k]) => k >= addDays(today, -KEEP_DAYS))), next: from + ok - (from ? 1 : 0) };
 }
 
 // tell(key, text, templateParam) — אותה שליחה של כל ההתראות לבעלים
@@ -143,29 +157,31 @@ export async function solarRun(store, tell, now = new Date()) {
   let s = null;
   // Cloudflare מריץ לפעמים cron פעמיים, ושתי ריצות היו שורפות את אותו refresh token
   await store.update(DOC, (cur) => {
-    if (!cur.refreshToken || cur.lastRunDay === today) return null;
+    if (!cur.refreshToken || (cur.lastRunDay === today && !cur.lastError)) return null;
     s = cur;
-    return { lastRunDay: today };
+    return { lastRunDay: today, lastError: "" };
   });
   if (!s) return "solar: skip";
   try {
     const token = await refresh(s, store);
-    const fresh = !s.backfilled;
-    const days = await collect(s, token, today, fresh);
+    const first = !s.backfilled && !s.backfillIdx;
+    const { days, next } = await collect(s, token, today);
     const alerts = await openAlerts(s, token);
-    await store.merge(DOC, { days, backfilled: true, lastOkAt: now.toISOString(), lastError: "" });
+    await store.merge(DOC, { days, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
     const fault = hardFault(days, today);
     const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
     const sent = [];
     if (fault) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
-    if (sunday || fresh) {
+    if (sunday || first) {
       const grantDays = Math.ceil((Date.parse(s.connectedAt) + GRANT_DAYS * 864e5 - now.getTime()) / 864e5);
       const text = weeklyText(analyze(days, today), alerts, grantDays);
       sent.push(await tell("solar", text, text.replace(/[*☀️]/g, "").replace(/\n/g, " · ").trim().slice(0, 400)));
     }
     return `solar: ok ${sent.length}`;
   } catch (e) {
-    await store.merge(DOC, { lastError: String(e.message).slice(0, 300) });
+    // תקלה זמנית נשארת ב-lastError, והריצה של השעה הבאה מנסה שוב. על אותה תקלה מודיעים פעם ביום
+    await store.merge(DOC, { lastError: e.reconnect ? "" : String(e.message).slice(0, 300), lastFailDay: today, reconnectNote: e.reconnect ? String(e.message).slice(0, 300) : "" });
+    if (s.lastFailDay === today) throw e;
     const text = e.reconnect ? `☀️ החיבור ל-SolarEdge נפל, והגג לא נבדק. צריך לכתוב לשולה "חיבור סולארי" ולאשר שוב.` : `☀️ בדיקת הגג נכשלה היום: ${String(e.message).slice(0, 200)}`;
     await tell("solar-error", text, text);
     throw e;
@@ -212,7 +228,7 @@ export async function solarRoute(req, env, store, tell) {
     const j = await r.json().catch(() => ({}));
     if (!j.refresh_token) return html(`החיבור נכשל: ${esc(j.error_description || j.error || j.title || r.status)}. כדאי לבדוק את ה-Client ID וה-Secret ולנסות שוב.`, 400);
     const now = new Date().toISOString();
-    await store.merge(DOC, { refreshToken: j.refresh_token, siteId: url.searchParams.get("site_id") || s.siteId || "", connectedAt: now, lastOkAt: now, lastRunDay: "", backfilled: false });
+    await store.merge(DOC, { refreshToken: j.refresh_token, siteId: url.searchParams.get("site_id") || s.siteId || "", connectedAt: now, lastOkAt: now, lastRunDay: "", lastFailDay: "", backfilled: false, backfillIdx: 0 });
     await dropKey(store, "solar");
     try {
       await solarRun(store, tell);

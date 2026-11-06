@@ -96,7 +96,8 @@ const at = new Date("2026-11-08T05:10:00Z");
   const sent = [];
   await assert.rejects(solarRun(store, async (k, t) => sent.push(t), at));
   assert.match(sent[0], /חיבור סולארי/);
-  assert.match(store.docs["agentReports/solar"].lastError, /invalid_grant/);
+  assert.match(store.docs["agentReports/solar"].reconnectNote, /invalid_grant/);
+  assert.equal(await solarRun(store, async () => assert.fail("לא מציקים שוב באותו יום"), at), "solar: skip");
 }
 // לא מחובר: לא נוגעים ברשת
 {
@@ -142,9 +143,46 @@ const at = new Date("2026-11-08T05:10:00Z");
   const s = store.docs["agentReports/solar"];
   assert.equal(s.siteId, "77");
   assert.equal(s.refreshToken, "r2");
-  assert.equal(s.backfilled, true);
-  assert.equal(log.filter((u) => u.includes("/energy?")).length, 13, "שנה אחורה בחלונות של חודש");
+  assert.equal(log.filter((u) => u.includes("/energy?")).length, 6, "לא חורגים מ-10 קריאות בדקה");
   assert.ok(sent.includes("solar"), "הדוח הראשון יוצא מיד");
+  assert.equal(s.backfilled, false);
+  assert.equal(s.backfillIdx, 6);
   assert.equal(store.docs["agentReports/bot"].keys.solar, null, "הקישור נשרף");
+}
+// שאר השנה נמשך בשתי ריצות נוספות, ותמיד יחד עם הימים האחרונים. תקלה זמנית מנסה שוב, ומודיעים עליה פעם ביום
+{
+  const store = fakeStore({ refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", connectedAt: "2026-11-01T00:00:00Z", backfilled: false, backfillIdx: 6, lastRunDay: "2026-11-05" });
+  const log = [];
+  globalThis.fetch = api(log, () => json({ access_token: "a", refresh_token: "r2" }));
+  const quiet = async () => {};
+  await solarRun(store, quiet, new Date("2026-11-06T05:10:00Z"));
+  assert.equal(log.filter((u) => u.includes("/energy?")).length, 6, "הימים האחרונים ועוד 5 חלונות");
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 11);
+  store.docs["agentReports/solar"].lastRunDay = "";
+  await solarRun(store, quiet, new Date("2026-11-07T05:10:00Z"));
+  assert.equal(store.docs["agentReports/solar"].backfilled, true);
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 13);
+
+  let fail = true;
+  const good = api([], () => json({ access_token: "a", refresh_token: "r3" }));
+  globalThis.fetch = async (u, i) => (fail && String(u).includes("/energy?") ? json({ message: "API rate limit exceeded" }, 429) : good(u, i));
+  const sent = [];
+  const noon = new Date("2026-11-09T05:10:00Z");
+  await assert.rejects(solarRun(store, async (k) => sent.push(k), noon));
+  await assert.rejects(solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T06:10:00Z")));
+  assert.deepEqual(sent, ["solar-error"]);
+  fail = false;
+  assert.match(await solarRun(store, async () => {}, new Date("2026-11-09T07:10:00Z")), /ok/);
+  assert.equal(store.docs["agentReports/solar"].lastError, "");
+  assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T08:10:00Z")), "solar: skip");
+}
+// נפילה באמצע משיכת השנה: מה שנמשך נשמר
+{
+  const store = fakeStore({ refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", connectedAt: "2026-11-01T00:00:00Z", backfilled: false });
+  let n = 0;
+  const good = api([], () => json({ access_token: "a", refresh_token: "r2" }));
+  globalThis.fetch = async (u, i) => (String(u).includes("/energy?") && ++n > 2 ? json({}, 429) : good(u, i));
+  await solarRun(store, async () => {}, at);
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 2);
 }
 console.log("solar ok");
