@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, addDays, isoDay } from "../src/solar.js";
+import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, addDays, isoDay } from "../src/solar.js";
+import { solarHtml, insights, rainWash, heatBands, monthly } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
 const fill = (from, n, x) => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(from, i), { ...x }]));
@@ -138,7 +139,7 @@ const at = new Date("2026-11-08T05:10:00Z");
   const log = [];
   globalThis.fetch = api(log, (b) => (b.grant_type === "authorization_code" ? (assert.equal(b.redirect_uri, "https://x.dev/solar/callback"), json({ access_token: "a", refresh_token: "r1" })) : json({ access_token: "a", refresh_token: "r2" })));
   const sent = [];
-  const done = await solarRoute(new Request("https://x.dev/solar/callback?code=C&site_id=77&state=abc"), {}, store, async (k) => sent.push(k));
+  const done = await solarRoute(new Request("https://x.dev/solar/callback?code=C&site_id=77&state=abc"), { META_APP_SECRET: "s" }, store, async (k) => sent.push(k));
   assert.equal(done.status, 200, await done.clone().text());
   const s = store.docs["agentReports/solar"];
   assert.equal(s.siteId, "77");
@@ -184,5 +185,35 @@ const at = new Date("2026-11-08T05:10:00Z");
   globalThis.fetch = async (u, i) => (String(u).includes("/energy?") && ++n > 2 ? json({}, 429) : good(u, i));
   await solarRun(store, async () => {}, at);
   assert.equal(store.docs["agentReports/solar"].backfillIdx, 2);
+}
+// 📊 הדשבורד: הצלבות, חוסר נתונים, ושום סוד לא מגיע לדף
+{
+  const today2 = "2026-11-08";
+  const days = {};
+  for (let i = 400; i >= 1; i--) days[addDays(today2, -i)] = { kwh: 30, rad: 15, tmax: 25, rain: 0 };
+  for (const k of ["2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31"].concat(Object.keys(days).filter((k) => k >= "2026-10-05" && k < "2026-10-25"))) days[k].kwh = 24;
+  days["2026-10-20"].rain = 20;
+  for (const k of Object.keys(days).filter((k) => k >= "2026-10-21")) days[k].kwh = 30;
+  assert.equal(rainWash(days, "2026-11-07").at(-1).lift, 25, "גשם אחרי יובש שטף 25%");
+  days["2026-08-01"].tmax = 36;
+  assert.ok(heatBands(days).length >= 2);
+  assert.equal(monthly(days, today2).length, 12);
+  assert.equal(monthly(days, today2).at(-1).part, true);
+  const v = insights({ days, openAlerts: 0, connectedAt: "2026-11-06T00:00:00Z" }, today2);
+  assert.ok(v.good.some((x) => /התראות/.test(x)));
+  assert.ok(v.bad.some((x) => /אחרי גשם/.test(x)), "לכלוך מסומן");
+  assert.equal(v.status, "check");
+  const html = solarHtml({ days, refreshToken: "TOKEN-SECRET", clientSecret: "CLIENT-SECRET", lastOkAt: "2026-11-08T05:10:00Z", connectedAt: "2026-11-06T00:00:00Z" }, today2);
+  assert.ok(!/TOKEN-SECRET|CLIENT-SECRET/.test(html), "סודות לא בדף");
+  assert.ok(!/NaN|undefined/.test(html.replace(/<script>[\s\S]*<\/script>/, "")), "בלי ערכים שבורים");
+  const empty = solarHtml({}, today2);
+  assert.match(empty, /הנתונים בדרך/);
+  assert.ok(!/NaN|undefined/.test(empty.replace(/<script>[\s\S]*<\/script>/, "")));
+  const env = { META_APP_SECRET: "s" };
+  const store = fakeStore({ days });
+  assert.equal((await solarRoute(new Request("https://x.dev/solar/dashboard?t=bad"), env, store, null)).status, 403);
+  const ok = await solarRoute(new Request(await solarUrl(env, "https://x.dev")), env, store, null);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("x-robots-tag"), "noindex");
 }
 console.log("solar ok");

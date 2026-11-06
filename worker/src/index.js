@@ -19,7 +19,7 @@ import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute 
 import { joinRoute } from "./join.js";
 import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
-import { SOLAR_TOOL_DEFS, makeSolarTools, solarRoute, solarRun, solarWatch } from "./solar.js";
+import { SOLAR_TOOL_DEFS, makeSolarTools, solarRoute, solarRun, solarUrl, solarWatch } from "./solar.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
 const MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"];
@@ -476,7 +476,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ store, origin: ORIGIN }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ env, store, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -613,7 +613,7 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 async function runCron(env, cron) {
   try {
     // הגג בריצה נפרדת: ריצת הרבע שעה כבר קרובה למגבלת 50 הבקשות
-    if (cron === "10 5-16 * * *") return await solarRun(db(env), teller(env));
+    if (cron === "10 5-16 * * *") return await solarRun(db(env), teller(env), new Date(), await solarUrl(env, env.PUBLIC_URL));
     return await (cron === "0 17 * * *" ? daily(env) : everyQuarter(env));
   } catch (e) {
     await cronError(env, e);
