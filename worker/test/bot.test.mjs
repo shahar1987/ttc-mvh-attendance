@@ -1204,8 +1204,10 @@ assert.ok(dispatches[0].url.startsWith("https://api.github.com/repos/shahar1987/
 assert.equal(dispatches[0].auth, "Bearer ghp_x");
 assert.deepEqual(bot().requests, [], "הבקשה נלקחה — בדיקת ה-10 דקות לא תריץ שוב");
 assert.equal(await dispatchWorkflows(genv, store), "nothing pending", "לא מפעילים פעמיים על אותה בקשה");
-// הפורטל: אחרי רבע שעה שוב board-members, ו-gameday רק אחרי שעה
+// הפורטל: board-members פעם בשעה, לא אחרי רבע שעה (6.11, מכסת הקריאות)
 put("agentReports/bot", { ...bot(), dispatched: { ...bot().dispatched, board: new Date(Date.now() - 15 * 6e4).toISOString() } });
+assert.equal(await dispatchWorkflows(genv, store), "nothing pending");
+put("agentReports/bot", { ...bot(), dispatched: { ...bot().dispatched, board: new Date(Date.now() - 60 * 6e4).toISOString() } });
 assert.equal(await dispatchWorkflows(genv, store), "board-members");
 put("agentReports/bot", { requests: ["ideas"] });
 globalThis.ghFail = true;
