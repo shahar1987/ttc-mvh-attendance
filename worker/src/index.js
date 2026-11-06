@@ -264,12 +264,14 @@ async function handle(m, env) {
     // שם המשימה קוראת אותה. לא עוברת למודל, כדי ששולה לא תבצע אותה בעצמה פעם שנייה.
     const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem : null;
     const code = m.type === "interactive" && /^(מוח|הודעות|הרכב|פנקס|פרסום)( |$)/.test(text);
+    // תמונה שטופלה בלי המודל נרשמת גם בשיחה שלו — אחרת הוא אומר לבעלים "התמונה לא הגיעה" (5.11, סטורי בוטל)
+    const seen = (cur, user, answer) => [...(cur.history || []), { role: "user", text: user, at: now }, { role: "assistant", text: answer, at: now }].slice(-16);
     // תמונה לפריט פרסום נכנסת ליומן עם קישור חתום, ומשימת הפרסום מורידה אותה ומכניסה לפוסט
     const takePhoto = async (n, id) => {
       const answer = "התמונה התקבלה · בטיפול";
       await reply(answer);
       const user = `פרסום ${n} תמונה: ${await mediaUrl(env, ORIGIN || bot.workerUrl, id)}`;
-      await store.update("agentReports/bot", (cur) => ({ photoWait: null, log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP) }));
+      await store.update("agentReports/bot", (cur) => ({ photoWait: null, log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP), history: seen(cur, `📷 [תמונה לפרסום ${n}]`, `${answer}. התמונה נשמרה לפרסום ${n}, ומשימת הפרסום מכניסה אותה לפוסט.`) }));
       await closeTap(store, `פרסום לא ${n}`).catch(() => {});
       await queueTap(env, store, `פרסום ${n} תמונה`).catch(() => {});
     };
@@ -324,7 +326,7 @@ async function handle(m, env) {
       const { n, waiting } = photoTarget(await openCards(store).catch(() => []), m.context?.id, (m.image?.caption || m.video?.caption || "").trim());
       if (n) return void (await takePhoto(n, sentMedia));
       if (waiting.length) {
-        await store.merge("agentReports/bot", { photoWait: { id: sentMedia, at: now } });
+        await store.update("agentReports/bot", (cur) => ({ photoWait: { id: sentMedia, at: now }, history: seen(cur, "📷 [תמונה]", "התמונה התקבלה. שאלתי בכפתורים לאיזה פרסום היא שייכת.") }));
         await sendText(wa, m.from, "לאיזה פרסום התמונה?", waiting.slice(0, 3).map((w) => ({ id: `פרסום תמונה ${w.n}`, title: w.title.slice(0, 20) })));
         replied = true;
         return;
