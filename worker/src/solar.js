@@ -6,6 +6,7 @@ import { israelToUtc } from "./time.js";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { sha256 } from "./inbox.js";
 import { solarHtml } from "./solar-dashboard.js";
+import { ICON_192, ICON_512 } from "./solar-icons.js";
 import { esc } from "./dashboard.js";
 
 const API = "https://monitoringapi.solaredge.com/v2";
@@ -120,6 +121,16 @@ async function openAlerts(s, token) {
   return Array.isArray(j) ? j : j?.alerts || [];
 }
 
+// כמה ממירים ופאנלים רשומים. SolarEdge לא נותנת ב-API ייצור לפי פאנל, רק את הרשימה
+async function equipment(s, token) {
+  const r = await fetch(`${API}/sites/${s.siteId}/devices?types=INVERTER&types=OPTIMIZER`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } }).catch(() => null);
+  if (!r?.ok) return null;
+  const j = await r.json().catch(() => null);
+  const list = Array.isArray(j) ? j : j?.devices || [];
+  const count = (t) => list.filter((d) => d.type === t).length;
+  return list.length ? { panels: count("OPTIMIZER"), inverters: count("INVERTER") } : null;
+}
+
 async function weather(url, params) {
   const q = new URLSearchParams({ ...LOCATION, daily: DAILY, timezone: "Asia/Jerusalem", ...params });
   const j = await (await fetch(`${url}?${q}`)).json();
@@ -173,9 +184,10 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     const first = !s.backfilled && !s.backfillIdx;
     const { days, next, archived } = await collect(s, token, today);
     const alerts = await openAlerts(s, token);
-    await store.merge(DOC, { days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
-    const fault = hardFault(days, today);
     const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
+    const gear = sunday || s.panels == null ? await equipment(s, token) : null;
+    await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
+    const fault = hardFault(days, today);
     const sent = [];
     if (fault) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
     if (sunday || first) {
@@ -269,10 +281,14 @@ async function login(req, store) {
 export async function solarRoute(req, env, store, tell) {
   const url = new URL(req.url);
   if (url.pathname === "/solar/login") return login(req, store);
+  if (url.pathname === "/solar/manifest.webmanifest")
+    return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#f5f5f7", theme_color: "#6ec1ff", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
+  if (url.pathname === "/solar/icon-192.png" || url.pathname === "/solar/icon-512.png")
+    return new Response(Buffer.from(url.pathname.includes("192") ? ICON_192 : ICON_512, "base64"), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800" } });
   if (url.pathname === "/solar/dashboard") {
     if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
     const nonce = randomHex(16);
-    return secure(solarHtml((await store.get(DOC)) || {}, isoDay(new Date()), nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+    return secure(solarHtml((await store.get(DOC)) || {}, isoDay(new Date()), nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
   if (url.pathname === "/solar/callback") {
     // המדריך של SolarEdge מחזיר state, ולקוחות בשטח מדווחים על external_id בלבד. בלי שניהם מקבלים רק כשיש חיבור פתוח

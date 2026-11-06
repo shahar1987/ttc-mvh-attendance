@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay } from "../src/solar.js";
-import { solarHtml, insights, rainWash, heatBands, monthly } from "../src/solar-dashboard.js";
+import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
 const fill = (from, n, x) => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(from, i), { ...x }]));
@@ -78,7 +78,7 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(s.days["2026-11-08"], undefined, "יום שלא נגמר לא נשמר");
   assert.equal(s.lastOkAt, at.toISOString());
   assert.deepEqual(sent.map((x) => x[0]), ["solar"]);
-  assert.equal(log.filter((u) => u.includes("monitoringapi")).length, 3, "3 קרדיטים ביום");
+  assert.equal(log.filter((u) => u.includes("monitoringapi")).length, 4, "3 קרדיטים ביום, ועוד אחד לציוד ביום ראשון");
   assert.equal(await solarRun(store, async () => assert.fail(), at), "solar: skip");
 }
 // אמצע שבוע בלי תקלה: שקט
@@ -185,6 +185,33 @@ const at = new Date("2026-11-08T05:10:00Z");
   globalThis.fetch = async (u, i) => (String(u).includes("/energy?") && ++n > 2 ? json({}, 429) : good(u, i));
   await solarRun(store, async () => {}, at);
   assert.equal(store.docs["agentReports/solar"].backfillIdx, 2);
+}
+// 🔎 סריקת הגג: הערכה בלבד. התקנת האפליקציה: קבצים ציבוריים בלי נתונים
+{
+  assert.equal(panelScan(20, 0.93).lost, 1, "7% מ-20 פאנלים זה בערך פאנל");
+  assert.equal(panelScan(20, 0.97).lost, 0, "רעש קטן הוא לא פאנל");
+  assert.equal(panelScan(12, 0.8).lost, 2);
+  assert.equal(panelScan(null, 0.5).lost, 0, "בלי מספר פאנלים לא מנחשים");
+  assert.equal(panelScan(20, null).lost, 0);
+  assert.deepEqual(outages({ "2026-11-01": { kwh: 0, rad: 10 }, "2026-11-02": { kwh: 0, rad: 1 }, "2026-11-03": { kwh: 9, rad: 9 } }, "2026-11-07"), ["2026-11-01"]);
+  const store = fakeStore({ days: { "2026-11-07": { kwh: 20, rad: 14, tmax: 22 } }, refreshToken: "TOKEN-SECRET" });
+  const m = await solarRoute(new Request("https://x.dev/solar/manifest.webmanifest"), {}, store, null);
+  const j = await m.json();
+  assert.equal(j.start_url, "/solar/dashboard");
+  assert.equal(j.display, "standalone");
+  assert.ok(!JSON.stringify(j).includes("kWh"));
+  for (const n of [192, 512]) {
+    const png = new Uint8Array(await (await solarRoute(new Request(`https://x.dev/solar/icon-${n}.png`), {}, store, null)).arrayBuffer());
+    assert.equal(png[1], 0x50, "PNG אמיתי");
+  }
+  const log = [];
+  const run = fakeStore({ refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", backfilled: true, archived: true, connectedAt: "2026-11-01T00:00:00Z" });
+  const base = api(log, () => json({ access_token: "a", refresh_token: "r2" }));
+  globalThis.fetch = async (u, i) => (String(u).includes("/devices") ? (log.push(String(u)), json([{ type: "INVERTER" }, ...Array(14).fill({ type: "OPTIMIZER" })])) : base(u, i));
+  await solarRun(run, async () => {}, new Date("2026-11-08T05:10:00Z"));
+  assert.equal(run.docs["agentReports/solar"].panels, 14);
+  assert.equal(run.docs["agentReports/solar"].inverters, 1);
+  assert.ok(log.some((u) => u.includes("types=OPTIMIZER")));
 }
 // 📊 הדשבורד: הצלבות, חוסר נתונים, ושום סוד לא מגיע לדף
 {

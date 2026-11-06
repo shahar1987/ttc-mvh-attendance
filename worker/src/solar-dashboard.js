@@ -51,6 +51,17 @@ export function monthly(days, today) {
   return out;
 }
 
+// ימים בלי ייצור למרות שהיה אור, בשנה האחרונה
+export const outages = (days, end) => span(end, 365).filter((k) => days[k]?.kwh != null && days[k].kwh < 0.1 && days[k].rad >= 3);
+
+// אין ב-API ייצור לפי פאנל, אז מעריכים: פאנל שיצא מוריד את הגג בחלק אחד מתוך כמות הפאנלים, ולאורך זמן
+export function panelScan(panels, ratio) {
+  if (!panels || ratio == null) return { lost: 0 };
+  const drop = 1 - ratio;
+  const lost = drop >= Math.max(0.06, 0.7 / panels) ? Math.max(1, Math.round(drop * panels)) : 0;
+  return { lost };
+}
+
 export function insights(s, today) {
   const days = s.days || {};
   const a = analyze(days, today);
@@ -101,6 +112,7 @@ export function insights(s, today) {
   else if (fault) advice.push(["בדוק את המפסק והממיר", "אם גם מחר לא יהיה ייצור, דבר עם המתקין."]);
   if (s.openAlerts > 0) advice.push(["פתח את mySolarEdge", "הממיר מדווח על התראה, ושם כתוב מה קרה."]);
   if (a.ratio != null && a.ratio < 0.9) advice.push(["בדוק מה השתנה על הגג", "צל חדש, אבק או לכלוך. אם זה נמשך עוד שבוע, דבר עם המתקין."]);
+  if (panelScan(s.panels, a.ratio).lost) advice.push(["בקש מהמתקין בדיקת פאנלים", "הירידה מתאימה לפאנל שלא תורם, והוא יכול לראות כל פאנל בנפרד בפורטל של SolarEdge."]);
   if (lift >= 5) advice.push(["שטיפה תשתלם", `אחרי גשם הגג מפיק בערך ${lift}% יותר. שטיפה לפני עונה יבשה יכולה להחזיר חלק מזה.`]);
   if (dry >= 30 && lift >= 3) advice.push(["הגג לא נשטף הרבה זמן", `כבר ${dry} ימים בלי גשם, ואבק מצטבר.`]);
   if (grantDays <= 60) advice.push(["חדש את החיבור", "כתוב לשולה \"חיבור סולארי\" ואשר ב-SolarEdge."]);
@@ -203,6 +215,15 @@ const ring = (ratio) => {
   const tone = ratio == null ? "--t2" : ratio >= 0.9 ? "--ok" : ratio >= 0.8 ? "--warn" : "--bad";
   return `<div class="ringbox"><svg viewBox="0 0 120 120" class="ring"><circle cx="60" cy="60" r="52" class="rt"/><circle cx="60" cy="60" r="52" class="rv" style="stroke:var(${tone});stroke-dasharray:${c.toFixed(1)};--off:${(c * (1 - p)).toFixed(1)}" transform="rotate(-90 60 60)"/><text x="60" y="58" text-anchor="middle" class="rn">${ratio == null ? "…" : `${Math.round(ratio * 100)}%`}</text><text x="60" y="78" text-anchor="middle" class="rw">${word}</text></svg><p>כמה הגג מפיק מהשמש שהייתה, לעומת הרגיל שלו. 100% זה בדיוק הרגיל.</p></div>`;
 };
+const scanCard = (s, a, days, end) => {
+  const { lost } = panelScan(s.panels, a.ratio);
+  const off = outages(days, end);
+  const lines = [];
+  if (s.panels) lines.push(`במערכת רשומים ${s.panels} פאנלים${s.inverters > 1 ? ` ו-${s.inverters} ממירים` : s.inverters === 1 ? " וממיר אחד" : ""}.`);
+  if (a.ratio != null) lines.push(lost ? `הגג מפיק פחות מהרגיל, ומבחינת הכמות זה מתאים לבערך ${lost === 1 ? "פאנל אחד" : `${lost} פאנלים`} שלא תורמים. יכול להיות גם לכלוך או צל.` : "לא רואים סימן לפאנל שיצא מפעולה.");
+  lines.push(off.length ? `בשנה האחרונה היו ${off.length} ימים בלי ייצור: ${off.slice(-4).map(heb).join(", ")}.` : "בשנה האחרונה לא נמצאו ימים של נפילה מלאה.");
+  return `<section class="card r"><h2>סריקת הגג</h2>${lines.map((l) => `<p class="say2">${esc(l)}</p>`).join("")}<p class="small">זו הערכה לפי ייצור הגג כולו. SolarEdge לא מוסרת דרך החיבור הזה ייצור של כל פאנל בנפרד.</p></section>`;
+};
 const twoBars = (title, aL, aV, bL, bV) => {
   if (aV == null || bV == null) return "";
   const m = Math.max(aV, bV, 1);
@@ -226,6 +247,10 @@ export function solarHtml(s, today, nonce = "") {
   const prevWeek = sumKwh(span(addDays(end, -7), 7).map((k) => days[k] || {}));
   const yearAgo = a.vsYear == null ? null : sumKwh(span(addDays(end, -364), 7).map((k) => days[k] || {}));
   const bestMonth = months.filter((m) => m.now != null && !m.part).reduce((x, m) => (!x || m.now > x.now ? m : x), null);
+  const lastMonth = months.filter((m) => !m.part && m.now != null && m.prev != null).at(-1);
+  const sumYear = (from, n) => { const rows = span(from, n).map((k) => days[k]).filter((d) => d?.kwh != null); return rows.length >= n * 0.9 ? sumKwh(rows) : null; };
+  const yearNow = sumYear(end, 365);
+  const yearPrev = sumYear(addDays(end, -365), 365);
   const hottest = heat.at(-1);
   const heatDrop = heat.length > 1 ? Math.round((1 - hottest.v / heat[0].v) * 100) : null;
   const homeDays = Math.round(a.total / HOME_KWH_DAY);
@@ -240,6 +265,7 @@ export function solarHtml(s, today, nonce = "") {
   }).join("");
   const dark = "color-scheme:dark;--bg:#000;--card:#1c1c1e;--line:#38383a;--t1:#f5f5f7;--t2:#a1a1a6;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#636366;--past:#6d6c66;--ok:#30d158;--warn:#ffb340;--bad:#ff6961;--bar:rgba(28,28,30,.72);";
   return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>הגג שלי</title>
+<link rel="manifest" href="/solar/manifest.webmanifest"><link rel="icon" href="/solar/icon-192.png"><link rel="apple-touch-icon" href="/solar/icon-192.png"><meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <script${n}>document.documentElement.classList.add("js")</script>
 <style>
 :root{color-scheme:light;--bg:#f5f5f7;--card:#fff;--line:#e5e5ea;--t1:#1d1d1f;--t2:#6e6e73;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#c7c7cc;--past:#c7c7cc;--ok:#1a8f3c;--warn:#b25f00;--bad:#d70015;--bar:rgba(255,255,255,.72);--ease:cubic-bezier(.22,1,.36,1)}
@@ -257,6 +283,7 @@ ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}li{display:flex;gap:
 .tip{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.tip:first-of-type{border-top:0;padding-top:0}.tip:last-child{padding-bottom:0}.tip b{display:block}.tip p{margin:0;color:var(--t2)}.num{width:28px;height:28px;flex:none;border-radius:50%;background:var(--s1);color:#fff;display:grid;place-items:center;font-weight:700;font-size:.9rem}
 .day{display:grid;grid-template-columns:62px 24px 1fr 56px;gap:10px;align-items:center;padding:7px 0}.day b{text-align:start;font-weight:600;font-variant-numeric:tabular-nums}.ic{width:24px;height:24px;display:block}.track{height:12px;border-radius:6px;background:var(--line);overflow:hidden}.track i{display:block;height:100%;border-radius:6px;background:var(--s1)}.day.top1 span{font-weight:700}
 .pair{margin-bottom:18px}.pair:last-child{margin-bottom:0}.cmp{display:grid;grid-template-columns:100px 1fr 56px;gap:10px;align-items:center;margin-bottom:6px}.cmp b{font-weight:600;font-variant-numeric:tabular-nums}
+.small{margin:12px 0 0;color:var(--t2);font-size:.85rem}#install{font:inherit;font-weight:600;border:0;border-radius:14px;padding:12px 18px;background:var(--s1);color:#fff;width:100%;transition:transform .1s ease-out}#install:active{transform:scale(.98)}.installbox{display:none}.installbox.on{display:block}
 .say2{margin:0;color:var(--t2)}.say2+.say2{margin-top:8px}
 details{background:var(--card);border-radius:22px}summary{cursor:pointer;list-style:none;padding:18px 20px;font-weight:600;display:flex;justify-content:space-between;transition:transform .1s ease-out}summary:active{transform:scale(.985)}summary::-webkit-details-marker{display:none}summary::after{content:"＋";color:var(--t2)}details[open] summary::after{content:"－"}.more{padding:0 20px 20px;display:grid;gap:22px}
 svg text{fill:var(--t2);font-size:13px}.more svg{display:block;width:100%;height:auto;direction:ltr}.axis{stroke:var(--line)}.dot{fill:var(--s1);opacity:.28}.past{fill:var(--past);opacity:.7}.now{fill:var(--s2);stroke:var(--card);stroke-width:2}.rain{stroke:var(--s3);stroke-width:3;stroke-linecap:round}
@@ -274,6 +301,7 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px
 </style>
 <div class="top"><b>הגג שלי</b><span class="pill ${HEAD[0]}">${s.lastOkAt ? `עודכן ${esc(new Date(s.lastOkAt).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }))}` : ""}</span></div>
 <main>
+<section class="card installbox" id="ib"><button id="install">התקן בטלפון</button><p class="small" id="ihow" hidden>בתפריט של Chrome (שלוש הנקודות) בחר "הוספה למסך הבית".</p></section>
 <section class="card hero r">${scene(v.status)}<div class="say"><h1>${HEAD[1]}</h1>
 ${a.days ? `<p>בשבעת הימים האחרונים הוא ייצר <span data-count="${Math.round(a.total)}">${num(a.total)}</span> קוט״ש${homeDays >= 1 ? `, בערך חשמל של ${homeDays} ימים לבית רגיל` : ""}.</p>` : ""}${v.note ? `<p>${esc(v.note)}</p>` : ""}</div></section>
 <section class="card r"><h2>מה כדאי לעשות</h2>${v.advice.map(([t, x], i) => `<div class="tip"><div class="num">${i + 1}</div><div><b>${esc(t)}</b><p>${esc(x)}</p></div></div>`).join("") || `<p class="say2">אחרי הדוח הראשון יופיעו כאן המלצות.</p>`}</section>
@@ -281,7 +309,8 @@ ${a.days ? `<p>בשבעת הימים האחרונים הוא ייצר <span data
 <section class="card r"><h2>מה טוב</h2><ul>${list(v.good, "g", "✓") || "<li>עדיין אין מספיק נתונים</li>"}</ul></section>
 ${v.bad.length ? `<section class="card r"><h2>מה פחות טוב</h2><ul>${list(v.bad, "y", "!")}</ul></section>` : ""}
 ${a.days ? `<section class="card r"><h2>השבוע שלך, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
-${a.vsPrev != null ? `<section class="card r"><h2>השוואות (קוט״ש)</h2>${twoBars("מול שבוע שעבר", "השבוע", a.total, "שבוע שעבר", prevWeek)}${twoBars("מול אשתקד", "השבוע", yearAgo == null ? null : a.total, "לפני שנה", yearAgo)}</section>` : ""}
+${scanCard(s, a, days, end)}
+${a.vsPrev != null || lastMonth ? `<section class="card r"><h2>מול שנה שעברה (קוט״ש)</h2>${twoBars("אותו שבוע", "השבוע", yearAgo == null ? null : a.total, "לפני שנה", yearAgo)}${lastMonth ? twoBars(`חודש ${lastMonth.label}`, "השנה", lastMonth.now, "לפני שנה", lastMonth.prev) : ""}${twoBars("שנה שלמה", "12 חודשים", yearNow, "12 לפניהם", yearPrev)}${yearAgo == null && !lastMonth ? `<p class="say2">ההשוואה תופיע כשתיאסף היסטוריה.</p>` : ""}${a.vsPrev != null ? twoBars("מול שבוע שעבר", "השבוע", a.total, "שבוע שעבר", prevWeek) : ""}</section>` : ""}
 ${bestMonth || heatDrop != null || v.lift != null ? `<section class="card r"><h2>מה למדנו על הגג</h2>${bestMonth ? `<p class="say2">החודש הכי חזק בשנה האחרונה היה ${bestMonth.label}, עם ${num(bestMonth.now)} קוט״ש.</p>` : ""}${heatDrop > 0 ? `<p class="say2">בימים חמים מאוד הגג מפיק בערך ${heatDrop}% פחות. זה טבעי לפאנלים.</p>` : ""}${v.lift != null ? `<p class="say2">${v.lift >= 5 ? `גשם ראשון אחרי יובש מעלה את הייצור בערך ב-${v.lift}%, כי הוא שוטף את האבק.` : "גשם כמעט לא משנה את הייצור, אז הפאנלים נקיים יחסית."}</p>` : ""}</section>` : ""}
 <details class="r"><summary>כל הנתונים והגרפים</summary><div class="more">
 <div><h3>ייצור יומי, 30 יום (קוט״ש)</h3>${chartBars(last30, 170, "--s1", (d) => d.kwh, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.kwh, 1)} קוט״ש`)}</div>
@@ -295,6 +324,8 @@ ${sc ? `<div><h3>ייצור מול שמש, שנה</h3><div class="key"><span><i 
 <script${n}>
 const io=new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll(".r").forEach((x)=>io.observe(x));
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.querySelectorAll("[data-count]").forEach((n)=>{const to=+n.dataset.count,t0=performance.now();const f=(t)=>{const p=Math.min((t-t0)/900,1);n.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("he-IL");if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)});
+const ib=document.getElementById("ib"),ibtn=document.getElementById("install");let ask=null;
+if(!matchMedia("(display-mode: standalone)").matches){ib.classList.add("on");addEventListener("beforeinstallprompt",(e)=>{e.preventDefault();ask=e});ibtn.addEventListener("click",async()=>{if(ask){ask.prompt();await ask.userChoice;ask=null;ib.classList.remove("on")}else document.getElementById("ihow").hidden=false});addEventListener("appinstalled",()=>ib.classList.remove("on"))}
 const t=document.getElementById("tip");const show=(e)=>{const m=e.target.closest("[data-t]");if(!m){t.style.display="none";return}t.textContent=m.dataset.t;t.style.display="block";t.style.left=Math.max(8,Math.min(innerWidth-t.offsetWidth-8,e.clientX-t.offsetWidth/2))+"px";t.style.top=Math.max(8,e.clientY-44)+"px"};document.addEventListener("pointermove",show);document.addEventListener("click",show);
 </script></html>`;
 }
