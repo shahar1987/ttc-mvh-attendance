@@ -82,13 +82,32 @@ export function insights(s, today) {
   if (s.openAlerts > 0) bad.push(`התראות פתוחות בממיר: ${s.openAlerts}`);
   else if (s.openAlerts === 0) good.push("אין התראות פתוחות בממיר");
   if (lift >= 5) bad.push(`אחרי גשם הייצור עולה בכ-${lift}%, כנראה מלכלוך על הפאנלים`);
-  else if (lift != null) good.push("גשם כמעט לא משנה את הייצור, אז הפאנלים נקיים יחסית");
   const grantDays = s.connectedAt ? Math.ceil((Date.parse(s.connectedAt) + 730 * 864e5 - Date.parse(`${today}T12:00:00Z`)) / 864e5) : 999;
   if (grantDays <= 60) bad.push(`החיבור ל-SolarEdge פג בעוד ${Math.max(grantDays, 0)} ימים`);
   const best = week.reduce((x, d) => (!x || d.kwh > x.kwh ? d : x), null);
-  const note = sunVs != null && a.vsPrev != null ? `השבוע היו ${Math.abs(sunVs)}% ${sunVs >= 0 ? "יותר" : "פחות"} שמש מהשבוע שעבר, והייצור ${a.vsPrev >= 0 ? "עלה" : "ירד"} ב-${Math.abs(a.vsPrev)}%.` : "";
+  let note = "";
+  if (a.vsPrev != null) {
+    const healthy = a.ratio == null || a.ratio >= 0.9;
+    if (Math.abs(a.vsPrev) <= 3) note = "הייצור דומה לשבוע שעבר.";
+    else if (a.vsPrev < 0) note = healthy && sunVs < 0 ? `הייצור ירד ב-${-a.vsPrev}% כי הייתה פחות שמש. זו לא תקלה.` : `הייצור ירד ב-${-a.vsPrev}% מהשבוע שעבר.`;
+    else note = sunVs > 0 ? `הייצור עלה ב-${a.vsPrev}% כי הייתה יותר שמש.` : `הייצור עלה ב-${a.vsPrev}% מהשבוע שעבר.`;
+  }
+  const dry = (() => {
+    for (let i = 1; i <= 120; i++) if (days[addDays(today, -i)]?.rain >= 2) return i - 1;
+    return null;
+  })();
+  const advice = [];
+  if (fault && /אין נתוני/.test(fault)) advice.push(["בדוק את הממיר", "תסתכל על הנורה בממיר ועל חיבור האינטרנט שלו. אם הוא כבוי, בדוק את המפסק בלוח החשמל."]);
+  else if (fault) advice.push(["בדוק את המפסק והממיר", "אם גם מחר לא יהיה ייצור, דבר עם המתקין."]);
+  if (s.openAlerts > 0) advice.push(["פתח את mySolarEdge", "הממיר מדווח על התראה, ושם כתוב מה קרה."]);
+  if (a.ratio != null && a.ratio < 0.9) advice.push(["בדוק מה השתנה על הגג", "צל חדש, אבק או לכלוך. אם זה נמשך עוד שבוע, דבר עם המתקין."]);
+  if (lift >= 5) advice.push(["שטיפה תשתלם", `אחרי גשם הגג מפיק בערך ${lift}% יותר. שטיפה לפני עונה יבשה יכולה להחזיר חלק מזה.`]);
+  if (dry >= 30 && lift >= 3) advice.push(["הגג לא נשטף הרבה זמן", `כבר ${dry} ימים בלי גשם, ואבק מצטבר.`]);
+  if (grantDays <= 60) advice.push(["חדש את החיבור", "כתוב לשולה \"חיבור סולארי\" ואשר ב-SolarEdge."]);
+  if (!advice.length && a.days) advice.push(["אין מה לעשות השבוע", "הגג מסתדר לבד. הדוח הבא יגיע ביום ראשון."]);
+  if (a.days && +today.slice(8) <= 7) advice.push(["השווה לחשבון החשמל", "פעם בחודש כדאי לבדוק שהייצור כאן מתאים למה שרשום בחשבון."]);
   const status = !Object.keys(days).length ? "empty" : fault ? "fault" : bad.length > year ? "check" : "ok";
-  return { a, good, bad, note, status, best, wash, lift, vs30, m30 };
+  return { a, good, bad, note, status, best, wash, lift, vs30, m30, advice };
 }
 
 const W = 640;
@@ -155,6 +174,42 @@ function monthChart(rows) {
   return `<svg viewBox="0 0 ${W} ${h}" role="img">${marks}<line x1="0" x2="${W}" y1="${h - 20}" y2="${h - 20}" class="axis"/>${ticks}</svg>`;
 }
 
+const HOME_KWH_DAY = 25; // בית ישראלי רגיל, בערך. רק כדי לתת למספר תחושה
+const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+const dayName = (k) => DAYS[new Date(`${k}T12:00:00Z`).getUTCDay()];
+const ICON = {
+  sun: '<svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="5" fill="#f5a524"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" stroke="#f5a524" stroke-width="2" stroke-linecap="round"/></svg>',
+  part: '<svg viewBox="0 0 24 24" class="ic"><circle cx="9" cy="9" r="4.5" fill="#f5a524"/><path d="M8 20h9a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 13.5 3.3 3.3 0 0 0 8 20Z" fill="#a9b4c2"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" class="ic"><path d="M7 19h10a4.5 4.5 0 0 0 .7-8.9A6 6 0 0 0 6.1 11.6 3.8 3.8 0 0 0 7 19Z" fill="#a9b4c2"/></svg>',
+  rain: '<svg viewBox="0 0 24 24" class="ic"><path d="M7 15h10a4 4 0 0 0 .6-7.9A5.5 5.5 0 0 0 7 8.6 3.3 3.3 0 0 0 7 15Z" fill="#a9b4c2"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" stroke="#3b9ae1" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+const scene = (status) => {
+  const off = status === "fault";
+  return `<svg class="scene" viewBox="0 0 360 190" role="img" aria-label="בית עם פאנלים סולאריים">
+<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${off ? "#7d8796" : "#6ec1ff"}"/><stop offset="1" stop-color="${off ? "#c9ced6" : "#e3f4ff"}"/></linearGradient><radialGradient id="glow"><stop offset="0" stop-color="#ffd76a" stop-opacity=".9"/><stop offset="1" stop-color="#ffd76a" stop-opacity="0"/></radialGradient></defs>
+<rect width="360" height="190" fill="url(#sky)"/>
+${off ? "" : `<circle cx="84" cy="58" r="70" fill="url(#glow)"/><g class="rays" stroke="#ffc53d" stroke-width="4" stroke-linecap="round">${Array.from({ length: 8 }, (_, i) => `<path transform="rotate(${i * 45} 84 58)" d="M84 18v-10"/>`).join("")}</g><circle cx="84" cy="58" r="26" fill="#ffc53d"/>`}
+<ellipse cx="180" cy="196" rx="260" ry="34" fill="${off ? "#9aa39c" : "#8fd19e"}"/>
+<path d="M190 96 262 52l74 44v70H190Z" fill="#fffdf8"/><path d="M178 102 262 50l86 52" fill="none" stroke="#b5533c" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(206 62) skewY(-31)" fill="#1f4e8c" stroke="#dbe9f7" stroke-width="1.5">${[0, 16, 32].flatMap((x) => [0, 12].map((y) => `<rect x="${x}" y="${y}" width="15" height="11"/>`)).join("")}</g>
+<rect x="246" y="124" width="26" height="42" rx="3" fill="#b5533c"/><rect x="288" y="112" width="26" height="22" rx="3" fill="#bfe3ff" stroke="#7a8796"/>
+${off ? "" : `<path class="flow" d="M110 76 C150 96 180 90 214 84" fill="none" stroke="#ffc53d" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 12"/>`}
+</svg>`;
+};
+const ring = (ratio) => {
+  const p = ratio == null ? 0 : Math.min(ratio, 1.1) / 1.1;
+  const c = 2 * Math.PI * 52;
+  const word = ratio == null ? "לומד את הגג" : ratio >= 0.95 ? "מצוין" : ratio >= 0.9 ? "טוב" : ratio >= 0.8 ? "קצת נמוך" : "נמוך";
+  const tone = ratio == null ? "--t2" : ratio >= 0.9 ? "--ok" : ratio >= 0.8 ? "--warn" : "--bad";
+  return `<div class="ringbox"><svg viewBox="0 0 120 120" class="ring"><circle cx="60" cy="60" r="52" class="rt"/><circle cx="60" cy="60" r="52" class="rv" style="stroke:var(${tone});stroke-dasharray:${c.toFixed(1)};--off:${(c * (1 - p)).toFixed(1)}" transform="rotate(-90 60 60)"/><text x="60" y="58" text-anchor="middle" class="rn">${ratio == null ? "…" : `${Math.round(ratio * 100)}%`}</text><text x="60" y="78" text-anchor="middle" class="rw">${word}</text></svg><p>כמה הגג מפיק מהשמש שהייתה, לעומת הרגיל שלו. 100% זה בדיוק הרגיל.</p></div>`;
+};
+const twoBars = (title, aL, aV, bL, bV) => {
+  if (aV == null || bV == null) return "";
+  const m = Math.max(aV, bV, 1);
+  const row = (l, v, c) => `<div class="cmp"><span>${l}</span><div class="track"><i class="grow" style="width:${Math.round((v / m) * 100)}%;background:var(${c})"></i></div><b>${num(v)}</b></div>`;
+  return `<div class="pair"><h3>${title}</h3>${row(aL, aV, "--s1")}${row(bL, bV, "--s4")}</div>`;
+};
+
 export function solarHtml(s, today) {
   const days = s.days || {};
   const end = addDays(today, -1);
@@ -163,58 +218,82 @@ export function solarHtml(s, today) {
   const last30 = span(end, 30).map((k) => ({ day: k, ...days[k] }));
   const months = monthly(days, today);
   const heat = heatBands(days);
-  const heatMax = Math.max(...heat.map((b) => b.v), 0.01);
-  const STATUS = { ok: ["ok", "✓", "הגג תקין"], check: ["warn", "!", "יש מה לבדוק"], fault: ["bad", "✕", "תקלה"], empty: ["warn", "…", "הנתונים בדרך"] }[v.status];
-  const stat = (label, value, sub) => `<div class="stat"><div class="sl">${label}</div><div class="sv">${value}</div>${sub ? `<div class="ss">${sub}</div>` : ""}</div>`;
-  const vs = (n, what) => (n == null ? "" : `${Math.abs(n)}% ${n >= 0 ? "יותר" : "פחות"} ${what}`);
-  const list = (xs, cls, icon) => xs.map((t) => `<li class="${cls}"><span>${icon}</span>${esc(t)}</li>`).join("");
+  const week = span(end, 7).map((k) => ({ day: k, ...days[k] }));
+  const weekMax = Math.max(...week.map((d) => d.kwh || 0), 1);
+  const radMax = Math.max(...last30.map((d) => d.rad || 0), 1);
+  const weather = (d) => (d.rain >= 1 ? ["rain", "גשם"] : d.rad == null ? ["cloud", ""] : d.rad >= radMax * 0.75 ? ["sun", "שמש"] : d.rad >= radMax * 0.45 ? ["part", "חלקית"] : ["cloud", "מעונן"]);
+  const prevWeek = sumKwh(span(addDays(end, -7), 7).map((k) => days[k] || {}));
+  const yearAgo = a.vsYear == null ? null : sumKwh(span(addDays(end, -364), 7).map((k) => days[k] || {}));
+  const bestMonth = months.filter((m) => m.now != null && !m.part).reduce((x, m) => (!x || m.now > x.now ? m : x), null);
+  const hottest = heat.at(-1);
+  const heatDrop = heat.length > 1 ? Math.round((1 - hottest.v / heat[0].v) * 100) : null;
+  const homeDays = Math.round(a.total / HOME_KWH_DAY);
+  const HEAD = { ok: ["ok", "הגג עובד טוב"], check: ["warn", "הגג עובד, ויש משהו לבדוק"], fault: ["bad", "משהו לא תקין בגג"], empty: ["warn", "הנתונים בדרך"] }[v.status];
+  const list = (xs, cls, icon) => xs.map((t) => `<li class="${cls}"><span aria-hidden="true">${icon}</span>${esc(t)}</li>`).join("");
   const eff = efficiency(days, end);
   const sc = scatter(days, end);
-  const hasRain = last30.some((d) => d.rain >= 1);
   const rowsTable = span(end, 14).reverse().map((k) => {
     const d = days[k] || {};
     const r = adjusted(d);
     return `<tr><td>${heb(k)}</td><td>${num(d.kwh, 1)}</td><td>${num(d.rad, 1)}</td><td>${d.tmax == null ? "לא זמין" : `${Math.round(d.tmax)}°`}</td><td>${d.rain ? num(d.rain, 1) : "0"}</td><td>${r == null ? "יום מעונן" : a.low.includes(k) ? "חריג" : "תקין"}</td></tr>`;
   }).join("");
-  const dark = "color-scheme:dark;--bg:#141413;--card:#1f1f1d;--line:#3a3a36;--t1:#f0efec;--t2:#c3c2b7;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--past:#6d6c66;--ok:#5ac48a;--warn:#e5a53a;--bad:#f07f7a;";
-  return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>הגג הסולארי</title>
+  const dark = "color-scheme:dark;--bg:#000;--card:#1c1c1e;--line:#38383a;--t1:#f5f5f7;--t2:#a1a1a6;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#636366;--past:#6d6c66;--ok:#30d158;--warn:#ffb340;--bad:#ff6961;--bar:rgba(28,28,30,.72);";
+  return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>הגג שלי</title>
+<script>document.documentElement.classList.add("js")</script>
 <style>
-:root{color-scheme:light;--bg:#f6f5f1;--card:#fcfcfb;--line:#dddcd5;--t1:#0b0b0b;--t2:#52514e;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--past:#bdbcb4;--ok:#0a7d3f;--warn:#9a5b00;--bad:#b3261e}
+:root{color-scheme:light;--bg:#f5f5f7;--card:#fff;--line:#e5e5ea;--t1:#1d1d1f;--t2:#6e6e73;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#c7c7cc;--past:#c7c7cc;--ok:#1a8f3c;--warn:#b25f00;--bad:#d70015;--bar:rgba(255,255,255,.72);--ease:cubic-bezier(.22,1,.36,1)}
 @media (prefers-color-scheme:dark){:root{${dark}}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font:16px/1.5 system-ui,"Segoe UI",Arial,sans-serif}
-main{max-width:980px;margin:auto;padding:16px;display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
-.full{grid-column:1/-1}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
-header.card{display:flex;align-items:center;gap:14px}.badge{width:48px;height:48px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:700;color:#fff}
-.b-ok{background:var(--ok)}.b-warn{background:var(--warn)}.b-bad{background:var(--bad)}h1{font-size:24px;margin:0}header p{margin:2px 0 0;color:var(--t2)}
-h2{font-size:17px;margin:0 0 10px}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
-.sl{color:var(--t2);font-size:14px}.sv{font-size:28px;font-weight:700;line-height:1.25}.ss{color:var(--t2);font-size:14px}
-ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}li{display:flex;gap:8px}li span{font-weight:700}.g span{color:var(--ok)}.y span{color:var(--warn)}
-svg{display:block;width:100%;height:auto;direction:ltr}svg text{fill:var(--t2);font-size:13px}.axis{stroke:var(--line)}.dot{fill:var(--s1);opacity:.28}.past{fill:var(--past);opacity:.7}.now{fill:var(--s2);stroke:var(--card);stroke-width:2}.rain{stroke:var(--s3);stroke-width:3;stroke-linecap:round}
-.key{display:flex;gap:14px;flex-wrap:wrap;color:var(--t2);font-size:14px;margin-bottom:8px}.key i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-inline-end:6px;vertical-align:-1px}
-.band{display:grid;grid-template-columns:96px 1fr 44px;gap:8px;align-items:center;margin-bottom:8px}.band div{height:12px;border-radius:4px;background:var(--s1)}
-table{width:100%;border-collapse:collapse;font-size:15px}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th{color:var(--t2);font-weight:500}.scroll{overflow-x:auto}
-#tip{position:fixed;display:none;z-index:9;background:var(--t1);color:var(--bg);padding:6px 10px;border-radius:8px;font-size:14px;pointer-events:none;max-width:80vw}
-@media(max-width:720px){svg text{font-size:21px}main{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sv{font-size:24px}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font:100%/1.5 -apple-system,system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+.top{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--bar);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
+.top b{font-size:1.05rem}.pill{font-size:.85rem;font-weight:600}.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
+main{max-width:720px;margin:auto;padding:4px 16px 40px;display:grid;gap:16px}
+.card{background:var(--card);border-radius:22px;padding:20px;min-width:0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.hero{padding:0;overflow:hidden}.scene{display:block;width:100%;height:auto}.say{padding:20px}
+h1{font-size:clamp(1.9rem,7vw,2.6rem);line-height:1.1;letter-spacing:-.02em;margin:0 0 8px;font-weight:700}.say p{margin:0;font-size:1.1rem;color:var(--t2)}.say p+p{margin-top:6px}
+h2{font-size:1.3rem;letter-spacing:-.01em;line-height:1.2;margin:0 0 14px;font-weight:700}h3{font-size:1rem;margin:0 0 8px;font-weight:600}
+.ringbox{display:flex;align-items:center;gap:18px}.ringbox p{margin:0;color:var(--t2)}.ring{width:132px;flex:none}.rt{fill:none;stroke:var(--line);stroke-width:10}.rv{fill:none;stroke-width:10;stroke-linecap:round;stroke-dashoffset:var(--off)}.rn{fill:var(--t1);font-size:26px;font-weight:700}.rw{fill:var(--t2);font-size:12px}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}li{display:flex;gap:10px}li span{font-weight:700;flex:none}.g span{color:var(--ok)}.y span{color:var(--warn)}
+.tip{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.tip:first-of-type{border-top:0;padding-top:0}.tip:last-child{padding-bottom:0}.tip b{display:block}.tip p{margin:0;color:var(--t2)}.num{width:28px;height:28px;flex:none;border-radius:50%;background:var(--s1);color:#fff;display:grid;place-items:center;font-weight:700;font-size:.9rem}
+.day{display:grid;grid-template-columns:62px 24px 1fr 56px;gap:10px;align-items:center;padding:7px 0}.day b{text-align:start;font-weight:600;font-variant-numeric:tabular-nums}.ic{width:24px;height:24px;display:block}.track{height:12px;border-radius:6px;background:var(--line);overflow:hidden}.track i{display:block;height:100%;border-radius:6px;background:var(--s1)}.day.top1 span{font-weight:700}
+.pair{margin-bottom:18px}.pair:last-child{margin-bottom:0}.cmp{display:grid;grid-template-columns:100px 1fr 56px;gap:10px;align-items:center;margin-bottom:6px}.cmp b{font-weight:600;font-variant-numeric:tabular-nums}
+.say2{margin:0;color:var(--t2)}.say2+.say2{margin-top:8px}
+details{background:var(--card);border-radius:22px}summary{cursor:pointer;list-style:none;padding:18px 20px;font-weight:600;display:flex;justify-content:space-between;transition:transform .1s ease-out}summary:active{transform:scale(.985)}summary::-webkit-details-marker{display:none}summary::after{content:"＋";color:var(--t2)}details[open] summary::after{content:"－"}.more{padding:0 20px 20px;display:grid;gap:22px}
+svg text{fill:var(--t2);font-size:13px}.more svg{display:block;width:100%;height:auto;direction:ltr}.axis{stroke:var(--line)}.dot{fill:var(--s1);opacity:.28}.past{fill:var(--past);opacity:.7}.now{fill:var(--s2);stroke:var(--card);stroke-width:2}.rain{stroke:var(--s3);stroke-width:3;stroke-linecap:round}
+.key{display:flex;gap:14px;flex-wrap:wrap;color:var(--t2);font-size:.85rem;margin-bottom:8px}.key i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-inline-end:6px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th{color:var(--t2);font-weight:500}.scroll{overflow-x:auto}
+#tip{position:fixed;display:none;z-index:9;background:var(--t1);color:var(--bg);padding:6px 10px;border-radius:8px;font-size:.85rem;pointer-events:none;max-width:80vw}
+@media(max-width:480px){.more svg text{font-size:21px}.ringbox{flex-direction:column;text-align:center}}
+.rays{transform-origin:84px 58px;animation:spin 90s linear infinite}.flow{animation:flow 1.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes flow{to{stroke-dashoffset:-28}}
+.js .r{opacity:0;transform:translateY(16px);transition:opacity .6s var(--ease),transform .6s var(--ease)}.js .r.in{opacity:1;transform:none}
+.js .r .grow{transform:scaleX(0);transform-origin:right;transition:transform .9s var(--ease) .15s}.js .r.in .grow{transform:none}
+.js .r .rv{stroke-dashoffset:${(2 * Math.PI * 52).toFixed(1)};transition:stroke-dashoffset 1.1s var(--ease) .15s}.js .r.in .rv{stroke-dashoffset:var(--off)}
+@media (prefers-reduced-motion:reduce){.rays,.flow{animation:none}.js .r,.js .r .grow,.js .r .rv{transition:opacity .2s;transform:none;stroke-dashoffset:var(--off)}}
+@media (prefers-reduced-transparency:reduce){.top{background:var(--card);-webkit-backdrop-filter:none;backdrop-filter:none}}
 </style>
+<div class="top"><b>הגג שלי</b><span class="pill ${HEAD[0]}">${s.lastOkAt ? `עודכן ${esc(new Date(s.lastOkAt).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }))}` : ""}</span></div>
 <main>
-<header class="card full"><div class="badge b-${STATUS[0]}" aria-hidden="true">${STATUS[1]}</div><div><h1>${STATUS[2]}</h1><p>${s.lastOkAt ? `עודכן ${esc(new Date(s.lastOkAt).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }))}` : ""}</p></div></header>
-<div class="stats full">
-${stat("השבוע", `${num(a.total)} קוט״ש`, vs(a.vsPrev, "מול שבוע שעבר"))}
-${stat("30 יום", `${num(v.m30)} קוט״ש`, vs(v.vs30, "מול אשתקד"))}
-${stat("מול השמש", a.ratio == null ? "לא זמין" : `${Math.round(a.ratio * 100)}%`, "מהרגיל של הגג")}
-${stat("היום הכי טוב", v.best ? `${num(v.best.kwh, 1)} קוט״ש` : "לא זמין", v.best ? heb(v.best.day) : "")}
-</div>
-<section class="card"><h2>מה טוב</h2><ul>${list(v.good, "g", "✓") || "<li>עדיין אין מספיק נתונים</li>"}</ul></section>
-<section class="card"><h2>מה פחות טוב</h2><ul>${list(v.bad, "y", "!") || `<li class="g"><span>✓</span>אין כרגע</li>`}</ul></section>
-${v.note ? `<section class="card full">${esc(v.note)}</section>` : ""}
-<section class="card full"><h2>ייצור יומי, 30 יום (קוט״ש)</h2>${chartBars(last30, 170, "--s1", (d) => d.kwh, (d, i) => (i % 5 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.kwh, 1)} קוט״ש`)}</section>
-<section class="card full"><h2>שמש באותם ימים (מג׳ול למ״ר)</h2>${chartBars(last30, 130, "--s2", (d) => d.rad, (d, i) => (i % 5 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.rad, 1)} מג׳ול${hasRain && d.rain ? `, גשם ${num(d.rain, 1)} מ״מ` : ""}`)}</section>
-${eff ? `<section class="card full"><h2>יעילות מול השמש, חצי שנה</h2><div class="key"><span><i style="background:var(--s1)"></i>יעילות</span><span><i style="background:var(--s3)"></i>גשם</span></div>${eff}</section>` : ""}
-<section class="card full"><h2>חודשים מול אשתקד (קוט״ש)</h2><div class="key"><span><i style="background:var(--s1)"></i>השנה</span><span><i style="background:var(--s2)"></i>אשתקד</span></div>${monthChart(months)}</section>
-${sc ? `<section class="card"><h2>ייצור מול שמש, שנה</h2><div class="key"><span><i style="background:var(--s2)"></i>השבוע</span><span><i style="background:var(--past)"></i>שאר הימים</span></div>${sc}</section>` : ""}
-${heat.length ? `<section class="card"><h2>השפעת החום</h2>${heat.map((b) => `<div class="band"><span>${b.label}</span><div style="width:${Math.round((b.v / heatMax) * 100)}%"></div><span>${Math.round((b.v / heatMax) * 100)}%</span></div>`).join("")}</section>` : ""}
-${v.wash.length ? `<section class="card full"><h2>מה גשם עושה לגג</h2><div class="scroll"><table><tr><th>גשם ראשון אחרי יובש</th><th>שינוי ביעילות</th></tr>${v.wash.slice(-6).reverse().map((w) => `<tr><td>${heb(w.day)}</td><td><bdi dir="ltr">${w.lift > 0 ? "+" : ""}${w.lift}%</bdi></td></tr>`).join("")}</table></div></section>` : ""}
-<section class="card full"><h2>14 הימים האחרונים</h2><div class="scroll"><table><tr><th>יום</th><th>קוט״ש</th><th>שמש</th><th>חום</th><th>גשם</th><th>מצב</th></tr>${rowsTable}</table></div></section>
+<section class="card hero r">${scene(v.status)}<div class="say"><h1>${HEAD[1]}</h1>
+${a.days ? `<p>בשבעת הימים האחרונים הוא ייצר <span data-count="${Math.round(a.total)}">${num(a.total)}</span> קוט״ש${homeDays >= 1 ? `, בערך חשמל של ${homeDays} ימים לבית רגיל` : ""}.</p>` : ""}${v.note ? `<p>${esc(v.note)}</p>` : ""}</div></section>
+<section class="card r"><h2>מה כדאי לעשות</h2>${v.advice.map(([t, x], i) => `<div class="tip"><div class="num">${i + 1}</div><div><b>${esc(t)}</b><p>${esc(x)}</p></div></div>`).join("") || `<p class="say2">אחרי הדוח הראשון יופיעו כאן המלצות.</p>`}</section>
+<section class="card r"><h2>מה מצב הגג</h2>${ring(a.ratio)}</section>
+<section class="card r"><h2>מה טוב</h2><ul>${list(v.good, "g", "✓") || "<li>עדיין אין מספיק נתונים</li>"}</ul></section>
+${v.bad.length ? `<section class="card r"><h2>מה פחות טוב</h2><ul>${list(v.bad, "y", "!")}</ul></section>` : ""}
+${a.days ? `<section class="card r"><h2>השבוע שלך, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
+${a.vsPrev != null ? `<section class="card r"><h2>השוואות (קוט״ש)</h2>${twoBars("מול שבוע שעבר", "השבוע", a.total, "שבוע שעבר", prevWeek)}${twoBars("מול אשתקד", "השבוע", yearAgo == null ? null : a.total, "לפני שנה", yearAgo)}</section>` : ""}
+${bestMonth || heatDrop != null || v.lift != null ? `<section class="card r"><h2>מה למדנו על הגג</h2>${bestMonth ? `<p class="say2">החודש הכי חזק בשנה האחרונה היה ${bestMonth.label}, עם ${num(bestMonth.now)} קוט״ש.</p>` : ""}${heatDrop > 0 ? `<p class="say2">בימים חמים מאוד הגג מפיק בערך ${heatDrop}% פחות. זה טבעי לפאנלים.</p>` : ""}${v.lift != null ? `<p class="say2">${v.lift >= 5 ? `גשם ראשון אחרי יובש מעלה את הייצור בערך ב-${v.lift}%, כי הוא שוטף את האבק.` : "גשם כמעט לא משנה את הייצור, אז הפאנלים נקיים יחסית."}</p>` : ""}</section>` : ""}
+<details class="r"><summary>כל הנתונים והגרפים</summary><div class="more">
+<div><h3>ייצור יומי, 30 יום (קוט״ש)</h3>${chartBars(last30, 170, "--s1", (d) => d.kwh, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.kwh, 1)} קוט״ש`)}</div>
+<div><h3>שמש באותם ימים (מג׳ול למ״ר)</h3>${chartBars(last30, 130, "--s2", (d) => d.rad, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.rad, 1)} מג׳ול${d.rain ? `, גשם ${num(d.rain, 1)} מ״מ` : ""}`)}</div>
+${eff ? `<div><h3>יעילות מול השמש, חצי שנה</h3><div class="key"><span><i style="background:var(--s1)"></i>יעילות</span><span><i style="background:var(--s3)"></i>גשם</span></div>${eff}</div>` : ""}
+<div><h3>חודשים מול אשתקד (קוט״ש)</h3><div class="key"><span><i style="background:var(--s1)"></i>השנה</span><span><i style="background:var(--s2)"></i>אשתקד</span></div>${monthChart(months)}</div>
+${sc ? `<div><h3>ייצור מול שמש, שנה</h3><div class="key"><span><i style="background:var(--s2)"></i>השבוע</span><span><i style="background:var(--past)"></i>שאר הימים</span></div>${sc}</div>` : ""}
+<div><h3>14 הימים האחרונים</h3><div class="scroll"><table><tr><th>יום</th><th>קוט״ש</th><th>שמש</th><th>חום</th><th>גשם</th><th>מצב</th></tr>${rowsTable}</table></div></div>
+</div></details>
 </main><div id="tip" role="status"></div>
-<script>const t=document.getElementById("tip");const show=(e)=>{const m=e.target.closest("[data-t]");if(!m){t.style.display="none";return}t.textContent=m.dataset.t;t.style.display="block";const x=e.clientX,y=e.clientY;t.style.left=Math.max(8,Math.min(innerWidth-t.offsetWidth-8,x-t.offsetWidth/2))+"px";t.style.top=Math.max(8,y-44)+"px"};document.addEventListener("pointermove",show);document.addEventListener("click",show);</script></html>`;
+<script>
+const io=new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll(".r").forEach((x)=>io.observe(x));
+if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.querySelectorAll("[data-count]").forEach((n)=>{const to=+n.dataset.count,t0=performance.now();const f=(t)=>{const p=Math.min((t-t0)/900,1);n.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("he-IL");if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)});
+const t=document.getElementById("tip");const show=(e)=>{const m=e.target.closest("[data-t]");if(!m){t.style.display="none";return}t.textContent=m.dataset.t;t.style.display="block";t.style.left=Math.max(8,Math.min(innerWidth-t.offsetWidth-8,e.clientX-t.offsetWidth/2))+"px";t.style.top=Math.max(8,e.clientY-44)+"px"};document.addEventListener("pointermove",show);document.addEventListener("click",show);
+</script></html>`;
 }
