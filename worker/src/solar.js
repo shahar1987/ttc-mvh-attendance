@@ -303,7 +303,7 @@ export async function solarRoute(req, env, store, tell) {
   const url = new URL(req.url);
   if (url.pathname === "/solar/login") return login(req, store);
   if (url.pathname === "/solar/manifest.webmanifest")
-    return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#f5f5f7", theme_color: "#6ec1ff", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
+    return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#071226", theme_color: "#071226", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
   if (url.pathname === "/solar/icon-192.png" || url.pathname === "/solar/icon-512.png")
     return new Response(Buffer.from(url.pathname.includes("192") ? ICON_192 : ICON_512, "base64"), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800" } });
   if (url.pathname === "/solar/dashboard") {
