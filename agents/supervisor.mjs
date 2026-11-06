@@ -63,7 +63,7 @@ const grep = (re, exclude = "") => {
 const PLACEHOLDER = /05[0-9]-?1234567|972501234567|05000000|9725X/;
 // קבצי בדיקה משתמשים במספרים מומצאים בלבד, ולכן לא נסרקים לטלפונים
 const phones = grep("(^|[^0-9])(05[0-9]-?[0-9]{3}-?[0-9]{4}|9725[0-9]{8})([^0-9]|$)", "':!*.test.mjs' ':!rules-tests/'").filter((l) => !PLACEHOLDER.test(l));
-const secrets = grep("sk-ant-[A-Za-z0-9_-]{10}|EAA[A-Za-z0-9]{40}|-----BEGIN PRIVATE KEY-{5}"); // {5} ולא חמישה מקפים — כדי שהשורה הזו לא תתפוס את עצמה
+const secrets = grep("sk-ant-[A-Za-z0-9_-]{10}|(^|[^A-Za-z0-9+/])EAA[A-Za-z0-9]{40}|-----BEGIN PRIVATE KEY-{5}"); // {5} ולא חמישה מקפים — כדי שהשורה הזו לא תתפוס את עצמה. התחילית מדלגת על EAA באמצע base64 (אייקונים)
 const fingerprint = (lines) => lines.map((l) => createHash("sha256").update(l.replace(/^[^:]+:\d+:/, "")).digest("hex").slice(0, 16));
 const sec = (await reports.doc("security").get()).data();
 const phoneFp = fingerprint(phones);
