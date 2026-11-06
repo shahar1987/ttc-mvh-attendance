@@ -289,6 +289,22 @@ const secure = (body, status = 200, extra = {}, csp = "default-src 'none'; style
 const shell = (msg, status = 200) => secure(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>הגג שלי</title><body style="font:20px/1.5 system-ui;padding:24px;max-width:480px;margin:auto">${msg}</body></html>`, status);
 const NO_ACCESS = `<h2>הכניסה רק מהוואטסאפ</h2><p>כתוב לשולה "הדשבורד של הגג", ופתח את הקישור שתקבל.</p>`;
 
+// מזג האוויר עכשיו, רק לשמיים בדשבורד. Cloudflare שומר את התשובה 10 דקות, ובתקלה פשוט אין גשם בציור
+export const skyKind = (c = {}) => {
+  const w = c.weather_code;
+  if (c.precipitation > 0 || (w >= 51 && w <= 67) || (w >= 71 && w <= 86) || w >= 95) return "rain";
+  return w === 3 || w === 45 || w === 48 || c.cloud_cover >= 85 ? "overcast" : "";
+};
+async function nowWeather() {
+  try {
+    const q = new URLSearchParams({ ...LOCATION, current: "weather_code,precipitation,cloud_cover", timezone: "Asia/Jerusalem" });
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { cf: { cacheTtl: 600, cacheEverything: true }, signal: AbortSignal.timeout(1500) });
+    return skyKind((await r.json()).current);
+  } catch {
+    return "";
+  }
+}
+
 export const solarUrl = async (env, origin) => `${origin}/solar/dashboard`;
 export const loginUrl = async (store, origin) => `${origin}/solar/login?k=${await issueKey(store, "solar-login")}`;
 
@@ -326,7 +342,8 @@ export async function solarRoute(req, env, store, tell) {
   if (url.pathname === "/solar/dashboard") {
     if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
     const nonce = randomHex(16);
-    return secure(solarHtml((await store.get(DOC)) || {}, isoDay(new Date()), nonce), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+    const [doc, wx] = await Promise.all([store.get(DOC), nowWeather()]);
+    return secure(solarHtml(doc || {}, isoDay(new Date()), nonce, wx), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
   if (url.pathname === "/solar/report" || url.pathname === "/solar/report.xlsx") {
     if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);

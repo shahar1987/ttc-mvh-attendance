@@ -266,13 +266,14 @@ const TAB_ICON = {
 const cloud = (x, y, s, cls) => `<g class="cloud ${cls}" transform="translate(${x} ${y}) scale(${s})"><ellipse cx="0" cy="0" rx="30" ry="9"/><ellipse cx="-10" cy="-6" rx="13" ry="9"/><ellipse cx="9" cy="-8" rx="16" ry="11"/></g>`;
 const stars = [[30, 22], [72, 48], [118, 16], [160, 40], [206, 20], [250, 44], [296, 14], [338, 36], [380, 24], [52, 78], [226, 70], [368, 74]];
 // הגג על הגבעה. השמש והירח זזים על הקשת לפי השעה, בסקריפט שבתחתית הדף
-const scene = (status) => `<svg id="scene" class="${status === "fault" ? "off" : ""}" viewBox="0 0 400 190" preserveAspectRatio="xMidYMax slice" role="img" aria-label="בית עם פאנלים סולאריים">
+const scene = (status, wx) => `<svg id="scene" class="${status === "fault" ? "off" : ""}${wx ? ` wx-${wx}` : ""}" viewBox="0 0 400 190" preserveAspectRatio="xMidYMax slice" role="img" aria-label="בית עם פאנלים סולאריים">
 <defs><radialGradient id="glow"><stop offset="0" stop-color="#ffe9a8" stop-opacity=".85"/><stop offset=".35" stop-color="#ffd76a" stop-opacity=".32"/><stop offset="1" stop-color="#ffd76a" stop-opacity="0"/></radialGradient><linearGradient id="pv" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2d6fc4"/><stop offset="1" stop-color="#123a78"/></linearGradient></defs>
 <g id="stars">${stars.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i % 3 ? 0.9 : 1.4}" fill="#fff"/>`).join("")}</g>
 ${cloud(90, 52, 0.9, "c1")}${cloud(300, 30, 0.7, "c2")}
 <path class="arc" d="M40 150A160 115 0 0 1 360 150"/>
 <g id="orb" transform="translate(40 150)"><circle r="58" fill="url(#glow)"/><g id="rays" stroke="#ffd76a" stroke-width="2.4" stroke-linecap="round">${Array.from({ length: 8 }, (_, i) => `<path transform="rotate(${i * 45})" d="M0-22v-6"/>`).join("")}</g><circle id="disc" r="15" fill="#ffd25e"/></g>
-${cloud(190, 86, 0.6, "c3")}
+${cloud(190, 86, 0.6, "c3")}<g class="wx">${cloud(150, 40, 1.3, "c2")}${cloud(250, 64, 1.1, "c1")}${cloud(40, 30, 1, "c3")}</g>
+<g id="drops">${Array.from({ length: 26 }, (_, i) => `<path class="drop" style="animation-delay:-${((i * 37) % 90) / 100}s" d="M${8 + i * 15.5} ${40 + ((i * 53) % 70)}l-3 9"/>`).join("")}</g>
 <path class="far" d="M0 150 62 112l44 24 58-38 62 44 58-30 56 24 60-14v68H0Z"/>
 <path class="hill" d="M0 170C80 146 170 152 240 156S340 152 400 148v42H0Z"/>
 <g class="tree"><path d="M222 158c-6-14-5-32 1-42 6 10 7 28 1 42ZM374 154c-5-12-4-27 1-36 5 9 6 24 1 36Z"/></g>
@@ -319,15 +320,15 @@ export const logoMark = () => {
   const pt = (u, v) => `${(100 + (u - 0.5) * (84 + 80 * v)).toFixed(1)} ${(114 + 64 * v).toFixed(1)}`;
   const cells = [0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => {
     const [u0, u1, v0, v1] = [c / 4 + 0.012, (c + 1) / 4 - 0.012, rows[r] + 0.018, rows[r + 1] - 0.018];
-    return `<polygon class="cell" style="--d:${(2 - r) * 70 + Math.abs(c - 1.5) * 40 | 0}ms;--c:${r * 80 + 620}ms" points="${pt(u0, v0)} ${pt(u1, v0)} ${pt(u1, v1)} ${pt(u0, v1)}"/>`;
+    return `<polygon class="cell" style="--c:${(2 - r) * 90 + Math.abs(c - 1.5) * 50 + 120 | 0}ms" points="${pt(u0, v0)} ${pt(u1, v0)} ${pt(u1, v1)} ${pt(u0, v1)}"/>`;
   })).join("");
-  const rays = Array.from({ length: 7 }, (_, i) => `<g transform="rotate(${(i - 3) * 30} 100 110)"><path class="ray" style="--d:${Math.abs(i - 3) * 45 + 520}ms" d="M100 50V36"/></g>`).join("");
+  const rays = Array.from({ length: 7 }, (_, i) => `<g transform="rotate(${(i - 3) * 30} 100 110)"><path class="ray" style="--d:${Math.abs(i - 3) * 60 + 380}ms" d="M100 50V36"/></g>`).join("");
   return `<svg class="logo" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="ls" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset="1" stop-color="#ff8f3a"/></linearGradient><radialGradient id="lg"><stop offset="0" stop-color="#ffc861" stop-opacity=".55"/><stop offset="1" stop-color="#ffc861" stop-opacity="0"/></radialGradient><clipPath id="lc"><rect width="200" height="110"/></clipPath></defs><circle class="lglow" cx="100" cy="110" r="96" fill="url(#lg)"/><g fill="none" stroke="#ffd25e" stroke-width="7" stroke-linecap="round">${rays}</g><g clip-path="url(#lc)"><circle id="lsun" class="lsun" cx="100" cy="110" r="44" fill="url(#ls)"/></g>${cells}</svg>`;
 };
 
 const TABS = [["now", "עכשיו"], ["cmp", "השוואות"], ["roof", "הגג"], ["more", "פרטים"]];
 
-export function solarHtml(s, today, nonce = "") {
+export function solarHtml(s, today, nonce = "", wx = "") {
   const n = nonce ? ` nonce="${nonce}"` : "";
   const days = s.days || {};
   const end = addDays(today, -1);
@@ -429,8 +430,10 @@ body{margin:0;color:var(--t1);font:100%/1.45 -apple-system,BlinkMacSystemFont,"S
 .cloud{fill:#fff;fill-opacity:.62}.night .cloud{fill-opacity:.1}
 .c1{animation:drift 110s linear infinite}.c2{animation:drift 150s linear infinite reverse}.c3{animation:drift 190s linear infinite}
 #stars{opacity:0;transition:opacity 1.5s}.night #stars{opacity:1}
+.wx,#drops{display:none}.wx-rain .wx,.wx-overcast .wx,.wx-rain #drops{display:block}.wx-rain .cloud,.wx-overcast .cloud{fill:#cdd5e0;fill-opacity:.92}.night.wx-rain .cloud,.night.wx-overcast .cloud{fill:#55627a;fill-opacity:.85}.wx-rain #orb,.wx-overcast #orb{opacity:.35}.wx-rain #rays,.wx-overcast #rays,.wx-rain .shine,.wx-overcast .shine,.wx-rain #stars,.wx-overcast #stars{display:none}
+.drop{stroke:#cfe3ff;stroke-width:1.3;stroke-linecap:round;stroke-opacity:.75;animation:fall .8s linear infinite}@keyframes fall{from{translate:4px -50px}to{translate:-12px 80px}}
 @keyframes spin{to{rotate:360deg}}@keyframes flow{to{stroke-dashoffset:-20}}@keyframes shine{0%,62%{translate:-30px 0;opacity:0}70%{opacity:1}100%{translate:150px 0;opacity:0}}@keyframes drift{from{translate:-24px 0}to{translate:24px 0}}
-.quiet .shine,.quiet .flow,.quiet .cloud,.quiet #rays{animation-play-state:paused}
+.quiet .shine,.quiet .flow,.quiet .cloud,.quiet #rays,.quiet .drop{animation-play-state:paused}
 #pager{position:relative}
 .panel{padding:calc(env(safe-area-inset-top) + 64px) 16px 28px}
 .inner{max-width:560px;margin:auto;display:grid;gap:12px;min-width:0}
@@ -471,12 +474,12 @@ svg text{fill:var(--t2);font-size:13px}.more svg{display:block;width:100%;height
 table{width:100%;border-collapse:collapse;font-size:.86rem}th,td{padding:7px 4px;border-bottom:.5px solid var(--line);text-align:right;white-space:nowrap}th{color:var(--t2);font-weight:500}.scroll{overflow-x:auto}
 #tip{position:fixed;display:none;z-index:9;background:#fff;color:#0d1b33;padding:6px 10px;border-radius:10px;font-size:.85rem;pointer-events:none;max-width:80vw}
 #tabs,#mini,#fade,#splash{display:none}
-.js #splash{display:grid;position:fixed;inset:0;z-index:20;place-content:center;justify-items:center;gap:6px;background:radial-gradient(circle at 50% 42%,#15397a,#071226 72%);-webkit-mask-image:radial-gradient(circle at var(--cx,50%) var(--cy,44%),transparent calc(var(--r,0px) - 70px),#000 var(--r,0px));mask-image:radial-gradient(circle at var(--cx,50%) var(--cy,44%),transparent calc(var(--r,0px) - 70px),#000 var(--r,0px))}.js.seen #splash{display:none}
+.js #splash{display:grid;position:fixed;inset:0;z-index:20;place-content:center;justify-items:center;gap:6px;background:#071226;-webkit-mask-image:radial-gradient(circle at var(--cx,50%) var(--cy,44%),transparent calc(var(--r,0px) - 70px),#000 var(--r,0px));mask-image:radial-gradient(circle at var(--cx,50%) var(--cy,44%),transparent calc(var(--r,0px) - 70px),#000 var(--r,0px))}.js.seen #splash{display:none}
 .logo{width:min(52vw,210px);display:block;overflow:visible;transition:transform .7s cubic-bezier(.2,.9,.25,1)}#splash.out .logo{transform:scale(1.22)}#splash.out{pointer-events:none}
-#splash b{font-size:1.5rem;font-weight:600;color:#fff;animation:word .7s cubic-bezier(.2,.9,.25,1) .85s both}
-.cell{fill:#17427f;stroke:#7fb4ec;stroke-width:.8;stroke-linejoin:round;transform-box:fill-box;transform-origin:center;animation:cell .5s cubic-bezier(.2,1.25,.4,1) var(--d) both,charge .7s ease-out var(--c) both}
-.lsun{animation:rise .85s cubic-bezier(.2,1.12,.35,1) .3s both}.lglow{transform-origin:100px 110px;animation:glow 1s ease-out .45s both}.ray{animation:ray .5s cubic-bezier(.2,1.3,.4,1) var(--d) both}
-@keyframes cell{from{opacity:0;transform:translateY(16px) scale(.72)}}@keyframes charge{35%{fill:#ffc861;stroke:#fff3c9}}@keyframes rise{from{transform:translateY(62px)}}@keyframes glow{from{opacity:0;transform:scale(.5)}}@keyframes ray{from{opacity:0;transform:translateY(16px)}}@keyframes word{from{opacity:0;transform:translateY(10px);letter-spacing:.12em}}
+#splash b{font-size:1.5rem;font-weight:600;color:#fff}
+.cell{fill:#17427f;stroke:#7fb4ec;stroke-width:.8;stroke-linejoin:round;transform-box:fill-box;transform-origin:center;animation:charge .8s ease-in-out var(--c) both}
+.lsun{animation:rise 1.1s cubic-bezier(.3,0,.3,1) .05s both}.lglow{transform-origin:100px 110px;animation:glow 1.2s ease-in-out .2s both}.ray{animation:ray .7s cubic-bezier(.2,1.3,.4,1) var(--d) both}
+@keyframes charge{40%{fill:#ffc861;stroke:#fff3c9}}@keyframes rise{45%{transform:translateY(7px)}}@keyframes glow{50%{transform:scale(1.3)}}@keyframes ray{50%{transform:translateY(-7px)}}
 @media(max-width:480px){.more svg text{font-size:21px}}
 .js body{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none}
 .js #pager{position:fixed;inset:0;overflow:hidden}
@@ -492,11 +495,11 @@ button:focus-visible,summary:focus-visible{outline:2px solid #fff;outline-offset
 .js .r{opacity:0;transform:translateY(22px) scale(.975);transition:opacity .55s cubic-bezier(.2,.9,.25,1),transform .7s cubic-bezier(.2,.9,.25,1)}.js .r.in{opacity:1;transform:none}
 .js .r .grow{transform:scaleX(0);transform-origin:right;transition:transform .9s cubic-bezier(.2,.9,.25,1) .12s}.js .r.in .grow{transform:none}
 .js .hero>*{opacity:0;transform:translateY(14px);transition:opacity .7s,transform .9s cubic-bezier(.2,.9,.25,1)}.js.ready .hero>*{opacity:1;transform:none}.hero>:nth-child(2){transition-delay:.06s}.hero>:nth-child(3){transition-delay:.12s}.hero>:nth-child(4){transition-delay:.2s}.hero>:nth-child(5){transition-delay:.26s}
-@media (prefers-reduced-motion:reduce){.js #splash{display:none}.shine,.flow,#rays,.cloud{animation:none}.js .r,.js .r .grow,.js .hero>*{transition:opacity .2s;transform:none}.more{animation:none}}
+@media (prefers-reduced-motion:reduce){.js #splash{display:none}.shine,.flow,#rays,.cloud,.drop{animation:none}.js .r,.js .r .grow,.js .hero>*{transition:opacity .2s;transform:none}.more{animation:none}}
 @media (prefers-reduced-transparency:reduce){.card,.js #tabs,.js #mini{background:#15233f;-webkit-backdrop-filter:none;backdrop-filter:none}}
 @media (prefers-contrast:more){.card,.js #tabs,.js #mini{background:#0a1428;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 1px #fff}}
 </style>
-<div id="splash">${logoMark()}<b>הגג שלי</b></div><div id="sky"></div><div id="world">${scene(v.status)}</div><div id="scrim"></div>
+<div id="splash">${logoMark()}<b>הגג שלי</b></div><div id="sky"></div><div id="world">${scene(v.status, wx)}</div><div id="scrim"></div>
 <main id="pager"><div id="track">${panels.map((p, i) => `<div class="panel" id="p-${TABS[i][0]}" data-title="${esc(titles[i])}" style="transform:translateX(${-i * 100}%)"><div class="inner">${p}</div></div>`).join("")}</div></main>
 <div id="fade"></div><div id="mini" aria-hidden="true"></div>
 <nav id="tabs"><div id="lens"></div><div id="tl" role="tablist">${TABS.map(([id, label], i) => `<button role="tab" data-p="${id}" aria-selected="${i === 0}"><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICON[id]}</svg>${label}</button>`).join("")}</div></nav>
@@ -512,14 +515,14 @@ const spring=(x,f,r=.4,z=1,e=.001)=>({x,v:0,to:x,f,r,z,e,go(to,v=0,r2,z2){this.t
 const rubber=(o,d)=>(o*d*.55)/(d+.55*Math.abs(o));
 
 // השמיים לפי השעה: מיקום השמש מחושב מקו הרוחב והאורך של האזור
-const SKY={night:[[9,14,36],[22,32,72],[44,52,100]],low:[[36,48,110],[186,92,122],[255,178,110]],day:[[15,95,191],[42,128,216],[111,182,238]]};
+const SKY={night:[[9,14,36],[22,32,72],[44,52,100]],low:[[36,48,110],[186,92,122],[255,178,110]],day:[[15,95,191],[42,128,216],[111,182,238]],wet:[[62,74,92],[96,108,126],[138,148,162]],wetNight:[[14,18,28],[28,34,48],[46,52,66]]};
 const mix=(a,b,t)=>a.map((c,i)=>c.map((v,j)=>Math.round(v+(b[i][j]-v)*t)));
 const css=(c)=>"rgb("+c.join(",")+")";
 const scene=$("#scene"),orb=$("#orb"),disc=$("#disc");
 const place=(t)=>{const p=Math.PI*t;orb.setAttribute("transform","translate("+(200-160*Math.cos(p)).toFixed(1)+" "+(150-115*Math.sin(p)).toFixed(1)+")")};
 const sun=spring(0,place,1.5,1,.0005);
 const sky=()=>{const now=Date.now(),d=new Date(now),day=Math.floor((now-Date.UTC(d.getUTCFullYear(),0,0))/864e5),B=2*Math.PI*(day-81)/364,eot=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B),decl=-.4091*Math.cos(2*Math.PI*(day+10)/365),half=Math.acos(-Math.tan(.5794)*Math.tan(decl))*720/Math.PI,noon=720-35.65*4-eot,rise=noon-half,set=noon+half,m=now%864e5/6e4,isDay=m>=rise&&m<=set,t=isDay?(m-rise)/(set-rise):((m<rise?m+1440:m)-set)/(rise+1440-set),a=Math.sin(Math.PI*t)*(isDay?1:-1);
-const c=a<0?mix(SKY.low,SKY.night,clamp(-a/.3,0,1)):mix(SKY.low,SKY.day,clamp(a/.4,0,1));
+let c=a<0?mix(SKY.low,SKY.night,clamp(-a/.3,0,1)):mix(SKY.low,SKY.day,clamp(a/.4,0,1));if(/wx-/.test(scene.getAttribute("class")))c=mix(c,a<0?SKY.wetNight:SKY.wet,.75);
 $("#sky").style.background="linear-gradient("+css(c[0])+","+css(c[1])+" 34%,"+css(c[2])+" 60%)";
 root.style.setProperty("--g",css(mix([c[0].map((v)=>v*.42)],[[10,26,54]],.45)[0]));
 $("#tc").content=css(c[0]);scene.classList.toggle("night",!isDay);$("#rays").style.display=isDay?"":"none";disc.setAttribute("fill",isDay?"#ffd25e":"#e8edf7");disc.setAttribute("r",isDay?15:12);orb.firstChild.setAttribute("opacity",isDay?1:.3);sun.go(t)};

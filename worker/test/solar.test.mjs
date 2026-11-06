@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay } from "../src/solar.js";
+import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay, skyKind } from "../src/solar.js";
 import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages, why, comparisons, forecast } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
@@ -361,4 +361,14 @@ console.log("solar ok");
   assert.equal(xl[0], 0x50, "ZIP");
   assert.ok(new TextDecoder().decode(xl).includes("SUM('פירוט'!B5:B35)"), "הנוסחאות על שורות הנתונים");
   assert.ok(!/NaN|undefined/.test(reportHtml(r, "n")));
+}
+
+// השמיים בדשבורד מראים גשם ועננות
+{
+  assert.equal(skyKind({ weather_code: 61, precipitation: 0.4 }), "rain");
+  assert.equal(skyKind({ weather_code: 2, precipitation: 0.2 }), "rain");
+  assert.equal(skyKind({ weather_code: 3, precipitation: 0 }), "overcast");
+  assert.equal(skyKind({ weather_code: 1, precipitation: 0, cloud_cover: 20 }), "");
+  assert.equal(skyKind(undefined), "");
+  assert.match(solarHtml({}, "2026-11-06", "", "rain"), /id="scene" class=" wx-rain"/);
 }
