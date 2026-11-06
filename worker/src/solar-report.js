@@ -4,8 +4,18 @@ import { why } from "./solar-dashboard.js";
 import { esc } from "./dashboard.js";
 
 const MONTH = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
-export const DEFAULT_RATE = 0.48; // תעריף מובטח לבית עד 15 קילוואט, 2026. הבעלים משנה דרך שולה (solar_rate)
-export const money = (s) => ({ rate: s.rate > 0 ? s.rate : DEFAULT_RATE, fixed: s.fixed > 0 ? s.fixed : 0 });
+// מסלול ירוק עם מונה דו-כיווני: מה שהגג מזרים לרשת מזוכה בתעריף המובטח, ומה שהבית צורך ישירות מהגג חוסך את מחיר החשמל.
+// ברירות המחדל: תעריף 48 אג׳ (2026, עד 15 קילוואט), תעריף ביתי 53.83 אג׳ ועוד מע״מ, ו-25% צריכה עצמית (ההנחה בתחזית של המתקין).
+// הבעלים מעדכן דרך שולה (solar_rate). shortcut: הצריכה העצמית היא אחוז קבוע, עד שיהיה מונה צריכה או קריאה מחשבון החשמל
+export const DEFAULT_RATE = 0.48;
+export const SELF_RATE = 0.6352;
+export const SELF_SHARE = 0.25;
+export const money = (s) => {
+  const exportRate = s.rate > 0 ? s.rate : DEFAULT_RATE;
+  const selfRate = s.selfRate > 0 ? s.selfRate : SELF_RATE;
+  const selfShare = s.selfShare >= 0 && s.selfShare <= 1 ? s.selfShare : SELF_SHARE;
+  return { exportRate, selfRate, selfShare, rate: (1 - selfShare) * exportRate + selfShare * selfRate, fixed: s.fixed > 0 ? s.fixed : 0 };
+};
 const pct = (a, b) => (a != null && b > 0 ? Math.round((a / b - 1) * 100) : null);
 const total = (xs, f) => (xs.some((x) => x[f] != null) ? xs.reduce((t, x) => t + (x[f] || 0), 0) : null);
 const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -32,7 +42,8 @@ export function reportData(s, period, today) {
   const rows = period.length === 4
     ? Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => `${y}-${pad(m)}-01` <= last).map((m) => ({ label: MONTH[m - 1], ...pick(monthKeys(m)) }))
     : monthKeys(+period.slice(5)).map((k) => ({ label: `${+k.slice(8)}.${+k.slice(5, 7)}`, date: k, ...pick([k]) }));
-  const { rate, fixed } = money(s);
+  const m$ = money(s);
+  const { rate, fixed } = m$;
   const months = period.length === 4 ? rows.length : 1;
   const sumOf = (f) => total(rows, f);
   const kwh = sumOf("kwh");
@@ -46,7 +57,7 @@ export function reportData(s, period, today) {
   const worst = scored.reduce((a, r) => (!a || r.kwh < a.kwh ? r : a), null);
   const open = period === today.slice(0, period.length);
   return {
-    period, title: `דוח ייצור, ${periodName(period)}`, yearly: period.length === 4, open, rows, rate, fixed, months,
+    period, title: `דוח ייצור, ${periodName(period)}`, yearly: period.length === 4, open, rows, ...m$, months,
     kwh, prev, rad, radPrev, change, sunChange: pct(rad, radPrev), why: why(change, pct(rad, radPrev)),
     gross: kwh == null ? null : kwh * rate, net: kwh == null ? null : kwh * rate - fixed * months,
     netPrev: prev == null ? null : prev * rate - fixed * months, best, worst, withData: scored.length,
@@ -55,11 +66,22 @@ export function reportData(s, period, today) {
 
 // כמה כסף: היום, החודש עד אתמול, מתחילת השנה מול אותם ימים אשתקד. אותו חישוב כמו הדוחות
 export function earnings(s, today) {
-  const { rate, fixed } = money(s);
+  const { rate, fixed, exportRate, selfShare } = money(s);
   const m = reportData(s, today.slice(0, 7), today);
   const y = reportData(s, today.slice(0, 4), today);
   const t = s.today?.day === today && s.today.kwh != null ? s.today.kwh * rate : null;
-  return { rate, fixed, today: t, month: m.net, year: y.net, yearChange: y.change };
+  // החזר ההשקעה: כל הייצור מאז ההפעלה, וקצב השנה האחרונה לצפי
+  let back = null;
+  if (s.invest > 0 && s.since) {
+    const all = Object.entries(s.days || {}).filter(([k, d]) => k >= s.since && k < today && d.kwh != null);
+    const earned = all.reduce((x, [, d]) => x + d.kwh * rate, 0) - fixed * (all.length / 30.4);
+    const yearAgo = addDays(today, -365);
+    const lastYear = all.filter(([k]) => k >= yearAgo);
+    const perDay = lastYear.length >= 60 ? (lastYear.reduce((x, [, d]) => x + d.kwh * rate, 0) - fixed * (lastYear.length / 30.4)) / lastYear.length : null;
+    const left = s.invest - earned;
+    back = { earned, invest: s.invest, share: earned / s.invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
+  }
+  return { rate, fixed, exportRate, selfShare, today: t, month: m.net, year: y.net, yearChange: y.change, back, expected: s.expectedKwh > 0 ? s.expectedKwh : null, yearKwh: y.kwh };
 }
 
 export const reportLinks = (today) => {
@@ -109,7 +131,7 @@ tfoot td{font-weight:700;border-top:2px solid #0f5fbf;background:#eef3fb!importa
 <div class="say"><b>${r.change == null ? "אין עדיין השוואה לשנה שעברה." : r.change >= 0 ? `הגג ייצר ${r.change}% יותר מאשתקד.` : `הגג ייצר ${-r.change}% פחות מאשתקד.`}</b>${esc(r.why || "")}${r.best && r.worst && r.best !== r.worst ? ` ה${head} הכי חזק: ${esc(r.best.label)} (${n(r.best.kwh, 1)} קוט״ש). הכי חלש: ${esc(r.worst.label)} (${n(r.worst.kwh, 1)}).` : ""}</div>
 <table><thead><tr><th>${head}</th><th>קוט״ש</th><th>אשתקד</th><th>שינוי</th><th>הכנסה</th><th>שמש</th><th>חום</th><th>גשם</th></tr></thead><tbody>${body}</tbody>
 <tfoot><tr><td>סה״כ</td><td>${n(r.kwh, 1)}</td><td>${n(r.prev, 1)}</td><td>${delta(r.change)}</td><td>${ils(r.gross)}</td><td>${n(r.rad, 0)}</td><td></td><td></td></tr></tfoot></table>
-<p class="note">הכנסה לפי ${n(r.rate * 100, 1)} אגורות לקוט״ש${r.fixed ? `, פחות ניכוי קבוע של ${ils(r.fixed)} בחודש` : ""}. שמש: קרינה יומית במג׳ול למ״ר (Open-Meteo). ייצור: SolarEdge. השוואה לאשתקד על אותם תאריכים בדיוק.</p>
+<p class="note">הכנסה לפי ${n(r.rate * 100, 1)} אגורות לקוט״ש בממוצע: ${Math.round((1 - r.selfShare) * 100)}% מהייצור מוזרם לרשת ב-${n(r.exportRate * 100, 0)} אג׳, ו-${Math.round(r.selfShare * 100)}% נצרך בבית וחוסך ${n(r.selfRate * 100, 1)} אג׳ כולל מע״מ${r.fixed ? `, פחות ניכוי קבוע של ${ils(r.fixed)} בחודש` : ""}. שמש: קרינה יומית במג׳ול למ״ר (Open-Meteo). ייצור: SolarEdge. השוואה לאשתקד על אותם תאריכים בדיוק.</p>
 </div>
 <script nonce="${nonce}">document.getElementById("print").addEventListener("click",()=>print())</script></html>`;
 }
@@ -155,7 +177,7 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F5FBF"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEEF3FB"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF4D6"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF4F7FC"/></patternFill></fill></fills>
 <borders count="3"><border/><border><bottom style="thin"><color rgb="FFE1E7F0"/></bottom></border><border><top style="medium"><color rgb="FF0F5FBF"/></top></border></borders>
 <cellStyleXfs count="1"><xf/></cellStyleXfs>
-<cellXfs count="18">
+<cellXfs count="19">
 <xf/>
 <xf fontId="1" applyFont="1"/>
 <xf fontId="2" fillId="2" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -174,6 +196,7 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xf numFmtId="166" fontId="3" fillId="4" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
 <xf fontId="3" fillId="3" borderId="2" applyFont="1" applyFill="1" applyBorder="1"/>
 <xf fontId="6" fillId="4" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+<xf numFmtId="9" fontId="3" fillId="4" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 <dxfs count="2"><dxf><font><b/><color rgb="FF15803D"/></font></dxf><dxf><font><b/><color rgb="FFB45309"/></font></dxf></dxfs>
@@ -206,12 +229,12 @@ export function reportXlsx(r) {
   // פירוט: יום או חודש בכל שורה, עם נוסחאות שינוי והכנסה שמפנות לתעריף בגיליון הסיכום
   const detail = [
     [[`${r.title} — פירוט`, 1]],
-    [[`השוואה לאותם תאריכים אשתקד. הכנסה לפי התעריף שבגיליון "סיכום" (תא B13).`, 12]],
+    [[`השוואה לאותם תאריכים אשתקד. הכנסה לפי השווי לקוט״ש שבגיליון "סיכום" (תא B17).`, 12]],
     [],
     [[r.yearly ? "חודש" : "תאריך", 2], ["קוט״ש", 2], ["קוט״ש אשתקד", 2], ["שינוי", 2], ["הכנסה (₪)", 2], ["שמש (MJ/מ״ר)", 2], ["שמש אשתקד", 2], ["חום מרבי (°C)", 2], ["גשם (מ״מ)", 2]],
     ...r.rows.map((row, i) => {
       const n = first + i;
-      return [[r.yearly ? row.label : serial(row.date), r.yearly ? 3 : 7], [row.kwh, 4], [row.prev, 4], [{ f: `IF(AND(ISNUMBER(B${n}),ISNUMBER(C${n}),C${n}>0),B${n}/C${n}-1,"")` }, 5], [{ f: `IF(ISNUMBER(B${n}),B${n}*'סיכום'!$B$13,"")` }, 6], [row.rad, 13], [row.radPrev, 13], [row.tmax, 4], [row.rain, 4]];
+      return [[r.yearly ? row.label : serial(row.date), r.yearly ? 3 : 7], [row.kwh, 4], [row.prev, 4], [{ f: `IF(AND(ISNUMBER(B${n}),ISNUMBER(C${n}),C${n}>0),B${n}/C${n}-1,"")` }, 5], [{ f: `IF(ISNUMBER(B${n}),B${n}*'סיכום'!$B$17,"")` }, 6], [row.rad, 13], [row.radPrev, 13], [row.tmax, 4], [row.rain, 4]];
     }),
     [["סה״כ", 16], [{ f: `SUM(B${first}:B${lastRow})` }, 9], [{ f: `SUM(C${first}:C${lastRow})` }, 9], [{ f: `IF(C${totalRow}>0,SUMIF(C${first}:C${lastRow},"<>",B${first}:B${lastRow})/C${totalRow}-1,"")` }, 11], [{ f: `SUM(E${first}:E${lastRow})` }, 10], [{ f: `SUM(F${first}:F${lastRow})` }, 9], [{ f: `SUM(G${first}:G${lastRow})` }, 9], ["", 16], [{ f: `SUM(I${first}:I${lastRow})` }, 9]],
   ];
@@ -225,14 +248,17 @@ export function reportXlsx(r) {
     [["", 2], ["התקופה", 2], ["אשתקד", 2], ["שינוי", 2]],
     [["ייצור (קוט״ש)", 8], [{ f: `SUM(${rng("B")})` }, 14], [{ f: `SUM(${rng("C")})` }, 4], [{ f: `'${D}'!D${totalRow}` }, 5]],
     [["שמש באזור (MJ/מ״ר)", 8], [{ f: `SUM(${rng("F")})` }, 13], [{ f: `SUM(${rng("G")})` }, 13], [ifs("B6", "C6"), 5]],
-    [["הכנסה ברוטו (₪)", 8], [{ f: "B5*$B$13" }, 6], [{ f: "C5*$B$13" }, 6], [{ f: "D5" }, 5]],
-    [["ניכויים קבועים (₪)", 8], [{ f: `$B$14*${r.months}` }, 6], [{ f: `$B$14*${r.months}` }, 6], ["", 3]],
+    [["הכנסה ברוטו (₪)", 8], [{ f: "B5*$B$17" }, 6], [{ f: "C5*$B$17" }, 6], [{ f: "D5" }, 5]],
+    [["ניכויים קבועים (₪)", 8], [{ f: `$B$16*${r.months}` }, 6], [{ f: `$B$16*${r.months}` }, 6], ["", 3]],
     [["הכנסה נקייה (₪)", 16], [{ f: "B7-B8" }, 10], [{ f: "C7-C8" }, 10], [{ f: "D5" }, 11]],
     [[r.yearly ? "חודשים עם נתונים" : "ימים עם נתונים", 8], [r.yearly ? r.withData : { f: `COUNT(${rng("B")})` }, 13], ["", 3], ["", 3]],
     [],
     [["הנחות החישוב", 8], ["", 8], ["", 8], ["", 8]],
-    [["תעריף לקוט״ש (₪)", 3], [r.rate, 15], ["אפשר לשנות כאן, וכל הדוח מתעדכן", 12]],
-    [["ניכוי קבוע לחודש (₪)", 3], [r.fixed, 15], ["דמי ניהול או קריאת מונה מחשבון היצרן", 12]],
+    [["תעריף הזנה לרשת (₪ לקוט״ש)", 3], [r.exportRate, 15], ["התעריף המובטח מחברת החשמל", 12]],
+    [["חשמל שנחסך (₪ לקוט״ש)", 3], [r.selfRate, 15], ["מחיר החשמל הביתי כולל מע״מ", 12]],
+    [["חלק הייצור שנצרך בבית", 3], [r.selfShare, 18], ["כל השאר מוזרם לרשת", 12]],
+    [["ניכוי קבוע לחודש (₪)", 3], [r.fixed, 15], ["אם יש בחשבון היצרן", 12]],
+    [["שווי ממוצע לקוט״ש (₪)", 16], [{ f: "(1-B15)*B13+B15*B14" }, 10], ["משנים את התאים הצהובים, וכל הדוח מתעדכן", 12]],
     [],
     [[`${r.change == null ? "אין עדיין השוואה לשנה שעברה." : r.change >= 0 ? `הגג ייצר ${r.change}% יותר מאשתקד.` : `הגג ייצר ${-r.change}% פחות מאשתקד.`} ${r.why || ""}${r.best && r.worst && r.best !== r.worst ? ` הכי חזק: ${r.best.label} (${r.best.kwh.toFixed(1)} קוט״ש). הכי חלש: ${r.worst.label} (${r.worst.kwh.toFixed(1)}).` : ""}`, 17], ["", 17], ["", 17], ["", 17]],
   ];
@@ -243,7 +269,7 @@ export function reportXlsx(r) {
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="סיכום" sheetId="1" r:id="rId1"/><sheet name="${D}" sheetId="2" r:id="rId2"/></sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`],
     ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml", STYLES],
-    ["xl/worksheets/sheet1.xml", sheet(summary, { cols: [26, 16, 16, 12], merges: ["A1:D1", "A2:D2", "A16:D16", "C13:D13", "C14:D14"], extra: sumCf, heights: { 1: 30, 16: 64 } })],
+    ["xl/worksheets/sheet1.xml", sheet(summary, { cols: [26, 16, 16, 12], merges: ["A1:D1", "A2:D2", "A19:D19", "C13:D13", "C14:D14", "C15:D15", "C16:D16", "C17:D17"], extra: sumCf, heights: { 1: 30, 19: 64 } })],
     ["xl/worksheets/sheet2.xml", sheet(detail, { cols: [13, 11, 13, 10, 12, 13, 13, 13, 11], merges: ["A1:I1", "A2:I2"], freeze: first, extra: cf, wide: true, heights: { 1: 30, 4: 32 } })],
   ];
   return zip(files);

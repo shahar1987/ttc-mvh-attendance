@@ -20,7 +20,9 @@ const DAILY = "shortwave_radiation_sum,temperature_2m_max,precipitation_sum";
 const KEEP_DAYS = 800;
 const CLOUDY_MJ = 8; // יום מתחת לזה כמעט לא אומר כלום על הגג
 const MIN_BASELINE = 10;
-const YEAR_WINDOWS = 13;
+const YEAR_WINDOWS = 20; // כ-600 יום: שנה להשוואה, ועוד מספיק אחורה לחישוב החזר ההשקעה מיום ההפעלה
+// משיכה שהסתיימה עם פחות חלונות (גרסה קודמת) ממשיכה מאיפה שנעצרה
+const full = (s) => !!s.backfilled && (s.backfillIdx ?? YEAR_WINDOWS) >= YEAR_WINDOWS;
 const BATCH = 6; // המסלול החינמי: 10 קריאות בדקה. שאר השנה נמשך בריצות הבאות
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" });
@@ -147,7 +149,7 @@ async function collect(s, token, today) {
   const put = (k, x) => { if (k < today) days[k] = { ...days[k], ...Object.fromEntries(Object.entries(x).filter(([, v]) => v != null)) }; };
   const recent = [addDays(today, -9), today];
   const year = Array.from({ length: YEAR_WINDOWS }, (_, i) => [addDays(today, -30 * (i + 1)), addDays(today, -30 * i)]);
-  const windows = s.backfilled ? [recent] : from ? [recent, ...year.slice(from, from + BATCH - 1)] : year.slice(0, BATCH);
+  const windows = full(s) ? [recent] : from ? [recent, ...year.slice(from, from + BATCH - 1)] : year.slice(0, BATCH);
   let ok = 0;
   for (const [a, b] of windows) {
     try {
@@ -200,7 +202,7 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
   await store.update(DOC, (cur) => {
     if (!cur.refreshToken) return null;
     const done = cur.lastRunDay === today && !cur.lastError;
-    if (done && cur.backfilled) {
+    if (done && full(cur)) {
       if (cur.todayHour === hour) return null;
       s = cur;
       hourly = true;
@@ -219,8 +221,8 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     const alerts = await openAlerts(s, token);
     const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
     const gear = sunday || s.panels == null ? await equipment(s, token) : null;
-    await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
-    if (s.backfilled) await todayUpdate(s, token, store, today, now); // באמצע משיכת השנה כבר קרובים ל-10 קריאות בדקה
+    await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: full(s) ? YEAR_WINDOWS : next, backfilled: full(s) || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
+    if (full(s)) await todayUpdate(s, token, store, today, now); // באמצע משיכת השנה כבר קרובים ל-10 קריאות בדקה
     const fault = hardFault(days, today);
     const sent = [];
     if (fault && !quiet) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
@@ -388,8 +390,8 @@ export const SOLAR_TOOL_DEFS = [
   },
   {
     name: "solar_rate",
-    description: "מעדכן כמה הגג מרוויח לקוט\"ש, לחישוב השקלים בדשבורד ובדוחות. agorot: התעריף באגורות לקוט\"ש (למשל 48). fixed: ניכוי קבוע בשקלים לחודש מחשבון היצרן (דמי ניהול, קריאת מונה), 0 אם אין. רק כשהבעלים אומר מספר.",
-    input_schema: { type: "object", properties: { agorot: { type: "number" }, fixed: { type: "number" } }, required: ["agorot"], additionalProperties: false },
+    description: "מעדכן את נתוני הכסף של הגג לדשבורד ולדוחות. כל שדה רשות, רק מה שהבעלים אמר. agorot: תעריף ההזנה לרשת באגורות לקוט\"ש (למשל 48). self_agorot: מחיר החשמל הביתי כולל מע\"מ באגורות. self_share: כמה אחוז מהייצור הבית צורך ישירות (0-100). fixed: ניכוי קבוע בשקלים לחודש. invest: כמה עלתה המערכת בשקלים, כולל תוספות. since: תאריך ההפעלה YYYY-MM-DD. expected_kwh: תחזית ייצור שנתית מהמתקין.",
+    input_schema: { type: "object", properties: { agorot: { type: "number" }, self_agorot: { type: "number" }, self_share: { type: "number" }, fixed: { type: "number" }, invest: { type: "number" }, since: { type: "string" }, expected_kwh: { type: "number" } }, additionalProperties: false },
   },
   {
     name: "solar_logout",
@@ -404,10 +406,14 @@ export const makeSolarTools = ({ store, origin }) => ({
   async solar_dashboard() {
     return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
   },
-  async solar_rate({ agorot, fixed }) {
-    if (!(agorot > 0 && agorot < 300) || (fixed != null && !(fixed >= 0 && fixed < 1000))) return "המספר לא נראה נכון. התעריף באגורות לקוט\"ש, בדרך כלל בין 20 ל-100.";
-    await store.merge(DOC, { rate: agorot / 100, ...(fixed != null ? { fixed } : {}) });
-    return `עודכן: ${agorot} אגורות לקוט"ש${fixed != null ? `, ניכוי קבוע ${fixed} ₪ בחודש` : ""}. הדשבורד והדוחות מחושבים לפי זה.`;
+  async solar_rate({ agorot, self_agorot, self_share, fixed, invest, since, expected_kwh }) {
+    const ok = (v, lo, hi) => v == null || (typeof v === "number" && v >= lo && v <= hi);
+    if (!ok(agorot, 1, 300) || !ok(self_agorot, 1, 300) || !ok(self_share, 0, 100) || !ok(fixed, 0, 1000) || !ok(invest, 1000, 2e6) || !ok(expected_kwh, 100, 1e6) || (since != null && !/^20\d\d-\d\d-\d\d$/.test(since)))
+      return "אחד המספרים לא נראה נכון. תעריפים באגורות לקוט\"ש, צריכה עצמית באחוזים, השקעה בשקלים ותאריך YYYY-MM-DD.";
+    const patch = Object.fromEntries(Object.entries({ rate: agorot && agorot / 100, selfRate: self_agorot && self_agorot / 100, selfShare: self_share != null ? self_share / 100 : null, fixed, invest, since, expectedKwh: expected_kwh }).filter(([, v]) => v != null));
+    if (!Object.keys(patch).length) return "לא נמסר שום נתון לעדכון.";
+    await store.merge(DOC, patch);
+    return `עודכן: ${Object.keys(patch).join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
   },
   async solar_logout() {
     await store.merge(AUTH, { sessions: [] });

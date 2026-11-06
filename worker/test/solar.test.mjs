@@ -64,6 +64,15 @@ const api = (log, tokenRes) => async (url, init) => {
 };
 const at = new Date("2026-11-08T05:10:00Z");
 
+// משיכה ישנה של 13 חלונות ממשיכה אחורה עד 20
+{
+  const store = fakeStore({ refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", backfilled: true, backfillIdx: 13, lastRunDay: "2026-11-05", connectedAt: "2026-11-01T00:00:00Z" });
+  const log = [];
+  globalThis.fetch = api(log, () => json({ access_token: "a", refresh_token: "r2" }));
+  await solarRun(store, async () => {}, new Date("2026-11-06T05:10:00Z"));
+  assert.equal(log.filter((u) => u.includes("/energy?")).length, 6, "הימים האחרונים ועוד 5 חלונות ישנים");
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 18);
+}
 // ריצה רגילה: אסימון מתחלף נשמר, פעמיים באותו יום לא נוגע בו, ויום ראשון שולח דוח
 {
   const store = fakeStore({ refreshToken: "r1", clientId: "c", clientSecret: "s", siteId: "9", backfilled: true, connectedAt: "2026-11-01T00:00:00Z" });
@@ -162,8 +171,11 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(store.docs["agentReports/solar"].backfillIdx, 11);
   store.docs["agentReports/solar"].lastRunDay = "";
   await solarRun(store, quiet, new Date("2026-11-07T05:10:00Z"));
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 16);
+  store.docs["agentReports/solar"].lastRunDay = "";
+  await solarRun(store, quiet, new Date("2026-11-08T05:10:00Z"));
   assert.equal(store.docs["agentReports/solar"].backfilled, true);
-  assert.equal(store.docs["agentReports/solar"].backfillIdx, 13);
+  assert.equal(store.docs["agentReports/solar"].backfillIdx, 20, "כ-600 יום אחורה");
 
   let fail = true;
   const good = api([], () => json({ access_token: "a", refresh_token: "r3" }));
@@ -324,7 +336,7 @@ console.log("solar ok");
   const { reportData, reportXlsx, reportHtml, earnings, validPeriod, money } = await import("../src/solar-report.js");
   const days = {};
   for (let i = 1; i <= 31; i++) { days[`2026-10-${String(i).padStart(2, "0")}`] = { kwh: 20, rad: 15 }; days[`2025-10-${String(i).padStart(2, "0")}`] = { kwh: 16, rad: 15 }; }
-  const s = { days, rate: 0.5, fixed: 10, today: { day: "2026-11-08", kwh: 4 } };
+  const s = { days, rate: 0.5, selfShare: 0, fixed: 10, today: { day: "2026-11-08", kwh: 4 } };
   const r = reportData(s, "2026-10", "2026-11-08");
   assert.equal(r.kwh, 620);
   assert.equal(r.change, 25);
@@ -332,7 +344,10 @@ console.log("solar ok");
   const open = reportData(s, "2026-11", "2026-11-03");
   assert.equal(open.rows.length, 2, "חודש פתוח: רק עד אתמול");
   assert.equal(earnings(s, "2026-11-08").today, 2);
-  assert.equal(money({}).rate, 0.48);
+  assert.equal(money({ selfShare: 0 }).rate, 0.48);
+  assert.ok(Math.abs(money({}).rate - (0.75 * 0.48 + 0.25 * 0.6352)) < 1e-9, "מסלול ירוק: הזנה לרשת וצריכה עצמית");
+  const b = earnings({ ...s, invest: 1000, since: "2025-10-01" }, "2026-11-08").back;
+  assert.equal(Math.round(b.earned), Math.round(620 * 0.5 + 496 * 0.5 - 10 * (62 / 30.4)), "החזר השקעה על כל הימים מאז ההפעלה");
   assert.ok(validPeriod("2026", "2026-11-08") && validPeriod("2025-12", "2026-11-08"));
   assert.ok(!validPeriod("2026-12", "2026-11-08") && !validPeriod("2026-13", "2026-11-08") && !validPeriod("../x", "2026-11-08"));
   const xl = reportXlsx(r);
