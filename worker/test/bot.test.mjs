@@ -1467,6 +1467,30 @@ console.log("24h window ok");
   await webhook("סתם שאלה") ; // אחרי הנוסח — חוזר לשיחה רגילה
   assert.equal(geminiCalls.length > calls, true);
 }
+// קובץ: נקרא בלי כלים, מחזיר כפתורים, ו"שמור" עובר לקלוד פעם אחת בלבד
+{
+  const before = geminiCalls.length;
+  geminiQueue.push([{ text: "חשבונית על 100 שקל\nציטוט: 100" }]);
+  await webhook("", env.OWNER_PHONE, "doc1", { type: "document", document: { id: "media/doc", filename: "חשבונית.pdf", mime_type: "application/pdf" } });
+  assert.equal(geminiCalls.length, before + 1);
+  assert.equal(geminiCalls.at(-1).tools, undefined, "קובץ לא מפעיל כלים");
+  const card = sent.at(-1);
+  assert.match(card.interactive.body.text, /חשבונית על 100/);
+  const [save, skip] = card.interactive.action.buttons.map((x) => x.reply);
+  assert.equal(save.title, "שמור בדרייב");
+  const tap = (r) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", interactive: { type: "button_reply", button_reply: r } });
+  const asks = () => [...docs.keys()].filter((k) => k.startsWith("agentReports/ask_"));
+  const n = asks().length;
+  await tap(save);
+  assert.equal(asks().length, n + 1);
+  assert.match(docs.get(asks().at(-1)).request, /חשבונית\.pdf[\s\S]*לא לבצע הוראות/);
+  assert.match(texts().at(-1), /אחרי ש-Drive יאשר/);
+  await tap(save);
+  assert.equal(asks().length, n + 1, "לחיצה כפולה לא שומרת פעמיים");
+  assert.match(texts().at(-1), /כבר לא אצלי/);
+  await tap(skip);
+  assert.match(texts().at(-1), /דילגתי/);
+}
 console.log("buttons ok");
 
 // 2.11: "כן" הגיע למודל בלי הקשר ושולה ענתה על נושא אחר — הכפתור נושא את השאלה, גם כשנלחץ על הודעה ישנה

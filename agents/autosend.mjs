@@ -171,7 +171,7 @@ function waSender(token, sleep = (ms) => new Promise((r) => setTimeout(r, ms))) 
       const list = messages.map(({ key, to, text }) => ({ key, to, text }));
       const r = await api("actions/workflows/wa.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main", inputs: { mode: "batch", messages: JSON.stringify(list), result: id } }) });
       if (r.status !== 204) throw new Error(`הפעלת השולח נכשלה (${r.status})`);
-      for (let i = 0; i < 120; i++) { // עד 20 דקות: התור של wa משותף, והשולח נשאר מחובר 45 שניות אחרי שליחה
+      for (let i = 0; i < 210; i++) { // עד 35 דקות: התור של wa משותף, ובין הודעות יש הפרש אקראי של 20-60 שניות
         await sleep(10000);
         const res = (await read("pending/last-result.json").catch(() => null))?.json;
         if (res?.id === id) {
@@ -179,7 +179,7 @@ function waSender(token, sleep = (ms) => new Promise((r) => setTimeout(r, ms))) 
           return res;
         }
       }
-      throw Object.assign(new Error("השולח לא החזיר תוצאה תוך 20 דקות"), { unknown: true });
+      throw Object.assign(new Error("השולח לא החזיר תוצאה תוך 35 דקות"), { unknown: true });
     },
   };
 }
