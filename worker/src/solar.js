@@ -1,0 +1,249 @@
+// ☀️ ניטור הגג הסולארי של הבעלים, בלי AI: SolarEdge API V2 (מסלול חינמי) ו-Open-Meteo.
+// החיבור: הבעלים מבקש מקישור שולה (solar_link), מדביק Client ID ו-Secret בדף /solar/start ומאשר ב-SolarEdge.
+// כל בוקר (wrangler.toml): 3 קרדיטים מתוך 2,000 בחודש, התראה רק על יום בלי ייצור. ביום ראשון דוח שבועי.
+// SolarEdge מחליפה את ה-refresh token בכל שימוש, ולכן כל ריצה שומרת את החדש ב-agentReports/solar (האוסף חסום לאפליקציה).
+import { israelToUtc } from "./time.js";
+import { issueKey, checkKey, dropKey } from "./google.js";
+import { esc } from "./dashboard.js";
+
+const API = "https://monitoringapi.solaredge.com/v2";
+const DOC = "agentReports/solar";
+const GRANT_DAYS = 730; // 24 חודשים, המקסימום של SolarEdge
+const LOCATION = { latitude: 33.22, longitude: 35.65 }; // אזור שאר ישוב. לחישוב קרינה מספיקה דיוק אזורי, והריפו ציבורי
+const DAILY = "shortwave_radiation_sum,temperature_2m_max";
+const KEEP_DAYS = 800;
+const CLOUDY_MJ = 8; // יום מתחת לזה כמעט לא אומר כלום על הגג
+const MIN_BASELINE = 10;
+
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" });
+export const isoDay = (d) => dayFmt.format(new Date(d));
+export const addDays = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+const instant = (day) => israelToUtc(`${day}T00:00`).toISOString().replace(/\.\d+Z$/, "Z");
+const heb = (day) => `${+day.slice(8)}.${+day.slice(5, 7)}`;
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? (s[Math.floor((s.length - 1) / 2)] + s[Math.ceil((s.length - 1) / 2)]) / 2 : null;
+};
+const sum = (rows) => rows.reduce((t, d) => t + d.kwh, 0);
+const pct = (a, b) => (b > 0 ? Math.round((a / b - 1) * 100) : null);
+const signed = (n) => (n > 0 ? `${n}% יותר` : n < 0 ? `${-n}% פחות` : "בדיוק כמו");
+
+// תפוקה ביחס לקרינה, מתוקנת לחום. shortcut: מקדם קבוע של 0.4% למעלה לפי טמפרטורת אוויר; אם יופיעו התראות שווא בקיץ, לכייל מההיסטוריה
+export function adjusted(d) {
+  if (!d || d.kwh == null || !(d.rad >= CLOUDY_MJ) || d.tmax == null) return null;
+  return d.kwh / (d.rad * (1 - 0.004 * (d.tmax - 25)));
+}
+
+const range = (end, n) => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
+
+export function analyze(days, today) {
+  const end = addDays(today, -1);
+  const rows = (d) => d.map((k) => ({ day: k, ...days[k] })).filter((x) => x.kwh != null);
+  const week = rows(range(end, 7));
+  const prev = rows(range(addDays(end, -7), 7));
+  const lastYear = rows(range(addDays(end, -364), 7));
+  const base = rows(range(addDays(end, -7), 30)).map(adjusted).filter((x) => x != null);
+  const baseline = base.length >= MIN_BASELINE ? median(base) : null;
+  const clear = week.map(adjusted).filter((x) => x != null);
+  const ratio = baseline && clear.length ? median(clear) / baseline : null;
+  return {
+    start: addDays(end, -6),
+    end,
+    total: sum(week),
+    days: week.length,
+    vsPrev: prev.length === 7 && week.length === 7 ? pct(sum(week), sum(prev)) : null,
+    vsYear: lastYear.length === 7 && week.length === 7 ? pct(sum(week), sum(lastYear)) : null,
+    ratio,
+    low: baseline ? week.filter((d) => adjusted(d) != null && adjusted(d) < 0.6 * baseline).map((d) => d.day) : [],
+    missing: range(end, 7).filter((k) => days[k]?.kwh == null),
+  };
+}
+
+// תקלה קשה: אתמול לא דווח ייצור, או שהיה כמעט אפס למרות שהיה אור
+export function hardFault(days, today) {
+  const y = addDays(today, -1);
+  const d = days[y];
+  if (d?.kwh == null) return `⚠️ *הגג הסולארי:* אין נתוני ייצור מ-${heb(y)}. כנראה הממיר לא מתקשר. כדאי לבדוק את הנורה בממיר ואת חיבור האינטרנט שלו.`;
+  if (d.kwh < 0.1 && d.rad >= 3) return `⚠️ *הגג הסולארי:* ב-${heb(y)} לא היה ייצור בכלל, למרות שהיה אור. כדאי לבדוק את הממיר ואת המפסק.`;
+  return null;
+}
+
+export function weeklyText(a, alerts, grantDays) {
+  const lines = [`☀️ *הגג השבוע* (${heb(a.start)}-${heb(a.end)})`, `ייצור: ${Math.round(a.total)} קוט"ש${a.days < 7 ? ` (נתונים מ-${a.days} ימים)` : ""}`];
+  if (a.vsPrev != null) lines.push(`מול שבוע שעבר: ${signed(a.vsPrev)}`);
+  if (a.vsYear != null) lines.push(`מול אותו שבוע אשתקד: ${signed(a.vsYear)}`);
+  if (a.ratio == null) lines.push("מול השמש: עדיין אין מספיק ימים בהירים להשוואה");
+  else lines.push(`מול השמש: ${Math.round(a.ratio * 100)}% מהרגיל של הגג${a.ratio < 0.8 ? ", נמוך משמעותית, לבדוק" : a.ratio < 0.9 ? ", קצת נמוך, לעקוב" : ", תקין"}`);
+  if (a.low.length) lines.push(`ימים חריגים: ${a.low.map(heb).join(", ")}`);
+  if (a.missing.length) lines.push(`ימים בלי נתונים: ${a.missing.map(heb).join(", ")}`);
+  if (alerts) lines.push(alerts.length ? `התראות ממיר: ${alerts.length}` : "התראות ממיר: אין");
+  if (grantDays <= 60) lines.push(`החיבור ל-SolarEdge פג בעוד ${Math.max(grantDays, 0)} ימים. לכתוב לשולה "חיבור סולארי".`);
+  return lines.join("\n");
+}
+
+async function refresh(s, store) {
+  const r = await fetch(`${API}/oauth2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ grant_type: "refresh_token", refresh_token: s.refreshToken, client_id: s.clientId, client_secret: s.clientSecret }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!j.access_token) {
+    const e = new Error(`SolarEdge token ${r.status}: ${j.error_description || j.error || j.title || ""}`);
+    e.reconnect = r.status >= 400 && r.status < 500 && r.status !== 429;
+    throw e;
+  }
+  if (j.refresh_token) await store.merge(DOC, { refreshToken: j.refresh_token });
+  return j.access_token;
+}
+
+async function energy(s, token, from, to) {
+  const q = new URLSearchParams({ from: instant(from), to: instant(to), resolution: "DAY", unit: "KWH" });
+  const r = await fetch(`${API}/sites/${s.siteId}/energy?${q}`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
+  if (!r.ok) throw new Error(`SolarEdge energy ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  const factor = { WH: 0.001, KWH: 1, MWH: 1000 }[String(j.unit || "KWH").toUpperCase()] ?? 1;
+  const out = {};
+  for (const v of j.values || []) if (v.value != null) out[isoDay(v.timestamp)] = v.value * factor;
+  return out;
+}
+
+// התראות הן בונוס: אם המסלול לא מאפשר (403), הדוח פשוט לא מציג אותן
+async function openAlerts(s, token) {
+  const r = await fetch(`${API}/sites/${s.siteId}/alerts?only-open=true`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } }).catch(() => null);
+  if (!r?.ok) return null;
+  const j = await r.json().catch(() => null);
+  return Array.isArray(j) ? j : j?.alerts || [];
+}
+
+async function weather(url, params) {
+  const q = new URLSearchParams({ ...LOCATION, daily: DAILY, timezone: "Asia/Jerusalem", ...params });
+  const j = await (await fetch(`${url}?${q}`)).json();
+  const d = j.daily || {};
+  return Object.fromEntries((d.time || []).map((t, i) => [t, { rad: d.shortwave_radiation_sum?.[i], tmax: d.temperature_2m_max?.[i] }]));
+}
+
+async function collect(s, token, today, fresh) {
+  const days = { ...(s.days || {}) };
+  const put = (k, x) => { if (k < today) days[k] = { ...days[k], ...Object.fromEntries(Object.entries(x).filter(([, v]) => v != null)) }; };
+  const windows = fresh ? Array.from({ length: 13 }, (_, i) => [addDays(today, -30 * (i + 1)), addDays(today, -30 * i)]) : [[addDays(today, -9), today]];
+  for (const [from, to] of windows) for (const [k, kwh] of Object.entries(await energy(s, token, from, to))) put(k, { kwh });
+  try {
+    if (fresh) for (const [k, w] of Object.entries(await weather("https://archive-api.open-meteo.com/v1/archive", { start_date: addDays(today, -390), end_date: addDays(today, -6) }))) put(k, w);
+    for (const [k, w] of Object.entries(await weather("https://api.open-meteo.com/v1/forecast", { past_days: "9", forecast_days: "1" }))) put(k, w);
+  } catch (e) {
+    console.log("solar weather", e.message); // בלי קרינה מסתמכים על השוואת הייצור בלבד
+  }
+  return Object.fromEntries(Object.entries(days).filter(([k]) => k >= addDays(today, -KEEP_DAYS)));
+}
+
+// tell(key, text, templateParam) — אותה שליחה של כל ההתראות לבעלים
+export async function solarRun(store, tell, now = new Date()) {
+  const today = isoDay(now);
+  let s = null;
+  // Cloudflare מריץ לפעמים cron פעמיים, ושתי ריצות היו שורפות את אותו refresh token
+  await store.update(DOC, (cur) => {
+    if (!cur.refreshToken || cur.lastRunDay === today) return null;
+    s = cur;
+    return { lastRunDay: today };
+  });
+  if (!s) return "solar: skip";
+  try {
+    const token = await refresh(s, store);
+    const fresh = !s.backfilled;
+    const days = await collect(s, token, today, fresh);
+    const alerts = await openAlerts(s, token);
+    await store.merge(DOC, { days, backfilled: true, lastOkAt: now.toISOString(), lastError: "" });
+    const fault = hardFault(days, today);
+    const sunday = new Date(`${today}T12:00:00Z`).getUTCDay() === 0;
+    const sent = [];
+    if (fault) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
+    if (sunday || fresh) {
+      const grantDays = Math.ceil((Date.parse(s.connectedAt) + GRANT_DAYS * 864e5 - now.getTime()) / 864e5);
+      const text = weeklyText(analyze(days, today), alerts, grantDays);
+      sent.push(await tell("solar", text, text.replace(/[*☀️]/g, "").replace(/\n/g, " · ").trim().slice(0, 400)));
+    }
+    return `solar: ok ${sent.length}`;
+  } catch (e) {
+    await store.merge(DOC, { lastError: String(e.message).slice(0, 300) });
+    const text = e.reconnect ? `☀️ החיבור ל-SolarEdge נפל, והגג לא נבדק. צריך לכתוב לשולה "חיבור סולארי" ולאשר שוב.` : `☀️ בדיקת הגג נכשלה היום: ${String(e.message).slice(0, 200)}`;
+    await tell("solar-error", text, text);
+    throw e;
+  }
+}
+
+// השומר: רץ כל רבע שעה ב-cron הרגיל, בלי תלות בריצת הבוקר. אם היא לא רצה, הוא אומר את זה פעם ביום.
+export async function solarWatch(store, tell, now = new Date()) {
+  const s = await store.get(DOC);
+  if (!s?.refreshToken || !s.lastOkAt || now - new Date(s.lastOkAt) < 30 * 3600 * 1000) return "solar watch: ok";
+  const today = isoDay(now);
+  if (s.lastWarnDay === today) return "solar watch: warned";
+  await store.merge(DOC, { lastWarnDay: today });
+  const text = "☀️ בדיקת הגג הסולארי לא רצה מעל יום. בודקים למה.";
+  await tell("solar-watch", text, text);
+  return "solar watch: warned now";
+}
+
+const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px;max-width:640px;margin:auto">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+const field = (name, label) => `<input name="${name}" placeholder="${label}" required dir="ltr" style="width:100%;box-sizing:border-box;font:16px system-ui;padding:10px;margin:6px 0">`;
+const setupPage = (origin) => html(`<h2>חיבור הגג הסולארי</h2><ol style="line-height:1.7">
+<li>ב-<a href="https://developer.solaredge.com" target="_blank">developer.solaredge.com</a> ליצור אפליקציה: Monitoring API, Site Access, עם SITE_DATA ו-DEVICE_DATA.</li>
+<li>Origin URL:<br><code style="user-select:all;word-break:break-all">${esc(origin)}</code></li>
+<li>Redirect URI ו-Returned URL:<br><code style="user-select:all;word-break:break-all">${esc(origin)}/solar/callback</code></li>
+<li>להדביק כאן את שני הערכים:</li></ol>
+<form method="post">${field("id", "Client ID")}${field("secret", "Client Secret")}<button style="font:18px system-ui;padding:10px 20px">המשך לאישור ב-SolarEdge</button></form>`);
+
+export async function solarRoute(req, env, store, tell) {
+  const url = new URL(req.url);
+  if (url.pathname === "/solar/callback") {
+    // SolarEdge לא מחזירה state; external_id הוא המפתח. בלעדיו מקבלים רק כשיש חיבור פתוח
+    const live = ((await store.get("agentReports/bot")) || {}).keys?.solar?.key;
+    const key = url.searchParams.get("external_id") || live;
+    if (!(await checkKey(store, "solar", key))) return new Response("forbidden", { status: 403 });
+    const code = url.searchParams.get("code");
+    if (!code) return html(`החיבור בוטל: ${esc(url.searchParams.get("error") || "לא התקבל אישור")}. אפשר לנסות שוב מהקישור.`, 400);
+    const s = (await store.get(DOC)) || {};
+    const r = await fetch(`${API}/oauth2/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ grant_type: "authorization_code", code, client_id: s.clientId, client_secret: s.clientSecret }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.refresh_token) return html(`החיבור נכשל: ${esc(j.error_description || j.error || j.title || r.status)}. כדאי לבדוק את ה-Client ID וה-Secret ולנסות שוב.`, 400);
+    const now = new Date().toISOString();
+    await store.merge(DOC, { refreshToken: j.refresh_token, siteId: url.searchParams.get("site_id") || s.siteId || "", connectedAt: now, lastOkAt: now, lastRunDay: "", backfilled: false });
+    await dropKey(store, "solar");
+    try {
+      await solarRun(store, tell);
+      return html("☀️ הגג מחובר. הדוח הראשון בדרך לוואטסאפ.");
+    } catch (e) {
+      return html(`החיבור נשמר, אבל משיכת הנתונים נכשלה: ${esc(e.message)}`, 500);
+    }
+  }
+  const key = url.searchParams.get("k");
+  if (!(await checkKey(store, "solar", key))) return new Response("forbidden", { status: 403 });
+  if (req.method === "POST") {
+    const f = await req.formData();
+    const id = String(f.get("id") || "").trim();
+    const secret = String(f.get("secret") || "").trim();
+    if (!id || !secret) return html("חסר ערך. לחזור אחורה ולהדביק שוב.", 400);
+    await store.merge(DOC, { clientId: id, clientSecret: secret });
+  }
+  const s = (await store.get(DOC)) || {};
+  if (!s.clientId) return setupPage(url.origin);
+  const q = new URLSearchParams({ client_id: s.clientId, scope: "SITE_DATA DEVICE_DATA", access_duration: "24", external_id: key, redirect_uri: `${url.origin}/solar/callback` });
+  return Response.redirect(`https://connect.solaredge.com/authorize?${q}`, 302);
+}
+
+export const SOLAR_TOOL_DEFS = [
+  {
+    name: "solar_link",
+    description: "קישור חד-פעמי לחיבור הגג הסולארי של הבעלים ל-SolarEdge. כשהוא כותב \"חיבור סולארי\" או מבקש לחבר מחדש את הגג. להעביר את הקישור כמו שהוא.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+];
+export const makeSolarTools = ({ store, origin }) => ({
+  async solar_link() {
+    return `${origin}/solar/start?k=${await issueKey(store, "solar")} (תקף 30 דקות)`;
+  },
+});

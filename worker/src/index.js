@@ -19,6 +19,7 @@ import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute 
 import { joinRoute } from "./join.js";
 import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
+import { SOLAR_TOOL_DEFS, makeSolarTools, solarRoute, solarRun, solarWatch } from "./solar.js";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
 const MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"];
@@ -113,6 +114,7 @@ const app = {
     ORIGIN = url.origin;
     if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
+    if (url.pathname.startsWith("/solar/")) return solarRoute(req, env, db(env), teller(env));
     if (url.pathname === "/claude/start") return claudeRoute(req, env, db(env));
     // 🔗 קישור קצר לתזכורת וואטסאפ (shortLinks) — מפנה ל-wa.me המלא
     if (url.pathname.startsWith("/w/")) {
@@ -413,7 +415,7 @@ export function unanswered(bot, now = Date.now()) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS, ...SOLAR_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
 // 2026-10-27: Claude Haiku ראשי (על קרדיט ה-API החודשי של מנוי Max), Gemini רק כגיבוי. בלי ANTHROPIC_API_KEY — Gemini כמו קודם
@@ -474,7 +476,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ store, origin: ORIGIN }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -610,6 +612,8 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 // כל ריצת cron עטופה: שגיאה נרשמת ב-agentReports/bot.lastCronError (המפקח רואה), ולא נבלעת בשקט
 async function runCron(env, cron) {
   try {
+    // הגג בריצה נפרדת: ריצת הרבע שעה כבר קרובה למגבלת 50 הבקשות
+    if (cron === "10 5 * * *") return await solarRun(db(env), teller(env));
     return await (cron === "0 17 * * *" ? daily(env) : everyQuarter(env));
   } catch (e) {
     await cronError(env, e);
@@ -639,6 +643,7 @@ async function tell(store, wa, key, text, templateParam) {
   if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
   return how;
 }
+const teller = (env) => (key, text, param) => tell(db(env), waConfig(env), key, text, param);
 const summary = (lines) => lines.join(" ").replace(/https?:\S+/g, "").replace(/\s+/g, " ").slice(0, 400);
 
 // 📬 הודעות מהסוכנים ב-GitHub Actions (אין להם סודות וואטסאפ): הם כותבים ל-agentReports/bot.outboxQueue
@@ -717,6 +722,7 @@ async function everyQuarter(env) {
     trialCheck(store, wa),
     absenceLinksNag(store, wa),
     deliverOutbox(env, store, wa),
+    solarWatch(store, teller(env)),
     dailyDashboard(env, store, ORIGIN || env.PUBLIC_URL, (text) => tell(store, wa, "dashboard", text, "הדשבורד התעדכן")),
     dispatchWorkflows(env, store),
     dispatchEvening(env, store),
