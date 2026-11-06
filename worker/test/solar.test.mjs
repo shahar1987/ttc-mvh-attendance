@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay } from "../src/solar.js";
-import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages } from "../src/solar-dashboard.js";
+import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages, why, comparisons, forecast } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
 const fill = (from, n, x) => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(from, i), { ...x }]));
@@ -175,7 +175,13 @@ const at = new Date("2026-11-08T05:10:00Z");
   fail = false;
   assert.match(await solarRun(store, async () => {}, new Date("2026-11-09T07:10:00Z")), /ok/);
   assert.equal(store.docs["agentReports/solar"].lastError, "");
-  assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T08:10:00Z")), "solar: skip");
+  // אחרי הריצה היומית: רק הייצור של היום, בלי הודעות
+  globalThis.fetch = async (u, i) => (String(u).includes("/energy?") ? json({ unit: "KWH", values: [{ timestamp: "2026-11-08T22:00:00Z", value: 12.5 }] }) : good(u, i));
+  assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T08:10:00Z")), "solar: today");
+  assert.equal(store.docs["agentReports/solar"].today.kwh, 12.5);
+  assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T08:40:00Z")), "solar: skip", "פעם בשעה");
+  globalThis.fetch = async (u, i) => (String(u).includes("/energy?") ? json({}, 500) : good(u, i));
+  assert.equal(await solarRun(store, async () => assert.fail(), new Date("2026-11-09T09:10:00Z")), "solar: today failed", "תקלה בנתון הנוחות לא מציקה");
 }
 // נפילה באמצע משיכת השנה: מה שנמשך נשמר
 {
@@ -212,6 +218,36 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(run.docs["agentReports/solar"].panels, 14);
   assert.equal(run.docs["agentReports/solar"].inverters, 1);
   assert.ok(log.some((u) => u.includes("types=OPTIMIZER")));
+}
+// 🌤️ למה הייצור השתנה, השוואות וצפי
+{
+  assert.match(why(-20, -18), /בגלל מזג האוויר/);
+  assert.match(why(-20, 0), /לא מזג האוויר/);
+  assert.match(why(-30, -10), /רק חלק/);
+  assert.match(why(-5, -20), /התמודד טוב/);
+  assert.match(why(15, 14), /בזכות מזג האוויר/);
+  assert.match(why(15, 0), /עבד טוב יותר/);
+  assert.match(why(2, -20), /אותו דבר/);
+  assert.equal(why(null, 5), "");
+  const today2 = "2026-11-16";
+  const days = {};
+  for (let i = 400; i >= 1; i--) days[addDays(today2, -i)] = { kwh: 20, rad: 10, tmax: 25 };
+  for (let i = 1; i <= 15; i++) days[addDays(today2, -i)] = { kwh: 16, rad: 8, tmax: 25 };
+  const rows = comparisons(days, today2);
+  assert.deepEqual(rows.map((r) => r.pct).slice(0, 3), [0, -20, -20]);
+  assert.match(rows[2].why, /בגלל מזג האוויר/);
+  const f = forecast(days, today2);
+  assert.equal(f.done, 240);
+  assert.equal(f.target, 600);
+  assert.equal(f.end, 480);
+  assert.equal(f.onTrack, false);
+  const noHistory = forecast({ "2026-11-14": { kwh: 10 }, "2026-11-13": { kwh: 10 }, "2026-11-12": { kwh: 10 }, "2026-11-11": { kwh: 10 }, "2026-11-10": { kwh: 10 } }, "2026-11-15");
+  assert.equal(noHistory.target, null);
+  assert.equal(noHistory.end, 50 + 16 * 10);
+  const html = solarHtml({ days, today: { day: today2, kwh: 7.4, at: "2026-11-16T09:10:00Z" } }, today2);
+  assert.match(html, /היום עד עכשיו/);
+  assert.match(html, /מאחורי הקצב/);
+  assert.ok(!/ממתין/.test(html));
 }
 // 📊 הדשבורד: הצלבות, חוסר נתונים, ושום סוד לא מגיע לדף
 {

@@ -103,7 +103,7 @@ async function refresh(s, store) {
 }
 
 async function energy(s, token, from, to) {
-  const q = new URLSearchParams({ from: instant(from), to: instant(to), resolution: "DAY", unit: "KWH" });
+  const q = new URLSearchParams({ from: instant(from), to: to.includes("T") ? to.replace(/\.\d+Z$/, "Z") : instant(to), resolution: "DAY", unit: "KWH" });
   const r = await fetch(`${API}/sites/${s.siteId}/energy?${q}`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
   if (!r.ok) throw new Error(`SolarEdge energy ${r.status}: ${(await r.text()).slice(0, 200)}`);
   const j = await r.json();
@@ -171,14 +171,35 @@ async function collect(s, token, today) {
 // tell(key, text, templateParam) — אותה שליחה של כל ההתראות לבעלים
 export async function solarRun(store, tell, now = new Date(), link = "") {
   const today = isoDay(now);
+  const hour = now.toISOString().slice(11, 13);
   let s = null;
+  let hourly = false;
+  let quiet = false; // המשך משיכת השנה באותו יום: בלי דוח ובלי התראה כפולה
   // Cloudflare מריץ לפעמים cron פעמיים, ושתי ריצות היו שורפות את אותו refresh token
   await store.update(DOC, (cur) => {
-    if (!cur.refreshToken || (cur.lastRunDay === today && !cur.lastError)) return null;
+    if (!cur.refreshToken) return null;
+    const done = cur.lastRunDay === today && !cur.lastError;
+    if (done && cur.backfilled) {
+      if (cur.todayHour === hour) return null;
+      s = cur;
+      hourly = true;
+      return { todayHour: hour };
+    }
     s = cur;
-    return { lastRunDay: today, lastError: "" };
+    quiet = done;
+    return { lastRunDay: today, lastError: "", todayHour: hour };
   });
   if (!s) return "solar: skip";
+  if (hourly) {
+    try {
+      const kwh = (await energy(s, await refresh(s, store), today, now.toISOString()))[today];
+      await store.merge(DOC, { today: { day: today, kwh: kwh ?? 0, at: now.toISOString() } });
+      return "solar: today";
+    } catch (e) {
+      console.log("solar today", e.message); // נתון נוחות: התקלות מדווחות מהריצה היומית
+      return "solar: today failed";
+    }
+  }
   try {
     const token = await refresh(s, store);
     const first = !s.backfilled && !s.backfillIdx;
@@ -189,8 +210,8 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: next, backfilled: !!s.backfilled || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
     const fault = hardFault(days, today);
     const sent = [];
-    if (fault) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
-    if (sunday || first) {
+    if (fault && !quiet) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
+    if ((sunday && !quiet) || first) {
       const grantDays = Math.ceil((Date.parse(s.connectedAt) + GRANT_DAYS * 864e5 - now.getTime()) / 864e5);
       const report = weeklyText(analyze(days, today), alerts, grantDays);
       const text = link ? `${report}\n${link}` : report;

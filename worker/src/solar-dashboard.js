@@ -62,6 +62,66 @@ export function panelScan(panels, ratio) {
   return { lost };
 }
 
+// למה הייצור השתנה: משווים לשינוי בשמש באותה תקופה
+export function why(prod, sun) {
+  if (prod == null) return "";
+  if (sun == null) return Math.abs(prod) <= 3 ? "כמעט אותו דבר." : "אין עדיין נתוני שמש להשוואה.";
+  if (Math.abs(prod) <= 3) return "כמעט אותו דבר.";
+  const fromWeather = Math.abs(prod - sun) <= 6 && Math.sign(prod) === Math.sign(sun) && Math.abs(sun) >= 2;
+  if (prod < 0) return fromWeather ? `בגלל מזג האוויר: היו ${Math.abs(sun)}% פחות שמש.` : sun < prod ? "הייתה פחות שמש, והגג התמודד טוב." : sun >= -2 ? "לא מזג האוויר: הייתה אותה שמש, וכדאי לבדוק." : `מזג האוויר מסביר רק חלק: היו ${Math.abs(sun)}% פחות שמש.`;
+  return fromWeather ? `בזכות מזג האוויר: היו ${sun}% יותר שמש.` : "הגג עבד טוב יותר, לא רק בזכות השמש.";
+}
+
+export function comparisons(days, today) {
+  const end = addDays(today, -1);
+  const full = (keys) => keys.length && keys.filter((k) => days[k]?.kwh != null).length >= keys.length * 0.9;
+  const kwh = (keys) => sumKwh(keys.map((k) => days[k] || {}));
+  const sun = (keys) => (keys.filter((k) => days[k]?.rad != null).length >= keys.length * 0.9 ? keys.reduce((t, k) => t + (days[k]?.rad || 0), 0) : null);
+  const row = (title, a, b) => {
+    if (!full(a) || !full(b)) return null;
+    const now = kwh(a);
+    const then = kwh(b);
+    const p = pct(now, then);
+    return { title, now, then, pct: p, why: why(p, sun(a) != null && sun(b) ? pct(sun(a), sun(b)) : null) };
+  };
+  const back = (keys, n) => keys.map((k) => addDays(k, -n));
+  const week = span(end, 7);
+  const first = `${end.slice(0, 8)}01`;
+  const month = span(end, +end.slice(8));
+  const prevEnd = addDays(first, -1);
+  const prev = span(prevEnd, +prevEnd.slice(8));
+  const year = span(end, 365);
+  return [
+    row("השבוע מול שבוע שעבר", week, back(week, 7)),
+    row("השבוע מול אשתקד", week, back(week, 364)),
+    row("החודש מול אותם ימים אשתקד", month, back(month, 365)),
+    row(`${MONTHS[+prevEnd.slice(5, 7) - 1]} מול אשתקד`, prev, back(prev, 365)),
+    row("12 חודשים מול 12 שלפניהם", year, back(year, 365)),
+  ].filter(Boolean);
+}
+
+export function forecast(days, today) {
+  const end = addDays(today, -1);
+  const month = span(end, +end.slice(8));
+  const done = sumKwh(month.map((k) => days[k] || {}));
+  const y = +end.slice(0, 4);
+  const m = +end.slice(5, 7);
+  const size = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lastMonth = span(`${y - 1}-${end.slice(5, 7)}-${String(size).padStart(2, "0")}`, size);
+  const covered = lastMonth.filter((k) => days[k]?.kwh != null).length >= size * 0.9;
+  const sameDays = month.map((k) => addDays(k, -365));
+  const base = sumKwh(sameDays.map((k) => days[k] || {}));
+  if (covered && base > 0) {
+    const target = sumKwh(lastMonth.map((k) => days[k] || {}));
+    const pace = pct(done, base);
+    return { done, target, end: Math.round((target * done) / base), pace, onTrack: pace >= -3 };
+  }
+  const recent = span(end, 14).map((k) => days[k]?.kwh).filter((v) => v != null);
+  if (recent.length < 5) return { done, target: null, end: null, pace: null };
+  // shortcut: בלי נתוני אשתקד מניחים שהקצב של השבועיים האחרונים נמשך, עד שתיאסף היסטוריה
+  return { done, target: null, end: Math.round(done + (size - month.length) * (recent.reduce((t, v) => t + v, 0) / recent.length)), pace: null };
+}
+
 export function insights(s, today) {
   const days = s.days || {};
   const a = analyze(days, today);
@@ -197,7 +257,7 @@ const ICON = {
 };
 const scene = (status) => {
   const off = status === "fault";
-  return `<svg class="scene" viewBox="0 0 360 190" role="img" aria-label="בית עם פאנלים סולאריים">
+  return `<svg class="scene" viewBox="0 30 360 130" preserveAspectRatio="xMidYMid slice" role="img" aria-label="בית עם פאנלים סולאריים">
 <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${off ? "#7d8796" : "#6ec1ff"}"/><stop offset="1" stop-color="${off ? "#c9ced6" : "#e3f4ff"}"/></linearGradient><radialGradient id="glow"><stop offset="0" stop-color="#ffd76a" stop-opacity=".9"/><stop offset="1" stop-color="#ffd76a" stop-opacity="0"/></radialGradient></defs>
 <rect width="360" height="190" fill="url(#sky)"/>
 ${off ? "" : `<circle cx="84" cy="58" r="70" fill="url(#glow)"/><g class="rays" stroke="#ffc53d" stroke-width="4" stroke-linecap="round">${Array.from({ length: 8 }, (_, i) => `<path transform="rotate(${i * 45} 84 58)" d="M84 18v-10"/>`).join("")}</g><circle cx="84" cy="58" r="26" fill="#ffc53d"/>`}
@@ -224,12 +284,6 @@ const scanCard = (s, a, days, end) => {
   lines.push(off.length ? `בשנה האחרונה היו ${off.length} ימים בלי ייצור: ${off.slice(-4).map(heb).join(", ")}.` : "בשנה האחרונה לא נמצאו ימים של נפילה מלאה.");
   return `<section class="card r"><h2>סריקת הגג</h2>${lines.map((l) => `<p class="say2">${esc(l)}</p>`).join("")}<p class="small">זו הערכה לפי ייצור הגג כולו. SolarEdge לא מוסרת דרך החיבור הזה ייצור של כל פאנל בנפרד.</p></section>`;
 };
-const twoBars = (title, aL, aV, bL, bV) => {
-  if (aV == null || bV == null) return "";
-  const m = Math.max(aV, bV, 1);
-  const row = (l, v, c) => `<div class="cmp"><span>${l}</span><div class="track"><i class="grow" style="width:${Math.round((v / m) * 100)}%;background:var(${c})"></i></div><b>${num(v)}</b></div>`;
-  return `<div class="pair"><h3>${title}</h3>${row(aL, aV, "--s1")}${row(bL, bV, "--s4")}</div>`;
-};
 
 export function solarHtml(s, today, nonce = "") {
   const n = nonce ? ` nonce="${nonce}"` : "";
@@ -244,13 +298,12 @@ export function solarHtml(s, today, nonce = "") {
   const weekMax = Math.max(...week.map((d) => d.kwh || 0), 1);
   const radMax = Math.max(...last30.map((d) => d.rad || 0), 1);
   const weather = (d) => (d.rain >= 1 ? ["rain", "גשם"] : d.rad == null ? ["cloud", ""] : d.rad >= radMax * 0.75 ? ["sun", "שמש"] : d.rad >= radMax * 0.45 ? ["part", "חלקית"] : ["cloud", "מעונן"]);
-  const prevWeek = sumKwh(span(addDays(end, -7), 7).map((k) => days[k] || {}));
-  const yearAgo = a.vsYear == null ? null : sumKwh(span(addDays(end, -364), 7).map((k) => days[k] || {}));
+  const rows = comparisons(days, today);
+  const f = forecast(days, today);
+  const monthRow = rows.find((r) => r.title.startsWith("החודש"));
+  const today_ = s.today?.day === today ? s.today : null;
+  const tile = (label, value, sub) => `<div class="stat"><div class="sl">${label}</div><div class="sv">${value}</div><div class="ss">${sub}</div></div>`;
   const bestMonth = months.filter((m) => m.now != null && !m.part).reduce((x, m) => (!x || m.now > x.now ? m : x), null);
-  const lastMonth = months.filter((m) => !m.part && m.now != null && m.prev != null).at(-1);
-  const sumYear = (from, n) => { const rows = span(from, n).map((k) => days[k]).filter((d) => d?.kwh != null); return rows.length >= n * 0.9 ? sumKwh(rows) : null; };
-  const yearNow = sumYear(end, 365);
-  const yearPrev = sumYear(addDays(end, -365), 365);
   const hottest = heat.at(-1);
   const heatDrop = heat.length > 1 ? Math.round((1 - hottest.v / heat[0].v) * 100) : null;
   const homeDays = Math.round(a.total / HOME_KWH_DAY);
@@ -271,12 +324,16 @@ export function solarHtml(s, today, nonce = "") {
 :root{color-scheme:light;--bg:#f5f5f7;--card:#fff;--line:#e5e5ea;--t1:#1d1d1f;--t2:#6e6e73;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#c7c7cc;--past:#c7c7cc;--ok:#1a8f3c;--warn:#b25f00;--bad:#d70015;--bar:rgba(255,255,255,.72);--ease:cubic-bezier(.22,1,.36,1)}
 @media (prefers-color-scheme:dark){:root{${dark}}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font:100%/1.5 -apple-system,system-ui,"Segoe UI",Roboto,Arial,sans-serif}
-.top{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--bar);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
-.top b{font-size:1.05rem}.pill{font-size:.85rem;font-weight:600}.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
-main{max-width:720px;margin:auto;padding:4px 16px 40px;display:grid;gap:16px}
-.card{background:var(--card);border-radius:22px;padding:20px;min-width:0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.hero{padding:0;overflow:hidden}.scene{display:block;width:100%;height:auto}.say{padding:20px}
-h1{font-size:clamp(1.9rem,7vw,2.6rem);line-height:1.1;letter-spacing:-.02em;margin:0 0 8px;font-weight:700}.say p{margin:0;font-size:1.1rem;color:var(--t2)}.say p+p{margin-top:6px}
+.top{position:sticky;top:0;z-index:5;padding:10px 16px;background:var(--bar);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
+.bar{display:flex;justify-content:space-between;align-items:center;max-width:720px;margin:0 auto 8px}.bar b{font-size:1.05rem}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;max-width:720px;margin:auto;background:var(--line);padding:2px;border-radius:10px}.seg button{font:inherit;font-size:.9rem;font-weight:500;border:0;background:none;color:var(--t1);padding:7px 2px;border-radius:8px;cursor:pointer;transition:transform .1s ease-out}.seg button:active{transform:scale(.96)}.seg button[aria-selected=true]{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.panel{display:grid;gap:12px;min-width:0}.js .panel{display:none}.js .panel.on{display:grid;animation:fade .28s var(--ease)}@keyframes fade{from{opacity:0;transform:translateY(6px)}}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.stat{background:var(--card);border-radius:18px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.sl{color:var(--t2);font-size:.85rem}.sv{font-size:1.75rem;font-weight:700;line-height:1.2;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.ss{color:var(--t2);font-size:.8rem}
+.verdict{display:grid;gap:4px;padding:14px 16px}.row{display:grid;gap:4px;padding:14px 16px}.rt1{display:flex;justify-content:space-between;align-items:center;gap:8px}.rt1 h3{margin:0;font-size:.95rem}.delta{font-weight:700;font-size:.95rem;white-space:nowrap}.delta.up{color:var(--ok)}.delta.down{color:var(--warn)}.vals{display:flex;align-items:baseline;gap:8px}.vals b{font-size:1.5rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.vals span{color:var(--t2);font-size:.9rem}.pill{font-size:.85rem;font-weight:600}.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
+main{max-width:720px;margin:auto;padding:12px 16px 32px}
+.card{background:var(--card);border-radius:18px;padding:16px;min-width:0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.hero{padding:0;overflow:hidden}.scene{display:block;width:100%;height:96px}.say{padding:12px 16px 14px}
+h1{font-size:1.5rem;line-height:1.15;letter-spacing:-.02em;margin:0 0 4px;font-weight:700}.say p{margin:0;color:var(--t2)}
 h2{font-size:1.3rem;letter-spacing:-.01em;line-height:1.2;margin:0 0 14px;font-weight:700}h3{font-size:1rem;margin:0 0 8px;font-weight:600}
 .ringbox{display:flex;align-items:center;gap:18px}.ringbox p{margin:0;color:var(--t2)}.ring{width:132px;flex:none}.rt{fill:none;stroke:var(--line);stroke-width:10}.rv{fill:none;stroke-width:10;stroke-linecap:round;stroke-dashoffset:var(--off)}.rn{fill:var(--t1);font-size:26px;font-weight:700}.rw{fill:var(--t2);font-size:12px}
 ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}li{display:flex;gap:10px}li span{font-weight:700;flex:none}.g span{color:var(--ok)}.y span{color:var(--warn)}
@@ -299,20 +356,34 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px
 @media (prefers-reduced-motion:reduce){.rays,.flow{animation:none}.js .r,.js .r .grow,.js .r .rv{transition:opacity .2s;transform:none;stroke-dashoffset:var(--off)}}
 @media (prefers-reduced-transparency:reduce){.top{background:var(--card);-webkit-backdrop-filter:none;backdrop-filter:none}}
 </style>
-<div class="top"><b>הגג שלי</b><span class="pill ${HEAD[0]}">${s.lastOkAt ? `עודכן ${esc(new Date(s.lastOkAt).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }))}` : ""}</span></div>
+<div class="top"><div class="bar"><b>הגג שלי</b><span class="pill ${HEAD[0]}">${esc(HEAD[1])}</span></div>
+<div class="seg" role="tablist">${[["now", "עכשיו"], ["cmp", "השוואות"], ["roof", "הגג"], ["more", "פרטים"]].map(([id, label], i) => `<button role="tab" data-p="${id}" aria-selected="${i === 0}">${label}</button>`).join("")}</div></div>
 <main>
-<section class="card installbox" id="ib"><button id="install">התקן בטלפון</button><p class="small" id="ihow" hidden>בתפריט של Chrome (שלוש הנקודות) בחר "הוספה למסך הבית".</p></section>
-<section class="card hero r">${scene(v.status)}<div class="say"><h1>${HEAD[1]}</h1>
-${a.days ? `<p>בשבעת הימים האחרונים הוא ייצר <span data-count="${Math.round(a.total)}">${num(a.total)}</span> קוט״ש${homeDays >= 1 ? `, בערך חשמל של ${homeDays} ימים לבית רגיל` : ""}.</p>` : ""}${v.note ? `<p>${esc(v.note)}</p>` : ""}</div></section>
+<div class="panel on" id="p-now">
+<section class="card hero r">${scene(v.status)}<div class="say"><h1>${HEAD[1]}</h1>${v.note ? `<p>${esc(v.note)}</p>` : ""}</div></section>
+<div class="tiles r">
+${tile("היום עד עכשיו", today_ ? `<span data-count="${Math.round(today_.kwh)}">${num(today_.kwh)}</span>` : "ממתין", today_ ? `קוט״ש, נכון ל-${esc(new Date(today_.at).toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" }))}` : "מתעדכן כל שעה ביום")}
+${tile("7 הימים האחרונים", num(a.total), `קוט״ש${homeDays >= 1 ? `, כמו ${homeDays} ימים של בית` : ""}`)}
+${tile("החודש עד אתמול", num(f.done), "קוט״ש")}
+${tile("צפי לסוף החודש", f.end == null ? "לא זמין" : num(f.end), f.target ? `קוט״ש, מול ${num(f.target)} אשתקד` : "קוט״ש, לפי הקצב")}
+</div>
+${f.pace != null ? `<section class="card r verdict"><span class="pill ${f.onTrack ? "ok" : "warn"}">${f.onTrack ? "עומד בקצב של אשתקד" : "מאחורי הקצב של אשתקד"}</span><p class="say2">${f.pace >= 0 ? `${f.pace}% מעל` : `${-f.pace}% מתחת ל`}אותם ימים בשנה שעברה. ${esc(monthRow?.why || "")}</p></section>` : ""}
 <section class="card r"><h2>מה כדאי לעשות</h2>${v.advice.map(([t, x], i) => `<div class="tip"><div class="num">${i + 1}</div><div><b>${esc(t)}</b><p>${esc(x)}</p></div></div>`).join("") || `<p class="say2">אחרי הדוח הראשון יופיעו כאן המלצות.</p>`}</section>
+</div>
+<div class="panel" id="p-cmp">
+${rows.length ? rows.map((r) => `<section class="card row r"><div class="rt1"><h3>${esc(r.title)}</h3><span class="delta ${r.pct >= 0 ? "up" : "down"}">${r.pct >= 0 ? "▲" : "▼"} ${Math.abs(r.pct)}%</span></div><div class="vals"><b>${num(r.now)}</b><span>מול ${num(r.then)} קוט״ש</span></div><p class="say2">${esc(r.why)}</p></section>`).join("") : `<section class="card"><p class="say2">ההשוואות יופיעו כשתיאסף היסטוריה.</p></section>`}
+</div>
+<div class="panel" id="p-roof">
 <section class="card r"><h2>מה מצב הגג</h2>${ring(a.ratio)}</section>
+${scanCard(s, a, days, end)}
 <section class="card r"><h2>מה טוב</h2><ul>${list(v.good, "g", "✓") || "<li>עדיין אין מספיק נתונים</li>"}</ul></section>
 ${v.bad.length ? `<section class="card r"><h2>מה פחות טוב</h2><ul>${list(v.bad, "y", "!")}</ul></section>` : ""}
-${a.days ? `<section class="card r"><h2>השבוע שלך, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
-${scanCard(s, a, days, end)}
-${a.vsPrev != null || lastMonth ? `<section class="card r"><h2>מול שנה שעברה (קוט״ש)</h2>${twoBars("אותו שבוע", "השבוע", yearAgo == null ? null : a.total, "לפני שנה", yearAgo)}${lastMonth ? twoBars(`חודש ${lastMonth.label}`, "השנה", lastMonth.now, "לפני שנה", lastMonth.prev) : ""}${twoBars("שנה שלמה", "12 חודשים", yearNow, "12 לפניהם", yearPrev)}${yearAgo == null && !lastMonth ? `<p class="say2">ההשוואה תופיע כשתיאסף היסטוריה.</p>` : ""}${a.vsPrev != null ? twoBars("מול שבוע שעבר", "השבוע", a.total, "שבוע שעבר", prevWeek) : ""}</section>` : ""}
+<section class="card installbox" id="ib"><button id="install">התקן בטלפון</button><p class="small" id="ihow" hidden>בתפריט של Chrome (שלוש הנקודות) בחר "הוספה למסך הבית".</p></section>
+</div>
+<div class="panel" id="p-more">
+${a.days ? `<section class="card r"><h2>השבוע, יום אחרי יום</h2>${week.map((d) => { const [ic] = weather(d); return `<div class="day"><span>${dayName(d.day)}</span>${ICON[ic]}<div class="track"><i class="grow" style="width:${Math.round(((d.kwh || 0) / weekMax) * 100)}%"></i></div><b>${d.kwh == null ? "אין" : num(d.kwh, 1)}</b></div>`; }).join("")}</section>` : ""}
 ${bestMonth || heatDrop != null || v.lift != null ? `<section class="card r"><h2>מה למדנו על הגג</h2>${bestMonth ? `<p class="say2">החודש הכי חזק בשנה האחרונה היה ${bestMonth.label}, עם ${num(bestMonth.now)} קוט״ש.</p>` : ""}${heatDrop > 0 ? `<p class="say2">בימים חמים מאוד הגג מפיק בערך ${heatDrop}% פחות. זה טבעי לפאנלים.</p>` : ""}${v.lift != null ? `<p class="say2">${v.lift >= 5 ? `גשם ראשון אחרי יובש מעלה את הייצור בערך ב-${v.lift}%, כי הוא שוטף את האבק.` : "גשם כמעט לא משנה את הייצור, אז הפאנלים נקיים יחסית."}</p>` : ""}</section>` : ""}
-<details class="r"><summary>כל הנתונים והגרפים</summary><div class="more">
+<details class="r"><summary>כל הגרפים והטבלה</summary><div class="more">
 <div><h3>ייצור יומי, 30 יום (קוט״ש)</h3>${chartBars(last30, 170, "--s1", (d) => d.kwh, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.kwh, 1)} קוט״ש`)}</div>
 <div><h3>שמש באותם ימים (מג׳ול למ״ר)</h3>${chartBars(last30, 130, "--s2", (d) => d.rad, (d, i) => (i % 6 === 0 ? heb(d.day) : ""), (d) => `${heb(d.day)}: ${num(d.rad, 1)} מג׳ול${d.rain ? `, גשם ${num(d.rain, 1)} מ״מ` : ""}`)}</div>
 ${eff ? `<div><h3>יעילות מול השמש, חצי שנה</h3><div class="key"><span><i style="background:var(--s1)"></i>יעילות</span><span><i style="background:var(--s3)"></i>גשם</span></div>${eff}</div>` : ""}
@@ -320,10 +391,12 @@ ${eff ? `<div><h3>יעילות מול השמש, חצי שנה</h3><div class="ke
 ${sc ? `<div><h3>ייצור מול שמש, שנה</h3><div class="key"><span><i style="background:var(--s2)"></i>השבוע</span><span><i style="background:var(--past)"></i>שאר הימים</span></div>${sc}</div>` : ""}
 <div><h3>14 הימים האחרונים</h3><div class="scroll"><table><tr><th>יום</th><th>קוט״ש</th><th>שמש</th><th>חום</th><th>גשם</th><th>מצב</th></tr>${rowsTable}</table></div></div>
 </div></details>
+</div>
 </main><div id="tip" role="status"></div>
 <script${n}>
 const io=new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.12});document.querySelectorAll(".r").forEach((x)=>io.observe(x));
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.querySelectorAll("[data-count]").forEach((n)=>{const to=+n.dataset.count,t0=performance.now();const f=(t)=>{const p=Math.min((t-t0)/900,1);n.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("he-IL");if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)});
+const tabs=[...document.querySelectorAll("[data-p]")];tabs.forEach((b)=>b.addEventListener("click",()=>{tabs.forEach((x)=>x.setAttribute("aria-selected",x===b));document.querySelectorAll(".panel").forEach((p)=>p.classList.toggle("on",p.id==="p-"+b.dataset.p));scrollTo(0,0)}));
 const ib=document.getElementById("ib"),ibtn=document.getElementById("install");let ask=null;
 if(!matchMedia("(display-mode: standalone)").matches){ib.classList.add("on");addEventListener("beforeinstallprompt",(e)=>{e.preventDefault();ask=e});ibtn.addEventListener("click",async()=>{if(ask){ask.prompt();await ask.userChoice;ask=null;ib.classList.remove("on")}else document.getElementById("ihow").hidden=false});addEventListener("appinstalled",()=>ib.classList.remove("on"))}
 const t=document.getElementById("tip");const show=(e)=>{const m=e.target.closest("[data-t]");if(!m){t.style.display="none";return}t.textContent=m.dataset.t;t.style.display="block";t.style.left=Math.max(8,Math.min(innerWidth-t.offsetWidth-8,e.clientX-t.offsetWidth/2))+"px";t.style.top=Math.max(8,e.clientY-44)+"px"};document.addEventListener("pointermove",show);document.addEventListener("click",show);
