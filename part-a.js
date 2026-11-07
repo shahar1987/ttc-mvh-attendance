@@ -16,11 +16,9 @@ import {
   MessageCircle as te,
   Phone as se,
   ChevronDown as we,
-  ChevronUp as ke,
   LogOut as Ce,
   Home as le,
   Bell as J,
-  Archive as Ae,
   Menu as Pe,
   Shield as Ie,
   Trash2 as Se,
@@ -49,7 +47,6 @@ import {
   getDoc as fsGetDoc,
   getDocs as fsGetDocs,
   getDocsFromServer as fsGetDocsFromServer,
-  getCountFromServer as fsCount,
   waitForPendingWrites as fsWaitPending,
   terminate as fsTerminate,
   clearIndexedDbPersistence as fsClearCache,
@@ -64,7 +61,6 @@ import {
   signOut as _e,
 } from "firebase/auth";
 import { initializeApp as Be, deleteApp as Ge } from "firebase/app";
-import { getToken as ze, onMessage as Fe } from "firebase/messaging";
 import { initializeApp as de } from "firebase/app";
 import {
   getAuth as me,
@@ -76,7 +72,6 @@ import {
   persistentLocalCache as be,
   persistentMultipleTabManager as pe,
 } from "firebase/firestore";
-import { getMessaging as fe, isSupported as ve } from "firebase/messaging";
 var B = {
     apiKey: "AIzaSyDhPiyIrP1zOu5bNSpsQDyXFgZBP6rV7vo",
     authDomain: "ttcmh-2a752.firebaseapp.com",
@@ -85,8 +80,7 @@ var B = {
     storageBucket: "ttcmh-2a752.firebasestorage.app",
     messagingSenderId: "198162387540",
     appId: "1:198162387540:web:f4c4728a39aed9468c13c1",
-  },
-  G = "";
+  };
 // אפליקציה בשם משלה: הלוח והתחרויות יושבים באותו דומיין (shahar1987.github.io) ובאותו פרויקט,
 // ועם השם הרגיל הם חלקו איתה את ההתחברות — יציאה או כניסה שם הוציאה את המשתמש גם מכאן.
 var AN = "attendance";
@@ -124,12 +118,6 @@ try {
     }, () => {});
   }
 } catch {}
-var F =
-  typeof window < "u"
-    ? ve()
-        .then((t) => (t ? fe(z) : null))
-        .catch(() => null)
-    : Promise.resolve(null);
 async function logoutAndClearCache() {
   // ניקוי המטמון מוחק גם שמירות שעוד לא הגיעו לשרת ("נשמר במכשיר") — קודם מחכים להן
   let synced = await Promise.race([
@@ -242,7 +230,7 @@ function paymentMsg(player, group, tracks) {
     forWhom = adult || !parent || parent === child ? "" : ` של ${child}`,
     ask = adult ? (f ? "אשמח שתסדירי" : "אשמח שתסדיר") : "אשמח שתסדירו",
     write = adult ? (f ? "תכתבי" : "תכתוב") : "תכתבו",
-    pick = adult ? (f ? "שמתאימה לך" : "שמתאימה לך") : "שמתאימה לכם",
+    pick = adult ? "שמתאימה לך" : "שמתאימה לכם",
     link = "";
   if (list.length === 1) {
     let lbl = trackLabel(list[0]);
@@ -441,8 +429,7 @@ function excludeCancelled(attendance, cancellations) {
 async function cancelTraining({ date, groupId, reason, note, userId }) {
   // רשומות הנוכחות של היום לא נמחקות: excludeCancelled מסתיר אותן בכל החישובים,
   // וביטול-הביטול מחזיר אותן כמו שהיו.
-  let batch = Te(P);
-  batch.set(S(P, "cancellations", trainingKey(date, groupId)), {
+  await De(S(P, "cancellations", trainingKey(date, groupId)), {
     date,
     groupId,
     reason,
@@ -450,7 +437,6 @@ async function cancelTraining({ date, groupId, reason, note, userId }) {
     cancelledBy: userId,
     createdAt: Oe(),
   });
-  await batch.commit();
 }
 async function undoCancellation(c) {
   await Ee(S(P, "cancellations", c.id));
@@ -892,17 +878,6 @@ function Ye() {
     }, []),
     { authUser: t, profile: a, profileError: i }
   );
-}
-async function qe(t) {
-  try {
-    if (!G) return;
-    let s = await F;
-    if (!s || (await Notification.requestPermission()) !== "granted") return;
-    let l = await ze(s, { vapidKey: G });
-    l && (await O(S(P, "users", t), { fcmToken: l }));
-  } catch (s) {
-    console.warn("Push registration skipped:", s);
-  }
 }
 // תג "2 היעדרויות" בשורת מילוי הנוכחות. משתמש בדיוק באותו חישוב של כרטיס
 // אחוז הנוכחות של הקבוצה בחודש הנוכחי (כמו "נוכחות ממוצעת החודש" בכרטיס שמעל)
@@ -3109,9 +3084,6 @@ function st({
   players: a,
   attendance: l,
   onOpenAddPlayer: i,
-  currentUserId: c,
-  onEditPlayer: EP,
-  onWhatsapp: WA,
   onOpenGroup,
   onOpenGroupDate,
   cancellations: CX,
@@ -3120,10 +3092,8 @@ function st({
 }) {
   useYearAttendance(a);
   let [o, x] = b(null),
-    [h, u] = b(!1),
     quotaAl = quotaAlerts(a, s, l),
     pastMissing = missingAttendanceDays(s, l, CX),
-    f = a.filter((d) => d.isActive && !d.deleted),
     uniqueActiveCount = countUniqueActivePlayers(a),
     { avgPct: g, sessions: r } = Je(l),
     y = () => {
@@ -3161,13 +3131,6 @@ function st({
         createdAt: Oe(),
         processed: !0,
       }).catch((I) => console.warn("Reminder log not saved:", I));
-    },
-    C = async (d) => {
-      try {
-        await O(S(P, "players", d), { isActive: !1, endDate: E() });
-      } catch (A) {
-        setDashErr("העברה לארכיון נכשלה: " + A.message);
-      }
     };
   let [dashErr, setDashErr] = b(""),
     todayG = s.filter((d) => ee(d)),
@@ -3304,7 +3267,6 @@ function st({
                     "button",
                     {
                       key: d.id + "_" + A.id,
-                      disabled: h,
                       onClick: () => N(d, A),
                       className:
                         "flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2.5 disabled:opacity-50",
@@ -3342,8 +3304,7 @@ function st({
       s.map((d) => {
         let A = groupCoachLabel(d, t),
           I = Ze(l, d.id, a),
-          cancelledToday = findCancellation(CX, d.id, E()),
-          w = a.filter((k) => k.groupId === d.id && k.isActive && !k.deleted);
+          cancelledToday = findCancellation(CX, d.id, E());
         return e.createElement(
           "div",
           {
@@ -3668,8 +3629,6 @@ function AlertsCard({
   alerts: t,
   onWhatsapp: s,
   onEdit: a,
-  onHandled: l,
-  subtitle: i,
 }) {
   let [c, n] = b("");
   if (t.length === 0) return null;
@@ -3702,7 +3661,7 @@ function AlertsCard({
         e.createElement(
           "div",
           { className: "text-xs text-amber-700 leading-snug" },
-          i || "שחקנים שנעדרו משני האימונים האחרונים",
+          "שחקנים שנעדרו משני האימונים האחרונים",
         ),
       ),
     ),
@@ -3747,7 +3706,7 @@ function AlertsCard({
             "button",
             {
               onClick: () => {
-                (m(o), l && l(o));
+                m(o);
               },
               className:
                 "min-w-[44px] min-h-[44px] rounded-full bg-slate-100 flex items-center justify-center shrink-0",
@@ -3778,8 +3737,8 @@ function AlertsCard({
     ),
   );
 }
-function missingAttendanceDays(groups, attendance, cancellations, lookbackDays) {
-  let days = lookbackDays || 7,
+function missingAttendanceDays(groups, attendance, cancellations) {
+  let days = 7,
     today = E(),
     base = new Date(today + "T00:00:00"),
     // אין תאריך רצפה קשיח: הגבול הוא טווח הימים שביקשו, ותאריך פתיחת הקבוצה
@@ -3861,7 +3820,7 @@ function MissingDaysCard({ items: t, users: US, showCoach: SC, onAction: OA, act
                 className:
                   "shrink-0 bg-orange-500 text-white text-xs font-semibold rounded-lg px-3 py-2 min-h-[38px] active:scale-95 transition-transform",
               },
-              AL || "פתיחה",
+              AL,
             ),
         );
       }),
@@ -4204,7 +4163,6 @@ function at({
     ),
   );
 }
-var DEFAULT_ROSTER = "";
 var DAY_LETTERS = { א: 0, ב: 1, ג: 2, ד: 3, ה: 4, ו: 5, ש: 6 };
 // פיצול שורת CSV עם תמיכה בשדות במירכאות ("כהן, יוסי") — כמו הקובץ שהייצוא שלנו מפיק
 function splitCsvLine(line) {
@@ -4268,7 +4226,7 @@ function parseRoster(text) {
   return { rows, errors };
 }
 function ImportScreen({ groups: t, players: s }) {
-  let [text, setText] = b(DEFAULT_ROSTER),
+  let [text, setText] = b(""),
     [busy, setBusy] = b(!1),
     [log, setLog] = b(null),
     parsed = parseRoster(text),

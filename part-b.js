@@ -1967,10 +1967,6 @@ function joinMatches(r, players) {
     })
     .slice(0, 3);
 }
-function JoinScreen({ groups: G, players: PL }) {
-  // מי הבעלים קובעים החוקים (לפי האימייל); כאן רק מציגים
-  return e.createElement(JoinOwnerScreen, { groups: G, players: PL });
-}
 function JoinOwnerScreen({ groups: G, players: PL }) {
   let [reqs, setReqs] = b(null),
     [cfg, setCfg] = b(null),
@@ -2034,8 +2030,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
           }),
       ),
     reject = (r) => askConfirm(`למחוק את הבקשה של ${r.child}?`, { yes: "כן, למחוק", danger: !0 }).then((ok) => ok && act(r, () => {})),
-    on = !!(cfg && cfg.enabled && cfg.code),
-    pill = (active) => `min-h-[40px] px-3.5 rounded-full text-sm font-semibold ${active ? "bg-[#3B82D6] text-white" : "bg-slate-100 text-slate-600"}`;
+    on = !!(cfg && cfg.enabled && cfg.code);
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4 text-right" },
@@ -3359,7 +3354,6 @@ function re({
   attendance: l,
   users: US,
   onBack: i,
-  onArchivePlayer: c,
   onEditPlayer: EP,
   onWhatsapp: WA,
   onAddPlayer: AP,
@@ -4045,24 +4039,6 @@ function re({
                 e.createElement($e, { className: "w-4 h-4" }),
               )
             : null,
-          c && !u
-            ? e.createElement(
-                "button",
-                {
-                  key: "arch",
-                  onClick: () => {
-                    askConfirm(
-                      `להעביר את ${p.name} לארכיון? ההיסטוריה שלו תישמר.`,
-                      { yes: "כן, לארכיון" },
-                    ).then((ok) => ok && c(p.id));
-                  },
-                  className:
-                    "min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 shrink-0",
-                  "aria-label": "העברה לארכיון",
-                },
-                e.createElement(Ae, { className: "w-4 h-4" }),
-              )
-            : null,
         ].filter(Boolean);
         // 28.10: פחות רעש בשורה — מידע משני בשורה שקטה אחת מתחת לשם, בלי תגים
         let sub = [k && "2 היעדרויות", isOffDay && `ימים קבועים: ${playerDaysLabel(p)}`].filter(Boolean).join(" · ");
@@ -4650,9 +4626,6 @@ function Q() {
   }, [olderFrom, olderOn]);
   if (
     (j(() => {
-      s?.id && qe(s.id);
-    }, [s?.id]),
-    j(() => {
       s && !isAdminRole(s) && !isViewerRole(s) && o("attendance");
     }, [s?.role]),
     j(() => {
@@ -4689,16 +4662,6 @@ function Q() {
         fromHash(),
         window.addEventListener("hashchange", fromHash),
         () => window.removeEventListener("hashchange", fromHash)
-      );
-    }, []),
-    j(() => {
-      let N;
-      return (
-        F.then((C) => {
-          C &&
-            (N = Fe(C, () => {}));
-        }),
-        () => N && N()
       );
     }, []),
     t === void 0 || (t && s === void 0) || (t && s && coreLoading))
@@ -4865,9 +4828,6 @@ function Q() {
           players: statPlayers,
           attendance: statAtt,
           onOpenAddPlayer: openAddPlayer,
-          currentUserId: s.id,
-          onEditPlayer: openEditPlayer,
-          onWhatsapp: openWhatsapp,
           onOpenGroup: goToGroupScreen,
           onOpenGroupDate: goToGroupDate,
           cancellations,
@@ -4900,7 +4860,7 @@ function Q() {
       r &&
         m === "permissions" &&
         e.createElement(ot, { users: l, groups: i, currentUserId: s.id, uid: t?.uid }),
-      r && m === "join" && e.createElement(JoinScreen, { groups: i, players: c }),
+      r && m === "join" && e.createElement(JoinOwnerScreen, { groups: i, players: c }),
       canDo(s, "manageGroups") &&
         !vw &&
         m === "import" &&
