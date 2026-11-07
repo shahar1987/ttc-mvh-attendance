@@ -38,7 +38,7 @@ export function scheduleProblems(health = {}, bot = {}, now = new Date()) {
   return problems;
 }
 
-export function recurringCronError(health = {}, bot = {}, now = new Date()) {
+function recurringCronError(health = {}, bot = {}, now = new Date()) {
   const e = bot.lastCronError;
   const prev = health.supervisor?.cronErrorAt;
   if (!e?.at || hoursAgo(e.at, now) >= 1.2) return false;

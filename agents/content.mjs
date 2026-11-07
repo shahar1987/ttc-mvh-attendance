@@ -13,7 +13,7 @@ import { gemini } from "./lib/gemini.mjs";
 // המועצה והמתנ"ס תמיד; קריית שמונה וגליל עליון רק בפוסט על רמת כורזים.
 export const IG_TAGS = "@matnas.mvhr @mevoothahermon";
 const KORAZIM_TAGS = "@kiryat8 @galil.elion";
-export const igTags = (place) => (place === "רמת כורזים" ? `${IG_TAGS} ${KORAZIM_TAGS}` : IG_TAGS);
+const igTags = (place) => (place === "רמת כורזים" ? `${IG_TAGS} ${KORAZIM_TAGS}` : IG_TAGS);
 export const CREDIT = 'בשיתוף מתנ"ס אזורי מבואות החרמון והמועצה האזורית מבואות החרמון';
 // הלו"ז נקרא כל שבוע מהגיליון "לוז אימונים 2026" (liveTrainings). זה רק גיבוי כשהגיליון לא נגיש — עותק מ-11.10.2026.
 // לפי יום בשבוע (0 = ראשון). ליגה (שלישי/רביעי בכורזים) לא כאן — זה לא אימון שמזמינים אליו.

@@ -158,7 +158,7 @@ const growth = (log, from, to, net) => {
 };
 
 // 🎯 יעד שבועי לעוקבים חדשים בכל רשת (שחר, 24.10.2026)
-export const WEEKLY_GOAL = 5;
+const WEEKLY_GOAL = 5;
 export function goalProgress(insights, now = new Date()) {
   const end = now.getTime(), start = end - 7 * DAY, s = insights.series || {}, log = insights.followersLog;
   return [

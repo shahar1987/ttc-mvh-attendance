@@ -11,14 +11,14 @@ import { pathToFileURL } from "node:url";
 import { firestore } from "../agents/lib/firebase.mjs";
 import { pushInput, sendPush } from "./send_push.mjs";
 
-export const DATA_URL = "https://shahar1987.github.io/ttc-club-board/data.json";
+const DATA_URL = "https://shahar1987.github.io/ttc-club-board/data.json";
 const STATE = ["system", "gamedayPush"];
 const MORNING_FROM = "08:00";
 // תוצאה ישנה מזה (data.json מתעדכן באיחור) — מסומנת בלי פוש
 const RESULT_MAX_AGE_DAYS = 7;
 
 // אותו קיצור שמות כמו בלוח (ttc-club-board/app.js, short)
-export const shortName = (teams, c) =>
+const shortName = (teams, c) =>
   (teams[c] || c)
     .replace("הפועל מבואות חרמון", "מבואות חרמון")
     .replace("כרמל מרכזי טניס שולחן חיפה", "כרמל חיפה")
@@ -37,7 +37,7 @@ export function israelNow(now = new Date()) {
 }
 
 // "20/10/26" -> "2026-10-20"
-export const isoDate = (d) => {
+const isoDate = (d) => {
   const [dd, mm, yy] = String(d).split("/");
   return `20${yy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
 };

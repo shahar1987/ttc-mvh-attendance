@@ -76,7 +76,7 @@ const bodyOf = (data) => JSON.stringify({ fields: fieldsOf(data) });
 
 // 429/503 מגוגל = עומס רגעי ("exceeded their maximum bandwidth for writes", 2026-10-25) — מחכים ומנסים שוב, כמו שגוגל מבקשים.
 // סה"כ עד ~4.5 שניות, מתחת למגבלת ה-22 שניות של handle.
-export const BACKOFF_MS = [500, 1500, 2500];
+const BACKOFF_MS = [500, 1500, 2500];
 export async function fetchRetry(url, init, waits = BACKOFF_MS) {
   for (let i = 0; ; i++) {
     const res = await fetch(url, init);

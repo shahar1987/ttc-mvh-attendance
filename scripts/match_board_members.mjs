@@ -50,7 +50,7 @@ export function alreadyNotified(prev, result) {
 }
 
 // הודעה אחת לכל ההרצה (לא אחת לכל נרשם — הגנה מהצפה): עד 10 שמות ואז "…ועוד N"
-export const OWNER_LIST_MAX = 10;
+const OWNER_LIST_MAX = 10;
 export function ownerText(members) {
   const list = members.slice(0, OWNER_LIST_MAX).map((m) => `${m.name || "בלי שם"} · ${m.phone || "בלי טלפון"}`);
   if (members.length > OWNER_LIST_MAX) list.push(`…ועוד ${members.length - OWNER_LIST_MAX}`);

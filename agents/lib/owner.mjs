@@ -77,7 +77,7 @@ export async function enqueueStaff(db, from, recipients, { arrayUnion = (...xs) 
 
 // התראת כישלון מ-workflow — לכל היותר פעם ב-6 שעות לאותו מפתח (agentReports/bot.alertsSent),
 // כדי שתהליך שנכשל כל שעה לא יציף את הבעלים.
-export const ALERT_EVERY_HOURS = 6;
+const ALERT_EVERY_HOURS = 6;
 export async function enqueueAlertOnce(db, { key, text }, { now = new Date(), ...opts } = {}) {
   const bot = (await botDoc(db).get()).data() || {};
   const last = bot.alertsSent?.[key];

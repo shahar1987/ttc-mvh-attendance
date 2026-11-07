@@ -73,9 +73,9 @@ const SOURCE_MIME_ALLOW = new Set([
   "text/csv",
   "text/plain",
 ]);
-export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 
-export function pickSourceFile(files) {
+function pickSourceFile(files) {
   const usable = (files || []).filter(
     (f) =>
       f &&
@@ -89,7 +89,7 @@ export function pickSourceFile(files) {
 // --- סיבה לכל "לא משלם" -------------------------------------------------
 // לא מספיק לדעת שמישהו לא נמצא בקובץ — צריך לדעת למה, אחרת אי אפשר להבדיל
 // בין "באמת לא נרשם" לבין "נרשם אבל השם כתוב אחרת".
-export function notPayingReason(player, filePhoneKeys) {
+function notPayingReason(player, filePhoneKeys) {
   const key = [player.parentPhone, player.phone, player.mobile]
     .map((x) => phoneKey(x))
     .find(Boolean);
@@ -98,13 +98,13 @@ export function notPayingReason(player, filePhoneKeys) {
   return "not-in-file";
 }
 
-export function normalise(s) {
+function normalise(s) {
   return (s || "").toString().trim().replace(/\s+/g, " ");
 }
 
 // ניקוי שם לצורך השוואה: מסיר סימני כיוון בלתי-נראים ותווי זבל שנכנסים לפעמים
 // לייצוא מהמתנ"ס (למשל "אופנהיים?‎ דב"), ומשאיר אותיות, ספרות וגרש/גרשיים.
-export function cleanName(s) {
+function cleanName(s) {
   return normalise(
     (s || "")
       .toString()
@@ -114,7 +114,7 @@ export function cleanName(s) {
 }
 
 // מרחק עריכה (Levenshtein) — לזיהוי טעויות כתיב קטנות בשם
-export function levenshtein(a, b) {
+function levenshtein(a, b) {
   a = a || "";
   b = b || "";
   if (a === b) return 0;
@@ -137,7 +137,7 @@ export function levenshtein(a, b) {
 
 // שם משפחה נחשב זהה אם הוא זהה ממש, או שונה בתו אחד בשמות ארוכים (4+ אותיות).
 // בשמות קצרים ("כהן", "לוי") לא מרשים סטייה — אחרת "כהן" ו"להן" ייחשבו זהים.
-export function familyMatches(token, family) {
+function familyMatches(token, family) {
   if (!token || !family) return false;
   if (token === family) return true;
   if (family.length <= 3 || token.length <= 3) return false;
@@ -146,7 +146,7 @@ export function familyMatches(token, family) {
 
 // שם פרטי נחשב "אותו שם עם טעות/קיצור" אם אחד הוא תחילית של השני (אבי/אביב)
 // או שמרחק העריכה ביניהם קטן.
-export function firstNameSimilar(a, b) {
+function firstNameSimilar(a, b) {
   if (!a || !b) return false;
   if (a === b) return true;
   const short = a.length <= b.length ? a : b;
@@ -158,7 +158,7 @@ export function firstNameSimilar(a, b) {
 // מחפש בקבוצה שחקנים שנראים כמו אותו אדם למרות שההתאמה המדויקת נכשלה:
 // שם משפחה תואם, והשם הפרטי שונה (טעות כתיב, כינוי, או שם אחר לגמרי).
 // לעולם לא מסמן אוטומטית ששילם — רק מציע למנהל לאשר באפליקציה.
-export function fuzzyMatches(pool, fileFamily, filePersonal) {
+function fuzzyMatches(pool, fileFamily, filePersonal) {
   const out = [];
   for (const p of pool) {
     const tokens = cleanName(p.name).split(" ").filter(Boolean);
@@ -185,7 +185,7 @@ export function fuzzyMatches(pool, fileFamily, filePersonal) {
 // שם משפחה זהה בלבד בקבוצה אחרת לא מוצע בכלל — שם יושבים האחים (אותו שם
 // משפחה, שם פרטי אחר, קבוצות שונות), וזו בדיוק ההצעה שעלולה לסמן את האח הלא
 // נכון כמשלם או לשנות לו את השם.
-export function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sameGroupId) {
+function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sameGroupId) {
   const exact = [];
   const similar = [];
   for (const p of players) {
@@ -215,7 +215,7 @@ export function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sa
 // ולעולם לא מסמן לבדו מי שילם.
 
 
-export function detectPhoneColumns(header) {
+function detectPhoneColumns(header) {
   const cols = [];
   header.forEach((h, i) => {
     const s = (h || "").toString();
@@ -227,7 +227,7 @@ export function detectPhoneColumns(header) {
 
 // כל המספרים שאפשר לחלץ משורה: כל עמודת טלפון בנפרד, וגם צירוף של עמודות
 // סמוכות (בקובץ המתנ"ס הקידומת והמספר יושבים בשתי עמודות נפרדות).
-export function rowPhones(row, phoneCols) {
+function rowPhones(row, phoneCols) {
   const out = new Set();
   const parts = phoneCols.map((i) => (row[i] || "").toString().replace(/\D/g, ""));
   parts.forEach((p, idx) => {
@@ -257,7 +257,7 @@ export function buildPhoneIndex(players) {
 
 // מבין השחקנים שחולקים את הטלפון של השורה — מי מהם באמת האדם שבשורה,
 // לפי השם הפרטי (כולל שיבושים קלים: "אביב" מול "אביבי").
-export function playersMatchingPhone(byPhone, nameSet, filePersonal) {
+function playersMatchingPhone(byPhone, nameSet, filePersonal) {
   return byPhone.filter((p) => {
     const clean = cleanName(p.name);
     if (nameSet.has(clean)) return true;
@@ -269,7 +269,7 @@ export function playersMatchingPhone(byPhone, nameSet, filePersonal) {
   });
 }
 
-export function parseCsv(text) {
+function parseCsv(text) {
   let rows = [];
   let lines = text.replace(/^\ufeff/, "").replace(/\r\n/g, "\n").split("\n").filter((l) => l.length > 0);
   for (let line of lines) {
@@ -300,7 +300,7 @@ export function parseCsv(text) {
 // ממיר את הקובץ שהתקבל מהדרייב למערך שורות (מערך של מערכי תאים), בין אם זה
 // CSV/גיליון גוגל מיוצא (טקסט) או קובץ Excel בינארי אמיתי שהועלה ידנית.
 // כותרת נחשבת כותרת של טבלת רישום אם יש בה עמודת קבוצה ועמודת שם כלשהי.
-export function looksLikeHeader(row) {
+function looksLikeHeader(row) {
   const joined = (row || []).join(" ");
   return joined.includes("קבוצה") && joined.includes("שם");
 }
@@ -309,7 +309,7 @@ export function looksLikeHeader(row) {
 // אומר שכל מי שרשום בגיליון אחר פשוט לא היה נספר כמשלם. כאן נקראים כל
 // הגיליונות שיש בהם טבלת רישום אמיתית, השורות מאוחדות, וכפילויות (אותו אדם
 // שמופיע בשני גיליונות, או גיליון שהועתק) מוסרות לפי תוכן השורה.
-export function rowsFromWorkbook(wb) {
+function rowsFromWorkbook(wb) {
   let header = null;
   const seen = new Set();
   const out = [];
@@ -344,7 +344,7 @@ export function rowsFromWorkbook(wb) {
   return { rows: header ? out : [], perSheet };
 }
 
-export function rowsFromFile(buffer, { isSpreadsheetExport }) {
+function rowsFromFile(buffer, { isSpreadsheetExport }) {
   if (isSpreadsheetExport) {
     return { rows: parseCsv(buffer.toString("utf8")), perSheet: [] };
   }
@@ -367,7 +367,7 @@ export function rowsFromFile(buffer, { isSpreadsheetExport }) {
 }
 
 // מזהה את עמודות הקובץ: או עמודת "שם" משולבת, או משפחה+פרטי בנפרד, ועמודת קבוצה.
-export function detectColumns(header) {
+function detectColumns(header) {
   const find = (pred) => header.findIndex(pred);
   const groupCol = find((h) => h.includes("קבוצה"));
   const familyCol = find((h) => h.includes("תושב") && h.includes("משפחה"));
@@ -378,7 +378,7 @@ export function detectColumns(header) {
 
 // שמות מועמדים מהשורה (עד שניים — הסדר "משפחה פרטי" ו"פרטי משפחה", כי לא
 // תמיד ידוע איך שם השחקן שמור באפליקציה).
-export function candidateNames(row, cols) {
+function candidateNames(row, cols) {
   if (cols.familyCol !== -1 && cols.personalCol !== -1) {
     const family = normalise(row[cols.familyCol]);
     const personal = normalise(row[cols.personalCol]);
@@ -396,7 +396,7 @@ export function candidateNames(row, cols) {
 // שומרים טביעת אצבע קלה של כל שורה ("שם::שם הקבוצה בקובץ") כדי לדעת בהרצה
 // הבאה מי נוסף, מי נעלם, ולמי השתנתה התדירות — וכדי לזהות קובץ חלקי לפני
 // שהוא מסמן חצי מועדון כלא משלם.
-export function snapshotRows(dataRows, cols) {
+function snapshotRows(dataRows, cols) {
   const out = [];
   for (const r of dataRows) {
     const label = cols.groupCol !== -1 ? normalise(r[cols.groupCol]) : "";
@@ -406,7 +406,7 @@ export function snapshotRows(dataRows, cols) {
   return out;
 }
 
-export function diffSnapshots(prevKeys, curKeys) {
+function diffSnapshots(prevKeys, curKeys) {
   const toMap = (arr) => {
     const m = new Map();
     for (const k of arr || []) {
@@ -432,7 +432,7 @@ export function diffSnapshots(prevKeys, curKeys) {
 
 // קובץ נחשב חלקי אם הוא קטן משמעותית מהקודם — ייצוא שנקטע באמצע, סינון
 // שנשכח, או קובץ של קבוצה אחת שהועלה בטעות. במקרה כזה לא נוגעים בסימונים.
-export function isPartialFile(prevRowCount, curRowCount) {
+function isPartialFile(prevRowCount, curRowCount) {
   if (!prevRowCount || prevRowCount < 5) return false;
   return curRowCount < prevRowCount * 0.8;
 }
@@ -444,7 +444,8 @@ async function driveFetch(url, token) {
 }
 
 async function main() {
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount()) });
+  const sa = serviceAccount();
+  admin.initializeApp({ credential: admin.credential.cert(sa) });
   const db = admin.firestore();
 
   // מצב "ondemand" = הריצה הקצרה שרצה כל כמה דקות ובודקת רק אם המנהל לחץ

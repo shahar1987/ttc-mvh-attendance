@@ -19,8 +19,6 @@ export function adjusted(d) {
   return d.kwh / (d.rad * (1 - 0.004 * (d.tmax - 25)));
 }
 
-const range = (end, n) => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
-
 export function analyze(days, today) {
   const end = addDays(today, -1);
   const rows = (d) => d.map((k) => ({ day: k, ...days[k] })).filter((x) => x.kwh != null);

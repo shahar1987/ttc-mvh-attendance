@@ -167,7 +167,6 @@ const app = {
     } catch {
       return new Response("ok");
     }
-    const owner = String(env.OWNER_PHONE || "").replace(/\D/g, "");
     const msgs = (body.entry || [])
       .flatMap((e) => e.changes || [])
       .flatMap((c) => c.value?.messages || [])
@@ -768,7 +767,7 @@ async function everyQuarter(env) {
   return parts.map((p) => (p.status === "fulfilled" ? String(p.value) : `error: ${p.reason?.message || p.reason}`));
 }
 
-export { everyQuarter, think };
+export { think };
 export async function review(env) {
   const store = db(env);
   const bot = (await store.get("agentReports/bot")) || {};

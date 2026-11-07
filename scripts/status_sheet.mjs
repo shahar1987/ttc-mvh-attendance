@@ -22,7 +22,7 @@ export const UNPAID = "◐ רשום, לא שילם";
 export const OFF = "— לא במעקב";
 export const CHECK = "⏳ לבדיקה"; // פער שמחכה להכרעה: לא משנה כלום באפליקציה, כמו "לא במעקב"
 const neutral = (s) => s === OFF || s === CHECK;
-export const NOT_REGISTERED = "✗ לא רשום";
+const NOT_REGISTERED = "✗ לא רשום";
 const UNTRACKED_GROUP = "חוגים רמת כורזים";
 const MAX_NEW_ROWS = 30;
 const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה עמודה שנמחקה או הודבקה בטעות, לא עדכון אמיתי

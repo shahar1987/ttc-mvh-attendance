@@ -34,7 +34,7 @@ export async function closeTap(store, id) {
 export const cards = (store) => load(store);
 export const openCards = async (store) => (await load(store)).filter((i) => !i.answered && alive(i));
 
-export function approvable(items) {
+function approvable(items) {
   const list = items.filter((i) => APPROVE.test(i.key));
   return list.some((i) => i.key === "הודעות כן") ? list.filter((i) => !/^הודעות כן \d/.test(i.key)) : list;
 }

@@ -26,7 +26,7 @@ async function fireRoutine(env, store, id, routine = env.ROUTINE_ID, text = `new
 }
 
 // משימות שכפתורי "מוח N" / "פרסום N" מפעילים. לכל משימה מפתח API משלה (נשמר ב-agentReports/claude.tokens דרך /claude/start)
-export const TAP_ROUTINES = [
+const TAP_ROUTINES = [
   { prefix: "פרסום", task: "סוכן פרסום: פרסום אחרי אישור", trigger: "trig_01Gd8jzyURQ6jADE9nbVmuKP" },
   { prefix: "מוח", task: "מוח שני: הכנסת מה שאושר", trigger: "trig_019TEg8oAuB8DWWokWL3EU8B" },
 ];

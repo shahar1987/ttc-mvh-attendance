@@ -14,7 +14,7 @@ const { WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID, META_APP_ID, META_A
 for (const [k, v] of Object.entries({ WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID, META_APP_ID, META_APP_SECRET, WORKER_URL }))
   if (!v) throw new Error(`missing ${k}`);
 
-export const derive = (label, secret = META_APP_SECRET) => createHmac("sha256", secret).update(label).digest("hex");
+const derive = (label, secret = META_APP_SECRET) => createHmac("sha256", secret).update(label).digest("hex");
 
 async function graph(path, { method = "GET", body, token = WHATSAPP_TOKEN } = {}) {
   const res = await fetch(`${G}/${path}`, {

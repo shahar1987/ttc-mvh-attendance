@@ -31,7 +31,7 @@ export async function coachFor(store, from, { any = false } = {}) {
 
 // 📝 מה שמדריך כתב לשולה (סיכום אימון, תשובה לסיכום השבועי) — נשמר לפי תאריך (הסורק של הבוקר מסכם),
 // ונכנס מיד לתור לבעלים — כך שחר מתעדכן תוך רבע שעה ולא רק למחרת (בקשה של שחר, 30.10).
-export async function addCoachNote(store, coach, text, msgId, now = new Date()) {
+async function addCoachNote(store, coach, text, msgId, now = new Date()) {
   let isNew = false;
   const body = String(text).slice(0, 1500);
   await store.update(`agentReports/coachNotes-${israelToday(now)}`, (cur) => {

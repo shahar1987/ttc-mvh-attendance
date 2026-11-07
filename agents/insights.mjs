@@ -108,7 +108,7 @@ export async function account(page, get = getJson) {
 }
 
 // להשוואות (שבוע / חודש / שנה שעברה): 400 יום אחורה. כל מה שנכשל נשאר חסר ונרשם ב-gaps, לא מפיל את הריצה.
-export const HISTORY_DAYS = 400;
+const HISTORY_DAYS = 400;
 const ymd = (d) => new Date(d).toISOString().slice(0, 10);
 // Meta מחזירה ערך יומי עם end_time של סוף היום — היום עצמו הוא היום שלפניו
 const dayOf = (endTime) => ymd(new Date(endTime).getTime() - 864e5);
@@ -232,9 +232,9 @@ export function weeklyReport(posts, now = new Date()) {
 
 // 190 = טוקן לא תקף (פג, בוטל, הוחלפה סיסמה)
 export const tokenDead = (e) => e?.code === 190 || /access token/i.test(e?.message || "");
-export const REMIND_EVERY_DAYS = 3;
+const REMIND_EVERY_DAYS = 3;
 export const shouldRemind = (lastIso, now = new Date()) => !lastIso || now - new Date(lastIso) >= REMIND_EVERY_DAYS * 864e5;
-export const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
+const RECONNECT = "⚠️ החיבור של שולה לפייסבוק ולאינסטגרם נותק (Meta ביטלה אותו, למשל אחרי החלפת סיסמה). עד שמחברים מחדש שולה לא יכולה לפרסם ולא לאסוף נתוני פוסטים.\nלתיקון: לכתוב לשולה \"תחברי מחדש את פייסבוק\" ולפתוח את הקישור שתשלח (בתוקף 30 דקות).";
 
 async function main() {
   const { firestore, heartbeat, reportMissingKey } = await import("./lib/firebase.mjs");

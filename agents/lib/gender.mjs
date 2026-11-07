@@ -51,7 +51,7 @@ const femaleNameHints = [
   "ענבר",
   "נעמי",
 ];
-export function guessGender(name) {
+function guessGender(name) {
   let first = String(name || "")
     .trim()
     .split(/\s+/)[0];

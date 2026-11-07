@@ -1,6 +1,6 @@
 // גיבוי ל-Gemini: כשגוגל חוסם (403 תקרת הוצאה, 429 מכסה) — אותה בקשה הולכת ל-Claude Haiku.
 // מתרגם בקשה בפורמט Gemini ל-Anthropic Messages ומחזיר parts בפורמט Gemini, כך שהקוראים לא משתנים.
-export const CLAUDE_MODEL = "claude-haiku-5-5";
+const CLAUDE_MODEL = "claude-haiku-5-5";
 
 export function toClaude(body) {
   const ids = []; // tool_use שעוד לא נענו, לפי סדר — functionResponse של Gemini מזוהה רק בשם

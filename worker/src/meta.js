@@ -54,7 +54,7 @@ export async function metaRoute(req, env, store) {
 }
 const toPage = (p) => ({ id: p.id, name: p.name, token: p.access_token, ig: p.instagram_business_account?.id || "", igName: p.instagram_business_account?.username || "" });
 // הדפים הקבועים קודם; דף שכבר יש לו חיבור קבוע לא מוחלף
-export const mergePages = (permanent, fresh) => [...permanent, ...fresh.filter((p) => !permanent.some((k) => k.id === p.id))];
+const mergePages = (permanent, fresh) => [...permanent, ...fresh.filter((p) => !permanent.some((k) => k.id === p.id))];
 
 // 🔒 חיבור קבוע: טוקן של "משתמש מערכת" מהגדרות העסק ב-Meta. לא פג ולא תלוי בסיסמה של שחר.
 // דף חד-פעמי (מפתח קישור, 30 דקות): מדביקים את הטוקן, נשמר רק טוקן הדף של המועדון. הטוקן עצמו לא נשמר.

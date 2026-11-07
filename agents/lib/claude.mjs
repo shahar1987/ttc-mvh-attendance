@@ -1,7 +1,7 @@
 // קריאה אחת ל-Claude, לסוכנים המתוזמנים (רעיונות). הבוט עצמו ב-worker/src/claude.js.
 import Anthropic from "@anthropic-ai/sdk";
 
-export const MODEL = "claude-opus-5-5";
+const MODEL = "claude-opus-5-5";
 
 export async function ask(system, user, { effort = "medium", max_tokens = 16000 } = {}) {
   const client = new Anthropic();

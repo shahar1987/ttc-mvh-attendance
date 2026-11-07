@@ -27,7 +27,7 @@ async function loadMatcher() {
 }
 
 // = compute() בדשבורד
-export function compute(answers, roster, M) {
+function compute(answers, roster, M) {
   const rows = answers
     .filter((a) => M.norm(a.first) !== "בדיקה")
     .map((a) => {

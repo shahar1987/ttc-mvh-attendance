@@ -310,7 +310,7 @@ const scanCard = (s, a, days, end) => {
 };
 
 // הלוגו: חצי שמש שעולה מעל פאנל בפרספקטיבה. אותו ציור משמש לפתיחה ולאייקון של האפליקציה
-export const logoMark = () => {
+const logoMark = () => {
   const rows = [0, 0.26, 0.58, 1];
   const pt = (u, v) => `${(100 + (u - 0.5) * (84 + 80 * v)).toFixed(1)} ${(114 + 64 * v).toFixed(1)}`;
   const cells = [0, 1, 2].flatMap((r) => [0, 1, 2, 3].map((c) => {

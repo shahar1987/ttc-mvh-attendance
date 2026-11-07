@@ -68,7 +68,7 @@ export async function approvedShown(store, kind, ownerText, turn) {
 }
 
 // "שלחתי" מהבעלים — אחרי שלחץ על קישורי ההיעדרות
-export const SENT_CONFIRM = /(שלחתי|שלחנו|נשלחו|נשלח הכל)/;
+const SENT_CONFIRM = /(שלחתי|שלחנו|נשלחו|נשלח הכל)/;
 const NOT_SENT = /(לא|עוד לא|טרם)\s+(שלחתי|שלחנו|נשלחו|נשלח)/;
 
 export const TOOL_DEFS = [

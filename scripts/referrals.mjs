@@ -11,9 +11,9 @@ import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { israelNow } from "./gameday.mjs";
 import { phoneKey } from "../agents/lib/analysis.mjs";
 
-export const TOP = 10;
+const TOP = 10;
 const ms = (v) => (!v ? 0 : typeof v.toMillis === "function" ? v.toMillis() : new Date(v).getTime() || 0);
-export const israelMonth = (t) => israelNow(new Date(t)).date.slice(0, 7);
+const israelMonth = (t) => israelNow(new Date(t)).date.slice(0, 7);
 
 // "דנה כהן לוי" -> "דנה כ׳". רק אותיות, גרש ומקף — טלפון או קישור בשם לא עוברים לציבור
 const c = (s) => s.replace(/[^\p{L}'׳-]/gu, "").slice(0, 20);

@@ -10,7 +10,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { analyze, addDays, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
 import { knownGender } from "./lib/gender.mjs";
 
