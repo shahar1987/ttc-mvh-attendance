@@ -3,7 +3,7 @@
 // ושולה מפרסמת/מתזמנת דרך publish_post (worker/src/meta.js) רק אחרי "כן".
 // Gemini (חינמי, אותו מפתח של שולה). בלי שמות שחקנים ובלי טלפונים פרטיים בקוד — הריפו ציבורי.
 import { fileURLToPath } from "node:url";
-import { israelToday, addDays } from "./lib/analysis.mjs";
+import { israelToday, addDays, DAY_NAMES } from "./lib/analysis.mjs";
 import { sensitiveDay } from "./lib/sensitive.mjs";
 import { weeklyReport } from "./insights.mjs";
 import { clubPage, CLUB_PHONE, SCHEDULE_SHEET } from "./lib/club.mjs";
@@ -24,7 +24,6 @@ export const TRAININGS = {
   3: [["מתחילים", "רמת כורזים", "16:30-18:00"], ["בוגרים", "רמת כורזים", "18:00-20:00"]],
   4: [["מתחילים", "שאר ישוב", "16:30-17:30"], ["מתקדמים", "שאר ישוב", "17:30-19:00"], ["נבחרת תחרותית", "שאר ישוב", "19:00-21:00"], ["בוגרים", "דפנה", "19:30-21:00"]],
 };
-const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 // יום לפני אימון: ראשון→שני, שלישי→רביעי, רביעי→חמישי. "מחר" בפוסט = היום שאחרי הפרסום.
 const SLOTS = [{ dow: 0, time: "17:00" }, { dow: 2, time: "17:00" }, { dow: 3, time: "17:00" }];
 const PHOTO = "תמונה אמיתית מתיקיית המדיה בדרייב";
@@ -52,7 +51,7 @@ export function parseSchedule(csv) {
   const out = {};
   let dow = -1;
   for (const [a = "", hours = "", group = "", place = "", , , status = ""] of rows) {
-    const day = DAYS.indexOf(a.trim().replace(/^יום /, ""));
+    const day = DAY_NAMES.indexOf(a.trim().replace(/^יום /, ""));
     if (day >= 0) dow = day;
     else if (dow >= 0 && /^\d+$/.test(a.trim()) && /^\d/.test(hours) && status.trim() === "פעיל" && !group.includes("ליגה"))
       (out[dow] ||= []).push([group.trim().replace("מתקמים", "מתקדמים"), place.trim(), hours.trim()]);
@@ -137,7 +136,7 @@ export function draft(slot, o = {}) {
   const t = slot.options[(Number(o.training) || 1) - 1] || slot.options[0];
   const tags = igTags(t[1]);
   const image = /אמיתית|דרייב/.test(o.image || "") ? PHOTO : "פלייר מהתבנית בלי תמונה";
-  return { at: `${slot.date}T${slot.time}`, training: `מחר (${DAYS[slot.dow + 1]}): ${training(t)}`, topic: o.topic || "", image, tags, ...tidy(o.text, CLUB_PHONE, tags) };
+  return { at: `${slot.date}T${slot.time}`, training: `מחר (${DAY_NAMES[slot.dow + 1]}): ${training(t)}`, topic: o.topic || "", image, tags, ...tidy(o.text, CLUB_PHONE, tags) };
 }
 
 async function main() {
@@ -164,7 +163,7 @@ async function main() {
   const perf = fresh ? insights.posts.map(({ platform, at, type, text, reach, likes, comments, shares, saves }) => ({ platform, at, type, text, reach, likes, comments, shares, saves })) : await performance(clubPage(social));
   const rules = (bot.postRules || []).map((r) => r.rule);
 
-  const user = `המועדים והאימונים של מחר לכל מועד:\n${slots.map((s) => `${s.date} ${s.time} (יום ${DAYS[s.dow]}) — מחר: ${s.options.map((t, i) => `${i + 1}. ${training(t)}`).join(", ")}`).join("\n")}
+  const user = `המועדים והאימונים של מחר לכל מועד:\n${slots.map((s) => `${s.date} ${s.time} (יום ${DAY_NAMES[s.dow]}) — מחר: ${s.options.map((t, i) => `${i + 1}. ${training(t)}`).join(", ")}`).join("\n")}
 ביצועי הפוסטים האחרונים בדף: ${perf.length ? JSON.stringify(perf) : "אין נתונים (הדף עוד לא מחובר)"}
 הנושאים מהשבוע שעבר: ${(last.drafts || []).map((d) => d.topic).join(" | ") || "אין"}`;
   const out = await draftsJson(rules.length ? `${SYSTEM}\nכללים קבועים שהבעלים אישר (גוברים על כל השאר):\n- ${rules.join("\n- ")}` : SYSTEM, user);

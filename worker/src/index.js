@@ -20,6 +20,7 @@ import { joinRoute } from "./join.js";
 import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 import { SOLAR_TOOL_DEFS, makeSolarTools, solarRoute, solarRun, solarUrl, solarWatch } from "./solar.js";
+import { israelToday } from "../../agents/lib/analysis.mjs";
 
 // הזול קודם בכל השיחות (החלטת הבעלים 19.10, חיסכון בחיוב של גוגל); הרגילים רק כגיבוי כשהזול לא זמין
 const MODELS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.8-flash"];
@@ -518,7 +519,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   if (contents.at(-1)?.role === "user") contents.at(-1).parts.push(...newParts);
   else contents.push({ role: "user", parts: newParts });
   const today = new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const isoToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const isoToday = israelToday();
   // בלי השעה במפורש Gemini ממציא אותה (2026-10-07: ענה 14:38 כשהשעה הייתה 13:45)
   const nowTime = new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 

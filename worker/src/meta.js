@@ -8,6 +8,7 @@ import { waConfig, GRAPH, META_API_VERSION } from "../../agents/lib/whatsapp.mjs
 import { israelToUtc } from "./time.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 import { clubPage } from "../../agents/lib/club.mjs";
+import { israelToday } from "../../agents/lib/analysis.mjs";
 
 // read_insights + instagram_manage_insights = חשיפה לדשבורד; pages_read_user_content = לייקים ותגובות בפייסבוק
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,read_insights,instagram_basic,instagram_content_publish,instagram_manage_insights,business_management";
@@ -221,7 +222,7 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       if (kind !== "story" && !text.trim()) return "חסר נוסח (text).";
       if (platform !== "instagram" && /@[\w.]+/.test(text)) return "לא פורסם: בפייסבוק @ נשאר טקסט מת. לכתוב בנוסח הפייסבוק את שמות השותפים במילים, בלי @, ואת התיוגים לשים ב-instagram_text.";
       if (at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) return "at צריך להיות בפורמט YYYY-MM-DDTHH:MM (שעון ישראל).";
-      const day = sensitiveDay((at || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" })).slice(0, 10));
+      const day = sensitiveDay((at || israelToday()).slice(0, 10));
       if (day && !memorial) return `לא מפרסמים תוכן פרסומי ב-${day}. אפשר רק פוסט זיכרון (memorial: true) באישור הבעלים, או מועד אחר.`;
       if (memorial && /אימון ניסיון|הצטרפות/.test(`${text} ${instagram_text || ""}`)) return "פוסט זיכרון בלי הזמנה לאימון ובלי שורת הסיום הקבועה. להסיר ולהציג לבעלים שוב.";
       const payload = { platform, kind, text, instagram_text, image, video, at, kids, memorial };

@@ -4,7 +4,7 @@
 // ממצאי בודק הבאגים) — בלי שמות ובלי טלפונים.
 import { readFileSync } from "node:fs";
 import { firestore, loadAll, heartbeat, reportMissingKey } from "./lib/firebase.mjs";
-import { analyze, addDays, israelToday, onlyHeldTrainings } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, onlyHeldTrainings, DAY_NAMES } from "./lib/analysis.mjs";
 import { gemini } from "./lib/gemini.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 
@@ -41,7 +41,6 @@ const attendance = onlyHeldTrainings(rawAttendance, cancellations, today);
 
 const pct = (recs) => (recs.length ? Math.round((100 * recs.filter((r) => r.status === "Present").length) / recs.length) : null);
 const recentFrom = addDays(today, -28);
-const WEEKDAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
 const byGroup = groups
   .filter((g) => !g.deleted)
@@ -54,7 +53,7 @@ const byGroup = groups
       attendancePctPrev8Weeks: pct(recs.filter((a) => a.date < recentFrom)),
     };
   });
-const byWeekday = WEEKDAYS.map((d, i) => ({
+const byWeekday = DAY_NAMES.map((d, i) => ({
   day: d,
   attendancePct: pct(attendance.filter((a) => new Date(a.date + "T00:00:00Z").getUTCDay() === i)),
 })).filter((x) => x.attendancePct !== null);

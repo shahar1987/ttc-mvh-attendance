@@ -1,5 +1,5 @@
 import xt from "react";
-import { attendanceId, trainingKey, isAdultGroup, normalizePhone, isValidPhone, lastTwoAbsences, needsRepeatMsg, onlyHeldTrainings } from "./agents/lib/analysis.mjs";
+import { attendanceId, trainingKey, isAdultGroup, normalizePhone, isValidPhone, lastTwoAbsences, needsRepeatMsg, onlyHeldTrainings, DAY_NAMES } from "./agents/lib/analysis.mjs";
 import { playerGender } from "./agents/lib/gender.mjs";
 import { createRoot as bt } from "react-dom/client";
 import { createPortal } from "react-dom";
@@ -745,15 +745,7 @@ function useLocalAlertNotice(alerts, label) {
     }
   }, [alerts.map((a) => a.player.id + a.dates[0]).join("|")]);
 }
-var We = [
-    "ראשון",
-    "שני",
-    "שלישי",
-    "רביעי",
-    "חמישי",
-    "שישי",
-    "שבת",
-  ],
+var We = DAY_NAMES,
   ie = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 function Y(t) {
   return Array.isArray(t.days) && t.days.length > 0;

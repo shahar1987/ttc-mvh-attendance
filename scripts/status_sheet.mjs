@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
-import { isValidPhone, normalizePhone } from "../agents/lib/analysis.mjs";
+import { isValidPhone, normalizePhone, israelToday } from "../agents/lib/analysis.mjs";
 import { safeCell } from "./export_event_signups.mjs";
 
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
@@ -144,7 +144,7 @@ async function main() {
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
   // שורות חדשות מהגיליון: קודם האפליקציה ואז המזהה בגיליון, כך שתקלה באמצע רק חוזרת בהרצה הבאה
   const tabGroup = new Map(groups.filter((g) => !g.deleted).map((g) => [g.name.replace("קובצת", "קבוצת"), g.id]));
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+  const today = israelToday();
   const links = [];
   let created = 0, waiting = 0;
   if (drafts.length > MAX_NEW_ROWS) throw new Error(`refusing ${drafts.length} sheet rows in one run`);

@@ -1,9 +1,8 @@
 // 📊 הסיכום השבועי (שישי 08:00): מה חסר לסדר ואיך להשתפר. פונקציה טהורה, בלי Firestore ובלי מודל —
 // כל שורה נשענת על מספר מהנתונים, כדי שאפשר לבדוק אותה ושהיא לא תמציא.
-import { addDays, analyze, isValidPhone, normalizePhone, onlyHeldTrainings } from "./analysis.mjs";
+import { addDays, analyze, isValidPhone, normalizePhone, onlyHeldTrainings, DAY_NAMES } from "./analysis.mjs";
 
 const pct = (recs) => (recs.length ? Math.round((100 * recs.filter((a) => a.status === "Present").length) / recs.length) : null);
-const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 const dow = (d) => new Date(d + "T00:00:00Z").getUTCDay();
 const list = (names, max = 5) => names.slice(0, max).join(", ") + (names.length > max ? ` ועוד ${names.length - max}` : "");
 
@@ -15,7 +14,7 @@ function unmarkedTrainings(groups, attendance, cancellations, from, to) {
   for (let d = from; d <= to; d = addDays(d, 1))
     for (const g of groups)
       if (Array.isArray(g.days) && g.days.includes(dow(d)) && !cancelled.has(`${d}_${g.id}`) && !marked.has(`${d}_${g.id}`))
-        out.push({ g, day: DAYS[dow(d)] });
+        out.push({ g, day: DAY_NAMES[dow(d)] });
   return out;
 }
 

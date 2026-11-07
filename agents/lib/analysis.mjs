@@ -13,6 +13,8 @@ export function addDays(date, n) {
   return d.toISOString().slice(0, 10);
 }
 
+export const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+
 export function israelToday(now = new Date()) {
   return now.toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 }

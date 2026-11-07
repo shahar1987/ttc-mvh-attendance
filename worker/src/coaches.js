@@ -77,7 +77,7 @@ export async function handleCoach(m, env, store, wa, coach, gemini) {
     { name: "session_note", description: "שומר סיכום אימון שהמדריך כתב (איך היה, מה עבד, מה לשפר) כדי שיגיע לבעלים בדוח הבוקר", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
   ];
   const contents = [...hist.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })), { role: "user", parts: [{ text }] }];
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const today = israelToday();
   let answer = "זה לקח יותר מדי צעדים. אפשר לנסח שוב בקצרה?";
   for (let i = 0; i < 4; i++) {
     const parts = await gemini(env, {

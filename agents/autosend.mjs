@@ -10,16 +10,15 @@
 import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { analyze, addDays, israelToday, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, isAdultGroup, isValidPhone, normalizePhone, DAY_NAMES } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
 import { knownGender } from "./lib/gender.mjs";
 
 export const CUTOFF = "2026-10-28"; // לא שולחים על מה שקרה לפני שהאוטומציה הופעלה
 const KEY = /^(repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
 
-const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 function daysText(days) {
-  const d = [...new Set(days || [])].filter((x) => x >= 0 && x <= 6).sort().map((x) => DAYS[x]);
+  const d = [...new Set(days || [])].filter((x) => x >= 0 && x <= 6).sort().map((x) => DAY_NAMES[x]);
   return d.length ? `בימי ${d.length > 1 ? d.slice(0, -1).join(", ") + " ו" + d.at(-1) : d[0]}` : "";
 }
 

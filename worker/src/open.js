@@ -11,9 +11,8 @@ const WEEK = 7 * 24 * 3600 * 1000;
 const CONFIRM_MS = 10 * 60 * 1000;
 export const PLAN_KEY = "מאושר";
 
-const israelDate = (at) => new Date(at).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
 // מספרי ההיעדרות מתחילים מחדש כל יום, אז כרטיס של אתמול לא נשאר פתוח
-const alive = (i, now = Date.now()) => now - Date.parse(i.at) < WEEK && (!i.key.startsWith("הודעות") || israelDate(i.at) === israelToday());
+const alive = (i, now = Date.now()) => now - Date.parse(i.at) < WEEK && (!i.key.startsWith("הודעות") || israelToday(new Date(i.at)) === israelToday());
 const load = async (store) => ((await store.get(DOC)) || {}).items || [];
 
 export async function recordCard(store, { text, buttons, wamid }) {
