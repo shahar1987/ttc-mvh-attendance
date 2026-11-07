@@ -8,6 +8,7 @@ import { solarHtml } from "./solar-dashboard.js";
 import { reportData, reportHtml, reportXlsx, reportFileName, validPeriod } from "./solar-report.js";
 import { ICON_192, ICON_512, ICON_V } from "./solar-icons.js";
 import { addDays, analyze, hardFault, heb } from "./solar-math.js";
+import { israelToday } from "../../agents/lib/analysis.mjs";
 
 const API = "https://monitoringapi.solaredge.com/v2";
 const DOC = "agentReports/solar";
@@ -20,8 +21,7 @@ const YEAR_WINDOWS = 20; // כ-600 יום: שנה להשוואה, ועוד מס�
 const full = (s) => !!s.backfilled && (s.backfillIdx ?? YEAR_WINDOWS) >= YEAR_WINDOWS;
 const BATCH = 6; // המסלול החינמי: 10 קריאות בדקה. שאר השנה נמשך בריצות הבאות
 
-const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" });
-export const isoDay = (d) => dayFmt.format(new Date(d));
+export const isoDay = (d) => israelToday(new Date(d));
 const instant = (day) => israelToUtc(`${day}T00:00`).toISOString().replace(/\.\d+Z$/, "Z");
 const signed = (n) => (n > 0 ? `${n}% יותר` : n < 0 ? `${-n}% פחות` : "בדיוק כמו");
 

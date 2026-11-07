@@ -87,7 +87,7 @@ test("marks: only well-formed id keys pass", () => {
   assert.throws(() => parseMarks("note:2026-10-29:g1:a"));
 });
 
-const msg = (i, kind = "absence") => ({ key: `${kind}:2026-11-03:g1:p${i}`, to: "972500000000", text: `נוסח ${i}`, who: `שחקן ${i}` });
+const msg = (i, kind = "repeat") => ({ key: `${kind}:2026-11-03:g1:p${i}`, to: "972500000000", text: `נוסח ${i}`, who: `שחקן ${i}` });
 function fakeIo(send) {
   const c = { sent: [], logged: [], marked: [], told: [], holds: 0 };
   return [c, {

@@ -878,7 +878,7 @@ function Ze(t, s, a) {
 function Je(t) {
   let s = E().slice(0, 7),
     a = t.filter((c) => c.date.startsWith(s)),
-    l = new Set(a.map((c) => `${c.date}_${c.groupId}`)).size;
+    l = new Set(a.map((c) => trainingKey(c.date, c.groupId))).size;
   if (a.length === 0) return { avgPct: null, sessions: l };
   let i = a.filter((c) => c.status === "Present").length;
   return { avgPct: Math.round((i / a.length) * 100), sessions: l };

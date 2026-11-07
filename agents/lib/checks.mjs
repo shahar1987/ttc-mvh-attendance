@@ -1,6 +1,6 @@
 // בדיקות תקינות הנתונים של בודק הבאגים — פונקציות טהורות.
 // כל ממצא: { id, severity: "high"|"medium"|"low", text } — הטקסט בעברית ובלי טלפונים.
-import { addDays, isValidPhone } from "./analysis.mjs";
+import { addDays, isValidPhone, attendanceId, trainingKey } from "./analysis.mjs";
 
 const STATUSES = new Set(["Present", "Absent"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,7 +18,7 @@ export function dataChecks({ players, groups, attendance, cancellations, today }
       !STATUSES.has(a.status) ||
       !a.groupId ||
       !a.playerId ||
-      a.id !== `${a.date}_${a.groupId}_${a.playerId}`,
+      a.id !== attendanceId(a.date, a.groupId, a.playerId),
   );
   if (bad.length) add("attendance-contract", "high", `${bad.length} רשומות נוכחות לא בפורמט התקין (תאריך/סטטוס/מזהה)`);
 
@@ -46,8 +46,8 @@ export function dataChecks({ players, groups, attendance, cancellations, today }
   // אימונים שעברו בשבוע האחרון ולא מולאה בהם נוכחות (כמו דוח "מילוי מאמנים" באפליקציה)
   const days = [];
   for (let d = addDays(today, -7); d < today; d = addDays(d, 1)) days.push(d);
-  const cancelled = new Set((cancellations || []).map((c) => `${c.date}_${c.groupId}`));
-  const filled = new Set(attendance.map((a) => `${a.date}_${a.groupId}`));
+  const cancelled = new Set((cancellations || []).map((c) => trainingKey(c.date, c.groupId)));
+  const filled = new Set(attendance.map((a) => trainingKey(a.date, a.groupId)));
   const unfilled = [];
   for (const g of groups) {
     if (g.deleted || !Array.isArray(g.days) || !g.days.length) continue;
@@ -55,8 +55,8 @@ export function dataChecks({ players, groups, attendance, cancellations, today }
       (d) =>
         (!g.createdDate || d >= g.createdDate) &&
         g.days.includes(new Date(d + "T00:00:00Z").getUTCDay()) &&
-        !cancelled.has(`${d}_${g.id}`) &&
-        !filled.has(`${d}_${g.id}`),
+        !cancelled.has(trainingKey(d, g.id)) &&
+        !filled.has(trainingKey(d, g.id)),
     );
     if (missed.length) unfilled.push(`${g.name} (${missed.length})`);
   }

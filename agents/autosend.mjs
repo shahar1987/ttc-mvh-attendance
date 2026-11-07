@@ -81,7 +81,7 @@ async function mark(db, m, now) {
 }
 
 export const LIMIT = 25; // יותר מזה ביום אחד = כנראה נוכחות נשמרה לא נכון, אז מחכים לשלום
-const KIND = { absence: "לא הגיע/ה", repeat: "שתי היעדרויות", welcome: "ברוך הבא" };
+const KIND = { repeat: "שתי היעדרויות", welcome: "ברוך הבא" };
 
 export function chunks(items, max = 3000) {
   const out = [];

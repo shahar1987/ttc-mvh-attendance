@@ -9,7 +9,7 @@ const SA = { project_id: "p", client_email: "x@p", private_key: privateKey.expor
 const env = {
   WHATSAPP_TOKEN: "t", WHATSAPP_PHONE_ID: "123", OWNER_PHONE: "972500000000", META_APP_SECRET: "s",
   WEBHOOK_VERIFY_TOKEN: "v", GEMINI_API_KEY: "g", FIREBASE_SERVICE_ACCOUNT: JSON.stringify(SA),
-  GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "cs",
+ 
 };
 
 // Firestore בזיכרון
