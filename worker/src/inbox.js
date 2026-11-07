@@ -146,7 +146,7 @@ export async function inboxRoute(req, env, store, wa) {
     for (const r of waiting) await store.merge(`agentReports/${r.id}`, { inboxStatus: ok === false ? "failed" : "done", note: String(note || "").slice(0, 300), doneAt: at });
     if (ok === false) {
       const text = `⚠️ "${waiting[0]?.title || task_result}" לא בוצע${note ? `: ${String(note).slice(0, 300)}` : ""}`;
-      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text });
+      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: text });
     }
     return Response.json({ ok: true, closed: waiting.length });
   }
@@ -158,7 +158,7 @@ export async function inboxRoute(req, env, store, wa) {
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), claude: { at: sent, text } }, ...(isPlan ? { plan: { at: sent, text } } : {}) }));
     const card = Array.isArray(buttons) ? buttons : isPlan ? [{ id: PLAN_KEY, title: "אשר את התוכנית" }] : undefined;
     let wamid = "";
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900), buttons: card, replyTo: reply_to && (bot.cards || {})[String(reply_to)], onSent: (id) => (wamid = id) });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, buttons: card, replyTo: reply_to && (bot.cards || {})[String(reply_to)], onSent: (id) => (wamid = id) });
     await recordCard(store, { text, buttons: card, wamid }).catch(() => {}); // הפנקס לא מפיל משלוח שכבר יצא
     return Response.json({ ok: true });
   }
@@ -174,7 +174,7 @@ export async function inboxRoute(req, env, store, wa) {
     log: [...(cur.log || []), { at, user: `[תשובה מקלוד הגיעה לבעלים בוואטסאפ, בקשה ${id}]`, shula: text }].slice(-80),
     history: [...(cur.history || []), { role: "user", text: `${EXTERNAL} קלוד ענה על "${item.request}" (נשלח לבעלים):\n${text}`, at }].slice(-16),
   }));
-  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "יש תשובה מקלוד לבקשה שלך" });
+  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: "יש תשובה מקלוד לבקשה שלך" });
   return Response.json({ ok: true });
 }
 

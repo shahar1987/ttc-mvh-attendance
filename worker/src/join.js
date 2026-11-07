@@ -193,7 +193,7 @@ export async function joinRoute(req, env, store, { now = Date.now(), wa = waConf
   const text = `📝 בקשת הצטרפות חדשה: ${v.data.child} (וכל מה שיגיע בשעה הקרובה יחכה שם בלי הודעה נוספת).\nלשיבוץ בקבוצה ואישור: באפליקציה ← בקשות הצטרפות`;
   if (gate.alert) try {
     const bot = (await store.get("agentReports/bot")) || {};
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "בקשות הצטרפות חדשות מחכות לאישור באפליקציה" });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: "בקשות הצטרפות חדשות מחכות לאישור באפליקציה" });
   } catch (_) {
     /* ההודעה לבעלים לא חוסמת את השמירה */
   }

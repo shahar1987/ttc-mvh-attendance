@@ -40,7 +40,7 @@ export async function addCoachNote(store, coach, text, msgId, now = new Date()) 
   });
   if (!isNew) return;
   const head = `📝 ${coach.name}${coach.groups.length ? ` (${coach.groups.map((g) => g.name).join(", ")})` : ""} כתב/ה:`;
-  const item = { id: `note-${msgId || now.getTime()}`, from: "coach-note", key: "coach-note", at: now.toISOString(), text: `${head}\n${body}`, template: "agent_alert", templateParam: `${head} ${body}`.slice(0, 900) };
+  const item = { id: `note-${msgId || now.getTime()}`, from: "coach-note", key: "coach-note", at: now.toISOString(), text: `${head}\n${body}`, templateParam: `${head} ${body}`.slice(0, 900) };
   await store.update("agentReports/bot", (cur) => ({ outboxQueue: [...(Array.isArray(cur.outboxQueue) ? cur.outboxQueue : []), item] }));
 }
 

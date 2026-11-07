@@ -4,9 +4,9 @@ import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
 import { attendanceId, dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, normalizePhone, topActions } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
+import { OWNER_RUNNABLE } from "../../agents/lib/agents.mjs";
 
-const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
-const AGENTS = Object.keys(AGENT_HE);
+const AGENTS = Object.keys(OWNER_RUNNABLE);
 const MAX_SEND = 40;
 // הודעות להורים יוצאות רק כששולה אישרה במילים שלה, בהודעה האחרונה שכתבה
 const APPROVE_RE = /(^|\s)(שלח|תשלח|שלחי|תשלחי|כן|אשר|מאשר|מאשרת|אישור)(\s|$|[.!,])/;
@@ -533,7 +533,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
       const bot = (await store.get("agentReports/bot")) || {};
       await store.merge("agentReports/bot", { requests: [...new Set([...(bot.requests || []), agent])] });
       // השם בעברית בתשובה — כדי שהבעלים יראה מיד אם הורץ סוכן אחר ממה שביקש
-      return `ביקשתי להריץ את ${AGENT_HE[agent]}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
+      return `ביקשתי להריץ את ${OWNER_RUNNABLE[agent]}. התוצאה תגיע בוואטסאפ תוך כ-10-15 דקות.`;
     },
   };
 }

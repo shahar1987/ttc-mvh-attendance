@@ -50,6 +50,7 @@ export async function drainQueue(store, path, field, { due = () => true, run, ma
     const msg = [error && String(error.message || error), dropped.length && `${dropped.length} פריטים ב-${field} נזרקו אחרי ${maxAttempts} ניסיונות`].filter(Boolean).join(" · ");
     const e = new Error(msg);
     e.done = done;
+    e.dropped = [...dropped];
     throw e;
   }
   return { done, dropped };

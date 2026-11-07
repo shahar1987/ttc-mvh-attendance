@@ -24,18 +24,20 @@ problems.push(...scheduleProblems(health, bot));
 
 // 2. הבוט
 const waReady = process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID;
+let botDown = false; // ההתראה בוואטסאפ עוברת דרך הבוט
+const down = (p) => ((botDown = true), problems.push(p));
 if (bot.workerUrl) {
   try {
     const res = await fetch(`${bot.workerUrl}/health`);
     const j = await res.json();
-    if (!res.ok || !j.ok) problems.push(`בוט הוואטסאפ לא תקין: ${(j.missing || []).join(", ") || res.status}`);
+    if (!res.ok || !j.ok) down(`בוט הוואטסאפ לא תקין: ${(j.missing || []).join(", ") || res.status}`);
     // 2026-10-25: הגיבוי היה בקוד אבל בלי מפתח ב-worker — שולה נפלה כשגוגל חסם. מתריעים לפני הנפילה הבאה
     if (j.claudeFallback === false) problems.push("הגיבוי ל-Claude כבוי: חסר ANTHROPIC_API_KEY בסודות של GitHub — כשגוגל יחסום את Gemini שולה לא תענה");
   } catch (e) {
-    problems.push("בוט הוואטסאפ לא עונה");
+    down("בוט הוואטסאפ לא עונה");
   }
 } else if (waReady) {
-  problems.push("בוט הוואטסאפ עוד לא הועלה (להריץ את Agents setup)");
+  down("בוט הוואטסאפ עוד לא הועלה (להריץ את Agents setup)");
 }
 if (bot.lastError && hoursAgo(bot.lastError.at) < 1.2) problems.push(`שגיאה בבוט: ${String(bot.lastError.message).slice(0, 120)}`);
 
@@ -93,7 +95,7 @@ if (key !== (sup.key || "")) {
   }
 }
 // בוט למטה = גם ההתראה בוואטסאפ לא תצא (היא עוברת דרכו). לכן הריצה נכשלת, ו-GitHub שולח לבעלים מייל על ריצה שנכשלה.
-if (problems.some((p) => p.startsWith("בוט הוואטסאפ"))) {
+if (botDown) {
   console.error("::error::בוט הוואטסאפ (שולה) לא עונה — ההתראה בוואטסאפ לא תגיע, לכן הריצה נכשלת כדי שיישלח מייל");
   process.exitCode = 1;
 }

@@ -3,7 +3,7 @@
 // הבוט שולח לכל מאמן שלה את התבנית coach_attendance_reminder עם קישור שפותח ישר את הקבוצה, והבעלים מקבל סיכום.
 // מאמן שהשליחה אליו נכשלה (למשל התבנית לא אושרה) — הבעלים מקבל עבורו קישור wa.me כמו פעם, ושולח בעצמו.
 import { addDays, israelToday, normalizePhone, isValidPhone, analyze } from "../../agents/lib/analysis.mjs";
-import { waLink, notifyOwner, sendTemplate, sendText } from "../../agents/lib/whatsapp.mjs";
+import { waLink, notifyOwner, sendTemplate, sendText, oneLine } from "../../agents/lib/whatsapp.mjs";
 import { renderTemplate } from "../../agents/templates.mjs";
 import { outboxMap } from "./queue.js";
 
@@ -45,7 +45,7 @@ export async function toCoach(store, wa, c, text, bot) {
   const phone = normalizePhone(c.phone);
   if (wa?.owner && phone === normalizePhone(wa.owner)) {
     const b = bot || (await store.get("agentReports/bot")) || {};
-    await notifyOwner(wa, { lastOwnerMsgAt: b.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text });
+    await notifyOwner(wa, { lastOwnerMsgAt: b.lastOwnerMsgAt, text, templateParam: text });
     return "";
   }
   return sendTemplate(wa, phone, "club_message", [text], "he", c.name);
@@ -101,7 +101,7 @@ export async function remindCoaches(env, store, wa, now = new Date()) {
     try {
       // ב-outbox כדי ששולה תוכל להראות את הקישורים שוב אם הסיכום יצא כתבנית קצרה (חלון 24 השעות סגור)
       await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), reminders: { at: now.toISOString(), text } } }));
-      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום (${sentCount} קיבלו תזכורת). אפשר להשיב כדי לקבל את הפרטים` });
+      await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: `${lines.length} מאמנים לא מילאו נוכחות היום (${sentCount} קיבלו תזכורת). אפשר להשיב כדי לקבל את הפרטים` });
     } catch (e) {
       // מאמנים כבר קיבלו תזכורת — לא מבטלים את הסימון, אחרת הם יקבלו אותה שוב ברבע השעה הבאה
       if (sentCount) throw e;
@@ -178,12 +178,12 @@ export async function coachSummaries(env, store, wa, now = new Date()) {
   if ((out.length || sums.length) && !problems.length) {
     const msg = `${sumsText}${out.length ? `📋 שלחתי סיכום אימון למאמנים: ${out.join(", ")}` : ""}`.trim();
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: (sums.length ? `סיכום אימון: ${sums.join(" | ")}` : `סיכום אימון נשלח: ${out.join(", ")}`).slice(0, 1000) });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, templateParam: (sums.length ? `סיכום אימון: ${sums.join(" | ")}` : `סיכום אימון נשלח: ${out.join(", ")}`).slice(0, 1000) });
   }
   if (problems.length) {
     const msg = `${sumsText}📋 *סיכום אימון למאמנים — לא נשלח לכולם*:\n${out.length ? `נשלח: ${out.join(", ")}\n` : ""}${problems.join("\n")}`;
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), summaries: { at: now.toISOString(), text: msg } } }));
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, template: "agent_alert", templateParam: `סיכום אימון לא נשלח ל-${problems.length} מאמנים. אפשר להשיב כדי לקבל פרטים` });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: msg, templateParam: `סיכום אימון לא נשלח ל-${problems.length} מאמנים. אפשר להשיב כדי לקבל פרטים` });
   }
   return `summaries: ${out.join(", ") || "none"}${problems.length ? ` · problems: ${problems.length}` : ""}`;
 }
@@ -263,7 +263,7 @@ async function report(store, wa, hits) {
       return `❌ ההודעה ל${who} לא נמסרה: ${what}\nסיבה: ${WHY[e.code] || e.error_data?.details || e.title || "לא ידוע"} (${e.code || "?"})${later}${phone ? `\nלשליחה ידנית: ${waLink(phone, h.text || "")}` : ""}`;
     })
     .join("\n");
-  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") });
+  await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: text.replace(/\n/g, " · ") });
   return hits;
 }
 
@@ -302,7 +302,7 @@ export async function flushPending(store, wa, phone) {
   if (done.length) {
     const bot = (await store.get("agentReports/bot")) || {};
     const text = done.map((m) => `✅ ההודעה ל${m.who} נמסרה עכשיו: "${m.text.replace(/\s+/g, " ").slice(0, 40)}"`).join("\n");
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\n/g, " · ") }).catch(() => {});
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam: text.replace(/\n/g, " · ") }).catch(() => {});
   }
   return done;
 }
@@ -352,7 +352,7 @@ export async function morningGreetings(env, store, wa, gemini, now = new Date())
   if (out.length) {
     const bot = (await store.get("agentReports/bot")) || {};
     const list = out.join(", ");
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `☀️ שלחתי את תזכורת הבוקר לאימון: ${list}`, template: "agent_alert", templateParam: `תזכורת הבוקר לאימון נשלחה: ${list}` });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `☀️ שלחתי את תזכורת הבוקר לאימון: ${list}`, templateParam: `תזכורת הבוקר לאימון נשלחה: ${list}` });
   }
   return `morning: ${out.join(", ") || "no coaches today"}`;
 }
@@ -419,7 +419,7 @@ export async function parentMsgNag(env, store, wa, now = new Date()) {
   if (out.length) {
     const bot = (await store.get("agentReports/bot")) || {};
     const list = out.join(", ");
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📨 תזכורת למאמנים על הודעות היעדרות ונשירה: ${list}`, template: "agent_alert", templateParam: `תזכורת הודעות היעדרות למאמנים: ${list}` });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text: `📨 תזכורת למאמנים על הודעות היעדרות ונשירה: ${list}`, templateParam: `תזכורת הודעות היעדרות למאמנים: ${list}` });
   }
   return `nag: ${out.join(", ") || "nothing pending"}`;
 }
@@ -459,7 +459,7 @@ export async function trialCheck(store, wa, now = new Date()) {
   ];
   if (lines.length) {
     const text = lines.join("\n");
-    await notifyOwner(wa, { lastOwnerMsgAt: bot?.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 400) });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot?.lastOwnerMsgAt, text, templateParam: oneLine(text).slice(0, 400) });
   }
   return `trials: ask ${fresh.length}, dropped ${dropped.length}`;
 }
@@ -481,6 +481,6 @@ export async function absenceLinksNag(store, wa, now = new Date()) {
   if (!items.length) return "links: 0";
   const text = `📎 הכנתי קישורים להודעות היעדרות ל${items.map((x) => `${x.n}. ${x.playerName}`).join(", ")} ועוד לא כתבת "שלחתי".\nשלחת? לכתוב "שלחתי". לא צריך? לכתוב "דלג על ${items.map((x) => x.n).join(",")}".`;
   await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), "absence-links": { at: now.toISOString(), text } } }));
-  await notifyOwner(wa, { lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 400) });
+  await notifyOwner(wa, { lastOwnerMsgAt, text, templateParam: oneLine(text).slice(0, 400) });
   return `links nag: ${items.length}`;
 }

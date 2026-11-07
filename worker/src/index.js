@@ -12,7 +12,7 @@ import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, t
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, staleTasks, planReply, queuePlanReply, queueTap, queueFile } from "./inbox.js";
 import { FILE_TAP, fileButtons, readFile } from "./files.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, REMINDER_SAVED, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchEvening, dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
@@ -576,7 +576,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
           const fn = tools[name];
           if (!fn) throw new Error("unknown tool");
           result = String(await fn(args || {}));
-          if (name === "remind_me" && result.startsWith("⏰")) reminders.push(result);
+          if (result.startsWith(REMINDER_SAVED)) reminders.push(result);
           used.push(name);
         } catch (e) {
           result = `שגיאה: ${e.message}`;
@@ -659,8 +659,8 @@ async function daily(env) {
 async function tell(store, wa, key, text, templateParam) {
   const bot = (await store.get("agentReports/bot")) || {};
   await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), [key]: { at: new Date().toISOString(), text } } }));
-  const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam });
-  if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
+  const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, templateParam });
+  if (!how) throw new Error("WhatsApp: not configured");
   return how;
 }
 const teller = (env) => (key, text, param) => tell(db(env), waConfig(env), key, text, param);
@@ -699,7 +699,7 @@ export async function deliverOutbox(env, store, wa) {
           }
           text = raw;
           const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: x.template || "agent_alert", templateParam: String(x.templateParam || text.split("\n")[0]).replace(/\s+/g, " ").slice(0, 900) });
-          if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
+          if (!how) throw new Error("WhatsApp: not configured");
           x.how = how;
           ok.push(keyOf(x));
         } catch (e) {
@@ -714,7 +714,7 @@ export async function deliverOutbox(env, store, wa) {
       // גם כשחלק נכשל — מה שנשלח נרשם ב-outbox, והשגיאה (עם הסיבה) נזרקת בסוף
       done = e.done || [];
       if (!errors.length) errors.push(e.message);
-      else if (/נזרקו/.test(e.message)) errors.push(e.message);
+      else if (e.dropped?.length) errors.push(e.message);
     },
   );
   if (done.length)

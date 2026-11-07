@@ -96,7 +96,7 @@ export async function campaignRoute(req, env, store, wa) {
   if (text) {
     const bot = (await store.get("agentReports/bot")) || {};
     await store.update("agentReports/bot", (cur) => ({ outbox: { ...outboxMap(cur.outbox), content: { at, text } } }));
-    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: text.replace(/\s+/g, " ").slice(0, 900) });
+    await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text });
   }
   return Response.json({ ok: true, drafts: drafts.length, notified: !!text });
 }

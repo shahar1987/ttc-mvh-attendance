@@ -2,13 +2,13 @@
 // בודק כל 10 דקות ומריץ את מה שביקשו. מדפיס את שמות הסוכנים ל-GITHUB_OUTPUT.
 import { appendFileSync } from "node:fs";
 import { firestore } from "./lib/firebase.mjs";
+import { RUNNABLE } from "./lib/agents.mjs";
 
-const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "insights", "autosend"]);
 const db = firestore();
 const ref = db.collection("agentReports").doc("bot");
 const requested = await db.runTransaction(async (tx) => {
   const data = (await tx.get(ref)).data() || {};
-  const list = (data.requests || []).filter((r) => ALLOWED.has(r));
+  const list = (data.requests || []).filter((r) => RUNNABLE.has(r));
   if (list.length) tx.set(ref, { requests: [] }, { merge: true });
   return [...new Set(list)];
 });

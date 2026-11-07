@@ -113,8 +113,11 @@ export async function sendTemplate(cfg, to, name, params = [], lang = "he", who 
 
 // הודעה לשולה: טקסט מלא אם היא כתבה לבוט ב-24 השעות האחרונות (חלון השירות של Meta),
 // אחרת תבנית עם שורת סיכום, והפרטים המלאים מחכים לה כשהיא עונה.
-export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templateParam, buttons, replyTo, onSent }) {
-  if (!cfg || !cfg.owner) return "skipped: WhatsApp not configured";
+// מחזיר איך נשלח ("text" / "template"), או null כשהוואטסאפ לא מוגדר
+export const oneLine = (text) => String(text || "").replace(/\s+/g, " ").trim().slice(0, 900);
+
+export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template = "agent_alert", templateParam = oneLine(text), buttons, replyTo, onSent }) {
+  if (!cfg || !cfg.owner) return null;
   const open = lastOwnerMsgAt && Date.now() - new Date(lastOwnerMsgAt).getTime() < 23 * 3600 * 1000;
   if (open) {
     const id = await sendText(cfg, cfg.owner, text, buttons, replyTo);

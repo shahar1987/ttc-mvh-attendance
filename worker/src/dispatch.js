@@ -7,7 +7,7 @@
 //   admin-tools.yml   — משימות ניהול ממתינות (adminTasks עם status=pending)
 //   board-members.yml / gameday.yml — הפורטל, כל שעה (סעיף 4)
 //   agents.yml (autosend)  — הודעות להורים כל ערב (dispatchEvening). 3.11: ה-cron של GitHub רץ פעם בשעות
-const ALLOWED = new Set(["scan", "bugcheck", "ideas", "supervisor", "content", "autosend"]);
+import { RUNNABLE } from "../../agents/lib/agents.mjs";
 
 async function dispatch(env, workflow, inputs) {
   const repo = env.GH_REPO || "shahar1987/ttc-mvh-attendance";
@@ -28,7 +28,7 @@ export async function dispatchWorkflows(env, store) {
   //    ה-10 דקות ב-GitHub לא תריץ אותן שוב. מה שנכשל בהפעלה חוזר לתור.
   let taken = [];
   await store.update("agentReports/bot", (bot) => {
-    taken = [...new Set((bot.requests || []).filter((r) => ALLOWED.has(r)))];
+    taken = [...new Set((bot.requests || []).filter((r) => RUNNABLE.has(r)))];
     return taken.length ? { requests: [] } : null;
   });
   const failed = [];

@@ -86,6 +86,9 @@ const validLocal = (at) => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 16) === at;
 };
 
+// תחילת התשובה של remind_me כשהתזכורת נשמרה — index.js מוודא שהאישור הזה מגיע לבעלים כמו שהוא
+export const REMINDER_SAVED = "⏰ נשמרה תזכורת";
+
 export const MESSAGE_TOOL_DEFS = [
   {
     name: "send_message",
@@ -184,7 +187,7 @@ export function makeMessageTools({ store, wa, lastOwnerText = "", turn, ownerRec
       const due = d.toISOString() <= nowIso ? nowIso : d.toISOString();
       const id = Math.random().toString(36).slice(2, 7);
       await store.update("agentReports/bot", (bot) => ({ scheduled: [...(bot.scheduled || []), { id, due, at, text, remind: true, recipients: [] }] }));
-      return `⏰ נשמרה תזכורת ל-${at.replace("T", " ")}: ${text} (מזהה ${id})`;
+      return `${REMINDER_SAVED} ל-${at.replace("T", " ")}: ${text} (מזהה ${id})`;
     },
 
     async scheduled_messages({ cancel } = {}) {
