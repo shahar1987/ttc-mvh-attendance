@@ -264,6 +264,9 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.match(html, /היום עד עכשיו/);
   assert.match(html, /מאחורי הקצב/);
   assert.ok(!/ממתין/.test(html));
+  const warn = solarHtml({ days, lastError: "x", today: { day: today2, kwh: 7.4, at: "2026-11-16T09:10:00Z" } }, today2);
+  assert.match(warn, /class="why">הבדיקה מול SolarEdge לא הצליחה/, "כשיש משהו לבדוק, כתוב מה");
+  assert.match(warn, /מה לעשות:<\/span> לא צריך לעשות כלום/, "ועם פתרון");
 }
 // 📊 הדשבורד: הצלבות, חוסר נתונים, ושום סוד לא מגיע לדף
 {
