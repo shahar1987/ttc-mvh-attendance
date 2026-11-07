@@ -70,5 +70,7 @@ export function photoTarget(items, context, caption) {
   const waiting = caption ? [] : items.filter(waitsPhoto).map((i) => ({ n: publishN(i), title: i.title }));
   return waiting.length === 1 ? { n: waiting[0].n, waiting: [] } : { n: undefined, waiting };
 }
+// 7.11: תמונה או סרטון בלי כרטיס נכנסים למאגר הפרסום, ומשימת הפרסום משבצת לבד. רק שאלה בכיתוב עוברת לשיחה
+export const asksAbout = (caption) => /[?？]|מה דעתך|תגידי|תבדקי/.test(caption);
 
 export const openNote = (items) => (items.length ? `\n\nכרטיסים שמחכים עכשיו לבעלים (מהפנקס):\n${items.map((i) => `- ${i.title}`).join("\n")}` : "");

@@ -18,7 +18,7 @@ import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchEvening, dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
 import { joinRoute } from "./join.js";
-import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
+import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, asksAbout, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
 import { SOLAR_TOOL_DEFS, makeSolarTools, solarRoute, solarRun, solarUrl, solarWatch } from "./solar.js";
 
@@ -321,12 +321,17 @@ async function handle(m, env) {
     }
     const sentMedia = m.image?.id || m.video?.id;
     if (sentMedia) {
-      const { n, waiting } = photoTarget(await openCards(store).catch(() => []), m.context?.id, (m.image?.caption || m.video?.caption || "").trim());
+      const caption = (m.image?.caption || m.video?.caption || "").trim();
+      const { n } = photoTarget(await openCards(store).catch(() => []), m.context?.id, caption);
       if (n) return void (await takePhoto(n, sentMedia));
-      if (waiting.length) {
-        await store.merge("agentReports/bot", { photoWait: { id: sentMedia, at: now } });
-        await sendText(wa, m.from, "לאיזה פרסום התמונה?", waiting.slice(0, 3).map((w) => ({ id: `פרסום תמונה ${w.n}`, title: w.title.slice(0, 20) })));
+      if (!asksAbout(caption)) {
+        // כמה תמונות ברצף מקבלות תשובה אחת. משימת הפרסום אוספת מהיומן בסבב הבא שלה ומחליטה לבד איפה להשתמש
+        const quiet = bot.bankAt && Date.parse(now) - Date.parse(bot.bankAt) < 10 * 60e3;
+        const answer = "📥 נכנס למאגר הפרסום. אני משבצת לבד בתוכנית";
+        if (!quiet) await reply(answer);
         replied = true;
+        const user = `פרסום מדיה ${m.video ? "סרטון" : "תמונה"}: ${await mediaUrl(env, ORIGIN || bot.workerUrl, sentMedia)}${caption ? ` | הערה: ${caption}` : ""}`;
+        await store.update("agentReports/bot", (cur) => ({ bankAt: now, photoWait: null, log: [...(cur.log || []), { at: now, user, shula: quiet ? "" : answer }].slice(-LOG_KEEP) }));
         return;
       }
     }
