@@ -8,6 +8,7 @@ import { sensitiveDay } from "./lib/sensitive.mjs";
 import { weeklyReport } from "./insights.mjs";
 import { clubPage, CLUB_PHONE, SCHEDULE_SHEET } from "./lib/club.mjs";
 import { gemini } from "./lib/gemini.mjs";
+import { GRAPH } from "./lib/whatsapp.mjs";
 
 // תיוג באינסטגרם בלבד. בפייסבוק @ דרך ה-API נשאר טקסט מת — שם כותבים את השמות במילים.
 // המועצה והמתנ"ס תמיד; קריית שמונה וגליל עליון רק בפוסט על רמת כורזים.
@@ -93,7 +94,7 @@ export function tidy(text, phone = CLUB_PHONE, tags = IG_TAGS) {
 async function performance(page) {
   if (!page?.token) return [];
   const f = "message,created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)";
-  const r = await fetch(`https://graph.facebook.com/v24.0/${page.id}/posts?fields=${f}&limit=15&access_token=${page.token}`);
+  const r = await fetch(`${GRAPH}/${page.id}/posts?fields=${f}&limit=15&access_token=${page.token}`);
   const j = await r.json();
   if (!r.ok) return console.log(`performance: ${j.error?.message || r.status}`), [];
   return (j.data || []).map((p) => ({

@@ -1,6 +1,8 @@
 // שליחת הודעות דרך WhatsApp Cloud API (Meta). משמש גם את הסוכנים ב-GitHub Actions.
 // ה-Worker (worker/src) משתמש באותו קובץ.
-const GRAPH = "https://graph.facebook.com/v24.0";
+// גרסת ה-Graph API של Meta לכל הקוד (וואטסאפ, פייסבוק, אינסטגרם) — מעלים גרסה רק כאן
+export const META_API_VERSION = "v24.0";
+export const GRAPH = `https://graph.facebook.com/${META_API_VERSION}`;
 
 export function waConfig(env) {
   const token = env.WHATSAPP_TOKEN;

@@ -11,6 +11,7 @@ import { firestore, heartbeat } from "./lib/firebase.mjs";
 import { israelToday } from "./lib/analysis.mjs";
 import { tellOwner } from "./lib/owner.mjs";
 import { scheduleProblems } from "./lib/schedule.mjs";
+import { GRAPH } from "./lib/whatsapp.mjs";
 
 const db = firestore();
 const reports = db.collection("agentReports");
@@ -44,7 +45,7 @@ if (bot.lastError && hoursAgo(bot.lastError.at) < 1.2) problems.push(`שגיאה
 // 3. וואטסאפ
 if (waReady) {
   const res = await fetch(
-    `https://graph.facebook.com/v24.0/${process.env.WHATSAPP_PHONE_ID}?fields=quality_rating,verified_name`,
+    `${GRAPH}/${process.env.WHATSAPP_PHONE_ID}?fields=quality_rating,verified_name`,
     { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } },
   );
   const j = await res.json().catch(() => ({}));

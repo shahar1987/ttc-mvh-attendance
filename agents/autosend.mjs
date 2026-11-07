@@ -73,13 +73,12 @@ export function parseMarks(raw) {
 // כמו markHandled ב-worker/src/tools.js: alertHandledDate רק קדימה
 async function mark(db, m, now) {
   const pref = db.collection("players").doc(m.playerId);
-  if (m.kind === "welcome") return pref.set({ welcomeSentAt: now }, { merge: true }).then(() => "ok");
+  if (m.kind === "welcome") return pref.set({ welcomeSentAt: now }, { merge: true });
   await db.runTransaction(async (tx) => {
     const p = await tx.get(pref);
     const cur = p.exists && p.data().alertHandledDate;
     if (p.exists && !(cur && cur >= m.date)) tx.update(pref, { alertHandledDate: m.date });
   });
-  return "ok";
 }
 
 export const LIMIT = 25; // יותר מזה ביום אחד = כנראה נוכחות נשמרה לא נכון, אז מחכים לשלום
@@ -231,9 +230,8 @@ async function main() {
     const marks = parseMarks(process.env.MARKS);
     const { firestore } = await import("./lib/firebase.mjs");
     const db = firestore(), now = new Date().toISOString();
-    const res = { ok: 0, skipped: 0 };
-    for (const m of marks) res[await mark(db, m, now)]++;
-    console.log(`::notice title=סומן::${res.ok} סומנו, ${res.skipped} דולגו (סומנו בינתיים כנוכח או לא קיימים)`);
+    for (const m of marks) await mark(db, m, now);
+    console.log(`::notice title=סומן::${marks.length} סומנו`);
   } else throw new Error("usage: autosend.mjs run | plan <dir> [today] [sentLog] | mark");
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

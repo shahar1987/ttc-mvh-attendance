@@ -2,7 +2,7 @@
 // או כל משימה אחרת) נרשם כמסמך agentReports/ask_<id>. רוטינה של קלוד (פעם בשעה) מושכת את הבקשות הפתוחות
 // ב-GET /inbox, עונה ב-POST /inbox, והתשובה נשלחת לבעלים בוואטסאפ.
 // המפתח עצמו שמור רק ברוטינה; כאן (ריפו ציבורי) רק ה-SHA-256 שלו.
-import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
+import { notifyOwner, GRAPH } from "../../agents/lib/whatsapp.mjs";
 import { html as page, issueKey, checkKey, dropKey, sha256 } from "./web.js";
 import { outboxMap } from "./queue.js";
 import { APPROVAL, approvedShown, confirmed, ownerWrote } from "./tools.js";
@@ -125,7 +125,7 @@ export async function inboxRoute(req, env, store, wa) {
     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
     const pick = (k) => bot[k] ?? null;
     // סטטוס וקטגוריה של כל תבנית: Meta מסווגת לפעמים UTILITY כ-MARKETING, ואז הודעות נחסמות (131049)
-    const templates = await fetch(`https://graph.facebook.com/v24.0/${env.WHATSAPP_WABA_ID}/message_templates?fields=name,status,category,language&limit=200`, { headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}` } })
+    const templates = await fetch(`${GRAPH}/${env.WHATSAPP_WABA_ID}/message_templates?fields=name,status,category,language&limit=200`, { headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}` } })
       .then((r) => r.json())
       .then((j) => (j.data || []).map((t) => `${t.name}/${t.language}: ${t.status} ${t.category}`), (e) => [`error: ${e.message}`]);
     return Response.json({

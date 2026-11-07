@@ -4,12 +4,11 @@
 // מה מותר: לפרסם רק אחרי "כן" מפורש בהודעה האחרונה, על טקסט ותמונה שהוצגו לו. אין מחיקה ואין עריכה.
 import { confirmed } from "./tools.js";
 import { html, esc, sign, issueKey, checkKey, dropKey, sha256 } from "./web.js";
-import { waConfig } from "../../agents/lib/whatsapp.mjs";
+import { waConfig, GRAPH, META_API_VERSION } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 import { clubPage } from "../../agents/lib/club.mjs";
 
-const GRAPH = "https://graph.facebook.com/v24.0";
 // read_insights + instagram_manage_insights = חשיפה לדשבורד; pages_read_user_content = לייקים ותגובות בפייסבוק
 const SCOPES = "pages_show_list,pages_read_engagement,pages_manage_posts,pages_read_user_content,read_insights,instagram_basic,instagram_content_publish,instagram_manage_insights,business_management";
 export const metaLink = async (store, origin) => `${origin}/meta/start?k=${await issueKey(store, "meta")}`;
@@ -35,7 +34,7 @@ export async function metaRoute(req, env, store) {
   if (!(await checkKey(store, "meta", key))) return new Response("forbidden", { status: 403 });
   const redirect = `${url.origin}/meta/callback`;
   if (url.pathname === "/meta/start") {
-    return Response.redirect(`https://www.facebook.com/v24.0/dialog/oauth?${new URLSearchParams({ client_id: env.META_APP_ID, redirect_uri: redirect, scope: SCOPES, state: key })}`, 302);
+    return Response.redirect(`https://www.facebook.com/${META_API_VERSION}/dialog/oauth?${new URLSearchParams({ client_id: env.META_APP_ID, redirect_uri: redirect, scope: SCOPES, state: key })}`, 302);
   }
   const get = async (path, q) => (await fetch(`${GRAPH}/${path}?${new URLSearchParams(q)}`)).json();
   const app = { client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET };
@@ -148,7 +147,7 @@ async function igReady(id, token) {
 // סרטון לפייסבוק (סטורי או רילס): פתיחה, Meta מורידה את הקובץ מהקישור, סיום
 async function fbVideo(page, edge, url, finish) {
   const { video_id } = await graphPost(`${page.id}/${edge}`, { upload_phase: "start", access_token: page.token });
-  const r = await fetch(`https://rupload.facebook.com/video-upload/v24.0/${video_id}`, { method: "POST", headers: { authorization: `OAuth ${page.token}`, file_url: url } });
+  const r = await fetch(`https://rupload.facebook.com/video-upload/${META_API_VERSION}/${video_id}`, { method: "POST", headers: { authorization: `OAuth ${page.token}`, file_url: url } });
   if (!r.ok) throw new Error(`העלאת הסרטון לפייסבוק נכשלה (${r.status})`);
   return graphPost(`${page.id}/${edge}`, { upload_phase: "finish", video_id, access_token: page.token, ...finish });
 }

@@ -3,7 +3,7 @@
 // את הדוח של יום ראשון ולומד מה עבד. ביומן (ציבורי) מודפסים רק מספרים.
 import { fileURLToPath } from "node:url";
 
-const GRAPH = "https://graph.facebook.com/v24.0";
+import { GRAPH } from "./lib/whatsapp.mjs";
 const DAYS = 30;
 
 const getJson = async (url) => {

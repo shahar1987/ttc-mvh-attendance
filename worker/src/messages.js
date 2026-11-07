@@ -3,7 +3,7 @@
 // להורים ולמספרים אחרים: שולה מחזירה לבעלים קישור wa.me לכל נמען, והוא לוחץ "שלח" — הלחיצה היא האישור.
 // אם השליחה הישירה נכשלה (למשל המספר לא ברשימת הנמענים של מספר הניסיון ב-Meta) — הבעלים מקבל קישור במקום.
 // מתוזמנות נשמרות ב-agentReports/bot.scheduled, ובשעה שנקבעה הקישורים מגיעים אליו מה-cron (wrangler.toml).
-import { waLink } from "../../agents/lib/whatsapp.mjs";
+import { waLink, GRAPH } from "../../agents/lib/whatsapp.mjs";
 import { normalizePhone, isValidPhone } from "../../agents/lib/analysis.mjs";
 import { TEMPLATES } from "../../agents/templates.mjs";
 import { israelToUtc } from "./time.js";
@@ -231,7 +231,7 @@ export async function sendDue(store, now = new Date(), notify = async () => {}) 
 // התבניות שעוד לא הוגשו ל-Meta — מגיש מתוך ה-worker (לא תלוי בסודות בגיטהאב). WABA = מזהה, לא סוד.
 export async function ensureTemplates(env) {
   const waba = env.WHATSAPP_WABA_ID;
-  const g = (path, init) => fetch(`https://graph.facebook.com/v24.0/${path}`, { ...init, headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}`, "content-type": "application/json" } }).then((r) => r.json());
+  const g = (path, init) => fetch(`${GRAPH}/${path}`, { ...init, headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}`, "content-type": "application/json" } }).then((r) => r.json());
   const have = new Set(((await g(`${waba}/message_templates?fields=name,language&limit=200`)).data || []).filter((t) => t.language === "he").map((t) => t.name));
   const out = [];
   for (const [name, t] of Object.entries(TEMPLATES)) {
@@ -249,7 +249,7 @@ export async function ensureWebhook(env, store) {
   const { WHATSAPP_WABA_ID: waba, META_APP_ID: app, META_APP_SECRET: secret } = env;
   if (!waba || !app || !secret) return [];
   const g = async (path, token, init) => {
-    const j = await fetch(`https://graph.facebook.com/v24.0/${path}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } }).then((r) => r.json());
+    const j = await fetch(`${GRAPH}/${path}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } }).then((r) => r.json());
     if (j.error) throw new Error(`Meta ${path}: ${j.error.message}`);
     return j;
   };

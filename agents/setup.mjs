@@ -8,8 +8,9 @@ import { createHmac } from "node:crypto";
 import { firestore } from "./lib/firebase.mjs";
 import { botDoc } from "./lib/owner.mjs";
 import { TEMPLATES } from "./templates.mjs";
+import { GRAPH } from "./lib/whatsapp.mjs";
 
-const G = "https://graph.facebook.com/v24.0";
+const G = GRAPH;
 const { WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID, META_APP_ID, META_APP_SECRET, WORKER_URL } = process.env;
 for (const [k, v] of Object.entries({ WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID, META_APP_ID, META_APP_SECRET, WORKER_URL }))
   if (!v) throw new Error(`missing ${k}`);
