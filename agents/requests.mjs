@@ -3,9 +3,10 @@
 import { appendFileSync } from "node:fs";
 import { firestore } from "./lib/firebase.mjs";
 import { RUNNABLE } from "./lib/agents.mjs";
+import { botDoc } from "./lib/owner.mjs";
 
 const db = firestore();
-const ref = db.collection("agentReports").doc("bot");
+const ref = botDoc(db);
 const requested = await db.runTransaction(async (tx) => {
   const data = (await tx.get(ref)).data() || {};
   const list = (data.requests || []).filter((r) => RUNNABLE.has(r));

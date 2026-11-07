@@ -1,24 +1,13 @@
 // ההתאמה של נרשמי לוח המועדון לשחקנים (scripts/match_board_members.mjs) — בלי רשת.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import {
-  normalisePhone,
   phoneIndex,
   needsCheck,
   matchMember,
   alreadyNotified,
   ownerText,
 } from "../scripts/match_board_members.mjs";
-
-test("normalisePhone is identical to the one in sync_payments.mjs", () => {
-  const src = readFileSync(new URL("../scripts/sync_payments.mjs", import.meta.url), "utf8");
-  const start = src.indexOf("export function normalisePhone(");
-  const body = src.slice(start, src.indexOf("\n}\n", start) + 2).replace("export ", "");
-  const orig = new Function(`${body}\nreturn normalisePhone;`)();
-  for (const s of ["050-1234567", "+972 (0)50 123 4567", "972501234567", "0501234567", "", null, "123", "04-1234567", "05012345678901"])
-    assert.equal(normalisePhone(s), orig(s), String(s));
-});
 
 const players = [
   { id: "p1", parentPhone: "050-1234567" },

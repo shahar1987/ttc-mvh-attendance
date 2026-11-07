@@ -3,18 +3,12 @@
 // הכלל האחרון ב-firestore.rules חוסם אותו לגמרי מהאפליקציה, וזה בדיוק מה שרוצים
 // (יש בו שמות וטלפונים).
 import admin from "firebase-admin";
+import { serviceAccount } from "./service-account.mjs";
 
 let db;
 export function firestore() {
   if (db) return db;
-  let sa;
-  try {
-    sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
-  } catch {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
-  }
-  if (!sa.project_id) throw new Error("missing repository secret FIREBASE_SERVICE_ACCOUNT");
-  admin.initializeApp({ credential: admin.credential.cert(sa) });
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount()) });
   db = admin.firestore();
   return db;
 }

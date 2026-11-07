@@ -13,7 +13,8 @@ async function loadNames() {
   }
   if (!process.env.FIREBASE_SERVICE_ACCOUNT) return null;
   const { default: admin } = await import("firebase-admin");
-  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+  const { serviceAccount } = await import("../agents/lib/service-account.mjs");
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount()) });
   return (await admin.firestore().collection("players").get()).docs.map((d) => d.get("name"));
 }
 

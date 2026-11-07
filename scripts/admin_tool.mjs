@@ -16,20 +16,13 @@
 //                   שהמנהל הזין ויוצר לו פרופיל. הסיסמה נמחקת מהבקשה בסוף.
 //
 // התוצאה נכתבת בחזרה למסמך הבקשה, והאפליקציה מציגה אותה למנהל.
+import { serviceAccount } from "../agents/lib/service-account.mjs";
 import admin from "firebase-admin";
 
 const MAX_TASKS = 20;
 
 async function main() {
-  let sa;
-  try {
-    sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
-  } catch {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
-  }
-  if (!sa.project_id) throw new Error("missing repository secret FIREBASE_SERVICE_ACCOUNT");
-
-  admin.initializeApp({ credential: admin.credential.cert(sa) });
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount()) });
   const auth = admin.auth();
   const db = admin.firestore();
 

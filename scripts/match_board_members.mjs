@@ -1,8 +1,7 @@
 // מתאים את מי שנרשם בלוח המועדון (boardMembers, כניסה עם גוגל באתר הציבורי) לכרטיס שחקן לפי טלפון.
 //
 // לכל נרשם שאין לו תוצאה ב-boardMemberMatches, או שעדכן את הפרטים אחרי הבדיקה האחרונה:
-//   1. מנרמלים את הטלפון באותה פונקציה של סנכרון התשלומים (normalisePhone, מועתקת —
-//      agents/board-members.test.mjs משווה אותה למקור ב-sync_payments.mjs).
+//   1. מנרמלים את הטלפון באותה פונקציה של סנכרון התשלומים (phoneKey ב-agents/lib/analysis.mjs).
 //   2. משווים לטלפונים של כל השחקנים (parentPhone, phone, mobile — כמו buildPhoneIndex שם).
 //   3. כותבים boardMemberMatches/{uid} = { status: "matched"|"not-found", playerIds, checkedAt, notified }.
 //   4. נרשמים חדשים שלא נמצאו, ונרשמים חדשים שהגיעו דרך "הבאת חבר" (ref) — הודעה אחת לכל הרצה לבעלים בוואטסאפ דרך התור של הבוט (agentReports/bot.outboxQueue,
@@ -15,23 +14,15 @@
 import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { enqueueOwner } from "../agents/lib/owner.mjs";
+import { phoneKey } from "../agents/lib/analysis.mjs";
 
-// העתק מדויק של normalisePhone ב-scripts/sync_payments.mjs (שם אי אפשר לייבא: הקובץ מריץ סנכרון בטעינה)
-export function normalisePhone(s) {
-  let d = (s || "").toString().replace(/\D/g, "");
-  if (!d) return "";
-  if (d.startsWith("972")) d = d.slice(3);
-  if (d.startsWith("0")) d = d.slice(1);
-  if (d.length < 8 || d.length > 10) return "";
-  return d;
-}
 
 export function phoneIndex(players) {
   const idx = new Map();
   for (const p of players) {
     if (p.deleted) continue;
     for (const raw of [p.parentPhone, p.phone, p.mobile]) {
-      const key = normalisePhone(raw);
+      const key = phoneKey(raw);
       if (!key) continue;
       if (!idx.has(key)) idx.set(key, []);
       if (!idx.get(key).includes(p.id)) idx.get(key).push(p.id);
@@ -48,7 +39,7 @@ export function needsCheck(member, match) {
 }
 
 export function matchMember(member, index) {
-  const key = normalisePhone(member.phone);
+  const key = phoneKey(member.phone);
   const playerIds = (key && index.get(key)) || [];
   return { status: playerIds.length ? "matched" : "not-found", playerIds: [...playerIds] };
 }

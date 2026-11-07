@@ -3,10 +3,10 @@
 import { readFileSync } from "node:fs";
 import { firestore, loadAll } from "./lib/firebase.mjs";
 import { weeklyHealth } from "./lib/weekly.mjs";
-import { tellOwner } from "./lib/owner.mjs";
+import { tellOwner, botDoc } from "./lib/owner.mjs";
 
 const db = firestore();
-const bot = (await db.collection("agentReports").doc("bot").get()).data() || {};
+const bot = (await botDoc(db).get()).data() || {};
 const now = Date.now();
 const age = (iso) => (iso ? `${Math.round((now - new Date(iso)) / 60000)}m` : "-");
 const clean = (s) => String(s || "").replace(/\d{7,}/g, "#").replace(/\s+/g, " ").slice(0, 300);
@@ -25,7 +25,7 @@ if (diagPhone) {
 console.log(`::notice::env whatsapp=${Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID)} owner=${Boolean(process.env.OWNER_PHONE)}`);
 // DIAG_FIX=1: מוציא מהתור את הודעות הסיכום השבועי שנתקעו (ישלחו מחדש ישירות), ומשחרר נעילות של השאר
 if (process.env.DIAG_FIX === "1") {
-  const ref = db.collection("agentReports").doc("bot");
+  const ref = botDoc(db);
   const removed = await db.runTransaction(async (t) => {
     const cur = (await t.get(ref)).data()?.outboxQueue || [];
     const keep = cur.filter((x) => !["weekly", "weekly-coach", "weekly-preview"].includes(x?.from)).map(({ claimedAt, ...x }) => x);

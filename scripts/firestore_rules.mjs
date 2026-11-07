@@ -4,10 +4,10 @@
 // Needs FIREBASE_SERVICE_ACCOUNT (same secret as backup / sync). Prints no data, only status.
 import { readFileSync, writeFileSync } from "node:fs";
 import { JWT } from "google-auth-library";
+import { serviceAccount } from "../agents/lib/service-account.mjs";
 
 const FILE = new URL("../firestore.rules", import.meta.url);
-const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
-if (!sa.project_id) throw new Error("missing repository secret FIREBASE_SERVICE_ACCOUNT");
+const sa = serviceAccount();
 const P = `projects/${sa.project_id}`;
 const API = "https://firebaserules.googleapis.com/v1/";
 

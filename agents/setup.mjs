@@ -6,6 +6,7 @@
 // מדפיס רק סטטוסים — בלי טוקנים ובלי מספרי טלפון.
 import { createHmac } from "node:crypto";
 import { firestore } from "./lib/firebase.mjs";
+import { botDoc } from "./lib/owner.mjs";
 import { TEMPLATES } from "./templates.mjs";
 
 const G = "https://graph.facebook.com/v24.0";
@@ -27,7 +28,7 @@ async function graph(path, { method = "GET", body, token = WHATSAPP_TOKEN } = {}
 }
 
 const db = firestore();
-const botRef = db.collection("agentReports").doc("bot");
+const botRef = botDoc(db);
 
 // 1. רישום המספר. ה-PIN הוא קוד האימות הדו-שלבי של המספר; נשמר ב-Firestore למקרה שיצטרכו אותו.
 const pin = String(parseInt(derive("pin").slice(0, 8), 16) % 1000000).padStart(6, "0");

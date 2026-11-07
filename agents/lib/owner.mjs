@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import admin from "firebase-admin";
 import { waConfig, notifyOwner } from "./whatsapp.mjs";
 
-const botDoc = (db) => db.collection("agentReports").doc("bot");
+export const botDoc = (db) => db.collection("agentReports").doc("bot");
 
 function entry({ agent, text, template, templateParam, how }) {
   return {
@@ -64,6 +64,15 @@ export async function tellOwner(db, { agent, text, template = "agent_alert", tem
   await botDoc(db).set({ outbox: { [agent]: entry({ agent, text, template, templateParam, how }) } }, { merge: true });
   console.log(`${agent}: owner notified (${how})`);
   return how;
+}
+
+// הודעה למדריכים דרך התור של ה-worker (agentReports/bot.outboxQueue): פריט עם to/who יוצא לנמען בתבנית club_message
+// (worker/src/index.js, deliverOutbox). recipients: [{ phone, name, uid, text, param }]
+export async function enqueueStaff(db, from, recipients, { arrayUnion = (...xs) => admin.firestore.FieldValue.arrayUnion(...xs) } = {}) {
+  const at = new Date().toISOString();
+  const items = recipients.map((r) => ({ id: randomUUID(), from, key: from, at, to: r.phone, who: r.name, uid: r.uid, text: r.text, template: "club_message", templateParam: String(r.param || r.text).slice(0, 900) }));
+  if (items.length) await botDoc(db).set({ outboxQueue: arrayUnion(...items) }, { merge: true });
+  return items.map((x) => x.id);
 }
 
 // התראת כישלון מ-workflow — לכל היותר פעם ב-6 שעות לאותו מפתח (agentReports/bot.alertsSent),

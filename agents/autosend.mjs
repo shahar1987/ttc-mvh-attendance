@@ -179,8 +179,8 @@ const israelHour = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "As
 async function run() {
   const requested = process.env.AUTOSEND_REQUESTED === "1";
   if (!requested && (israelHour() < 20 || israelHour() > 22)) return console.log("autosend: outside the evening window");
-  const [{ firestore, loadAll }, { tellOwner }] = await Promise.all([import("./lib/firebase.mjs"), import("./lib/owner.mjs")]);
-  const db = firestore(), botRef = db.collection("agentReports").doc("bot");
+  const [{ firestore, loadAll }, { tellOwner, botDoc }] = await Promise.all([import("./lib/firebase.mjs"), import("./lib/owner.mjs")]);
+  const db = firestore(), botRef = botDoc(db);
   const tell = (text) => tellOwner(db, { agent: "autosend", text });
   const finish = async (ok, note = "") => {
     if (!requested) return;

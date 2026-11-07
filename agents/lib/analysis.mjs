@@ -41,6 +41,17 @@ export function normalizePhone(value) {
   return digits;
 }
 
+// מפתח להשוואת טלפונים (סנכרון התשלומים, נרשמי הלוח): ספרות בלבד, בלי קידומת בינלאומית ובלי 0 מוביל,
+// כך ש-"972501234567", "0501234567" ו-"050"+"1234567" (שתי עמודות בקובץ) הם אותו מפתח. "" כשזה לא נראה כמו טלפון.
+export function phoneKey(s) {
+  let d = (s || "").toString().replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("972")) d = d.slice(3);
+  if (d.startsWith("0")) d = d.slice(1);
+  if (d.length < 8 || d.length > 10) return "";
+  return d;
+}
+
 export function isValidPhone(value) {
   return /^972\d{8,9}$/.test(normalizePhone(value));
 }

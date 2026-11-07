@@ -33,6 +33,8 @@
 //
 // דורש סוד קיים: FIREBASE_SERVICE_ACCOUNT (כבר משמש את admin_tool.mjs ו-backup).
 // דורש חבילת npm נוספת: xlsx (לפענוח קבצי Excel בינאריים שמועלים ישירות).
+import { serviceAccount } from "../agents/lib/service-account.mjs";
+import { phoneKey } from "../agents/lib/analysis.mjs";
 import admin from "firebase-admin";
 import { JWT } from "google-auth-library";
 import * as XLSX from "xlsx";
@@ -87,9 +89,9 @@ export function pickSourceFile(files) {
 // --- סיבה לכל "לא משלם" -------------------------------------------------
 // לא מספיק לדעת שמישהו לא נמצא בקובץ — צריך לדעת למה, אחרת אי אפשר להבדיל
 // בין "באמת לא נרשם" לבין "נרשם אבל השם כתוב אחרת".
-export function notPayingReason(player, filePhoneKeys, normalisePhoneFn) {
+export function notPayingReason(player, filePhoneKeys) {
   const key = [player.parentPhone, player.phone, player.mobile]
-    .map((x) => normalisePhoneFn(x))
+    .map((x) => phoneKey(x))
     .find(Boolean);
   if (!key) return "no-phone";
   if (filePhoneKeys.has(key)) return "phone-in-file";
@@ -212,16 +214,6 @@ export function crossGroupMatches(players, nameSet, fileFamily, filePersonal, sa
 // לא את הילד. לאחים יש אותו מספר בדיוק, ולכן הוא תמיד משולב עם השם הפרטי
 // ולעולם לא מסמן לבדו מי שילם.
 
-// משאיר ספרות בלבד ומוריד קידומת בינלאומית/אפס מוביל, כדי ש-"972501234567",
-// "0501234567" ו-"050" + "1234567" (שתי עמודות בקובץ) יהיו אותו מפתח.
-export function normalisePhone(s) {
-  let d = (s || "").toString().replace(/\D/g, "");
-  if (!d) return "";
-  if (d.startsWith("972")) d = d.slice(3);
-  if (d.startsWith("0")) d = d.slice(1);
-  if (d.length < 8 || d.length > 10) return "";
-  return d;
-}
 
 export function detectPhoneColumns(header) {
   const cols = [];
@@ -239,11 +231,11 @@ export function rowPhones(row, phoneCols) {
   const out = new Set();
   const parts = phoneCols.map((i) => (row[i] || "").toString().replace(/\D/g, ""));
   parts.forEach((p, idx) => {
-    const single = normalisePhone(p);
+    const single = phoneKey(p);
     if (single) out.add(single);
     const next = parts[idx + 1];
     if (p && next) {
-      const joined = normalisePhone(p + next);
+      const joined = phoneKey(p + next);
       if (joined) out.add(joined);
     }
   });
@@ -254,7 +246,7 @@ export function buildPhoneIndex(players) {
   const idx = new Map();
   for (const p of players) {
     for (const raw of [p.parentPhone, p.phone, p.mobile]) {
-      const key = normalisePhone(raw);
+      const key = phoneKey(raw);
       if (!key) continue;
       if (!idx.has(key)) idx.set(key, []);
       if (!idx.get(key).some((x) => x.id === p.id)) idx.get(key).push(p);
@@ -452,15 +444,7 @@ async function driveFetch(url, token) {
 }
 
 async function main() {
-  let sa;
-  try {
-    sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
-  } catch {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
-  }
-  if (!sa.project_id) throw new Error("missing repository secret FIREBASE_SERVICE_ACCOUNT");
-
-  admin.initializeApp({ credential: admin.credential.cert(sa) });
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount()) });
   const db = admin.firestore();
 
   // מצב "ondemand" = הריצה הקצרה שרצה כל כמה דקות ובודקת רק אם המנהל לחץ
@@ -790,7 +774,7 @@ async function main() {
       p.notPayingSource === "manual" ? !!p.notPaying : !paidIds.has(p.id);
     if (finalNotPaying) {
       notPayingFinal++;
-      notPayingReasons[p.id] = notPayingReason(p, filePhoneKeys, normalisePhone);
+      notPayingReasons[p.id] = notPayingReason(p, filePhoneKeys);
     } else paidFinal++;
     // החלטה ידנית של המנהל (סימון ידני, או אישור הצעת תיקון שם במסך) גוברת
     // תמיד — לשני הכיוונים. בלי זה מי שאושר ידנית כמשלם היה חוזר להיות מסומן

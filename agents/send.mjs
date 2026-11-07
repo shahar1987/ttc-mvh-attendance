@@ -29,7 +29,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const silent = String(quiet) === "true", back = String(resume) === "true", sex = ["f", "m"].includes(gender) ? gender : "";
   if (!silent && !back && !sex && !String(text || "").trim()) throw new Error("missing text");
   const { firestore, loadAll } = await import("./lib/firebase.mjs");
-  const { randomUUID } = await import("node:crypto");
+  const { enqueueStaff } = await import("./lib/owner.mjs");
   const admin = (await import("firebase-admin")).default;
   const db = firestore();
   // מין של שחקן, כמו הכפתור באפליקציה (setPlayerGender). שם מלא בלבד, ושחקן אחד פעיל בדיוק
@@ -57,8 +57,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.exit(0);
   }
   const targets = pickCoaches(await loadAll(db, "users"), ids, to);
-  const at = new Date().toISOString();
-  const items = targets.map((t) => ({ id: randomUUID(), from: "send-coach", key: "send-coach", at, to: t.phone, who: t.name, uid: t.id, text, template: "club_message", templateParam: text }));
-  await db.collection("agentReports").doc("bot").set({ outboxQueue: admin.firestore.FieldValue.arrayUnion(...items) }, { merge: true });
-  console.log(`queued ${items.length} for the WhatsApp bot (sent within 15 minutes)`);
+  const queued = await enqueueStaff(db, "send-coach", targets.map((t) => ({ phone: t.phone, name: t.name, uid: t.id, text })));
+  console.log(`queued ${queued.length} for the WhatsApp bot (sent within 15 minutes)`);
 }

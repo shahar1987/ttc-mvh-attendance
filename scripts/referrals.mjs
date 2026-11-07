@@ -9,7 +9,7 @@
 import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { israelNow } from "./gameday.mjs";
-import { normalisePhone } from "./match_board_members.mjs";
+import { phoneKey } from "../agents/lib/analysis.mjs";
 
 export const TOP = 10;
 const ms = (v) => (!v ? 0 : typeof v.toMillis === "function" ? v.toMillis() : new Date(v).getTime() || 0);
@@ -38,8 +38,8 @@ export function leaderboard(members, matches, now = new Date()) {
   for (const m of friends) {
     const match = matchById.get(m.id);
     if (match?.status !== "matched") continue;
-    const phone = normalisePhone(m.phone);
-    if (phone && phone === normalisePhone(byId.get(m.ref).phone)) continue;
+    const phone = phoneKey(m.phone);
+    if (phone && phone === phoneKey(byId.get(m.ref).phone)) continue;
     const player = match.playerIds?.[0] || (phone && `phone:${phone}`);
     if (!player || seen.has(player)) continue;
     seen.add(player);
