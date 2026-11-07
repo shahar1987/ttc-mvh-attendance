@@ -1,18 +1,11 @@
 // ☀️ דשבורד הגג: דף פרטי (הגישה ב-solar.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
-import { adjusted, analyze, addDays, hardFault, ICON_V } from "./solar.js";
+import { adjusted, analyze, addDays, hardFault, heb, median, pct, span, sumKwh, why } from "./solar-math.js";
+import { ICON_V } from "./solar-icons.js";
 import { esc } from "./web.js";
 import { earnings, reportLinks, periodName } from "./solar-report.js";
 
-const median = (xs) => {
-  const s = xs.filter((x) => x != null).sort((a, b) => a - b);
-  return s.length ? (s[Math.floor((s.length - 1) / 2)] + s[Math.ceil((s.length - 1) / 2)]) / 2 : null;
-};
-const heb = (day) => `${+day.slice(8)}.${+day.slice(5, 7)}`;
 const num = (n, d = 0) => (n == null ? "לא זמין" : Number(n).toLocaleString("he-IL", { maximumFractionDigits: d }));
 const MONTHS = ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"];
-const sumKwh = (rows) => rows.reduce((t, d) => t + (d.kwh || 0), 0);
-const pct = (a, b) => (a != null && b > 0 ? Math.round((a / b - 1) * 100) : null);
-const span = (end, n) => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 
 // גשם שבא אחרי שבוע יבש שוטף את הפאנלים: משווים ימים בהירים לפני ואחרי. זו הערכה ללכלוך, לא מדידה
 export function rainWash(days, end) {
@@ -61,16 +54,6 @@ export function panelScan(panels, ratio) {
   const drop = 1 - ratio;
   const lost = drop >= Math.max(0.06, 0.7 / panels) ? Math.max(1, Math.round(drop * panels)) : 0;
   return { lost };
-}
-
-// למה הייצור השתנה: משווים לשינוי בשמש באותה תקופה
-export function why(prod, sun) {
-  if (prod == null) return "";
-  if (sun == null) return Math.abs(prod) <= 3 ? "כמעט אותו דבר." : "אין עדיין נתוני שמש להשוואה.";
-  if (Math.abs(prod) <= 3) return "כמעט אותו דבר.";
-  const fromWeather = Math.abs(prod - sun) <= 6 && Math.sign(prod) === Math.sign(sun) && Math.abs(sun) >= 2;
-  if (prod < 0) return fromWeather ? `בגלל מזג האוויר: היו ${Math.abs(sun)}% פחות שמש.` : sun < prod ? "הייתה פחות שמש, והגג התמודד טוב." : sun >= -2 ? "לא מזג האוויר: הייתה אותה שמש, וכדאי לבדוק." : `מזג האוויר מסביר רק חלק: היו ${Math.abs(sun)}% פחות שמש.`;
-  return fromWeather ? `בזכות מזג האוויר: היו ${sun}% יותר שמש.` : "הגג עבד טוב יותר, לא רק בזכות השמש.";
 }
 
 export function comparisons(days, today) {

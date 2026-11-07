@@ -1,6 +1,5 @@
 // 📄 דוחות הגג: חודש או שנה מול אשתקד, ככסף וכקוט"ש. דף להדפסה (PDF מהדפדפן) וקובץ Excel אמיתי שנבנה כאן, בלי ספריות.
-import { addDays } from "./solar.js";
-import { why } from "./solar-dashboard.js";
+import { addDays, pct, why } from "./solar-math.js";
 import { esc } from "./web.js";
 
 const MONTH = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
@@ -36,7 +35,6 @@ export const money = (s) => {
   const selfShare = fromBills ? fromBills.share : s.selfShare >= 0 && s.selfShare <= 1 ? s.selfShare : SELF_SHARE;
   return { exportRate, selfRate, selfShare, fromBills, rate: (1 - selfShare) * exportRate + selfShare * selfRate, fixed: s.fixed > 0 ? s.fixed : 0 };
 };
-const pct = (a, b) => (a != null && b > 0 ? Math.round((a / b - 1) * 100) : null);
 const total = (xs, f) => (xs.some((x) => x[f] != null) ? xs.reduce((t, x) => t + (x[f] || 0), 0) : null);
 const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 const pad = (n) => String(n).padStart(2, "0");

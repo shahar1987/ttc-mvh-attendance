@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { adjusted, analyze, hardFault, weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, addDays, isoDay, skyKind } from "../src/solar.js";
-import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages, why, comparisons, forecast } from "../src/solar-dashboard.js";
+import { weeklyText, solarRun, solarWatch, solarRoute, solarUrl, loginUrl, makeSolarTools, isoDay, skyKind } from "../src/solar.js";
+import { adjusted, analyze, hardFault, addDays, why } from "../src/solar-math.js";
+import { solarHtml, insights, rainWash, heatBands, monthly, panelScan, outages, comparisons, forecast } from "../src/solar-dashboard.js";
 
 const today = "2026-11-08"; // יום ראשון
 const fill = (from, n, x) => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(from, i), { ...x }]));

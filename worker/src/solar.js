@@ -6,9 +6,8 @@ import { israelToUtc } from "./time.js";
 import { html, randomHex, issueKey, checkKey, dropKey, sha256, esc } from "./web.js";
 import { solarHtml } from "./solar-dashboard.js";
 import { reportData, reportHtml, reportXlsx, reportFileName, validPeriod } from "./solar-report.js";
-import { ICON_192, ICON_512 } from "./solar-icons.js";
-// גרסה בכתובות של האייקונים והמניפסט: אייקון חדש מקבל כתובת חדשה, אחרת הטלפון מציג את הישן מהמטמון
-export const ICON_V = ICON_192.length.toString(36) + ICON_512.length.toString(36);
+import { ICON_192, ICON_512, ICON_V } from "./solar-icons.js";
+import { addDays, analyze, hardFault, heb } from "./solar-math.js";
 
 const API = "https://monitoringapi.solaredge.com/v2";
 const DOC = "agentReports/solar";
@@ -16,8 +15,6 @@ const GRANT_DAYS = 730; // 24 חודשים, המקסימום של SolarEdge
 const LOCATION = { latitude: 33.22, longitude: 35.65 }; // אזור שאר ישוב. לחישוב קרינה מספיקה דיוק אזורי, והריפו ציבורי
 const DAILY = "shortwave_radiation_sum,temperature_2m_max,precipitation_sum";
 const KEEP_DAYS = 800;
-const CLOUDY_MJ = 8; // יום מתחת לזה כמעט לא אומר כלום על הגג
-const MIN_BASELINE = 10;
 const YEAR_WINDOWS = 20; // כ-600 יום: שנה להשוואה, ועוד מספיק אחורה לחישוב החזר ההשקעה מיום ההפעלה
 // משיכה שהסתיימה עם פחות חלונות (גרסה קודמת) ממשיכה מאיפה שנעצרה
 const full = (s) => !!s.backfilled && (s.backfillIdx ?? YEAR_WINDOWS) >= YEAR_WINDOWS;
@@ -25,56 +22,8 @@ const BATCH = 6; // המסלול החינמי: 10 קריאות בדקה. שאר 
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" });
 export const isoDay = (d) => dayFmt.format(new Date(d));
-export const addDays = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 const instant = (day) => israelToUtc(`${day}T00:00`).toISOString().replace(/\.\d+Z$/, "Z");
-const heb = (day) => `${+day.slice(8)}.${+day.slice(5, 7)}`;
-const median = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length ? (s[Math.floor((s.length - 1) / 2)] + s[Math.ceil((s.length - 1) / 2)]) / 2 : null;
-};
-const sum = (rows) => rows.reduce((t, d) => t + d.kwh, 0);
-const pct = (a, b) => (b > 0 ? Math.round((a / b - 1) * 100) : null);
 const signed = (n) => (n > 0 ? `${n}% יותר` : n < 0 ? `${-n}% פחות` : "בדיוק כמו");
-
-// תפוקה ביחס לקרינה, מתוקנת לחום. shortcut: מקדם קבוע של 0.4% למעלה לפי טמפרטורת אוויר; אם יופיעו התראות שווא בקיץ, לכייל מההיסטוריה
-export function adjusted(d) {
-  if (!d || d.kwh == null || !(d.rad >= CLOUDY_MJ) || d.tmax == null) return null;
-  return d.kwh / (d.rad * (1 - 0.004 * (d.tmax - 25)));
-}
-
-const range = (end, n) => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
-
-export function analyze(days, today) {
-  const end = addDays(today, -1);
-  const rows = (d) => d.map((k) => ({ day: k, ...days[k] })).filter((x) => x.kwh != null);
-  const week = rows(range(end, 7));
-  const prev = rows(range(addDays(end, -7), 7));
-  const lastYear = rows(range(addDays(end, -364), 7));
-  const base = rows(range(addDays(end, -7), 30)).map(adjusted).filter((x) => x != null);
-  const baseline = base.length >= MIN_BASELINE ? median(base) : null;
-  const clear = week.map(adjusted).filter((x) => x != null);
-  const ratio = baseline && clear.length ? median(clear) / baseline : null;
-  return {
-    start: addDays(end, -6),
-    end,
-    total: sum(week),
-    days: week.length,
-    vsPrev: prev.length === 7 && week.length === 7 ? pct(sum(week), sum(prev)) : null,
-    vsYear: lastYear.length === 7 && week.length === 7 ? pct(sum(week), sum(lastYear)) : null,
-    ratio,
-    low: baseline ? week.filter((d) => adjusted(d) != null && adjusted(d) < 0.6 * baseline).map((d) => d.day) : [],
-    missing: range(end, 7).filter((k) => days[k]?.kwh == null),
-  };
-}
-
-// תקלה קשה: אתמול לא דווח ייצור, או שהיה כמעט אפס למרות שהיה אור
-export function hardFault(days, today) {
-  const y = addDays(today, -1);
-  const d = days[y];
-  if (d?.kwh == null) return `⚠️ *הגג הסולארי:* אין נתוני ייצור מ-${heb(y)}. כנראה הממיר לא מתקשר. כדאי לבדוק את הנורה בממיר ואת חיבור האינטרנט שלו.`;
-  if (d.kwh < 0.1 && d.rad >= 3) return `⚠️ *הגג הסולארי:* ב-${heb(y)} לא היה ייצור בכלל, למרות שהיה אור. כדאי לבדוק את הממיר ואת המפסק.`;
-  return null;
-}
 
 export function weeklyText(a, alerts, grantDays) {
   const lines = [`☀️ *הגג השבוע* (${heb(a.start)}-${heb(a.end)})`, `ייצור: ${Math.round(a.total)} קוט"ש${a.days < 7 ? ` (נתונים מ-${a.days} ימים)` : ""}`];
