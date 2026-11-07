@@ -3,10 +3,9 @@
 // ב-agentReports/social (האוסף חסום לאפליקציה בחוקי Firestore). טוקן דף שמגיע מטוקן משתמש ארוך לא פג.
 // מה מותר: לפרסם רק אחרי "כן" מפורש בהודעה האחרונה, על טקסט ותמונה שהוצגו לו. אין מחיקה ואין עריכה.
 import { confirmed } from "./tools.js";
-import { sign, issueKey, checkKey, dropKey } from "./google.js";
+import { html, esc, sign, issueKey, checkKey, dropKey, sha256 } from "./web.js";
 import { waConfig } from "../../agents/lib/whatsapp.mjs";
 import { israelToUtc } from "./time.js";
-import { esc } from "./dashboard.js";
 import { sensitiveDay } from "../../agents/lib/sensitive.mjs";
 import { clubPage } from "../../agents/lib/club.mjs";
 
@@ -85,7 +84,6 @@ const PERMANENT_FORM = `<h2>חיבור קבוע של שולה לפייסבוק �
 <li><b>יצירת טוקן</b> ← האפליקציה של שולה ← תוקף <b>Never</b> ← לסמן: pages_show_list, pages_read_engagement, pages_manage_posts, pages_read_user_content, <b>read_insights</b>, instagram_basic, instagram_content_publish, <b>instagram_manage_insights</b>, business_management.</li>
 <li>להעתיק את הטוקן ולהדביק כאן:</li></ol>
 <form method="post"><input name="token" required dir="ltr" autocomplete="off" style="width:100%;font:16px system-ui;padding:8px;margin:6px 0"><button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`;
-const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
 export const META_TOOL_DEFS = [
   {
@@ -281,7 +279,6 @@ export async function stalePost(store, now = new Date()) {
 // אינסטגרם: יוצר מכלי סטורי ורילס ומחכה לעיבוד, בלי media_publish (מכל שלא פורסם נמחק אחרי 24 שעות).
 // פייסבוק: תמונה לא מפורסמת (השלב הראשון של סטורי) ופתיחת העלאה של רילס, בלי finish.
 async function metaCheck(env, store, url) {
-  const { sha256 } = await import("./inbox.js");
   if (!env.INBOX_KEY_SHA256 || (await sha256(url.searchParams.get("k") || "")) !== env.INBOX_KEY_SHA256) return new Response("forbidden", { status: 403 });
   const page = clubPage((await store.get("agentReports/social")) || {});
   if (!page) return Response.json({ ok: false, error: "not connected" });

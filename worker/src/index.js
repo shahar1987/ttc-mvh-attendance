@@ -7,7 +7,6 @@
 import { db } from "./firestore.js";
 import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
-import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink, mediaUrl } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
@@ -114,7 +113,6 @@ const app = {
     const env = withAliases(rawEnv);
     const url = new URL(req.url);
     ORIGIN = url.origin;
-    if (url.pathname.startsWith("/google/")) return oauthRoute(req, env, db(env));
     if (url.pathname.startsWith("/meta/")) return metaRoute(req, env, db(env));
     if (url.pathname.startsWith("/solar/")) return solarRoute(req, env, db(env), teller(env));
     if (url.pathname === "/claude/start") return claudeRoute(req, env, db(env));

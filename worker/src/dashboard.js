@@ -1,8 +1,7 @@
 // 📊 דשבורד פרסום: דף פרטי (קישור חתום, בלי התחברות) שמציג את מה שסוכן הנתונים (agents/insights.mjs) אסף
 // מ-Meta הלילה: עוקבים, פוסטים מתוזמנים בפייסבוק, פוסט שמחכה ל"כן", חשיפה לכל פוסט וממוצע לפי סוג.
 // קריאה בלבד: לא נוגע ב-Meta ולא בשום מסמך. מספר שלא ידוע מוצג "לא זמין", אף פעם לא 0.
-import { sign } from "./google.js";
-import { sha256 } from "./inbox.js";
+import { esc, sign, sha256 } from "./web.js";
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { outboxMap } from "./queue.js";
 
@@ -11,7 +10,6 @@ const STALE_MS = 36 * 3600 * 1000; // הסוכן רץ כל לילה; יותר מ
 const TYPE = { photo: "תמונה", image: "תמונה", video: "סרטון", reels: "ריל", album: "אלבום", text: "טקסט", link: "קישור", carousel_album: "אלבום", share: "שיתוף" };
 const NET = { facebook: "פייסבוק", instagram: "אינסטגרם" };
 
-export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const fmt = (n) => (n == null ? "לא זמין" : Number(n).toLocaleString("he-IL"));
 const when = (iso) => new Date(iso).toLocaleString("he-IL", { timeZone: TZ, weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 const day = (iso) => new Date(iso).toLocaleDateString("he-IL", { timeZone: TZ, day: "numeric", month: "numeric" });

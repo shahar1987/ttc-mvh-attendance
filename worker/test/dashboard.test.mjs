@@ -86,7 +86,7 @@ console.log("dashboard ok");
 // 📥 feed מהמשימה הלילית: רק עם המפתח, רק מספרים, ומשלים את מה שחסר
 {
   const { feedRoute, withFeed, cleanFeed } = await import("../src/dashboard.js");
-  const { sha256 } = await import("../src/inbox.js");
+  const { sha256 } = await import("../src/web.js");
   const fenv = { FEED_KEY_SHA256: await sha256("sekret") };
   const saved = {};
   const fstore = { merge: async (p, v) => (saved[p] = v) };
@@ -146,7 +146,7 @@ console.log("trends ok");
 console.log("fixes ok");
 {
   const { campaignRoute, cleanDrafts, goalProgress } = await import("../src/dashboard.js");
-  const { sha256 } = await import("../src/inbox.js");
+  const { sha256 } = await import("../src/web.js");
   const cenv = { FEED_KEY_SHA256: await sha256("sekret") };
   const docs = { "agentReports/bot": { outbox: {} } };
   const cs = { get: async (p) => docs[p], merge: async (p, v) => (docs[p] = { ...docs[p], ...v }), update: async (p, fn) => (docs[p] = { ...docs[p], ...fn(docs[p] || {}) }) };

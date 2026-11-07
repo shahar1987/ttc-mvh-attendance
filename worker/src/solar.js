@@ -3,14 +3,12 @@
 // כל בוקר (wrangler.toml): 3 קרדיטים מתוך 2,000 בחודש, התראה רק על יום בלי ייצור. ביום ראשון דוח שבועי.
 // SolarEdge מחליפה את ה-refresh token בכל שימוש, ולכן כל ריצה שומרת את החדש ב-agentReports/solar (האוסף חסום לאפליקציה).
 import { israelToUtc } from "./time.js";
-import { issueKey, checkKey, dropKey } from "./google.js";
-import { sha256 } from "./inbox.js";
+import { html, randomHex, issueKey, checkKey, dropKey, sha256, esc } from "./web.js";
 import { solarHtml } from "./solar-dashboard.js";
 import { reportData, reportHtml, reportXlsx, reportFileName, validPeriod } from "./solar-report.js";
 import { ICON_192, ICON_512 } from "./solar-icons.js";
 // גרסה בכתובות של האייקונים והמניפסט: אייקון חדש מקבל כתובת חדשה, אחרת הטלפון מציג את הישן מהמטמון
 export const ICON_V = ICON_192.length.toString(36) + ICON_512.length.toString(36);
-import { esc } from "./dashboard.js";
 
 const API = "https://monitoringapi.solaredge.com/v2";
 const DOC = "agentReports/solar";
@@ -257,7 +255,6 @@ export async function solarWatch(store, tell, now = new Date()) {
   return "solar watch: warned now";
 }
 
-const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px;max-width:640px;margin:auto">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const field = (name, label) => `<input name="${name}" placeholder="${label}" required dir="ltr" style="width:100%;box-sizing:border-box;font:16px system-ui;padding:10px;margin:6px 0">`;
 const setupPage = (origin) => html(`<h2>חיבור הגג הסולארי</h2><ol style="line-height:1.7">
 <li>ב-<a href="https://developer.solaredge.com" target="_blank">developer.solaredge.com</a> ליצור אפליקציה: Monitoring API, Site Access, עם SITE_DATA ו-DEVICE_DATA.</li>
@@ -283,7 +280,6 @@ const SECURITY = {
   "strict-transport-security": "max-age=63072000; includeSubDomains",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
-const randomHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const secure = (body, status = 200, extra = {}, csp = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'") =>
   new Response(body, { status, headers: { ...SECURITY, "content-security-policy": csp, ...extra } });
 const shell = (msg, status = 200) => secure(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>הגג שלי</title><body style="font:20px/1.5 system-ui;padding:24px;max-width:480px;margin:auto">${msg}</body></html>`, status);

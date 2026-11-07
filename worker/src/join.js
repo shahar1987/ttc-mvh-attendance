@@ -2,6 +2,7 @@
 // האפליקציה לא נפתחת לציבור: ההורה כותב רק לכאן, השרת בודק כל שדה ושומר ב-joinRequests
 // (בחוקי Firestore — רק המנהל קורא, אף אחד לא כותב מהדפדפן). שום ילד לא נכנס לקבוצה בלי אישור המנהל באפליקציה.
 // ההגדרות (קוד סודי, קבוצות, טלפון לשאלות) ב-joinConfig/main — נערכות רק במסך "בקשות הצטרפות" באפליקציה.
+import { esc } from "./web.js";
 import qrcode from "qrcode-generator";
 import { notifyOwner, waConfig } from "../../agents/lib/whatsapp.mjs";
 
@@ -10,7 +11,6 @@ const PER_DAY = 60;
 const ALERT_EVERY = 3600e3; // הודעה לבעלים לכל היותר פעם בשעה, גם בהצפה
 const LOGO = "https://shahar1987.github.io/ttc-mvh-attendance/logo.png";
 
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
 const NAME = /^[א-תa-zA-Z'"׳״\-. ]{2,40}$/;
 

@@ -1,6 +1,6 @@
 // ☀️ דשבורד הגג: דף פרטי (הגישה ב-solar.js) שנבנה מ-agentReports/solar. קריאה בלבד, בלי AI ובלי קרדיטים.
 import { adjusted, analyze, addDays, hardFault, ICON_V } from "./solar.js";
-import { esc } from "./dashboard.js";
+import { esc } from "./web.js";
 import { earnings, reportLinks, periodName } from "./solar-report.js";
 
 const median = (xs) => {

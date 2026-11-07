@@ -3,7 +3,7 @@
 // ב-GET /inbox, עונה ב-POST /inbox, והתשובה נשלחת לבעלים בוואטסאפ.
 // המפתח עצמו שמור רק ברוטינה; כאן (ריפו ציבורי) רק ה-SHA-256 שלו.
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
-import { issueKey, checkKey, dropKey } from "./google.js";
+import { html as page, issueKey, checkKey, dropKey, sha256 } from "./web.js";
 import { outboxMap } from "./queue.js";
 import { APPROVAL, approvedShown, confirmed, ownerWrote } from "./tools.js";
 import { recordCard, closeTap, cards, PLAN_KEY } from "./open.js";
@@ -89,7 +89,6 @@ export async function queuePlanReply(env, store, text, kind) {
     : `✏️ נרשם${fast ? "" : " (תיכנס למערכת תוך שעה)"}. סוכן הפרסום יתקן ויחזור אליך לאישור.`;
 }
 
-const page = (body, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px">${body}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
 // /claude/start — דף חד-פעמי להדבקת מפתח המשימה. מפתח קישור משלו, פג אחרי 30 דקות ונמחק אחרי שמירה.
 export async function claudeRoute(req, env, store) {
@@ -116,7 +115,6 @@ export async function claudeRoute(req, env, store) {
     .join("")}<button style="font:18px system-ui;padding:10px 20px">שמירה</button></form>`);
 }
 
-export const sha256 = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 export async function inboxRoute(req, env, store, wa) {
   const url = new URL(req.url);

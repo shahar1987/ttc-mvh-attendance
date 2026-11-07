@@ -26,7 +26,6 @@ put("attendance/2026-10-01_g1_p2", { date: "2026-10-01", groupId: "g1", playerId
 const out = (path, o) => ({ name: `projects/p/databases/(default)/documents/${path}`, updateTime: times.get(path), fields: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, toValue(v)])) });
 
 const geminiQueue = [];
-const google = [];
 const geminiCalls = [];
 const geminiUrls = [];
 const sent = [];
@@ -40,28 +39,6 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.startsWith("https://oauth2")) return json({ access_token: "a", expires_in: 3600, ...(String(init.body).includes("authorization_code") ? { refresh_token: "r" } : {}) });
   if (url.startsWith("https://geocoding-api.open-meteo.com")) return json(url.includes("xyzxyz") ? {} : { results: [{ name: "שאר ישוב", country: "ישראל", latitude: 33.2, longitude: 35.6 }] });
   if (url.startsWith("https://api.open-meteo.com")) return json({ current: { temperature_2m: 24, apparent_temperature: 25, weather_code: 1, wind_speed_10m: 10 }, daily: { time: ["2026-10-03"], weather_code: [61], temperature_2m_min: [15], temperature_2m_max: [26], precipitation_probability_max: [70], wind_speed_10m_max: [20] } });
-  if (url.startsWith("https://gmail.googleapis.com")) {
-    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
-    if (url.includes("/messages?")) return json({ messages: [{ id: "e1" }] });
-    if (url.includes("/messages/e1")) return json({ id: "e1", threadId: "t1", snippet: "שלום", labelIds: ["UNREAD"], payload: { headers: [{ name: "From", value: "matnas@x" }, { name: "Subject", value: "טורניר" }, { name: "Message-ID", value: "<m1@x>" }], mimeType: "text/plain", body: { data: Buffer.from("גוף המייל").toString("base64url") } } });
-    return json({ id: "d1" });
-  }
-  if (url.startsWith("https://www.googleapis.com/drive")) {
-    google.push({ url, method: init.method || "GET" });
-    if (url.includes("/export?")) return new Response("שורה,ערך\nא,1");
-    if (url.includes("/files/f1?")) return json({ name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", webViewLink: "https://d/f1" });
-    if (url.includes("/files/f2?")) return json({ name: "פלאייר.pdf", mimeType: "application/pdf", webViewLink: "https://d/f2" });
-    return json({ files: [{ id: "f1", name: "תשלומים", mimeType: "application/vnd.google-apps.spreadsheet", modifiedTime: "2026-10-01T10:00:00Z", webViewLink: "https://d/f1" }] });
-  }
-  if (url.startsWith("https://tasks.googleapis.com")) {
-    if (globalThis.tasks403) return json({ error: { message: "insufficient scopes" } }, 403);
-    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
-    return init.method === "POST" ? json({ title: JSON.parse(init.body).title }) : json({ items: [{ title: "להזמין כדורים", due: "2026-10-05T00:00:00.000Z" }] });
-  }
-  if (url.startsWith("https://www.googleapis.com/calendar")) {
-    google.push({ url, method: init.method || "GET", body: init.body && JSON.parse(init.body) });
-    return init.method === "POST" ? json({ summary: JSON.parse(init.body).summary }) : json({ items: [{ summary: "אימון", start: { dateTime: "2026-10-04T16:30:00+03:00" }, end: { dateTime: "2026-10-04T17:30:00+03:00" } }] });
-  }
   if (url.includes("/actions/runs?")) return json({ workflow_runs: globalThis.ghRuns || [] });
   if (url.startsWith("https://api.github.com/")) {
     dispatches.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization });
@@ -593,7 +570,7 @@ assert.equal((await worker.fetch(new Request(`https://x/meta/callback?code=c&sta
 assert.deepEqual(social.map((x) => x.url.split("/v24.0/")[1]), ["pg1/photos", "ig1/media", "ig1/media_publish"]);
 assert.equal((await worker.fetch(new Request("https://x/meta/media/777?k=bad"), env, {})).status, 403);
 {
-  const { sign } = await import("../src/google.js");
+  const { sign } = await import("../src/web.js");
   const r = await worker.fetch(new Request(`https://x/meta/media/mediaimg?t=${await sign(env, "media:mediaimg")}`), env, {});
   assert.equal(r.status, 200);
   assert.equal(r.headers.get("content-type"), "image/jpeg");
@@ -1323,13 +1300,6 @@ await webhook("התור נפל", env.OWNER_PHONE, "q2");
 assert.equal(texts().at(-1), "בלי תור", "תור שנכשל — עונים ישירות");
 delete env.MESSAGES;
 console.log("all bot tests passed");
-{
-  const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
-  assert.ok(decls.includes("ask_claude"));
-  for (const n of ["search_email", "list_events", "create_event", "list_tasks", "add_task", "search_drive"]) assert.ok(!decls.includes(n), n);
-  assert.ok(!/קישור החיבור/.test(geminiCalls.at(-1).systemInstruction.parts[0].text));
-}
-console.log("google-via-claude ok");
 
 // 🏓 מצב מדריך: הבעלים מפעיל מדריך (אישור דו-שלבי), והמדריך רואה ומסמן רק בקבוצות שלו
 {
@@ -1571,7 +1541,8 @@ console.log("publish cards ok");
 // 2.11: פנקס פתוחים — "מאשר הכל" מגיע לכל הכרטיסים, גם של משימות אחרות, ורק אחרי שרואים רשימה
 {
   const key = "fixedinboxkey";
-  const { sha256, planReply, PLAN_HEADER } = await import("../src/inbox.js");
+  const { planReply, PLAN_HEADER } = await import("../src/inbox.js");
+  const { sha256 } = await import("../src/web.js");
   const e = { ...env, INBOX_KEY_SHA256: await sha256(key) };
   const inbox = (body) => worker.fetch(new Request(`https://x/inbox?k=${key}`, { method: "POST", body: JSON.stringify(body) }), e, { waitUntil() {} });
   const tap = (id, context) => webhook("", env.OWNER_PHONE, "m" + Math.random(), { type: "interactive", ...(context ? { context: { id: context } } : {}), interactive: { type: "button_reply", button_reply: { id, title: id } } });

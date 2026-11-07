@@ -69,7 +69,8 @@ console.log("gates ok");
 
 // סגירת מעגל: "הופעל" לא נחשב "בוצע". תוצאה סוגרת, כישלון מגיע לבעלים, ושתיקה מתריעה פעם אחת
 {
-  const { queueTap, inboxRoute, sha256, staleTasks } = await import("../src/inbox.js");
+  const { queueTap, inboxRoute, staleTasks } = await import("../src/inbox.js");
+  const { sha256 } = await import("../src/web.js");
   const docs = { "agentReports/open": { items: [{ key: "מוח 7", ids: ["מוח 7", "מוח לא 7"], title: "הודעה על הכדורים" }] } };
   const store = {
     get: async (k) => docs[k] || null,
@@ -139,7 +140,8 @@ console.log("gates ok");
 
 // ask_claude: "כן" על הודעה שהבקשה הופיעה בה עובר בלי שאלה שנייה, ומה שאמר הולך לקלוד במילים שלו
 {
-  const { makeInboxTools, inboxRoute, sha256 } = await import("../src/inbox.js");
+  const { makeInboxTools, inboxRoute } = await import("../src/inbox.js");
+  const { sha256 } = await import("../src/web.js");
   const docs = {};
   let bot = {};
   const store = {
