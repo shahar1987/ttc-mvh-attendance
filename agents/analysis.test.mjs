@@ -13,11 +13,7 @@ const P = (id, extra = {}) => ({ id, name: `שחקן ${id}`, groupId: "g1", isAc
 const A = (playerId, date, status, extra = {}) => ({ playerId, date, status, groupId: "g1", ...extra });
 // האימונים בבדיקות האלה התקיימו: מוסיפים "עוגן" שהגיע לכל יום-קבוצה (אחרת יום שכולם נעדרו בו נחשב חג)
 const withHeld = (att) => [...att, ...[...new Set(att.map((a) => `${a.date}|${a.groupId}`))].map((k) => ({ playerId: "_anchor", date: k.split("|")[0], groupId: k.split("|")[1], status: "Present" }))];
-const analyze = (o) => {
-  const r = realAnalyze({ ...o, attendance: withHeld(o.attendance) });
-  const y = o.attendance.filter((a) => a.date === r.yesterday.date && !a.excused);
-  return { ...r, yesterday: { ...r.yesterday, present: y.filter((a) => a.status === "Present").length } };
-};
+const analyze = (o) => realAnalyze({ ...o, attendance: withHeld(o.attendance) });
 
 test("single absence is not pending", () => {
   const r = analyze({
@@ -27,7 +23,7 @@ test("single absence is not pending", () => {
     today,
   });
   assert.deepEqual(r.pending, []);
-  assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 0, absent: 2 });
+  assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 1, absent: 2 }, "1 = העוגן שהגיע");
 });
 
 test("two absences in a row become one repeat item, not two singles", () => {
@@ -65,7 +61,7 @@ test("excused absence (sick etc.) is not counted: no message, no repeat, not in 
   });
   // a: רק ההיעדרות הלא מוצדקת (27.9) נשארת — אחת, ולכן בלי הודעה; b: כלום
   assert.deepEqual(r.pending, []);
-  assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 0, absent: 0 });
+  assert.deepEqual(r.yesterday, { date: "2026-09-29", present: 1, absent: 0 }, "1 = העוגן שהגיע");
 });
 
 test("trial players get no absence message and no dropout alert", () => {

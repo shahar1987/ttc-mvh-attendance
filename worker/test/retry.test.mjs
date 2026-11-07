@@ -24,7 +24,7 @@ console.log("firestore retry ok");
     { id: "locked", claimedAt: "2026-10-30T15:55:00Z" }, { id: "stale", claimedAt: "2026-10-30T15:45:00Z" },
   ];
   let seen = [];
-  const pick = (xs) => [xs.find((x) => x.to), ...xs.filter((x) => !x.to).slice(0, 2)].filter(Boolean);
+  const { outboxPick: pick } = await import("../src/index.js");
   await drainQueue(store, "q", "items", { now, pick, run: async (xs) => (seen = xs.map((x) => x.id)) });
   assert.deepEqual(seen, ["c1", "o1", "o2"], "מדריך אחד ועד שניים לבעלים בריצה");
   assert.deepEqual(docs.q.items.map((x) => x.id), ["o3", "c2", "locked", "stale"]);

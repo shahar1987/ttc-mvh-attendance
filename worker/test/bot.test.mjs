@@ -99,9 +99,6 @@ globalThis.fetch = async (url, init = {}) => {
     if (globalThis.beforePatch) await globalThis.beforePatch(path, url);
     if (globalThis.firestoreDown) return json({ error: { message: "down" } }, 503);
     const q = new URL(url).searchParams;
-    const pre = q.get("currentDocument.updateTime");
-    if (pre && pre !== times.get(path)) return json({ error: { status: "FAILED_PRECONDITION", message: "stale" } }, 400);
-    if (q.get("currentDocument.exists") === "false" && docs.has(path)) return json({ error: { status: "ALREADY_EXISTS", message: "exists" } }, 409);
     const fields = JSON.parse(init.body).fields;
     const mask = q.getAll("updateMask.fieldPaths").map((k) => k.replace(/`/g, ""));
     patches.push({ path, keys: mask });

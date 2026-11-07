@@ -670,6 +670,10 @@ const summary = (lines) => lines.join(" ").replace(/https?:\S+/g, "").replace(/\
 // וה-worker שולח לבעלים ומוציא מהתור רק את מה שנשלח.
 // פריט עם to (טלפון) ו-who (שם) יוצא לנמען הזה בתבנית שלו, לא לבעלים — כך agents/send.mjs שולח למדריכים.
 // רק service account כותב ל-agentReports (חוקי Firestore חוסמים את האפליקציה), ולכן to לא מגיע מבחוץ.
+// בכל ריצה: הודעה אחת למדריך (~5 בקשות) ועד שתיים לבעלים (~2 כל אחת). ריצה רגילה כבר עולה ~40 מתוך 50 הבקשות של ה-worker.
+// shortcut: 6 מדריכים = שעה וחצי; אם יהיו יותר — לשלוח את הסיכום השבועי בכמה ריצות נפרדות או לעבור לתוכנית בתשלום
+export const outboxPick = (xs) => [xs.find((x) => x.to), ...xs.filter((x) => !x.to).slice(0, 2)].filter(Boolean);
+
 export async function deliverOutbox(env, store, wa) {
   // אם סוכן כתב בטעות מערך ל-outbox (שהוא מפה) — מעבירים את הפריטים לתור ומחזירים את outbox למפה ריקה
   await store.update("agentReports/bot", (cur) =>
@@ -678,9 +682,7 @@ export async function deliverOutbox(env, store, wa) {
   const errors = [];
   let done = [];
   await drainQueue(store, "agentReports/bot", "outboxQueue", {
-    // בכל ריצה: הודעה אחת למדריך (~5 בקשות) ועד שתיים לבעלים (~2 כל אחת). ריצה רגילה כבר עולה ~40 מתוך 50 הבקשות של ה-worker.
-    // shortcut: 6 מדריכים = שעה וחצי; אם יהיו יותר — לשלוח את הסיכום השבועי בכמה ריצות נפרדות או לעבור לתוכנית בתשלום
-    pick: (xs) => [xs.find((x) => x.to), ...xs.filter((x) => !x.to).slice(0, 2)].filter(Boolean),
+    pick: outboxPick,
     run: async (items) => {
       const bot = (await store.get("agentReports/bot")) || {};
       const ok = [];

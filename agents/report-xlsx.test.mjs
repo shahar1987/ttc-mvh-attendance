@@ -1,22 +1,10 @@
-// קובץ האקסל של הדוחות נכתב ידנית ב-part-a.js: הבדיקה קוראת את ה-zip וה-XML שיוצאים ממנו בפועל.
+// קובץ האקסל של הדוחות (app/report-xlsx.mjs): הבדיקה קוראת את ה-zip וה-XML שיוצאים ממנו בפועל.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 
-const src = readFileSync(new URL("../part-a.js", import.meta.url), "utf8");
-function extract(name) {
-  const start = src.indexOf(`function ${name}(`);
-  assert.ok(start >= 0, `${name} not found in part-a.js`);
-  return src.slice(start, src.indexOf("\n}\n", start) + 2);
-}
-const names = ["xlsxEsc", "xlsxCol", "xlsxStyles", "xlsxCell", "xlsxSheet", "xlsxTableSheet", "xlsxSummarySheet", "crc32", "zipStore", "buildXlsx"];
-const { buildXlsx, xlsxCol, crc32 } = new Function(
-  "REPORT_CLUB", "formatHeDate", "E",
-  `const reportCell = (c) => (c !== null && typeof c === "object" ? c : { v: c });
-   const xlsxBodyStyle = ${src.match(/const xlsxBodyStyle =([\s\S]*?);\n/)[1]};
-   ${names.map(extract).join("\n")}
-   return { buildXlsx, xlsxCol, crc32 };`,
-)("מועדון", (d) => d, () => "2026-11-03");
+import { buildXlsx as build, xlsxCol, crc32 } from "../app/report-xlsx.mjs";
+
+const buildXlsx = (doc) => build(doc, { club: "מועדון", produced: "2026-11-03" });
 
 function unzip(u8) {
   const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = {}, dec = new TextDecoder();
