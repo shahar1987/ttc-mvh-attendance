@@ -1,10 +1,11 @@
-// הלוגיקה של הסורק היומי — פונקציות טהורות, בלי Firestore, כדי שאפשר לבדוק אותן.
-//
-// "ממתין להודעה" ו"שתי היעדרויות ברצף" מחושבים בדיוק כמו באפליקציה
-// (absenceAlerts, lastTwoAbsences ב-part-a.js), כדי שהסוכן
-// והמאמנים יראו את אותה רשימה ואף הורה לא יקבל שתי הודעות על אותה היעדרות.
-// "סכנת נשירה" חדש, ומוגדר ב-dropoutRisk למטה.
+// כללי המועדון — פונקציות טהורות, בלי Firestore. האפליקציה (part-a.js), הבוט (worker/) והסוכנים
+// מייבאים אותן מכאן, כך שכולם רואים את אותה רשימה ואף הורה לא מקבל שתי הודעות על אותה היעדרות.
 import { playerGender, knownGender } from "./gender.mjs";
+
+// החוזה של מסמכי הנוכחות ב-Firestore — לא משנים (CLAUDE.md)
+export const attendanceId = (date, groupId, playerId) => `${date}_${groupId}_${playerId}`;
+// אימון אחד = קבוצה בתאריך. גם מזהה המסמך ב-cancellations.
+export const trainingKey = (date, groupId) => `${date}_${groupId}`;
 
 export function addDays(date, n) {
   const d = new Date(date + "T00:00:00Z");
@@ -23,12 +24,6 @@ export function hebrewDay(date) {
     month: "long",
     timeZone: "UTC",
   });
-}
-
-export function whenText(date, today) {
-  if (date === today) return "היום";
-  if (date === addDays(today, -1)) return "אתמול";
-  return `ב${hebrewDay(date)}`;
 }
 
 export function isAdultGroup(g) {
@@ -53,49 +48,46 @@ export function isValidPhone(value) {
 // ילד בניסיון (trial) לא נכנס להתראות, להודעות להורים ולרשימת הסיכון — כמו באפליקציה
 const active = (p) => p && p.isActive && !p.deleted && !p.trial;
 
-// רשומה אחת לכל יום לכל שחקן; נוכחות גוברת על היעדרות. מהחדש לישן.
+// רשומה אחת לכל יום (שחקן שעבר קבוצה באותו יום לא נספר פעמיים); נוכחות גוברת על היעדרות. מהחדש לישן.
+function byDay(recs) {
+  const m = new Map();
+  for (const a of recs) {
+    const prev = m.get(a.date);
+    if (!prev || prev.status !== "Present") m.set(a.date, a);
+  }
+  return [...m.values()].sort((x, y) => y.date.localeCompare(x.date));
+}
+
+function perPlayer(attendance, keep) {
+  const by = new Map();
+  for (const a of attendance) {
+    if (!a.playerId || !a.date || !keep(a)) continue;
+    let list = by.get(a.playerId);
+    if (!list) by.set(a.playerId, (list = []));
+    list.push(a);
+  }
+  const out = new Map();
+  for (const [pid, list] of by) out.set(pid, byDay(list));
+  return out;
+}
+
 export function playerHistory(attendance, playerId, today) {
-  const byDate = new Map();
-  for (const a of attendance) {
-    if (a.playerId !== playerId || !a.date || a.date >= today || a.excused) continue;
-    const prev = byDate.get(a.date);
-    if (!prev || prev.status !== "Present") byDate.set(a.date, a);
-  }
-  return [...byDate.values()].sort((x, y) => y.date.localeCompare(x.date));
+  return byDay(attendance.filter((a) => a.playerId === playerId && a.date && a.date < today && !a.excused));
 }
 
-function historyIndex(attendance, today) {
-  const by = new Map();
-  for (const a of attendance) {
-    if (!a.playerId || !a.date || a.date >= today) continue;
-    let m = by.get(a.playerId);
-    if (!m) by.set(a.playerId, (m = new Map()));
-    const prev = m.get(a.date);
-    if (!prev || prev.status !== "Present") m.set(a.date, a);
-  }
-  const out = new Map();
-  for (const [pid, m] of by) out.set(pid, [...m.values()].sort((x, y) => y.date.localeCompare(x.date)));
-  return out;
+// שני האימונים האחרונים היו היעדרות. היום עצמו לא נספר (המאמן אולי באמצע סימון); תאריך עתידי כן.
+const twoAbsent = (recs) =>
+  recs.length >= 2 && recs[0].status === "Absent" && recs[1].status === "Absent" ? [recs[0].date, recs[1].date] : null;
+
+export function lastTwoAbsences(attendance, playerId, today) {
+  return twoAbsent(byDay(attendance.filter((a) => a.playerId === playerId && a.date !== today)));
 }
 
-// בדיוק כמו lastTwoAbsences ב-part-a.js: רשומה אחת לכל יום, נוכחות גוברת על היעדרות,
-// ורק היום עצמו לא נספר (תאריך עתידי כן נספר — כמו באפליקציה). שונה במכוון מ-historyIndex,
-// שמשמש את סכנת הנשירה ומדלג על כל מה שמהיום והלאה.
-function twoAbsenceIndex(attendance, today) {
-  const by = new Map();
-  for (const a of attendance) {
-    if (!a.playerId || !a.date || a.date === today) continue;
-    let m = by.get(a.playerId);
-    if (!m) by.set(a.playerId, (m = new Map()));
-    const prev = m.get(a.date);
-    if (!prev || prev.status !== "Present") m.set(a.date, a);
-  }
-  const out = new Map();
-  for (const [pid, m] of by) {
-    const recs = [...m.values()].sort((x, y) => y.date.localeCompare(x.date));
-    if (recs.length >= 2 && recs[0].status === "Absent" && recs[1].status === "Absent") out.set(pid, [recs[0].date, recs[1].date]);
-  }
-  return out;
+// שתי היעדרויות ברצף שעוד לא טופלו ושכן שולחים עליהן הודעה. dates = התוצאה של lastTwoAbsences.
+export function needsRepeatMsg(p, dates, attendance) {
+  if (!dates) return false;
+  if (p.alertHandledDate && p.alertHandledDate >= dates[0]) return false;
+  return !skipAbsenceMsg(p, p.groupId, attendance, dates[0]);
 }
 
 function rate(recs) {
@@ -140,7 +132,6 @@ const pct = (x) => `${Math.round(x * 100)}%`;
 // יום שהוא לא יום האימון של השחקן, או שחקן שכמעט לא מגיע — הוא ברשימת "לא מגיעים", והודעה על כל אימון
 // שהוא מפספס מיותרת. ימי האימון: מה שהמדריך רשם, ואם לא רשם — ימים בשבוע שבהם השחקן הגיע לפחות פעמיים
 // ולפחות ל-40% מהאימונים של הקבוצה ב-8 השבועות שלפני ההיעדרות. אין מספיק נתונים — לא מדלגים.
-// מועתק מ-part-a.js (שינוי — לשנות גם שם). analysis-equivalence.test.mjs משווה.
 export function skipAbsenceMsg(p, groupId, attendance, date) {
   let wd = (d) => new Date(d + "T12:00:00Z").getUTCDay(),
     from = new Date(Date.parse(date + "T12:00:00Z") - 56 * 864e5).toISOString().slice(0, 10),
@@ -165,9 +156,9 @@ export function skipAbsenceMsg(p, groupId, attendance, date) {
   return days.length > 0 && !days.includes(wd(date));
 }
 // אימון שבוטל (cancellations) או שלא התקיים — חג, ביטול שלא נרשם: יום-קבוצה בעבר שאף אחד לא סומן בו
-// "הגיע" — לא נספר כהיעדרות. כמו excludeCancelled + onlyHeldTrainings ב-part-a.js.
+// "הגיע" — לא נספר כהיעדרות. היום עצמו נשאר (המאמן אולי באמצע סימון).
 export function onlyHeldTrainings(attendance, cancellations, today) {
-  const key = (a) => `${a.date}_${a.groupId}`;
+  const key = (a) => trainingKey(a.date, a.groupId);
   const cancelled = new Set((cancellations || []).map(key));
   const held = new Set(attendance.filter((a) => a.status === "Present").map(key));
   return attendance.filter((a) => !cancelled.has(key(a)) && (a.date >= today || held.has(key(a))));
@@ -177,8 +168,8 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
   // היעדרות מוצדקת (excused) לא נספרת בכלל — כמו statAtt באפליקציה
   attendance = onlyHeldTrainings(attendance, cancellations, today).filter((a) => !a.excused);
   const groupById = new Map(groups.map((g) => [g.id, g]));
-  const hist = historyIndex(attendance, today);
-  const twoIdx = twoAbsenceIndex(attendance, today);
+  const hist = perPlayer(attendance, (a) => a.date < today);
+  const recent = perPlayer(attendance, (a) => a.date !== today);
   const yesterday = addDays(today, -1);
 
   const item = (p, g, kind, date, extra = {}) => ({
@@ -193,18 +184,14 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
     gender: playerGender(p),
     genderKnown: !!knownGender(p),
     phone: isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "",
-    whenText: whenText(date, today),
     ...extra,
   });
 
-  // שתי היעדרויות ברצף שעוד לא טופלו (כמו absenceAlerts)
   const repeat = [];
   for (const p of players) {
     if (!active(p)) continue;
-    const dates = twoIdx.get(p.id);
-    if (!dates) continue;
-    if (p.alertHandledDate && p.alertHandledDate >= dates[0]) continue;
-    if (skipAbsenceMsg(p, p.groupId, attendance, dates[0])) continue;
+    const dates = twoAbsent(recent.get(p.id) || []);
+    if (!needsRepeatMsg(p, dates, attendance)) continue;
     repeat.push(item(p, groupById.get(p.groupId), "repeat", dates[0], { dates }));
   }
 
@@ -242,7 +229,6 @@ export function analyze({ players, groups, attendance, cancellations, today }) {
     summary: {
       pending: pending.length,
       pendingNoPhone: pending.filter((x) => !x.phone).length,
-      repeat: repeat.length,
       atRiskHigh: atRisk.filter((r) => r.level === "high").length,
       atRiskMedium: atRisk.filter((r) => r.level === "medium").length,
     },
@@ -292,7 +278,7 @@ export function topActions(r) {
   for (const x of (r.atRisk || []).filter((x) => x.level === "high").slice(0, 2))
     a.push(`${x.playerName} (${x.groupName}) — ${x.reason}. ${x.adult ? "כדאי להתקשר אליו/אליה היום" : "כדאי להתקשר להורים היום"}`);
   const pend = (r.pending || []).map((x, i) => ({ x, n: i + 1 }));
-  const rep = pend.filter(({ x }) => x.kind === "repeat" && x.phone);
+  const rep = pend.filter(({ x }) => x.phone);
   if (rep.length)
     a.push(`${rep.length === 1 ? `${rep[0].x.playerName} החסיר/ה פעמיים ברצף` : `${rep.length} ילדים החסירו פעמיים ברצף`} — ${rep.every((v) => v.x.adult) ? "הודעה אישית" : rep.some((v) => v.x.adult) ? "הודעות (לבוגרים ישירות, לילדים להורים)" : "הודעה להורים"}: "שלח ${rep.map((v) => v.n).join(",")}"`);
   if (reg?.items?.length) a.push(`${reg.items.length === 1 ? "התאמת שם אחת ברישום מחכה" : `${reg.items.length} התאמות שם ברישום מחכות`} לך — "אשר ר1" או "דחה ר1"`);
@@ -309,8 +295,7 @@ export function fullReportText(r, max = 15) {
   if (r.pending.length) {
     lines.push("✉️ ממתינים להודעה:");
     r.pending.slice(0, max).forEach((x, i) => {
-      const kind = x.kind === "repeat" ? "2 ברצף" : x.whenText;
-      lines.push(`${i + 1}. ${x.playerName} (${x.groupName}) — ${kind}${x.phone ? "" : " ⚠️ אין טלפון תקין"}`);
+      lines.push(`${i + 1}. ${x.playerName} (${x.groupName}) — 2 ברצף${x.phone ? "" : " ⚠️ אין טלפון תקין"}`);
     });
     if (r.pending.length > max) lines.push(`ועוד ${r.pending.length - max}`);
     lines.push("");

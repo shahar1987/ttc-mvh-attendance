@@ -10,18 +10,6 @@ export const CLUB = "מועדון טניס שולחן מבואות החרמון"
 const SIGNATURE = `צוות ${CLUB}`;
 
 export const TEMPLATES = {
-  // היעדרות אחת — להורה. {{1}}="בנכם דני לא הגיע", {{2}}="ביום שלישי, 29 בספטמבר"
-  club_absence_child: {
-    category: "UTILITY",
-    body: `שלום, ראינו ש{{1}} לאימון {{2}}.\nנשמח לדעת שהכל בסדר.\nנתראה באימון הבא!\n${SIGNATURE}`,
-    example: ["בנכם דני לא הגיע", "ביום שלישי, 29 בספטמבר"],
-  },
-  // היעדרות אחת — לשחקן מבוגר. {{1}}=שם, {{2}}=מתי
-  club_absence_adult: {
-    category: "UTILITY",
-    body: `שלום {{1}}, ראינו שלא הגעת לאימון {{2}}.\nנשמח לדעת שהכל בסדר.\nנתראה באימון הבא!\n${SIGNATURE}`,
-    example: ["דני", "ביום שלישי, 29 בספטמבר"],
-  },
   // שתי היעדרויות ברצף — להורה. {{1}}="בנכם דני לא הגיע"
   club_missed_two_child: {
     category: "UTILITY",
@@ -67,25 +55,16 @@ export const TEMPLATES = {
   },
 };
 
-// הפרמטרים של הודעה להורה/לשחקן, לפי סוג ההתראה. item מגיע מ-analysis.mjs.
+// הפרמטרים של הודעה להורה/לשחקן על שתי היעדרויות ברצף. item מגיע מ-analysis.mjs.
 // בלי מין רשום באפליקציה: נוסח בלי לשון זכר או נקבה. לא נשלח דרך Meta, רק מהמספר של הבעלים, ולכן מחוץ ל-TEMPLATES
 const NEUTRAL = {
-  neutral_absence: { body: `שלום, לא ראינו את {{1}} באימון {{2}}.\nנשמח לדעת שהכל בסדר.\nנתראה באימון הבא!\n${SIGNATURE}` },
   neutral_missed_two: { body: `שלום, לא ראינו את {{1}} בשני האימונים האחרונים.\nהכל בסדר? נשמח לדעת אם יש משהו שאפשר לעזור בו.\n${SIGNATURE}` },
 };
 
 export function absenceTemplate(item) {
-  if (!item.adult && item.genderKnown === false)
-    return item.kind === "repeat" ? { name: "neutral_missed_two", params: [item.playerName] } : { name: "neutral_absence", params: [item.playerName, item.whenText] };
-  const who = item.gender === "f" ? `בתכם ${item.playerName} לא הגיעה` : `בנכם ${item.playerName} לא הגיע`;
-  if (item.kind === "repeat") {
-    return item.adult
-      ? { name: "club_missed_two_adult", params: [item.playerName] }
-      : { name: "club_missed_two_child", params: [who] };
-  }
-  return item.adult
-    ? { name: "club_absence_adult", params: [item.playerName, item.whenText] }
-    : { name: "club_absence_child", params: [who, item.whenText] };
+  if (!item.adult && item.genderKnown === false) return { name: "neutral_missed_two", params: [item.playerName] };
+  if (item.adult) return { name: "club_missed_two_adult", params: [item.playerName] };
+  return { name: "club_missed_two_child", params: [item.gender === "f" ? `בתכם ${item.playerName} לא הגיעה` : `בנכם ${item.playerName} לא הגיע`] };
 }
 
 // הטקסט המלא של התבנית אחרי מילוי — כדי להראות לשולה בדיוק מה ייצא.

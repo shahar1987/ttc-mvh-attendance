@@ -2,7 +2,7 @@
 // Claude לא נוגע ב-Firestore או בוואטסאפ ישירות.
 import { absenceTemplate, renderTemplate } from "../../agents/templates.mjs";
 import { waLink } from "../../agents/lib/whatsapp.mjs";
-import { dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, normalizePhone, topActions } from "../../agents/lib/analysis.mjs";
+import { attendanceId, dropoutRisk, onlyHeldTrainings, playerHistory, israelToday, isValidPhone, normalizePhone, topActions } from "../../agents/lib/analysis.mjs";
 import { DELETE } from "./firestore.js";
 
 const AGENT_HE = { scan: "הסורק היומי (דוח הבוקר)", bugcheck: "בודק הבאגים", ideas: "סוכן הרעיונות", supervisor: "המפקח", content: "סוכן הפרסום" };
@@ -264,7 +264,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
             number: i + 1,
             name: x.playerName,
             group: x.groupName,
-            kind: x.kind === "repeat" ? "שתי היעדרויות ברצף" : `היעדרות ${x.whenText}`,
+            kind: "שתי היעדרויות ברצף",
             hasPhone: !!x.phone,
             alreadyHandled: done.has(x.key),
             ...(prepared.has(x.key) && !done.has(x.key) ? { linksPrepared: true } : {}),
@@ -397,7 +397,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
         }
         const t = absenceTemplate(item);
         sentTo.add(item.playerId);
-        prepared.push({ n, key: item.key, kind: item.kind, date: item.date, groupId: item.groupId, playerId: item.playerId, playerName: item.playerName });
+        prepared.push({ n, key: item.key, date: item.date, groupId: item.groupId, playerId: item.playerId, playerName: item.playerName });
         results.push(`${n}. ${item.playerName}: ${waLink(item.phone, renderTemplate(t.name, t.params))}`);
       }
       // לא מסמנים "נשלח" כשרק מכינים קישור — הבעלים עוד לא לחץ. נשמר כ"קישורים הוכנו", ומסומן רק אחרי "שלחתי".
@@ -494,9 +494,8 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
             continue;
           }
           const p = hits[0];
-          // אותו חוזה שמירה של האפליקציה: מזהה ${date}_${groupId}_${playerId}, סטטוס Present/Absent.
           // כמו באפליקציה: נעדר שנשמר מחדש שומר את msgSentAt (merge), ונוכח נשמר בלי msgSentAt/msgSentBy.
-          await store.merge(`attendance/${d}_${g.id}_${p.id}`, {
+          await store.merge(`attendance/${attendanceId(d, g.id, p.id)}`, {
             date: d,
             groupId: g.id,
             playerId: p.id,
@@ -561,20 +560,9 @@ export async function findGroup(store, group, groups, players) {
   return { g, roster: players.filter((p) => p.groupId === g.id && p.isActive && !p.deleted) };
 }
 
-// אותו רישום שהאפליקציה עושה כשמאמן שולח הודעה או לוחץ "טופל" (markAbsenceMsgSent / markAlertHandled
-// ב-part-a.js), כדי שהמאמנים לא יראו את אותה היעדרות כממתינה ואף הורה לא יקבל הודעה כפולה.
-// "נשלח" נכתב רק על רשומת היעדרות קיימת שעדיין Absent (קריאה וכתיבה מותנית): אם המאמן סימן בינתיים
-// "נוכח" או שהרשומה לא קיימת — לא נוגעים. לא כותבים status בכלל, רק msgSentAt/msgSentBy. מחזיר מה נעשה.
+// כמו "טופל" באפליקציה (markAlertHandled ב-part-a.js), כדי שהמאמנים לא יראו את אותה היעדרות כממתינה
+// ואף הורה לא יקבל הודעה כפולה.
 async function markHandled(store, item, sent) {
-  if (sent && item.kind === "absence") {
-    let state = "missing";
-    await store.update(`attendance/${item.date}_${item.groupId}_${item.playerId}`, (a, exists) => {
-      state = !exists ? "missing" : a.status !== "Absent" ? "notAbsent" : "ok";
-      return state === "ok" ? { msgSentAt: new Date().toISOString(), msgSentBy: "whatsapp-agent" } : null;
-    });
-    if (state === "missing") return "הרשומה לא קיימת — לא סומן";
-    if (state === "notAbsent") return "סומן בינתיים כנוכח — לא סומן כנשלח";
-  }
   const p = await store.get(`players/${item.playerId}`);
   // רק מקדמים את התאריך — לא מחזירים אחורה סימון חדש יותר
   if (p && !(p.alertHandledDate && p.alertHandledDate >= item.date))

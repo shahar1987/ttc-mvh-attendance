@@ -857,11 +857,11 @@ assert.equal(docs.get("players/ph2").parentPhone, "0521234567");
 assert.ok(!docs.get("players/ph1").parentPhone);
 assert.match(await tools("04-6950000").set_player_phone({ name: "עומר רז", phone: "04-6950000" }), /נייד/);
 
-// 2+3. הודעות היעדרות: אישור דו-שלבי, קישורים בלי לסמן "נשלח", וסימון רק אחרי "שלחתי" — ורק על רשומה שעדיין Absent
+// 2+3. הודעות היעדרות: אישור דו-שלבי, קישורים בלי לסמן "נשלח", וסימון רק אחרי "שלחתי"
 put("players/p1", { parentPhone: "0541111111" });
 put("players/p3", { parentPhone: "0540000033" });
 put(`attendance/${D2}_g1_p1`, { date: D2, groupId: "g1", playerId: "p1", status: "Absent" });
-const absItem = (p, name, date, phone) => ({ key: `absence:${date}:g1:${p}`, kind: "absence", date, groupId: "g1", playerId: p, playerName: name, groupName: "מתחילים", phone, whenText: "אתמול" });
+const absItem = (p, name, date, phone) => ({ key: `repeat:${date}:g1:${p}`, kind: "repeat", date, groupId: "g1", playerId: p, playerName: name, groupName: "מתחילים", phone });
 put("agentReports/latest", { date: TODAY, handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "972541111111"), absItem("p2", "נועה לוי", Y, "972541112222"), absItem("p3", "דני לוי", D2, "972540000033")] });
 const r2a = await callTool("תשלחי הודעות להורים 1,2,3", { name: "send_absence_messages", args: { numbers: [1, 2, 3] } });
 assert.match(r2a, /עוד לא הוכנו קישורים/, "\"תשלחי\" בתוך הבקשה עצמה לא מאשר");
@@ -877,27 +877,11 @@ assert.match(await tools("מה עכשיו?").confirm_absence_sent({ numbers: [] 
 assert.match(await tools("עוד לא שלחתי").confirm_absence_sent({ numbers: [] }), /לא סומן/);
 const n2c = patches.length;
 const r2c = await tools("שלחתי").confirm_absence_sent({ numbers: [] });
-assert.match(r2c, /1\. דני כהן: סומן כנשלח/);
-assert.match(r2c, /2\. נועה לוי: סומן בינתיים כנוכח/, "המאמן סימן נוכח — לא דורסים");
-assert.match(r2c, /3\. דני לוי: הרשומה לא קיימת/);
-const a1 = docs.get(`attendance/${D2}_g1_p1`);
-assert.equal(a1.status, "Absent");
-assert.equal(a1.msgSentBy, "whatsapp-agent");
-assert.ok(a1.msgSentAt);
-assert.deepEqual(patches.slice(n2c).find((x) => x.path === `attendance/${D2}_g1_p1`).keys.sort(), ["msgSentAt", "msgSentBy"], "בלי status בכתיבה");
-assert.equal(docs.get(`attendance/${Y}_g1_p2`).status, "Present", "נוכח נשאר נוכח");
-assert.ok(!("msgSentAt" in docs.get(`attendance/${Y}_g1_p2`)));
-assert.equal(docs.has(`attendance/${D2}_g1_p3`), false, "לא יוצרים רשומה שלא קיימת");
+assert.match(r2c, /1\. דני כהן: סומן כנשלח\n2\. נועה לוי: סומן כנשלח\n3\. דני לוי: סומן כנשלח/);
+assert.ok(!patches.slice(n2c).some((x) => x.path.startsWith("attendance/")), "רשומות הנוכחות לא נוגעים — רק בשחקן");
 assert.equal(docs.get("agentReports/latest").handledKeys.length, 3);
 assert.equal(bot().absenceLinks.items.length, 0);
 assert.equal(docs.get("players/p1").alertHandledDate, D2);
-// 3ב. מרוץ: המאמן מסמן "נוכח" בין הקריאה לכתיבה — הכתיבה המותנית נכשלת, קוראים שוב ולא מסמנים
-put(`attendance/${D3}_g1_p3`, { date: D3, groupId: "g1", playerId: "p3", status: "Absent" });
-put("agentReports/bot", { absenceLinks: { date: TODAY, items: [{ n: 1, key: `absence:${D3}:g1:p3`, kind: "absence", date: D3, groupId: "g1", playerId: "p3", playerName: "דני לוי" }] } });
-globalThis.beforePatch = (path) => { if (path === `attendance/${D3}_g1_p3`) { globalThis.beforePatch = null; put(path, { status: "Present" }); } };
-assert.match(await tools("שלחתי").confirm_absence_sent({ numbers: [1] }), /סומן בינתיים כנוכח/);
-assert.equal(docs.get(`attendance/${D3}_g1_p3`).status, "Present");
-assert.ok(!("msgSentAt" in docs.get(`attendance/${D3}_g1_p3`)));
 // 3ג. הבעלים הוריד שם מהרשימה שהוצגה ("שליו הגיע") ואז "כן" — פחות מספרים מאותה רשימה מאושר; מספר חדש לא (29.10)
 put("agentReports/latest", { date: TODAY, handledKeys: [], pending: [absItem("p1", "דני כהן", D2, "972541111111"), absItem("p3", "דני לוי", D2, "972540000033")] });
 assert.match(await callTool("מאשר הכל", { name: "send_absence_messages", args: { numbers: [1, 2] } }), /עוד לא הוכנו/);
@@ -948,6 +932,7 @@ assert.equal(docs.get(`attendance/${TODAY}_g1_p2`).status, "Present");
 const [, m3, d3] = D3.split("-").map(Number);
 assert.match(await tools(`נועה הגיעה ב-${d3}.${m3} למתחילים`).mark_attendance({ group: "מתחילים", date: D3, present: ["נועה"] }), /נועה לוי: נוכח/, "תאריך בפורמט D.M");
 // 10. נעדר שנשמר מחדש שומר את msgSentAt (כמו באפליקציה)
+put(`attendance/${D2}_g1_p1`, { date: D2, groupId: "g1", playerId: "p1", status: "Absent", msgSentAt: "x" });
 assert.match(await tools(`דני כהן לא הגיע ${D2} למתחילים`).mark_attendance({ group: "מתחילים", date: D2, absent: ["דני כהן"] }), /דני כהן: נעדר/);
 assert.ok(docs.get(`attendance/${D2}_g1_p1`).msgSentAt, "msgSentAt נשמר על נעדר");
 

@@ -25,9 +25,10 @@ git log --oneline -8 origin/main
 ## 2. עורכים ומאמתים מקומית
 השינוי הקטן ביותר ב-part-a.js או part-b.js (בלי JSX, ‏`e.createElement`, שמות משתנים קצרים). ואז:
 ```bash
-cat part-a.js part-b.js > /tmp/chk.js && node --check /tmp/chk.js
+# בונים מתיקיית הריפו (לא מ-/tmp): part-a מייבא את agents/lib, והנתיב יחסי לקובץ
+cat part-a.js part-b.js > bundle.js && node --check bundle.js
 npm i -s esbuild@0.21.5 react@18.3.1 react-dom@18.3.1 lucide-react@0.383.0 firebase@10.12.2 --no-audit --no-fund
-npx esbuild /tmp/chk.js --bundle --minify --format=esm --outfile=/tmp/app.js && stat -c%s /tmp/app.js   # חייב להיות מעל 200000
+npx esbuild bundle.js --bundle --minify --format=esm --outfile=/tmp/app.js && stat -c%s /tmp/app.js && rm bundle.js   # חייב להיות מעל 200000
 grep -nE '(\+?972[- ]?5[0-9]|05[0-9][- ]?[0-9]{3}[- ]?[0-9]{4})' part-a.js part-b.js | grep -v 050-?1234567 || echo privacy-ok
 rm -rf node_modules package.json package-lock.json
 git diff -- part-a.js part-b.js > patch.diff   # לשמור קטן

@@ -68,12 +68,10 @@ test("no recorded gender: neutral text, never a guess", () => {
   const t = welcomeText({ name: "יהב לוי" }, groups[0]);
   assert.match(t, /שמחים לקבל את יהב לוי לקבוצת מתחילים, והשולחן כבר מחכה\./);
   assert.doesNotMatch(t, /הצטרף|מחכה לו|מחכה לה/);
-  const item = { adult: false, genderKnown: false, gender: "m", playerName: "יהב לוי", whenText: "היום" };
-  const a = absenceTemplate({ ...item, kind: "absence" });
-  assert.match(renderTemplate(a.name, a.params), /^שלום, לא ראינו את יהב לוי באימון היום\./);
-  const r = absenceTemplate({ ...item, kind: "repeat" });
+  const item = { kind: "repeat", adult: false, genderKnown: false, gender: "m", playerName: "יהב לוי" };
+  const r = absenceTemplate(item);
   assert.match(renderTemplate(r.name, r.params), /^שלום, לא ראינו את יהב לוי בשני האימונים האחרונים\./);
-  const f = absenceTemplate({ ...item, kind: "absence", genderKnown: true, gender: "f" });
+  const f = absenceTemplate({ ...item, genderKnown: true, gender: "f" });
   assert.match(renderTemplate(f.name, f.params), /בתכם יהב לוי לא הגיעה/);
   assert.doesNotMatch(JSON.stringify(TEMPLATES), /neutral_/, "לא נשלח ל-Meta");
 });
@@ -83,8 +81,9 @@ test("welcome text for a girl", () => {
 });
 
 test("marks: only well-formed id keys pass", () => {
-  assert.deepEqual(parseMarks(`absence:${today}:g1:a, welcome:${today}:g1:b`).map((m) => m.kind), ["absence", "welcome"]);
-  assert.throws(() => parseMarks("absence:2026-10-29:g1:a;rm"), /לא תקינים/);
+  assert.deepEqual(parseMarks(`repeat:${today}:g1:a, welcome:${today}:g1:b`).map((m) => m.kind), ["repeat", "welcome"]);
+  assert.throws(() => parseMarks("repeat:2026-10-29:g1:a;rm"), /לא תקינים/);
+  assert.throws(() => parseMarks(`absence:${today}:g1:a`), "היעדרות אחת כבר לא נשלחת (5.11)");
   assert.throws(() => parseMarks("note:2026-10-29:g1:a"));
 });
 

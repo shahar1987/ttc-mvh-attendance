@@ -3580,7 +3580,7 @@ function re({
         Array.from(touchedRef.current).forEach((pid) => {
           let w = n.find((p2) => p2.id === pid);
           if (!w) return;
-          let k = S(P, "attendance", `${m}_${t.id}_${w.id}`),
+          let k = S(P, "attendance", attendanceId(m, t.id, w.id)),
             prev =
               (srvDay && srvDay[w.id]) ||
               l.find(
@@ -3974,7 +3974,7 @@ function re({
                 {
                   key: "excused",
                   onClick: () =>
-                    O(S(P, "attendance", `${m}_${t.id}_${p.id}`), { excused: !savedRec.excused }).catch((err) =>
+                    O(S(P, "attendance", attendanceId(m, t.id, p.id)), { excused: !savedRec.excused }).catch((err) =>
                       N("השמירה נכשלה: " + err.message),
                     ),
                   "aria-pressed": !!savedRec.excused,
@@ -4574,7 +4574,7 @@ function Q() {
     trialIds = new Set(c.filter((p) => p.trial).map((p) => p.id)),
     statPlayers = trialIds.size ? c.filter((p) => !trialIds.has(p.id)) : c,
     // היעדרות מוצדקת (excused — מחלה וכו') לא נספרת: לא באחוזים, לא בהודעות להורים ולא ב"לא מגיעים"
-    statAtt = onlyHeldTrainings(n).filter((r) => !r.excused && !trialIds.has(r.playerId)),
+    statAtt = onlyHeldTrainings(n, cancellations, E()).filter((r) => !r.excused && !trialIds.has(r.playerId)),
     // שגיאת האזנה לנוכחות: לא נותנים לסמן ולשמור על בסיס נתונים חסרים
     dataError = aError ? "לא ניתן לטעון את נתוני הנוכחות (" + (aError.code || aError.message || aError) + "). רענן את הדף לפני שמירה." : "",
     coreLoading = iLoading || cLoading || aLoading || xLoading,
@@ -4981,7 +4981,7 @@ function Q() {
               ).catch((err) => console.warn("Message log not saved:", err));
               return;
             }
-            let dates = lastTwoAbsences(n, waPlayer.player.id);
+            let dates = lastTwoAbsences(n, waPlayer.player.id, E());
             dates &&
               markAlertHandled(waPlayer.player.id, dates[0]).catch((err) =>
                 console.warn("Alert handling not saved:", err),

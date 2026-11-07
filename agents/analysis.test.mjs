@@ -109,12 +109,12 @@ test("adult group and templates", () => {
     today,
   });
   assert.deepEqual(r.pending, []);
-  const item = { kind: "absence", playerName: "תמר", adult: true, gender: "f", genderKnown: true, whenText: "אתמול" };
+  const item = { kind: "repeat", playerName: "תמר", adult: true, gender: "f", genderKnown: true };
   const t = absenceTemplate(item);
-  assert.equal(t.name, "club_absence_adult");
-  assert.match(renderTemplate(t.name, t.params), /^שלום תמר, ראינו שלא הגעת לאימון אתמול/);
+  assert.equal(t.name, "club_missed_two_adult");
+  assert.match(renderTemplate(t.name, t.params), /^שלום תמר, שמנו לב שלא הגעת לשני האימונים האחרונים/);
   const child = absenceTemplate({ ...item, adult: false });
-  assert.match(renderTemplate(child.name, child.params), /בתכם תמר לא הגיעה לאימון אתמול/);
+  assert.match(renderTemplate(child.name, child.params), /בתכם תמר לא הגיעה לשני האימונים האחרונים/);
   for (const [name, t] of Object.entries(TEMPLATES)) {
     assert.ok(!/^\{\{|\}\}$/.test(t.body), `${name} starts/ends with a variable`);
     assert.equal((t.body.match(/\{\{\d\}\}/g) || []).length, t.example.length, name);
@@ -208,7 +208,7 @@ test("top actions: at most 3, most urgent first, each with what to do", () => {
     yesterday: { present: 0, absent: 0 },
     summary: { pending: 3, atRiskHigh: 1, atRiskMedium: 1 },
     pending: [
-      { kind: "absence", playerName: "א", phone: "972500000001" },
+      { kind: "repeat", playerName: "א", phone: "" },
       { kind: "repeat", playerName: "ב", phone: "972500000002" },
       { kind: "repeat", playerName: "ג", phone: "" },
     ],

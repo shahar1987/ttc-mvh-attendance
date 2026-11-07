@@ -1,4 +1,6 @@
 import xt from "react";
+import { attendanceId, trainingKey, isAdultGroup, normalizePhone, isValidPhone, lastTwoAbsences, needsRepeatMsg, onlyHeldTrainings } from "./agents/lib/analysis.mjs";
+import { playerGender } from "./agents/lib/gender.mjs";
 import { createRoot as bt } from "react-dom/client";
 import { createPortal } from "react-dom";
 import e, { useState as b, useEffect as j } from "react";
@@ -193,13 +195,6 @@ function Ke(t) {
 function ne(t, s) {
   return `https://wa.me/${t}?text=${encodeURIComponent(s)}`;
 }
-function isAdultGroup(g) {
-  if (!g) return !1;
-  if (typeof g.isAdultGroup == "boolean") return g.isAdultGroup;
-  return /מבוגרים|בוגרים|פרקינסון|סגל|ותיקים/.test(
-    (g && g.name) || "",
-  );
-}
 function playerIsAdult(p, groups) {
   return isAdultGroup(
     (groups || []).find((g) => g.id === (p && p.groupId)) || null,
@@ -211,72 +206,6 @@ function Ve(t, s, adult, gender) {
   return adult
     ? `היי ${s}, מה שלומך? שמתי לב שלא הגעת לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם צריך משהו.`
     : `היי${parent && parent !== s ? " " + parent : ""}, מה שלומך? שמתי לב ש${s} לא ${f ? "הגיעה" : "הגיע"} לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם יש משהו שאפשר לעזור בו.`;
-}
-var maleNameExceptions = [
-  "משה",
-  "שלמה",
-  "אריה",
-  "יהודה",
-  "נחמיה",
-  "ישעיה",
-  "ירמיה",
-  "זכריה",
-  "עובדיה",
-  "חזקיה",
-  "שמעיה",
-  "חנניה",
-  "נריה",
-  "הושע",
-  "אלישע",
-  "יונה",
-  "עזריה",
-  "אליה",
-];
-var femaleNameHints = [
-  "אסתר",
-  "רחל",
-  "מרים",
-  "יעל",
-  "רות",
-  "אביגיל",
-  "מיכל",
-  "אורלי",
-  "שלי",
-  "נטלי",
-  "ליהי",
-  "ספיר",
-  "עינב",
-  "קרן",
-  "נופר",
-  "שירי",
-  "סמדר",
-  "יסמין",
-  "לילך",
-  "סיון",
-  "שני",
-  "אלינור",
-  "גפן",
-  "מרגלית",
-  "שולמית",
-  "רויטל",
-  "ליאל",
-  "תמר",
-  "ענבר",
-  "נעמי",
-];
-function guessGender(name) {
-  let first = String(name || "")
-    .trim()
-    .split(/\s+/)[0];
-  if (!first) return "m";
-  if (femaleNameHints.includes(first)) return "f";
-  if (maleNameExceptions.includes(first)) return "m";
-  return /[הת]$/.test(first) ? "f" : "m";
-}
-function playerGender(p) {
-  return p && (p.gender === "f" || p.gender === "m")
-    ? p.gender
-    : guessGender(p ? p.name : "");
 }
 // ----- הרשמה ותשלום -----
 function sessionsLabel(n) {
@@ -352,18 +281,6 @@ ${signature}`
 נתראה באימון הבא!
 ${signature}`;
 }
-function normalizePhone(value) {
-  let digits = String(value || "").replace(/\D/g, "");
-  // 00972… / +972 050-… / 972-050-… — מורידים את קידומת החו"ל ואת ה-0 המוביל שאחריה
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("972")) return "972" + digits.slice(3).replace(/^0+/, "");
-  if (digits.startsWith("0")) return "972" + digits.replace(/^0+/, "");
-  if (digits.length === 9 && digits.startsWith("5")) return "972" + digits;
-  return digits;
-}
-function isValidPhone(value) {
-  return /^972\d{8,9}$/.test(normalizePhone(value));
-}
 // שחקן בשתי קבוצות הוא שני מסמכים של אותו אדם
 function playerPersonKey(p) {
   return (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone || "");
@@ -379,56 +296,13 @@ function countUniqueActivePlayers(players) {
   });
   return count;
 }
-function lastTwoAbsences(attendance, playerId) {
-  // רשומה אחת לכל יום (שחקן שעבר קבוצה באותו יום לא נספר פעמיים); נוכחות גוברת על היעדרות
-  let byDate = new Map();
-  attendance.forEach((a) => {
-    if (a.playerId !== playerId || a.date === E()) return;
-    let prev = byDate.get(a.date);
-    (!prev || prev.status !== "Present") && byDate.set(a.date, a);
-  });
-  let recs = [...byDate.values()].sort((x, y) => y.date.localeCompare(x.date));
-  if (recs.length < 2) return null;
-  if (recs[0].status !== "Absent" || recs[1].status !== "Absent") return null;
-  return [recs[0].date, recs[1].date];
-}
-// היעדרות שלא שולחים עליה הודעה להורים (18.10, שולה: רוב הרשימה הייתה רעש):
-// יום שהוא לא יום האימון של השחקן, או שחקן שכמעט לא מגיע — הוא ברשימת "לא מגיעים", והודעה על כל אימון
-// שהוא מפספס מיותרת. ימי האימון: מה שהמדריך רשם, ואם לא רשם — ימים בשבוע שבהם השחקן הגיע לפחות פעמיים
-// ולפחות ל-40% מהאימונים של הקבוצה ב-8 השבועות שלפני ההיעדרות. אין מספיק נתונים — לא מדלגים.
-// מועתק ל-agents/lib/analysis.mjs (שינוי — לשנות גם שם).
-function skipAbsenceMsg(p, groupId, attendance, date) {
-  let wd = (d) => new Date(d + "T12:00:00Z").getUTCDay(),
-    from = new Date(Date.parse(date + "T12:00:00Z") - 56 * 864e5).toISOString().slice(0, 10),
-    held = {},
-    came = {};
-  attendance.forEach((a) => {
-    if (a.groupId !== groupId || !a.date || a.date < from || a.date >= date) return;
-    if (p.joinDate && a.date < p.joinDate) return;
-    let k = wd(a.date);
-    (held[k] = held[k] || new Set()).add(a.date);
-    a.playerId === p.id && a.status === "Present" && (came[k] = came[k] || new Set()).add(a.date);
-  });
-  let n = (o) => Object.values(o).reduce((x, v) => x + v.size, 0),
-    nHeld = n(held);
-  if (nHeld >= 4 && n(came) / nHeld <= 0.2) return !0;
-  let days =
-    Array.isArray(p.trainingDays) && p.trainingDays.length > 0
-      ? p.trainingDays
-      : Object.keys(held)
-          .map(Number)
-          .filter((k) => came[k] && came[k].size >= 2 && came[k].size / held[k].size >= 0.4);
-  return days.length > 0 && !days.includes(wd(date));
-}
 function absenceAlerts(players, groups, attendance, allowedGroupIds) {
   let out = [];
   players.forEach((p) => {
     if (!p.isActive || p.deleted || p.trial) return;
     if (allowedGroupIds && !allowedGroupIds.includes(p.groupId)) return;
-    let dates = lastTwoAbsences(attendance, p.id);
-    if (!dates) return;
-    if (p.alertHandledDate && p.alertHandledDate >= dates[0]) return;
-    if (skipAbsenceMsg(p, p.groupId, attendance, dates[0])) return;
+    let dates = lastTwoAbsences(attendance, p.id, E());
+    if (!needsRepeatMsg(p, dates, attendance)) return;
     out.push({
       player: p,
       group: groups.find((g) => g.id === p.groupId) || null,
@@ -450,7 +324,7 @@ async function markAbsenceMsgSent(date, groupId, playerId, userId) {
   );
   // מעדכנים רק את סימון ההודעה. כתיבת status:"Absent" כאן דרסה תיקון של מאמן
   // ל"הגיע" שנעשה בינתיים. רק אם הרישום לא קיים בכלל — יוצרים אותו כמו קודם.
-  let ref = S(P, "attendance", `${date}_${groupId}_${playerId}`),
+  let ref = S(P, "attendance", attendanceId(date, groupId, playerId)),
     stamp = { msgSentAt: new Date().toISOString(), msgSentBy: userId || "" };
   try {
     await O(ref, stamp);
@@ -548,9 +422,6 @@ var CANCEL_REASONS = [
   "מיעוט משתתפים",
   "אחר",
 ];
-function cancellationId(date, groupId) {
-  return `${date}_${groupId}`;
-}
 function findCancellation(cancellations, groupId, date) {
   return (
     (cancellations || []).find((c) => c.groupId === groupId && c.date === date) ||
@@ -564,23 +435,14 @@ function cancellationLabel(c) {
 }
 function excludeCancelled(attendance, cancellations) {
   if (!cancellations || cancellations.length === 0) return attendance;
-  let keys = new Set(cancellations.map((c) => cancellationId(c.date, c.groupId)));
-  return attendance.filter((a) => !keys.has(cancellationId(a.date, a.groupId)));
-}
-// אימון שלא התקיים (חג, ביטול שלא נרשם): יום-קבוצה בעבר שאף אחד לא סומן בו "הגיע" לא נספר
-// כהיעדרות — לא בהתראות, לא באחוזים ולא בסיכון נשירה. היום עצמו נשאר (המאמן אולי באמצע סימון).
-// מועתק ל-agents/lib/analysis.mjs (שינוי — לשנות גם שם).
-function onlyHeldTrainings(attendance) {
-  let today = E(),
-    held = new Set();
-  attendance.forEach((a) => a.status === "Present" && held.add(a.date + "_" + a.groupId));
-  return attendance.filter((a) => a.date >= today || held.has(a.date + "_" + a.groupId));
+  let keys = new Set(cancellations.map((c) => trainingKey(c.date, c.groupId)));
+  return attendance.filter((a) => !keys.has(trainingKey(a.date, a.groupId)));
 }
 async function cancelTraining({ date, groupId, reason, note, userId }) {
   // רשומות הנוכחות של היום לא נמחקות: excludeCancelled מסתיר אותן בכל החישובים,
   // וביטול-הביטול מחזיר אותן כמו שהיו.
   let batch = Te(P);
-  batch.set(S(P, "cancellations", cancellationId(date, groupId)), {
+  batch.set(S(P, "cancellations", trainingKey(date, groupId)), {
     date,
     groupId,
     reason,

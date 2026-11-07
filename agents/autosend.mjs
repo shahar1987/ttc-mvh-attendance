@@ -15,7 +15,7 @@ import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
 import { knownGender } from "./lib/gender.mjs";
 
 export const CUTOFF = "2026-10-28"; // לא שולחים על מה שקרה לפני שהאוטומציה הופעלה
-const KEY = /^(absence|repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
+const KEY = /^(repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
 
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 function daysText(days) {
@@ -70,20 +70,10 @@ export function parseMarks(raw) {
   return keys.map((k) => { const [kind, date, groupId, playerId] = k.split(":"); return { kind, date, groupId, playerId }; });
 }
 
-// כמו markHandled ב-worker/src/tools.js: "נשלח" רק על רשומה קיימת שעדיין Absent, ו-alertHandledDate רק קדימה
+// כמו markHandled ב-worker/src/tools.js: alertHandledDate רק קדימה
 async function mark(db, m, now) {
   const pref = db.collection("players").doc(m.playerId);
   if (m.kind === "welcome") return pref.set({ welcomeSentAt: now }, { merge: true }).then(() => "ok");
-  if (m.kind === "absence") {
-    const aref = db.collection("attendance").doc(`${m.date}_${m.groupId}_${m.playerId}`);
-    const ok = await db.runTransaction(async (tx) => {
-      const a = await tx.get(aref);
-      if (!a.exists || a.data().status !== "Absent") return false;
-      tx.update(aref, { msgSentAt: now, msgSentBy: "auto-send" });
-      return true;
-    });
-    if (!ok) return "skipped";
-  }
   await db.runTransaction(async (tx) => {
     const p = await tx.get(pref);
     const cur = p.exists && p.data().alertHandledDate;
