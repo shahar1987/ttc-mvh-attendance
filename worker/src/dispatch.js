@@ -93,7 +93,6 @@ export async function dispatchWorkflows(env, store) {
   return done.join(",") || "nothing pending";
 }
 
-// ❌ ריצות שנכשלו ב-GitHub — נבדק כאן כל רבע שעה, כי GitHub מדלג על רוב הריצות המתוזמנות של המפקח השעתי.
 // ראשון עד שישי, 20:40 עד 22:59 שעון ישראל, פעם בשעה. אותן שעות כמו ה-cron של agents.yml, שנשאר כגיבוי:
 // הנעילה והיומן ב-autosend.mjs מונעים שליחה כפולה.
 export function eveningSlot(now) {
@@ -120,6 +119,7 @@ export async function dispatchEvening(env, store, now = Date.now()) {
   return "autosend";
 }
 
+// ❌ ריצות שנכשלו ב-GitHub — נבדק כאן כל רבע שעה, כי GitHub מדלג על רוב הריצות המתוזמנות של המפקח השעתי.
 // הריפו ציבורי, אז אין צורך בטוקן (אם יש GH_DISPATCH_TOKEN — משתמשים בו בשביל מכסת בקשות גבוהה יותר).
 // מחזיר שורה לכל ריצה שעוד לא דווחה, ואת כל הריצות שנכשלו ב-6 השעות האחרונות (ids) לסימון אחרי השליחה.
 export async function failedRuns(env, store) {

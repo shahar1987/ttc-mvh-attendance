@@ -206,7 +206,6 @@ export function compare(insights, period, now = new Date()) {
   ];
 }
 
-// שינוי באחוזים: null כשאין עם מה להשוות
 // תווית שינוי: בסיס קטן (מתחת ל-10) — "פי X" במקום אחוז מטורף
 const times = (x) => `פי ${x >= 10 ? Math.round(x) : String(Math.round(x * 10) / 10)}`;
 export function changeLabel(now, before) {

@@ -10,7 +10,6 @@ import { tellOwner } from "./lib/owner.mjs";
 
 const db = firestore();
 // Gemini כשיש מפתח (חינמי, קיים ב-GitHub); אחרת Claude. כמו בסוכן הפרסום — מספיק אחד מהם.
-// ANTHROPIC_API_KEY לא מוגדר ב-GitHub, ולכן בלי Gemini הסוכן נכשל כל ראשון.
 // בלי אף מפתח נכשלים בקול (ריצה אדומה + הודעה לשולה) ולא "מצליחים" בשקט
 if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
   console.error("ideas did not run: no GEMINI_API_KEY or ANTHROPIC_API_KEY (Settings → Secrets and variables → Actions)");

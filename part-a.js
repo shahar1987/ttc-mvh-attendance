@@ -195,7 +195,6 @@ function Ve(t, s, adult, gender) {
     ? `היי ${s}, מה שלומך? שמתי לב שלא הגעת לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם צריך משהו.`
     : `היי${parent && parent !== s ? " " + parent : ""}, מה שלומך? שמתי לב ש${s} לא ${f ? "הגיעה" : "הגיע"} לשני האימונים האחרונים. הכל בסדר? אשמח לדעת אם יש משהו שאפשר לעזור בו.`;
 }
-// ----- הרשמה ותשלום -----
 function sessionsLabel(n) {
   return n === 1
     ? "פעם בשבוע"
@@ -867,8 +866,6 @@ function Ye() {
     { authUser: t, profile: a, profileError: i }
   );
 }
-// תג "2 היעדרויות" בשורת מילוי הנוכחות. משתמש בדיוק באותו חישוב של כרטיס
-// אחוז הנוכחות של הקבוצה בחודש הנוכחי (כמו "נוכחות ממוצעת החודש" בכרטיס שמעל)
 function Ze(t, s, a) {
   let month = E().slice(0, 7),
     l = new Set(a.filter((n) => n.groupId === s && !n.deleted).map((n) => n.id)),
@@ -2883,7 +2880,6 @@ function PostTrainingScreen({ groups, players, attendance, onWhatsapp, onOpenGro
   let [tab, setTab] = b("summary"),
     [gid, setGid] = b(null),
     data = Object.fromEntries(groups.map((g) => [g.id, ptGroupData(g.id, players, attendance)])),
-    // ברירת מחדל: הקבוצה שהתאמנה הכי לאחרונה
     latest = groups.slice().sort((a, c) => (data[c.id].dates[0] || "").localeCompare(data[a.id].dates[0] || ""))[0],
     group = groups.find((g) => g.id === gid) || latest;
   if (!group)
@@ -4086,7 +4082,6 @@ function at({
           { className: "text-xs text-red-600 text-right" },
           "מספר לא תקין. אפשר להזין 050-1234567 או 9725XXXXXXXX.",
         ),
-      // כפתור פתיחה/סגירה של השדות הלא-חובה
       e.createElement(
         "button",
         {

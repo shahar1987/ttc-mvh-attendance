@@ -28,7 +28,6 @@ function entry({ agent, text, template, templateParam, how }) {
   };
 }
 
-// מכניס הודעה לתור של ה-worker בלי לנסות לשלוח מכאן
 export async function enqueueOwner(db, { agent, key = agent, text, template = "agent_alert", templateParam }, { arrayUnion = (x) => admin.firestore.FieldValue.arrayUnion(x) } = {}) {
   const { how, ...rest } = entry({ agent, text, template, templateParam, how: "queued" });
   const item = { ...rest, key };

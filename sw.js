@@ -30,7 +30,6 @@ self.addEventListener('install', (event) => {
       c
         .addAll(CORE.map((u) => new Request(u, { cache: 'reload' })))
         .then(() => Promise.allSettled(EXTRA.map((u) => c.add(u))))
-        // התקנה שנכשלה לא משאירה מטמון ריק מאחור
         .catch((err) => caches.delete(CACHE).then(() => Promise.reject(err)))
     ).then(() => self.skipWaiting())
   );

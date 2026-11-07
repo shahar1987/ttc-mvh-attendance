@@ -55,7 +55,6 @@ await graph(`${META_APP_ID}/subscriptions`, {
 await graph(`${WHATSAPP_WABA_ID}/subscribed_apps`, { method: "POST" });
 console.log("webhook connected");
 
-// 3. תבניות
 const existing = await graph(`${WHATSAPP_WABA_ID}/message_templates?fields=name,status,category,language&limit=200`);
 // הקטגוריה בלוג: Meta לפעמים מסווגת תבנית UTILITY כ-MARKETING, ואז נמען חסום (131049)
 const have = new Map((existing.data || []).filter((t) => t.language === "he").map((t) => [t.name, `${t.status} ${t.category}`]));
@@ -81,6 +80,5 @@ for (const [name, t] of Object.entries(TEMPLATES)) {
   }
 }
 
-// 4. כתובת הבוט למפקח
 await botRef.set({ workerUrl: WORKER_URL, setupAt: new Date().toISOString() }, { merge: true });
 console.log("done");

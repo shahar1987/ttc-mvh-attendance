@@ -3,7 +3,7 @@
 // Meta שולחת כל הודעה שמגיעה למספר ל-POST /webhook. הבוט:
 //   1. מוודא שההודעה באמת מ-Meta (חתימה עם App Secret)
 //   2. עונה למספר של הבעלים (OWNER_PHONE), ולמדריכים שהבעלים הפעיל (coaches.js) — רק על הקבוצות שלהם. כל מספר אחר — מתעלם.
-//   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
+//   3. מעביר למודל (Claude, ו-Gemini כגיבוי) עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools } from "./tools.js";
@@ -31,7 +31,7 @@ const CHUNK = 4000; // מגבלת אורך הודעת וואטסאפ
 const DEADLINE_MS = 22000; // (בבדיקות: env.DEADLINE_MS) לפני ה-30 שניות של Cloudflare, עם מרווח לשליחת הודעת השגיאה
 const QUEUE_DEADLINE_MS = 120000; // בתור (env.MESSAGES) אין מגבלת 30 שניות — עדיין מתחת ל-3 הדקות של התראת ה-🔇
 const LOG_KEEP = 80; // כמה הודעות אחרונות המפקח רואה
-let ORIGIN = ""; // הכתובת של ה-worker, לקישור החיבור לגוגל
+let ORIGIN = ""; // הכתובת של ה-worker, לקישורים ששולה שולחת (מטא, דשבורד, תמונות)
 
 const SYSTEM = `את שולה — העוזרת האישית של מנהל מועדון טניס שולחן מבואות החרמון, בוואטסאפ.
 את מדברת רק איתו. עברית תמיד, בקצרה, בסגנון וואטסאפ: בלי כותרות markdown, *כוכבית* להדגשה מותרת, עד 12 שורות אלא אם ביקשו יותר.
@@ -94,7 +94,7 @@ const ALIASES = { WHATSAPP_TOKEN: "WA_TOKEN", WHATSAPP_PHONE_ID: "WA_PHONE_ID", 
 const withAliases = (env) => ({ ...env, ...Object.fromEntries(Object.entries(ALIASES).filter(([k, old]) => !env[k] && env[old]).map(([k, old]) => [k, env[old]])) });
 
 const app = {
-  // wrangler.toml → triggers: 🕵️ מפקח השיחות פעם ביום, ⏰ תזכורת נוכחות למאמנים כל שעה
+  // wrangler.toml → triggers: 🕵️ מפקח השיחות פעם ביום, ⏰ תזכורות למאמנים ותורים כל רבע שעה, ☀️ הגג כל שעה ביום
   async scheduled(event, rawEnv, ctx) {
     const env = withAliases(rawEnv);
     ctx.waitUntil(runCron(env, event.cron));
@@ -645,7 +645,6 @@ async function cronError(env, e) {
   } catch {}
 }
 
-// פעם ביום: המפקח, ובדיקה שכל תבניות הוואטסאפ הוגשו ל-Meta
 async function daily(env) {
   // Cloudflare מריץ לפעמים את אותו cron פעמיים — לא שולחים שני דוחות מפקח
   const last = ((await db(env).get("agentReports/bot")) || {}).lastReview?.at;

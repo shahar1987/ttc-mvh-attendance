@@ -53,7 +53,6 @@ export async function metaRoute(req, env, store) {
   return html(`✅ שולה מחוברת ל: ${pages.data.map((p) => p.name + (p.instagram_business_account ? ` + אינסטגרם @${p.instagram_business_account.username}` : "")).join(", ")}. אפשר לחזור לוואטסאפ.`);
 }
 const toPage = (p) => ({ id: p.id, name: p.name, token: p.access_token, ig: p.instagram_business_account?.id || "", igName: p.instagram_business_account?.username || "" });
-// הדפים הקבועים קודם; דף שכבר יש לו חיבור קבוע לא מוחלף
 const mergePages = (permanent, fresh) => [...permanent, ...fresh.filter((p) => !permanent.some((k) => k.id === p.id))];
 
 // 🔒 חיבור קבוע: טוקן של "משתמש מערכת" מהגדרות העסק ב-Meta. לא פג ולא תלוי בסיסמה של שחר.

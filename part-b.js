@@ -34,7 +34,6 @@ function isMemberRole(u) {
 function isStaffMember(u) {
   return isAdminRole(u) || isCoachRole(u);
 }
-// --- הרשאות פרטניות -----------------------------------------------------
 // מעבר לתפקיד (מנהל/מאמן/צופה), לכל משתמש אפשר לפתוח או לסגור יכולות
 // ספציפיות. מנהל מקבל הכל תמיד ואי אפשר לקחת ממנו. הרשימה הזו חייבת להישאר
 // זהה לשמות שבקובץ firestore.rules — שם זה נאכף בשרת, כאן רק מוצג.
@@ -115,7 +114,6 @@ function menuItemVisible(it, isAdmin, isViewer, profile) {
       ? canDo(profile, it.perm) || (it.viewerToo && isViewer)
       : !0;
 }
-// המסכים שהמשתמש רואה בתוך קבוצה, לפי הסדר שבקבוצה
 function sectionItems(sec, isAdmin, isViewer, profile) {
   return sec.keys
     .map((k) => STAFF_MENU_ITEMS.find((it) => it.key === k))
@@ -151,7 +149,6 @@ function userPermissions(u) {
     return u.permissions.filter((k) => ALL_PERMISSION_KEYS.includes(k));
   return DEFAULT_PERMISSIONS_BY_ROLE[roleKey(u)] || [];
 }
-// האם כבר נקבעו למשתמש הרשאות פרטניות (בניגוד לברירת מחדל לפי תפקיד)
 function hasExplicitPermissions(u) {
   return !!(u && Array.isArray(u.permissions));
 }
@@ -2138,7 +2135,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     [handledSuggestions, setHandledSuggestions] = b({}),
     // הצעות שטופלו בעבר ונשמרו ב-Firestore — כדי שלא יחזרו אחרי יציאה וכניסה
     [syncIgnores, setSyncIgnores] = b([]),
-    // השחקן שנבחר לשליחת הודעת תשלום, כשצריך לבחור בין כמה מסלולי הרשמה
     [payTarget, setPayTarget] = b(null),
     seededRef = e.useRef(!1),
     linksRef = e.useRef(!1);
@@ -2226,7 +2222,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
     });
     return unsub;
   }, [RO]);
-  // מסלולי ההרשמה של קבוצה, לפי טבלת המיפוי: רק שורות עם קישור, מהזול ליקר
   let tracksFor = (groupId) =>
       mappings
         .filter((r) => r.groupId === groupId && r.registrationUrl)
@@ -2256,7 +2251,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             return {
               ...c,
               player,
-              // קבוצת השחקן באפליקציה — מוצגת כשהיא שונה מהקבוצה שבקובץ
               otherGroupName:
                 player && player.groupId !== sg.groupId
                   ? s.find((g) => g.id === player.groupId)?.name || ""
@@ -2275,7 +2269,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       .filter((sg) => sg.candidates.length > 0),
     markSuggestionHandled = (playerId, fileName) =>
       setHandledSuggestions((h) => ({ ...h, [`${playerId}::${fileName}`]: !0 })),
-    // אישור הצעת תיקון: מעדכן את השם באפליקציה לשם שבקובץ ומסמן ששילם — בלחיצה אחת
     applySuggestion = async (playerId, fileName, currentName) => {
       if (
         !(await askConfirm(
@@ -2312,7 +2305,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         );
       });
     },
-    // דחיית הצעה
     ignoreSuggestion = (playerId, fileName) => {
       persistHandledSuggestion(playerId, fileName)
         .then(() => markSuggestionHandled(playerId, fileName))
@@ -2445,7 +2437,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             ? "לא נמצא בקובץ הרישום"
             : "";
     },
-    // מי שילם על פחות אימונים בשבוע ממה שהקבוצה שלו מתאמנת בפועל
     sessionGaps = (sync?.sessionGaps || [])
       .map((g) => ({
         ...g,
@@ -2470,7 +2461,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
           reasonText(p.id),
         ]),
       );
-      // downloadCsv: csvEscape (תא שמתחיל ב-= לא הופך לנוסחה באקסל), BOM, ושחרור הקישור באיחור (ספארי)
       downloadCsv(`לא-משלמים-${new Date().toLocaleDateString("en-CA")}.csv`, rows[0], rows.slice(1));
     };
   // 10.10: המסך סודר מחדש. למעלה שני מספרים גדולים (לא שילמו / שילמו) שהם גם הסינון,
@@ -3166,7 +3156,6 @@ function dt({
               e.createElement("span", { className: "font-semibold text-base" }, sec.label),
             );
           }),
-        // קישורים החוצה (תחרויות) בשורה קטנה בתחתית התפריט
         STAFF_MENU_ITEMS.filter((it) => it.external && menuItemVisible(it, a, VW, PR)).map((it) =>
           e.createElement(
             "button",

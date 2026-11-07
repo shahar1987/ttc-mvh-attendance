@@ -14,7 +14,6 @@ const today = israelToday();
 const findings = [];
 const add = (id, severity, text) => findings.push({ id, severity, text });
 
-// 1. האתר החי
 try {
   const res = await fetch(SITE, { redirect: "follow" });
   const html = await res.text();
@@ -41,7 +40,6 @@ try {
   console.log(`browser check skipped: ${e.message.split("\n")[0]}`);
 }
 
-// 2. הנתונים
 const from = addDays(today, -30);
 const [players, groups, attendance, cancellations] = await Promise.all([
   loadAll(db, "players"),

@@ -23,7 +23,6 @@ const hoursAgo = (iso) => (iso ? (Date.now() - new Date(iso).getTime()) / 360000
 // 1. כל סוכן רץ בזמן (וגם שגיאות במשימות המתוזמנות של הבוט) — lib/schedule.mjs
 problems.push(...scheduleProblems(health, bot));
 
-// 2. הבוט
 const waReady = process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID;
 let botDown = false; // ההתראה בוואטסאפ עוברת דרך הבוט
 const down = (p) => ((botDown = true), problems.push(p));
@@ -42,7 +41,6 @@ if (bot.workerUrl) {
 }
 if (bot.lastError && hoursAgo(bot.lastError.at) < 1.2) problems.push(`שגיאה בבוט: ${String(bot.lastError.message).slice(0, 120)}`);
 
-// 3. וואטסאפ
 if (waReady) {
   const res = await fetch(
     `${GRAPH}/${process.env.WHATSAPP_PHONE_ID}?fields=quality_rating,verified_name`,
@@ -80,7 +78,6 @@ if (!sec) {
 }
 if (secrets.length) problems.push(`נמצא מפתח סודי בקוד הציבורי (${secrets.length} מקומות) — צריך להחליף אותו מיד`);
 
-// דיווח רק כשהמצב משתנה
 const key = problems.join("|");
 const sup = health.supervisor || {};
 console.log(`problems: ${problems.length}`);

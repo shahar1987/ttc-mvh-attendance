@@ -50,7 +50,6 @@ const VERIFIED = /^מוח( |$)/;
 const SEND_NOW = "הודעות עכשיו";
 const TASK_WAIT_MS = 45 * 60 * 1000;
 
-// ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
 // שמירה ב-Drive עוברת דרך קלוד: ההגנה המתקדמת בחשבון חוסמת חיבור ישיר. "נשמר" מגיע מקלוד רק אחרי ש-Drive אישר
 export async function queueFile(env, store, name, url) {
   const id = Math.random().toString(36).slice(2, 8);

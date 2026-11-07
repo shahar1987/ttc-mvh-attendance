@@ -109,7 +109,6 @@ export const reportLinks = (today) => {
   return [...months, String(y), String(y - 1)];
 };
 
-// ---------- דף הדוח (להדפסה ול-PDF) ----------
 const n = (v, d = 0) => (v == null ? "—" : Number(v).toLocaleString("he-IL", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const ils = (v) => (v == null ? "—" : `₪${n(v, v >= 1000 ? 0 : 2)}`);
 const delta = (p) => (p == null ? "" : `<span class="${p >= 0 ? "up" : "down"}">${p >= 0 ? "▲" : "▼"} ${Math.abs(p)}%</span>`);
@@ -154,7 +153,6 @@ tfoot td{font-weight:700;border-top:2px solid #0f5fbf;background:#eef3fb!importa
 <script nonce="${nonce}">document.getElementById("print").addEventListener("click",()=>print())</script></html>`;
 }
 
-// ---------- Excel (.xlsx) ----------
 // ZIP בלי דחיסה (stored): הקובץ קטן, ו-Excel, Google Sheets ו-Numbers פותחים אותו כרגיל
 const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = CRC[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };

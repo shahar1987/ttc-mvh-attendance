@@ -45,7 +45,6 @@ export function monthly(days, today) {
   return out;
 }
 
-// ימים בלי ייצור למרות שהיה אור, בשנה האחרונה
 export const outages = (days, end) => span(end, 365).filter((k) => days[k]?.kwh != null && days[k].kwh < 0.1 && days[k].rad >= 3);
 
 // אין ב-API ייצור לפי פאנל, אז מעריכים: פאנל שיצא מוריד את הגג בחלק אחד מתוך כמות הפאנלים, ולאורך זמן
@@ -557,7 +556,6 @@ const lift=(e)=>{if(!b)return;const on=b.on;b=null;lens.classList.remove("press"
 bar.addEventListener("pointerup",lift);bar.addEventListener("pointercancel",lift);
 tabs.forEach((t,i)=>t.addEventListener("click",(e)=>{if(!e.detail)settle(i)}));
 
-// כניסת הכרטיסים והטבעות, כשהם נכנסים למסך
 $$("[data-o]").forEach((c)=>{if(!still)c.style.strokeDashoffset=c.dataset.c});
 const fill=(card)=>card.querySelectorAll("[data-o]").forEach((c,i)=>{const sp=spring(+c.dataset.c,(x)=>{c.style.strokeDashoffset=x},.75,1,.05);setTimeout(()=>sp.go(+c.dataset.o),120+i*130)});
 const io=new IntersectionObserver((es)=>es.filter((e)=>e.isIntersecting).forEach((e,i)=>{e.target.style.transitionDelay=i*55+"ms";e.target.classList.add("in");fill(e.target);io.unobserve(e.target)}),{threshold:.06});

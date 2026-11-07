@@ -83,7 +83,6 @@ async function mark(db, m, now) {
 export const LIMIT = 25; // יותר מזה ביום אחד = כנראה נוכחות נשמרה לא נכון, אז מחכים לשלום
 const KIND = { absence: "לא הגיע/ה", repeat: "שתי היעדרויות", welcome: "ברוך הבא" };
 
-// חלוקה להודעות עד 3000 תווים, בגבול של פריט
 export function chunks(items, max = 3000) {
   const out = [];
   for (const it of items) {
