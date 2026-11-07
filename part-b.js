@@ -158,6 +158,10 @@ function hasExplicitPermissions(u) {
 function canDo(u, key) {
   return isAdminRole(u) || userPermissions(u).includes(key);
 }
+// השדות הנגזרים של המאמנים בקבוצה — נכתבים תמיד יחד (useCoachFieldsHealer מתקן מה שהתפספס)
+function coachFields(ids, users) {
+  return { coachIds: ids, coachId: ids[0] || "", coachNames: coachNamesFor(ids, users) };
+}
 function coachNamesFor(ids, users) {
   return (ids || [])
     .map((id) => (users || []).find((u) => u.id === id))
@@ -196,9 +200,7 @@ function nt({ group: t, users: s, onClose: a, isAdmin: IA }) {
           days: o,
           startTime: h.trim(),
           endTime: f.trim(),
-          coachIds: N,
-          coachId: N[0] || "",
-          coachNames: coachNamesFor(N, s),
+          ...coachFields(N, s),
           isAdultGroup: AG,
         };
         (t
@@ -1140,9 +1142,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
             ? cur.filter((v) => v !== coachId)
             : [...cur, coachId];
         await O(S(P, "groups", grp.id), {
-          coachIds: next,
-          coachId: next[0] || "",
-          coachNames: coachNamesFor(next, t),
+          ...coachFields(next, t),
         });
       } catch (err) {
         i("עדכון נכשל: " + err.message);
@@ -1165,9 +1165,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
         s.filter((grp) => isGroupCoach(grp, u.id)).forEach((grp) => {
           let rest = groupCoachIds(grp).filter((v) => v !== u.id);
           batch.update(S(P, "groups", grp.id), {
-            coachIds: rest,
-            coachId: rest[0] || "",
-            coachNames: coachNamesFor(rest, t),
+            ...coachFields(rest, t),
           });
         });
         // קישורי הורה↔שחקן של המשתמש נמחקים יחד איתו — אחרת חשבון שייווצר מחדש יקבל גישה אוטומטית
@@ -1193,7 +1191,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
       (n(u.id), i(""));
       try {
         // ירידה מתפקיד מאמן מסירה אותו אוטומטית מכל הקבוצות, אחרת הוא ימשיך להופיע כמאמן
-        let stillCoach = roleKey(f) === "admin" || roleKey(f) === "coach",
+        let stillCoach = isStaffMember(f),
           affected = stillCoach ? [] : s.filter((grp) => isGroupCoach(grp, u.id)),
           // שינוי תפקיד מאפס את ההרשאות הפרטניות לברירת המחדל של התפקיד החדש.
           // בלי זה מאמן שהורד לצופה נשאר עם "גישת הורים" ו"תחרויות" שקיבל
@@ -1212,9 +1210,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
           affected.forEach((grp) => {
             let rest = groupCoachIds(grp).filter((v) => v !== u.id);
             batch.update(S(P, "groups", grp.id), {
-              coachIds: rest,
-              coachId: rest[0] || "",
-              coachNames: coachNamesFor(rest, t),
+              ...coachFields(rest, t),
             });
           });
           (batch.update(S(P, "users", u.id), patch), await batch.commit());
@@ -1247,9 +1243,7 @@ function ot({ users: t, groups: s, currentUserId: a, uid: uid }) {
           let ids = row.users.map((u) => u.id),
             rest = groupCoachIds(row.group).filter((v) => !ids.includes(v));
           batch.update(S(P, "groups", row.group.id), {
-            coachIds: rest,
-            coachId: rest[0] || "",
-            coachNames: coachNamesFor(rest, t),
+            ...coachFields(rest, t),
           });
         });
         await batch.commit();
@@ -4521,9 +4515,7 @@ function useCoachFieldsHealer(on, groups, users) {
     let batch = Te(P);
     fixes.forEach((f) =>
       batch.update(S(P, "groups", f.g.id), {
-        coachIds: f.valid,
-        coachId: f.valid[0] || "",
-        coachNames: f.names,
+        ...coachFields(f.valid, users),
       }),
     );
     batch.commit().catch((err) => console.warn("coach fields sync failed:", err));

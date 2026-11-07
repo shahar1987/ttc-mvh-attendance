@@ -372,10 +372,6 @@ function quotaAlerts(players, groups, attendance) {
   return out;
 }
 // רק מנהל או מאמן נחשבים מאמני קבוצה. משתמש שהורד לצופה ונשאר משויך לקבוצה לא יוצג כמאמן.
-function isCoachLikeUser(u) {
-  let r = u && typeof u.role === "string" ? u.role.trim().toLowerCase() : "";
-  return r === "admin" || r === "coach";
-}
 function groupCoachIds(g) {
   let a = g && Array.isArray(g.coachIds) ? g.coachIds.filter(Boolean) : [];
   return g && g.coachId && !a.includes(g.coachId) ? [g.coachId, ...a] : a;
@@ -386,7 +382,7 @@ function isGroupCoach(g, userId) {
 function groupCoachNames(g, users) {
   return groupCoachIds(g)
     .map((id) => (users || []).find((v) => v.id === id))
-    .filter((u) => u && isCoachLikeUser(u))
+    .filter((u) => u && isStaffMember(u))
     .map((u) => u.name)
     .filter(Boolean);
 }
@@ -394,7 +390,7 @@ function groupCoachNames(g, users) {
 function staleCoachIds(g, users) {
   return groupCoachIds(g).filter((id) => {
     let u = (users || []).find((v) => v.id === id);
-    return u && !isCoachLikeUser(u);
+    return u && !isStaffMember(u);
   });
 }
 function groupCoachLabel(g, users) {
