@@ -76,7 +76,7 @@ jobs:
           node-version: 22
 
       - if: steps.changed.outputs.yes == '1'
-        run: npm install --no-audit --no-fund --no-save google-auth-library@9
+        run: npm install --no-audit --no-fund --no-save --ignore-scripts google-auth-library@9
 
       - if: steps.changed.outputs.yes == '1'
         env:
@@ -96,7 +96,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install --no-audit --no-fund --no-save google-auth-library@9
+      - run: npm install --no-audit --no-fund --no-save --ignore-scripts google-auth-library@9
 
       - env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
