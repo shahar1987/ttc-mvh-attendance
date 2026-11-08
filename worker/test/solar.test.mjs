@@ -376,3 +376,17 @@ console.log("solar ok");
   assert.equal(skyKind(undefined), "");
   assert.match(solarHtml({}, "2026-11-06", "", "rain"), /id="scene" class=" wx-rain"/);
 }
+// יום חלש: חשוד רק ביום בהיר, ויום בודד לא מוריד את הסטטוס
+{
+  const { insights } = await import("../src/solar-dashboard.js");
+  const t0 = "2026-11-08";
+  const d = {};
+  for (let i = 1; i <= 40; i++) d[addDays(t0, -i)] = { kwh: 30, rad: 15, tmax: 25 };
+  d["2026-11-06"] = { kwh: 8, rad: 9, tmax: 25 }; // מעונן חלקית: הקרינה של המודל לא אמינה
+  assert.deepEqual(analyze(d, t0).low, [], "יום מעונן חלקית לא נחשד");
+  d["2026-11-06"] = { kwh: 8, rad: 15, tmax: 25 };
+  assert.deepEqual(analyze(d, t0).low, ["2026-11-06"]);
+  assert.equal(insights({ days: d }, t0).status, "ok", "יום חלש בודד לא מוריד את הסטטוס");
+  d["2026-11-05"] = { kwh: 8, rad: 15, tmax: 25 };
+  assert.equal(insights({ days: d }, t0).status, "check", "שני ימים כאלה כבר כן");
+}

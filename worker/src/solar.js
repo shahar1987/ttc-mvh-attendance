@@ -57,6 +57,8 @@ export function analyze(days, today) {
   const baseline = base.length >= MIN_BASELINE ? median(base) : null;
   const clear = week.map(adjusted).filter((x) => x != null);
   const ratio = baseline && clear.length ? median(clear) / baseline : null;
+  // יום חלש נחשד רק כשהיה כמעט בהיר. ביום מעונן חלקית סכום הקרינה של המודל לא תופס ענן מקומי מעל הגג
+  const sunny = 0.75 * Math.max(0, ...rows(range(end, 30)).map((d) => d.rad || 0));
   return {
     start: addDays(end, -6),
     end,
@@ -65,7 +67,7 @@ export function analyze(days, today) {
     vsPrev: prev.length === 7 && week.length === 7 ? pct(sum(week), sum(prev)) : null,
     vsYear: lastYear.length === 7 && week.length === 7 ? pct(sum(week), sum(lastYear)) : null,
     ratio,
-    low: baseline ? week.filter((d) => adjusted(d) != null && adjusted(d) < 0.6 * baseline).map((d) => d.day) : [],
+    low: baseline ? week.filter((d) => adjusted(d) != null && adjusted(d) < 0.6 * baseline && d.rad >= sunny).map((d) => d.day) : [],
     missing: range(end, 7).filter((k) => days[k]?.kwh == null),
   };
 }
