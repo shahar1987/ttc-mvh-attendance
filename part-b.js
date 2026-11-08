@@ -2402,29 +2402,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
       }))
       .filter((x) => x.players.length > 0),
     totalPaid = paidByGroup.reduce((n, x) => n + x.players.length, 0),
-    // ילד שמתאמן ביותר מקבוצה אחת רשום כשחקן נפרד בכל קבוצה. מזהים אותו לפי שם זהה
-    // + טלפון הורה זהה (בלי טלפון תקין לא מאחדים — שני ילדים באותו שם הם לא אותו ילד),
-    // ומסכמים כמה אימונים בשבוע הוא מתאמן בכל הקבוצות יחד. קריאה בלבד.
-    multiGroup = (() => {
-      let by = {};
-      t.filter((p) => p.isActive && !p.deleted && isValidPhone(p.parentPhone || "")).forEach((p) => {
-        let k = normalizeHeName(p.name) + "|" + normalizePhone(p.parentPhone);
-        (by[k] = by[k] || []).push(p);
-      });
-      return Object.values(by)
-        .filter((ps) => new Set(ps.map((p) => p.groupId)).size > 1)
-        .map((ps) => {
-          let items = ps.map((p) => {
-            let g = s.find((x) => x.id === p.groupId),
-              n =
-                (Array.isArray(p.trainingDays) && p.trainingDays.length) ||
-                (g && Array.isArray(g.days) ? g.days.length : 0);
-            return { p, g, n };
-          });
-          return { name: ps[0].name, items, total: items.reduce((a, x) => a + x.n, 0) };
-        })
-        .sort((a, c) => c.total - a.total);
-    })(),
     // למה בדיוק השחקן הזה מסומן כלא משלם — בלי זה אי אפשר להבדיל בין
     // "באמת לא נרשם" לבין "נרשם, אבל השם בקובץ כתוב אחרת"
     reasonText = (id) => {
@@ -2716,42 +2693,6 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
             ),
           ),
       ),
-    multiKids.length > 0 &&
-      e.createElement(
-        "details",
-        { className: "bg-white rounded-xl border border-slate-200 px-4 py-3 text-right" },
-        e.createElement(
-          "summary",
-          { className: "text-sm font-semibold text-blue-950 cursor-pointer min-h-[28px]" },
-          `ילדים בכמה קבוצות (${multiKids.length})`,
-        ),
-        e.createElement(
-          "div",
-          { className: "flex flex-col divide-y divide-slate-100 mt-2" },
-          multiKids.map((k, idx) =>
-            e.createElement(
-              "div",
-              { key: idx, className: "py-2 flex flex-col gap-0.5" },
-              e.createElement(
-                "p",
-                { className: "text-sm font-medium text-blue-950" },
-                k.name,
-                k.total !== null &&
-                  e.createElement("span", { className: "font-bold" }, ` \xB7 ${k.total} אימונים בשבוע`),
-                k.notPaying &&
-                  e.createElement("span", { className: "text-red-700 font-semibold" }, " \xB7 לא שילם"),
-              ),
-              e.createElement(
-                "p",
-                { className: "text-xs text-slate-600" },
-                k.parts
-                  .map((x) => `${x.group?.name || "קבוצה"}${x.sessions !== null ? ` (${x.sessions})` : ""}`)
-                  .join(" \xB7 "),
-              ),
-            ),
-          ),
-        ),
-      ),
     e.createElement(
       "div",
       { className: "relative" },
@@ -2917,31 +2858,31 @@ function PaymentsScreen({ players: t, groups: s, readOnly: RO }) {
         ),
       ),
     ),
-    multiGroup.length > 0 &&
+    multiKids.length > 0 &&
       fold(
         "ילדים שמתאמנים ביותר מקבוצה אחת",
-        multiGroup.length,
+        multiKids.length,
         "plain",
         !1,
         note(
           'זוהו לפי שם זהה וטלפון הורה זהה. המספר הוא כמה אימונים בשבוע הילד מתאמן בכל הקבוצות יחד, להשוואה מול מה שנרשם אליו במתנ"ס.',
         ),
-        multiGroup.map((c) =>
+        multiKids.map((c) =>
           e.createElement(
             "div",
-            { key: c.items.map((x) => x.p.id).join("-"), className: "border-t border-slate-100 pt-2 flex flex-col gap-0.5" },
+            { key: c.parts.map((x) => x.player.id).join("-"), className: "border-t border-slate-100 pt-2 flex flex-col gap-0.5" },
             e.createElement(
               "div",
               { className: "flex items-center justify-between gap-2 text-sm" },
               e.createElement("span", { className: "font-semibold text-blue-950" }, c.name),
-              e.createElement("span", { className: "font-bold text-blue-950 shrink-0" }, `${c.total} אימונים בשבוע`),
+              c.total !== null && e.createElement("span", { className: "font-bold text-blue-950 shrink-0" }, `${c.total} אימונים בשבוע`),
             ),
-            c.items.map((x) =>
+            c.parts.map((x) =>
               e.createElement(
                 "p",
-                { key: x.p.id, className: "text-xs text-slate-600" },
-                `${x.g ? x.g.name : "קבוצה לא ידועה"} \xB7 ${x.n} בשבוע`,
-                x.p.notPaying
+                { key: x.player.id, className: "text-xs text-slate-600" },
+                `${x.group ? x.group.name : "קבוצה לא ידועה"}${x.sessions !== null ? ` \xB7 ${x.sessions} בשבוע` : ""}`,
+                x.player.notPaying
                   ? e.createElement("span", { className: "font-semibold text-red-700" }, " \xB7 לא משלם")
                   : null,
               ),
@@ -3353,7 +3294,7 @@ function re({
       .sort((x, y) => (x.name || "").localeCompare(y.name || "", "he")),
     today = E(),
     defDay = attDefaultDay(),
-    minDate = "2026-09-07",
+    minDate = seasonStart(),
     [selDate, setSelDate] = b(ID || defDay),
     [, setDayTick] = b(""),
     [showDatePicker, setShowDatePicker] = b(!!ID),

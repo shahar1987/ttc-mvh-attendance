@@ -225,14 +225,17 @@ export function makeMetaTools({ env, store, lastOwnerText, origin, turn }) {
       if (day && !memorial) return `לא מפרסמים תוכן פרסומי ב-${day}. אפשר רק פוסט זיכרון (memorial: true) באישור הבעלים, או מועד אחר.`;
       if (memorial && /אימון ניסיון|הצטרפות/.test(`${text} ${instagram_text || ""}`)) return "פוסט זיכרון בלי הזמנה לאימון ובלי שורת הסיום הקבועה. להסיר ולהציג לבעלים שוב.";
       const payload = { platform, kind, text, instagram_text, image, video, at, kids, memorial };
-      const ok = await confirmed(store, "post", payload, lastOwnerText, turn);
       if (kids) {
         // ההסכמה נשמרת לפוסט הזה, כדי ש"כן" רגיל אחריה עדיין יעבוד
         const key = JSON.stringify(payload);
         if (CONSENT.test(lastOwnerText || "")) await store.merge("agentReports/bot", { kidsConsent: key });
-        if ((await store.get("agentReports/bot"))?.kidsConsent !== key)
+        // בלי הסכמה: הפוסט נרשם כממתין בלי לנצל את ה"כן", כדי ש"יש הסכמת הורים, כן" אחר כך יפרסם מיד
+        if ((await store.get("agentReports/bot"))?.kidsConsent !== key) {
+          await confirmed(store, "post", payload, "", turn); // "" = רק רישום כממתין
           return "⚠️ לא פורסם: יש ילדים בתמונה. להציג לבעלים את הפוסט ולשאול \"יש הסכמת הורים? לפרסם?\". מפרסמים רק אחרי שהוא כותב שיש הסכמת הורים (למשל \"כן, יש הסכמת הורים\").";
+        }
       }
+      const ok = await confirmed(store, "post", payload, lastOwnerText, turn);
       if (!ok) return "עוד לא פורסם. להציג לבעלים בדיוק את הנוסח (פייסבוק ואינסטגרם), התמונה, הפלטפורמה והמועד ולשאול \"לפרסם?\". אחרי \"כן\" — לקרוא שוב עם אותם פרטים בדיוק.";
       const link = async (m) => m && (/^https?:\/\//.test(m) ? m : await mediaUrl(env, origin, m.replace(/\D/g, "")));
       const vid = await link(video);

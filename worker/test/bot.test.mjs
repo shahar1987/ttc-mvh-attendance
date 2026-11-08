@@ -633,6 +633,11 @@ assert.deepEqual([social[s2 + 3].body.media_type, social[s2 + 3].body.video_url]
   await callTool("יש הסכמת הורים", { name: "publish_post", args: kid });
   const kidPub = await callTool("כן", { name: "publish_post", args: kid });
   assert.match(kidPub, /פייסבוק.*✓/, "הסכמה ואז כן — מתפרסם");
+  const k1 = social.length;
+  await callTool("תפרסמי", { name: "publish_post", args: { ...kid, text: "אימון ילדים 2" } });
+  assert.match(await callTool("כן", { name: "publish_post", args: { ...kid, text: "אימון ילדים 2" } }), /⚠️ לא פורסם: יש ילדים/);
+  assert.match(await callTool("יש הסכמת הורים, כן לפרסם", { name: "publish_post", args: { ...kid, text: "אימון ילדים 2" } }), /פייסבוק.*✓/, "כן שנחסם לא מבוזבז: הסכמה + כן בהודעה אחת מפרסמים");
+  assert.equal(social.length, k1 + 1);
   assert.ok(kidPub.includes(`לתייג ידנית בפייסבוק: ${FB_TAGS}`), "רשימת תיוג ידני אחרי פרסום בפייסבוק");
 
   assert.match(await callTool("תקן: בלי אימוג'ים", { name: "save_post_rule", args: { rule: "בלי אימוג'ים" } }), /עוד לא נשמר/);

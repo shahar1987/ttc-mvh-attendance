@@ -867,21 +867,20 @@ function Ye() {
     { authUser: t, profile: a, profileError: i }
   );
 }
+// אחוז הנוכחות החודש: רק רשומות של שחקנים שעדיין בקבוצה ולא נמחקו — אותו בסיס לכרטיס הקבוצה ולטבעת של המועדון
+const monthPct = (recs) => (recs.length ? Math.round((recs.filter((n) => n.status === "Present").length / recs.length) * 100) : null);
+function inGroupNow(players) {
+  let ok = new Set(players.filter((p) => !p.deleted).map((p) => p.groupId + "|" + p.id));
+  return (n) => ok.has(n.groupId + "|" + n.playerId);
+}
 function Ze(t, s, a) {
   let month = E().slice(0, 7),
-    l = new Set(a.filter((n) => n.groupId === s && !n.deleted).map((n) => n.id)),
-    i = t.filter((n) => n.groupId === s && String(n.date || "").startsWith(month) && l.has(n.playerId));
-  if (i.length === 0) return null;
-  let c = i.filter((n) => n.status === "Present").length;
-  return Math.round((c / i.length) * 100);
+    inGroup = inGroupNow(a);
+  return monthPct(t.filter((n) => n.groupId === s && String(n.date || "").startsWith(month) && inGroup(n)));
 }
-function Je(t) {
-  let s = E().slice(0, 7),
-    a = t.filter((c) => c.date.startsWith(s)),
-    l = new Set(a.map((c) => trainingKey(c.date, c.groupId))).size;
-  if (a.length === 0) return { avgPct: null, sessions: l };
-  let i = a.filter((c) => c.status === "Present").length;
-  return { avgPct: Math.round((i / a.length) * 100), sessions: l };
+function Je(t, players) {
+  let a = t.filter((c) => c.date.startsWith(E().slice(0, 7)));
+  return { avgPct: monthPct(a.filter(inGroupNow(players))), sessions: new Set(a.map((c) => trainingKey(c.date, c.groupId))).size };
 }
 // ירידה חדה בנוכחות: בחודש האחרון הגיע לפחות ממחצית האימונים, אחרי שבחודשיים שלפני כן הגיע ל-70% ומעלה.
 // תופס ילד שמתרחק בהדרגה בלי להיעדר פעמיים ברצף. אותו תנאי כמו dropoutRisk ב-agents/lib/analysis.mjs.
@@ -904,7 +903,7 @@ function multiGroupKids(players, groups, skipGroupIds) {
   players.forEach((p) => {
     if (!p.isActive || p.deleted || (skipGroupIds && skipGroupIds.has(p.groupId))) return;
     if (!isValidPhone(p.parentPhone || "")) return;
-    let k = (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone);
+    let k = normalizeHeName(p.name) + "|" + normalizePhone(p.parentPhone);
     by.has(k) ? by.get(k).push(p) : by.set(k, [p]);
   });
   return [...by.values()]
@@ -912,7 +911,8 @@ function multiGroupKids(players, groups, skipGroupIds) {
     .map((list) => {
       let parts = list.map((p) => {
         let g = groups.find((x) => x.id === p.groupId) || null;
-        return { player: p, group: g, sessions: g && Y(g) ? g.days.length : null };
+        // הימים הקבועים של השחקן, ואם לא נרשמו — ימי הקבוצה
+        return { player: p, group: g, sessions: (Array.isArray(p.trainingDays) && p.trainingDays.length) || (g && Y(g) ? g.days.length : null) };
       });
       return {
         name: list[0].name,
@@ -921,7 +921,7 @@ function multiGroupKids(players, groups, skipGroupIds) {
         notPaying: list.some((p) => p.notPaying),
       };
     })
-    .sort((a, c) => (a.name || "").localeCompare(c.name || "", "he"));
+    .sort((a, c) => (c.total || 0) - (a.total || 0) || (a.name || "").localeCompare(c.name || "", "he"));
 }
 // סיכום אחרי אימון: כמה הגיעו מול הממוצע של 8 האימונים הקודמים, מי חזר אחרי היעדרות ומי חסר פעם שנייה ברצף.
 // "הפעם הקודמת" = התאריך האחרון לפני היום שבו השחקן סומן בקבוצה הזו.
@@ -1167,18 +1167,22 @@ function downloadReportXlsx(doc) {
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// תחילת העונה: 1 בספטמבר. העונה הראשונה באפליקציה התחילה ב-7.9.2026 — לפני זה אין נתונים
+function seasonStart(now = new Date()) {
+  let s = `${now.getFullYear() - (now.getMonth() < 8 ? 1 : 0)}-09-01`;
+  return s < "2026-09-07" ? "2026-09-07" : s;
+}
 function DateRangeControls({ startDate, endDate, onChangeStart, onChangeEnd }) {
   j(() => {
     startDate && startDate < ATT_HISTORY_FROM && requestOlderAttendance(startDate);
   }, [startDate]);
   let ymd = (d) => d.toLocaleDateString("en-CA"),
     now = new Date(),
-    season = new Date(now.getFullYear() - (now.getMonth() < 8 ? 1 : 0), 8, 1),
     presets = [
       ["החודש", firstOfMonthStr(), E()],
       ["חודש קודם", ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), ymd(new Date(now.getFullYear(), now.getMonth(), 0))],
       ["3 חודשים", ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)), E()],
-      ["העונה", ymd(season), E()],
+      ["העונה", seasonStart(now), E()],
     ];
   return e.createElement(
     e.Fragment,
@@ -2897,7 +2901,7 @@ function st({
     quotaAl = quotaAlerts(a, s, l),
     pastMissing = missingAttendanceDays(s, l, CX),
     uniqueActiveCount = countUniqueActivePlayers(a),
-    { avgPct: g, sessions: r } = Je(l),
+    { avgPct: g, sessions: r } = Je(l, a),
     y = () => {
       let d = E(),
         A = s
