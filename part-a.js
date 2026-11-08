@@ -1700,7 +1700,9 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
         }),
         worst = perDate.slice().sort((a, c) => a.here / (a.of || 1) - c.here / (c.of || 1))[0],
         trendCellDoc = (t) =>
-          t === "up" ? { v: "עלייה", tone: "good" } : t === "down" ? { v: "ירידה", tone: "bad" } : t === "flat" ? { v: "יציבה", tone: "muted" } : { v: "–", tone: "muted" };
+          t === "up" ? { v: "עלייה", tone: "good" } : t === "down" ? { v: "ירידה", tone: "bad" } : t === "flat" ? { v: "יציבה", tone: "muted" } : { v: "–", tone: "muted" },
+        activeN = isClub ? countUniqueActivePlayers(players) : groupPlayers.filter((p) => p.isActive && !p.deleted).length,
+        gone = groupPlayers.length - activeN;
       return {
         title: "דוח נוכחות קבוצתי",
         scope: scopeName,
@@ -1708,7 +1710,8 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
         file: reportFile("דוח נוכחות", scopeName, `${startDate} עד ${endDate}`),
         landscape: dates.length > 8,
         kpis: [
-          { label: "שחקנים", value: groupPlayers.length },
+          { label: "שחקנים פעילים", value: activeN },
+          ...(gone > 0 ? [{ label: "עזבו", value: gone }] : []),
           { label: "מפגשים", value: dates.length },
           { label: "נוכחות ממוצעת", value: avg === null ? "–" : `${avg}%`, tone: reportPctTone(avg) },
           { label: "מתחת ל-50%", value: low.length, tone: low.length ? "bad" : "good" },

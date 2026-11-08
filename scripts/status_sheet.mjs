@@ -25,6 +25,7 @@ const neutral = (s) => s === OFF || s === CHECK;
 export const NOT_REGISTERED = "✗ לא רשום";
 const UNTRACKED_GROUP = "חוגים רמת כורזים";
 const MAX_NEW_ROWS = 30;
+const MAX_ARCHIVED = 10;
 const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה עמודה שנמחקה או הודבקה בטעות, לא עדכון אמיתי
 
 // rows: [{ id, status, mirrored }]; players: Map(id → player); last: { id: { s, a } }
@@ -47,6 +48,20 @@ export function plan(rows, players, last) {
     next[r.id] = { s, a: want };
   }
   return { app, sheet, next };
+}
+
+// שחקן שיצא לארכיון: מרוקנים את השורה ומשאירים בהערה את שמו, כך שכל ספירות הגיליון יורדות לבד.
+// הנוסחאות נשענות על טווח שורות קבוע, ולכן לא מוחקים שורה. אם יחזור, הוא ייכנס כשורה חדשה.
+export function archivedRows(rows, players) {
+  return rows.filter((r) => {
+    const p = players.get(r.id);
+    return p && r.clear && (p.isActive === false || p.deleted);
+  }).map((r) => {
+    const end = String(players.get(r.id).endDate || "").split("-").reverse().join("/");
+    const row = Array(r.clear.width).fill("");
+    row[r.clear.note] = `יצא לארכיון${end ? ` ${end}` : ""}: ${r.clear.name}${r.status ? ` (היה: ${r.status})` : ""}`;
+    return { id: r.id, range: r.clear.range, values: [row] };
+  });
 }
 
 const phone = (raw) => {
@@ -110,7 +125,8 @@ async function readRows(tok) {
         return;
       }
       const n = j + 3, f = forms.valueRanges[i].values?.[j + 1]?.[st];
-      rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}` });
+      rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
+        clear: note < 0 ? null : { range: `'${tab}'!A${n}:${col(grid[0].length - 1)}${n}`, width: grid[0].length, note, name: row[at("שם")] || "" } });
     });
   });
   return { rows, tabs, drafts };
@@ -125,6 +141,8 @@ async function main() {
   const [{ rows, tabs, drafts }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
   const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
   if (app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length} app writes in one run`);
+  const gone = archivedRows(rows, new Map(players.map((p) => [p.id, p])));
+  if (gone.length > MAX_ARCHIVED) throw new Error(`refusing to clear ${gone.length} rows in one run`);
   const byId = new Map(rows.map((r) => [r.id, r]));
   if (sheet.length) {
     const today = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit" }).format(new Date());
@@ -173,9 +191,10 @@ async function main() {
     t.used++; t.count++;
     add.push({ range: `'${g.replace("קובצת", "קבוצת")}'!A${t.used}`, values: [newRow(p, g, t.headers, t.count)] });
   }
+  if (gone.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data: gone.map(({ range, values }) => ({ range, values })) });
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, updatedAt: new Date().toISOString() });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)

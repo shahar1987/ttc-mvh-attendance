@@ -4272,7 +4272,7 @@ function mt({
     todayGroups = g.filter((r) => ee(r)),
     otherGroups = g.filter((r) => !ee(r)),
     countIn = (r) => a.filter((d) => d.groupId === r.id && d.isActive && !d.deleted).length,
-    activeCount = c.reduce((n, r) => n + countIn(r), 0),
+    activeCount = countUniqueActivePlayers(a.filter((d) => c.some((r) => r.id === d.groupId))),
     weekFrom = (() => {
       let d = new Date(u + "T00:00:00");
       d.setDate(d.getDate() - 6);

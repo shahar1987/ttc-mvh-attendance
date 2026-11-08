@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
+import { plan, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -70,4 +70,11 @@ test("לבדיקה לא נוגע באפליקציה, והכרעה אחריו כ�
   assert.deepEqual(plan([{ id: "a", status: CHECK }], players({ a: false }), { a: { s: NO, a: false } }).app, []);
   assert.deepEqual(plan([{ id: "a", status: CHECK }], players({ a: true }), { a: { s: CHECK, a: false } }).sheet, []);
   assert.deepEqual(plan([{ id: "a", status: NO }], players({ a: false }), { a: { s: CHECK, a: false } }).app, [{ id: "a", notPaying: true }]);
+});
+
+test("שחקן בארכיון: השורה מתרוקנת והשם נשאר בהערה; פעיל או לא מוכר לא נוגעים", () => {
+  const clear = { range: "'x'!A3:C3", width: 3, note: 1, name: "שם" };
+  const m = new Map([["a", { isActive: false, endDate: "2026-11-05" }], ["b", { isActive: true }]]);
+  const r = archivedRows([{ id: "a", status: NO, clear }, { id: "b", status: NO, clear }, { id: "c", status: NO, clear }, { id: "a", status: NO, clear: null }], m);
+  assert.deepEqual(r, [{ id: "a", range: "'x'!A3:C3", values: [["", `יצא לארכיון 05/11/2026: שם (היה: ${NO})`, ""]] }]);
 });
