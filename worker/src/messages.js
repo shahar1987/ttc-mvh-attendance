@@ -225,6 +225,26 @@ export async function sendDue(store, now = new Date(), notify = async () => {}) 
   return lines;
 }
 
+// תזכורות מ-shula-tools נכנסות לתור scheduled, ומשם sendDue שולח (כולל תבנית מחוץ ל-24 שעות).
+// מאשרים רק אחרי שהכתיבה הצליחה; toolReminders מונע כפילות אם האישור נכשל והתזכורת חוזרת בריצה הבאה.
+export async function queueToolReminders(tools, store, now = new Date()) {
+  if (!tools) return "reminders: off";
+  const pending = await tools.pendingReminders();
+  if (!pending.length) return "reminders: 0";
+  const stamp = now.toISOString();
+  await store.update("agentReports/bot", (bot) => {
+    const seen = bot.toolReminders || [];
+    const fresh = pending.filter((r) => !seen.includes(r.id));
+    if (!fresh.length) return null;
+    return {
+      scheduled: [...(bot.scheduled || []), ...fresh.map((r) => ({ id: `tools-${r.id}`, due: stamp, at: stamp.slice(0, 16), text: r.text, remind: true, recipients: [] }))],
+      toolReminders: [...seen, ...fresh.map((r) => r.id)].slice(-200),
+    };
+  });
+  await tools.ackReminders(pending.map((r) => r.id));
+  return `reminders: ${pending.length}`;
+}
+
 // התבניות שעוד לא הוגשו ל-Meta — מגיש מתוך ה-worker (לא תלוי בסודות בגיטהאב). WABA = מזהה, לא סוד.
 export async function ensureTemplates(env) {
   const waba = env.WHATSAPP_WABA_ID;

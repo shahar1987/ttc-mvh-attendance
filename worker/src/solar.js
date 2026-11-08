@@ -3,6 +3,7 @@
 // כל בוקר (wrangler.toml): 3 קרדיטים מתוך 2,000 בחודש, התראה רק על יום בלי ייצור. ביום ראשון דוח שבועי.
 // SolarEdge מחליפה את ה-refresh token בכל שימוש, ולכן כל ריצה שומרת את החדש ב-agentReports/solar (האוסף חסום לאפליקציה).
 import { israelToUtc } from "./time.js";
+import { confirmed } from "./tools.js";
 import { issueKey, checkKey, dropKey } from "./google.js";
 import { sha256 } from "./inbox.js";
 import { solarHtml } from "./solar-dashboard.js";
@@ -469,7 +470,7 @@ export const SOLAR_TOOL_DEFS = [
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
 ];
-export const makeSolarTools = ({ store, origin }) => ({
+export const makeSolarTools = ({ store, origin, lastOwnerText, turn }) => ({
   async solar_link() {
     return `${origin}/solar/start?k=${await issueKey(store, "solar")} (תקף 30 דקות)`;
   },
@@ -477,10 +478,12 @@ export const makeSolarTools = ({ store, origin }) => ({
     return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
   },
   async solar_rate(fields) {
+    if (!(await confirmed(store, "solar_rate", fields, lastOwnerText, turn))) return 'עוד לא נשמר. להציג לבעלים את הערכים ולשאול "לשמור?". אחרי "כן" — לקרוא שוב עם אותם ערכים בדיוק.';
     const r = await saveMoney(store, fields);
     return r.error || `עודכן: ${r.saved.join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
   },
   async solar_bills({ bills }) {
+    if (!(await confirmed(store, "solar_bills", { bills }, lastOwnerText, turn))) return 'עוד לא נשמר. להציג לבעלים את החשבונות ולשאול "לשמור?". אחרי "כן" — לקרוא שוב עם אותם חשבונות בדיוק.';
     const day = /^20\d\d-\d\d-\d\d$/;
     const good = (bills || []).filter((b) => day.test(b.from) && day.test(b.to) && b.from <= b.to && b.kwh >= 0 && b.kwh < 100000);
     if (!good.length) return "לא נמצאו חשבונות תקינים. לכל חשבון צריך from, to (YYYY-MM-DD) ו-kwh.";

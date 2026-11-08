@@ -26,6 +26,12 @@ INBOX_KEY_SHA256 = "f570a9f435394e4c6d1beaf5f2febf72f2cc78bae83adedb14bc60e6e675
 [ai]
 binding = "AI"
 
+# 🧰 זיכרון ותזכורות — Worker נפרד באותו חשבון. בלי החיבור הכלים פשוט לא מוצעים למודל
+[[services]]
+binding = "TOOLS"
+service = "shula-tools"
+entrypoint = "Internal"
+
 # לוגים של ה-worker בדשבורד של Cloudflare (שגיאות cron ו-webhook) — חינמי
 [observability]
 enabled = true

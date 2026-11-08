@@ -11,9 +11,9 @@ import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink, mediaUrl } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
-import { INBOX_TOOL_DEFS, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, staleTasks, planReply, queuePlanReply, queueTap, queueFile } from "./inbox.js";
+import { INBOX_TOOL_DEFS, MEMORY_TOOL_DEFS, makeMemoryTools, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, staleTasks, planReply, queuePlanReply, queueTap, queueFile } from "./inbox.js";
 import { FILE_TAP, fileButtons, readFile } from "./files.js";
-import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
+import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, queueToolReminders, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchEvening, dispatchWorkflows, failedRuns } from "./dispatch.js";
 import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
@@ -437,7 +437,9 @@ export function unanswered(bot, now = Date.now()) {
 }
 
 // הכלים בפורמט של Gemini (OpenAPI subset — בלי additionalProperties)
-const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS, ...SOLAR_TOOL_DEFS].map(({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters }));
+const toDecl = ({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters });
+const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS, ...SOLAR_TOOL_DEFS].map(toDecl);
+const WITH_MEMORY = [...FUNCTION_DECLS, ...MEMORY_TOOL_DEFS.map(toDecl)];
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
 // 2026-10-27: Claude Haiku ראשי (על קרדיט ה-API החודשי של מנוי Max), Gemini רק כגיבוי. בלי ANTHROPIC_API_KEY — Gemini כמו קודם
@@ -498,7 +500,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ store, origin: ORIGIN }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: text, turn }), ...makeMemoryTools({ env, lastOwnerText: text }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -537,7 +539,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
-      tools: [{ functionDeclarations: FUNCTION_DECLS }],
+      tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
     }, trace);
     const calls = parts.filter((p) => p.functionCall);
@@ -596,7 +598,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   const last = await gemini(env, {
     systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
-    tools: [{ functionDeclarations: FUNCTION_DECLS }],
+    tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
     generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
   }, trace).catch(() => []);
@@ -732,8 +734,11 @@ export async function deliverOutbox(env, store, wa) {
 async function everyQuarter(env) {
   const store = db(env);
   const wa = waConfig(env);
+  // קודם לתור, כדי שתזכורת תצא באותה ריצה. תקלה או תקיעה ב-shula-tools לא עוצרת את sendDue
+  const toolReminders = Promise.race([queueToolReminders(env.TOOLS, store), new Promise((_, fail) => setTimeout(() => fail(new Error("shula-tools: timeout")), 8000))]);
   const parts = await Promise.allSettled([
-    sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`)),
+    toolReminders,
+    toolReminders.catch(() => {}).then(() => sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`))),
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
     stalePost(store).then((text) => text && tell(store, wa, "post-reminder", text, text)),
     remindCoaches(env, store, wa),

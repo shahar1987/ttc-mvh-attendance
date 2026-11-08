@@ -48,6 +48,10 @@ export function planReply(bot, text, now = Date.now()) {
 // סגירת מעגל: אילו לחיצות צריכות דיווח תוצאה מהמשימה. מרחיבים משימה אחת בכל פעם, אחרי שהפרומפט שלה מדווח
 const VERIFIED = /^מוח( |$)/;
 const SEND_NOW = "הודעות עכשיו";
+// בקשה מפורשת לשלוח למי שממתין: פועל שליחה וגם יעד. "תשלחי לדור" לא מספיק
+const SEND_WORD = /(^|\s)(שלח|תשלח|שלחי|תשלחי)(\s|$|[.!,])/;
+const PARENTS_TARGET = /להורים|ההורים|ממתין|להם|הודעות עכשיו/;
+export const asksParentsNow = (t) => String(t || "").trim() === SEND_NOW || (APPROVAL.test(t) && SEND_WORD.test(t) && PARENTS_TARGET.test(t));
 const TASK_WAIT_MS = 45 * 60 * 1000;
 
 // ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
@@ -204,7 +208,7 @@ export const INBOX_TOOL_DEFS = [
   },
   {
     name: "send_parents_now",
-    description: "שולח עכשיו, מהמספר של הבעלים, את כל ההודעות שמחכות: שתי היעדרויות ברצף להורים ולשחקנים, וברוך הבא. בלי לשאול אישור, גם בלי מספרים. אותה שליחה שקורית לבד כל ערב ב-20:41, ואף הודעה לא יוצאת פעמיים. דיווח מי קיבל מגיע אליו בנפרד.",
+    description: "שולח עכשיו, מהמספר של הבעלים, את כל ההודעות שמחכות: שתי היעדרויות ברצף להורים ולשחקנים, וברוך הבא. רק כשהבעלים ביקש; אם הכלי מחזיר שצריך אישור, לשאול ולקרוא שוב אחרי \"כן\". גם בלי מספרים. אותה שליחה שקורית לבד כל ערב ב-20:41, ואף הודעה לא יוצאת פעמיים. דיווח מי קיבל מגיע אליו בנפרד.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -214,9 +218,38 @@ export const INBOX_TOOL_DEFS = [
   },
 ];
 
+// 🧠 זיכרון ב-shula-tools, לבעלים בלבד (לא ברשימת הכלים של המדריכים). בלי env.TOOLS הכלים לא מוצעים ולא קיימים
+export const MEMORY_TOOL_DEFS = [
+  {
+    name: "remember",
+    description: "שומר הערה לזיכרון לטווח ארוך. note = ציטוט מדויק ממה שהבעלים כתב בהודעה הזאת.",
+    input_schema: { type: "object", properties: { note: { type: "string" } }, required: ["note"], additionalProperties: false },
+  },
+  {
+    name: "recall",
+    description: "חיפוש בזיכרון לטווח ארוך לפי משמעות.",
+    input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
+  },
+];
+
+const plainWords = (s) => (String(s || "").match(/[\p{L}\p{N}]+/gu) || []).join(" ");
+export const makeMemoryTools = ({ env, lastOwnerText = "" }) => !env.TOOLS ? {} : {
+  async remember({ note }) {
+    // הרעלת זיכרון: רצף מדויק מההודעה הזאת (גם אחרי אות-תחילית: "שהאימון"), כי תוכן חיצוני לא יכול להיכנס ל-lastOwnerText
+    const n = plainWords(note);
+    if (!n || !plainWords(lastOwnerText).includes(n)) return "לא נשמר: note חייב להיות ציטוט מדויק ממה שהבעלים כתב בהודעה הזאת.";
+    return env.TOOLS.remember(String(note).trim());
+  },
+  async recall({ query }) {
+    return `${EXTERNAL}\n${await env.TOOLS.recall(String(query))}`;
+  },
+};
+
 export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn, lastReply = "" }) {
   return {
     async send_parents_now() {
+      if (!asksParentsNow(lastOwnerText) && !(await confirmed(store, "parents_now", {}, lastOwnerText, turn)))
+        return 'עוד לא נשלח. לשאול את הבעלים "לשלוח עכשיו לכל מי שממתין?". אחרי "כן" — לקרוא שוב.';
       // autosend ב-agents.yml מקבל את הבקשה תוך כמה דקות ומסמן את המעקב כ-done או failed. לא דרך קלוד (ראו agents/autosend.mjs)
       await store.merge(`agentReports/ask_${Math.random().toString(36).slice(2, 8)}`, { at: new Date().toISOString(), inboxStatus: "waiting", tap: SEND_NOW, title: SEND_NOW });
       await store.update("agentReports/bot", (bot) => ({ requests: [...new Set([...(bot.requests || []), "autosend"])] }));
@@ -231,8 +264,10 @@ export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRe
       // יוצא רק מה שהבעלים אמר או ראה, ככה תוכן חיצוני בהיסטוריה לא יכול להוסיף כלום לבקשה
       const approved = APPROVAL.test(lastOwnerText);
       const words = (String(lastOwnerText).match(/[\p{L}\p{N}]{2,}/gu) || []).length;
-      const authored = ownerWrote(request, ownerRecent);
-      if (!authored && approved && /קלוד|להעביר/.test(lastReply)) request = String(lastReply).split("\n").filter((l) => !/^(\d\. |\[מערכת)/.test(l)).join("\n").trim();
+      // כל מילה חייבת להיות שלו, אחרת נוסח של המודל יוצא כמו שהוא. בקשה שרובה ממנו (בלי תוספת) לא נתקעת: יוצאות המילים שלו
+      const authored = ownerWrote(request, ownerRecent, 1);
+      if (!authored && ownerWrote(request, lastOwnerText)) request = String(lastOwnerText).slice(0, 1500);
+      else if (!authored && approved && /קלוד|להעביר/.test(lastReply)) request = String(lastReply).split("\n").filter((l) => !/^(\d\. |\[מערכת)/.test(l)).join("\n").trim();
       else if (!authored && !approved && words >= 3) request = String(lastOwnerText).slice(0, 1500);
       else if (!authored && !(await approvedShown(store, "claude", lastOwnerText, turn).then((s) => s && (request = s.request))) && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
         return `לא הועבר עדיין. להציג לבעלים את הבקשה ("${String(request).slice(0, 120)}") ולשאול אם להעביר לקלוד. אחרי "כן" — לקרוא שוב עם אותה בקשה בדיוק.`;

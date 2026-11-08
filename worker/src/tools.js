@@ -21,11 +21,11 @@ export const APPROVAL = { test: (t) => /^\s*1\s*[.!]?\s*$/.test(t || "") || (APP
 const SOUND = { ט: "ת", ק: "כ", ע: "א", ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ" };
 export const sameSound = (s) => String(s || "").replace(/[טקעךםןףץ]/g, (c) => SOUND[c]);
 
-export function ownerWrote(text, ownerText) {
+export function ownerWrote(text, ownerText, min = 0.5) {
   const words = String(text || "").match(/[\p{L}\p{N}]{2,}/gu) || [];
   const o = String(ownerText || "");
   if (!words.length) return false;
-  return words.filter((w) => o.includes(w) || (w.length > 3 && o.includes(w.slice(1)))).length / words.length >= 0.5;
+  return words.filter((w) => o.includes(w) || (w.length > 3 && o.includes(w.slice(1)))).length / words.length >= min;
 }
 
 // אישור בשני שלבים לפעולה שיוצאת החוצה: הקריאה הראשונה שומרת טיוטה ולא עושה כלום. רק אם הבעלים ענה "כן"

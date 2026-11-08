@@ -1337,6 +1337,19 @@ geminiQueue.push([{ text: "בלי תור" }]);
 await webhook("התור נפל", env.OWNER_PHONE, "q2");
 assert.equal(texts().at(-1), "בלי תור", "תור שנכשל — עונים ישירות");
 delete env.MESSAGES;
+// זיכרון מ-shula-tools: מוצע לבעלים רק כשיש חיבור
+const declNames = () => geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
+geminiQueue.push([{ text: "א" }]);
+await webhook("בלי חיבור", env.OWNER_PHONE, "mem1");
+assert.ok(!declNames().includes("remember") && !declNames().includes("recall"));
+assert.match(await callTool("תזכרי משהו", { name: "remember", args: { note: "משהו" } }), /unknown tool/);
+env.TOOLS = { remember: async () => "נשמר", recall: async () => "[]", pendingReminders: async () => { throw new Error("tools down"); } };
+assert.equal(await callTool("תזכרי משהו", { name: "remember", args: { note: "משהו" } }), "נשמר");
+assert.ok(declNames().includes("remember") && declNames().includes("recall"));
+const qParts = await (await import("../src/index.js")).everyQuarter(env);
+assert.match(qParts[0], /tools down/, "תקלה נרשמת");
+assert.ok(qParts.length > 5 && !/tools down/.test(qParts[1]), "שאר הריצה ממשיכה");
+delete env.TOOLS;
 console.log("all bot tests passed");
 {
   const decls = geminiCalls.at(-1).tools[0].functionDeclarations.map((d) => d.name);
