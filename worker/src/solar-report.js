@@ -100,7 +100,9 @@ export function earnings(s, today) {
     const at = (k) => { const m = months.filter((x) => x <= k.slice(0, 7)).at(-1) || months[0]; return now && m ? now / cpi[m] : 1; };
     const all = Object.entries(s.days || {}).filter(([k, d]) => k >= s.since && k < today && d.kwh != null);
     const value = (rows) => rows.reduce((x, [k, d]) => x + d.kwh * rate * at(k), 0) - fixed * (rows.length / 30.4);
-    const earned = value(all);
+    // הוצאות אחרי הקנייה (תחזוקה, תיקונים) יורדות מההכנסה, ולא נחשבות השקעה. shortcut: בלי הצמדה למדד, כי אין להן תאריך
+    const costs = s.costs > 0 ? s.costs : 0;
+    const earned = value(all) - costs;
     const invest = s.invest * at(s.since);
     const yearAgo = addDays(today, -365);
     const lastYear = all.filter(([k]) => k >= yearAgo);
@@ -108,7 +110,7 @@ export function earnings(s, today) {
     const left = invest - earned;
     // שני מקורות הכסף: מה שלא שילמת על חשמל שהבית צרך מהגג, ומה שחברת החשמל זיכתה על ההזנה לרשת
     const saved = all.reduce((x, [k, d]) => x + d.kwh * selfShare * money(s).selfRate * at(k), 0);
-    back = { earned, saved, credit: earned - saved, invest, paid: s.invest, inflation: now ? Math.round((at(s.since) - 1) * 1000) / 10 : null, cpiMonth: months.at(-1), share: earned / invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
+    back = { earned, saved, costs, credit: earned + costs - saved, invest, paid: s.invest, inflation: now ? Math.round((at(s.since) - 1) * 1000) / 10 : null, cpiMonth: months.at(-1), share: earned / invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
   }
   return { rate, fixed, exportRate, selfShare, fromBills, today: t, month: m.net, year: y.net, yearChange: y.change, back, expected: s.expectedKwh > 0 ? s.expectedKwh : null, yearKwh: y.kwh };
 }

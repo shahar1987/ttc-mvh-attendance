@@ -422,8 +422,8 @@ export const SOLAR_TOOL_DEFS = [
   },
   {
     name: "solar_rate",
-    description: "מעדכן את נתוני הכסף של הגג לדשבורד ולדוחות. כל שדה רשות, רק מה שהבעלים אמר. agorot: תעריף ההזנה לרשת באגורות לקוט\"ש (למשל 48). self_agorot: מחיר החשמל הביתי כולל מע\"מ באגורות. self_share: כמה אחוז מהייצור הבית צורך ישירות (0-100). fixed: ניכוי קבוע בשקלים לחודש. invest: כמה עלתה המערכת בשקלים, כולל תוספות. since: תאריך ההפעלה YYYY-MM-DD. expected_kwh: תחזית ייצור שנתית מהמתקין.",
-    input_schema: { type: "object", properties: { agorot: { type: "number" }, self_agorot: { type: "number" }, self_share: { type: "number" }, fixed: { type: "number" }, invest: { type: "number" }, since: { type: "string" }, expected_kwh: { type: "number" } }, additionalProperties: false },
+    description: "מעדכן את נתוני הכסף של הגג לדשבורד ולדוחות. כל שדה רשות, רק מה שהבעלים אמר. agorot: תעריף ההזנה לרשת באגורות לקוט\"ש (למשל 48). self_agorot: מחיר החשמל הביתי כולל מע\"מ באגורות. self_share: כמה אחוז מהייצור הבית צורך ישירות (0-100). fixed: ניכוי קבוע בשקלים לחודש. invest: מחיר המערכת בשקלים כולל מע\"מ, בלי תחזוקה ותיקונים. costs: סך ההוצאות אחרי הקנייה (תחזוקה, תיקונים, החלפת פאנל) בשקלים, שיורדות מההכנסה. since: תאריך ההפעלה YYYY-MM-DD. expected_kwh: תחזית ייצור שנתית מהמתקין.",
+    input_schema: { type: "object", properties: { agorot: { type: "number" }, self_agorot: { type: "number" }, self_share: { type: "number" }, fixed: { type: "number" }, invest: { type: "number" }, costs: { type: "number" }, since: { type: "string" }, expected_kwh: { type: "number" } }, additionalProperties: false },
   },
   {
     name: "solar_bills",
@@ -443,11 +443,11 @@ export const makeSolarTools = ({ store, origin }) => ({
   async solar_dashboard() {
     return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
   },
-  async solar_rate({ agorot, self_agorot, self_share, fixed, invest, since, expected_kwh }) {
+  async solar_rate({ agorot, self_agorot, self_share, fixed, invest, costs, since, expected_kwh }) {
     const ok = (v, lo, hi) => v == null || (typeof v === "number" && v >= lo && v <= hi);
-    if (!ok(agorot, 1, 300) || !ok(self_agorot, 1, 300) || !ok(self_share, 0, 100) || !ok(fixed, 0, 1000) || !ok(invest, 1000, 2e6) || !ok(expected_kwh, 100, 1e6) || (since != null && !/^20\d\d-\d\d-\d\d$/.test(since)))
+    if (!ok(agorot, 1, 300) || !ok(self_agorot, 1, 300) || !ok(self_share, 0, 100) || !ok(fixed, 0, 1000) || !ok(invest, 1000, 2e6) || !ok(costs, 0, 1e6) || !ok(expected_kwh, 100, 1e6) || (since != null && !/^20\d\d-\d\d-\d\d$/.test(since)))
       return "אחד המספרים לא נראה נכון. תעריפים באגורות לקוט\"ש, צריכה עצמית באחוזים, השקעה בשקלים ותאריך YYYY-MM-DD.";
-    const patch = Object.fromEntries(Object.entries({ rate: agorot && agorot / 100, selfRate: self_agorot && self_agorot / 100, selfShare: self_share != null ? self_share / 100 : null, fixed, invest, since, expectedKwh: expected_kwh }).filter(([, v]) => v != null));
+    const patch = Object.fromEntries(Object.entries({ rate: agorot && agorot / 100, selfRate: self_agorot && self_agorot / 100, selfShare: self_share != null ? self_share / 100 : null, fixed, invest, costs, since, expectedKwh: expected_kwh }).filter(([, v]) => v != null));
     if (!Object.keys(patch).length) return "לא נמסר שום נתון לעדכון.";
     await store.merge(DOC, patch);
     return `עודכן: ${Object.keys(patch).join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
