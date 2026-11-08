@@ -6,7 +6,7 @@
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
 import { db } from "./firestore.js";
 import { claude } from "./claude.js";
-import { TOOL_DEFS, makeTools } from "./tools.js";
+import { TOOL_DEFS, makeTools, awaitingYes } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink, mediaUrl } from "./meta.js";
 import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
@@ -260,9 +260,11 @@ async function handle(m, env) {
     at("קבלת ההודעה");
     await typing(wa, m.id).catch(() => {});
     let text = incomingText(m) || (m.image?.caption || "").trim();
+    // הודעה שהועברה נכתבה ע"י מישהו אחר: תוכן חיצוני, לא בקשה ולא אישור של הבעלים
+    const forwarded = !!(m.context?.forwarded || m.context?.frequently_forwarded);
     // תשובה למשימה מתוזמנת (כפתור "מוח 9" / "פרסום 4" / "הודעות כן" / "הרכב לקבוצה", או "✏️ לשנות" ואז הנוסח) — רק נרשמת ביומן,
     // שם המשימה קוראת אותה. לא עוברת למודל, כדי ששולה לא תבצע אותה בעצמה פעם שנייה.
-    const edit = !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem : null;
+    const edit = !forwarded && !m.type.startsWith("interactive") && bot.editItem && Date.parse(now) - Date.parse(bot.editItem.at) < 3600e3 ? bot.editItem : null;
     const code = m.type === "interactive" && /^(מוח|הודעות|הרכב|פנקס|פרסום)( |$)/.test(text);
     // תמונה לפריט פרסום נכנסת ליומן עם קישור חתום, ומשימת הפרסום מורידה אותה ומכניסה לפוסט
     const takePhoto = async (n, id) => {
@@ -354,7 +356,7 @@ async function handle(m, env) {
       const user = `📄 [קובץ: ${name}]${m.document.caption ? ` ${m.document.caption}` : ""}`;
       await store.update("agentReports/bot", (cur) => ({
         lastFile: { id: m.document.id, name },
-        history: [...(cur.history || []), { role: "user", text: user, owner: m.document.caption || "", at: now }, { role: "assistant", text: `${EXTERNAL} [מתוך הקובץ ${name}]\n${answer}`, at: now }].slice(-16),
+        history: [...(cur.history || []), { role: "user", text: user, owner: forwarded ? "" : m.document.caption || "", at: now }, { role: "assistant", text: `${EXTERNAL} [מתוך הקובץ ${name}]\n${answer}`, at: now }].slice(-16),
         log: [...(cur.log || []), { at: now, user, shula: answer }].slice(-LOG_KEEP),
       }));
       return;
@@ -388,14 +390,16 @@ async function handle(m, env) {
         return;
       }
     }
-    const plan = planReply(bot, text);
+    const plan = forwarded ? null : planReply(bot, text);
     if (plan) return void (await reply(await queuePlanReply(env, store, text, plan)));
     if (RECONNECT_META.test(text)) {
       await reply(`קישור לחיבור מחדש של פייסבוק ואינסטגרם (בתוקף 30 דקות):\n${await metaLink(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m));
+    const { answer: said, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m), forwarded);
+    const waits = awaitingYes((await store.get("agentReports/bot").catch(() => null))?.pending);
+    const answer = waits ? `${said}\n\n${waits}` : said;
     at("שליחת התשובה בוואטסאפ");
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
@@ -404,9 +408,9 @@ async function handle(m, env) {
     // ההיסטוריה היא טקסט בלבד — בלי השורה הזאת שולה לא יודעת בהודעה הבאה אילו כלים באמת הפעילה
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
-      history: [...(cur.history || []), { role: "user", text: userTurn, owner: text, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
+      history: [...(cur.history || []), { role: "user", text: userTurn, owner: forwarded ? "" : text, at: now }, { role: "assistant", text: said + memo, at: done }].slice(-16),
       // פירוט זמנים (ms/gem) רק בהודעה האחרונה — במסמך החם הזה הם ניפחו כל כתיבה עד שגוגל החזיר 429 (2026-10-25)
-      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
+      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: said, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {
@@ -494,13 +498,14 @@ const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:"
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
-async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "") {
+async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false) {
+  const gate = forwarded ? "" : text; // השערים רואים רק מה שהבעלים עצמו כתב
   // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
   // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
-  const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), text].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: text, turn }), ...makeMetaTools({ env, store, lastOwnerText: text, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: text, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: text, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: text, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: text, turn }), ...makeMemoryTools({ env, lastOwnerText: text }) };
+  const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), gate].join("\n");
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -510,7 +515,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
     .map(([agent, o]) => `${EXTERNAL} [${String(o.at).slice(0, 16)} הודעה שנשלחה לבעלים (${agent})]\n${o.text}`)
     .join("\n\n");
   // רק למודל: השערים (lastOwnerText, ownerRecent) רואים את מילת הכפתור בלבד, כך שציטוט לא יכול לאשר כלום
-  const said = tapped ? `[הבעלים לחץ על הכפתור "${text}" ועונה רק על השאלה הזאת. ציטוט מההודעה, ${EXTERNAL}: "${tapped}"]\n${text}` : text;
+  const said = forwarded ? `${EXTERNAL} [הודעה שהועברה, לא הבעלים כתב אותה]\n${text}` : tapped ? `[הבעלים לחץ על הכפתור "${text}" ועונה רק על השאלה הזאת. ציטוט מההודעה, ${EXTERNAL}: "${tapped}"]\n${text}` : text;
   const userTurn = outbox ? `${outbox}\n\n---\n${OWNER_MARK}${said}` : said;
   // תורות רצופות מאותו תפקיד (למשל תשובה מקלוד שנכנסה כ-user) מתאחדות לתור אחד — Gemini מצפה לסירוגין
   const contents = [];
@@ -734,11 +739,11 @@ export async function deliverOutbox(env, store, wa) {
 async function everyQuarter(env) {
   const store = db(env);
   const wa = waConfig(env);
-  // קודם לתור, כדי שתזכורת תצא באותה ריצה. תקלה או תקיעה ב-shula-tools לא עוצרת את sendDue
-  const toolReminders = Promise.race([queueToolReminders(env.TOOLS, store), new Promise((_, fail) => setTimeout(() => fail(new Error("shula-tools: timeout")), 8000))]);
+  const due = () => sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`));
   const parts = await Promise.allSettled([
-    toolReminders,
-    toolReminders.catch(() => {}).then(() => sendDue(store, new Date(), async (lines) => tell(store, wa, "scheduled", await shortLinks(env, store, `⏰ *הגיע הזמן* (בהודעות — ללחוץ על קישור ואז "שלח"):\n${lines.join("\n")}`), `הגיע הזמן: ${summary(lines)}. אפשר להשיב כדי לקבל את הקישורים`))),
+    due(), // לא מחכה ל-shula-tools. רק כשנכנסו תזכורות יש סבב נוסף, ואז הן יוצאות באותה ריצה
+    Promise.race([queueToolReminders(env.TOOLS, store), new Promise((_, fail) => setTimeout(() => fail(new Error("shula-tools: timeout")), 8000))])
+      .then(async (r) => (/reminders: [1-9]/.test(r) && (await due()), r)),
     publishDue(store).then((lines) => lines.length && tell(store, wa, "posts", `📣 *פרסום מתוזמן:*\n${lines.join("\n")}`, `פרסום מתוזמן: ${summary(lines)}`)),
     stalePost(store).then((text) => text && tell(store, wa, "post-reminder", text, text)),
     remindCoaches(env, store, wa),

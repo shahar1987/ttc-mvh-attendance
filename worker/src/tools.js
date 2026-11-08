@@ -53,6 +53,17 @@ export async function confirmed(store, kind, payload, ownerText, turn) {
   return ok;
 }
 
+// ה-worker (לא המודל) מוסיף לתשובה מה "כן" יאשר עכשיו, כדי ש"כן" לשאלה אחרת של המודל לא יפעיל טיוטה שהבעלים לא ראה
+const WAIT_HE = { parents_now: "שליחה עכשיו לכל מי שממתין", claude: "העברה לקלוד", message: "שליחת הודעה", cancel: "ביטול הודעה מתוזמנת", absence: "הכנת קישורי היעדרות", skip: "סימון היעדרויות כמטופלות", trial: "עדכון ניסיון", registration: "אישור רישום", attendance: "שמירת נוכחות", post: "פרסום פוסט", rule: "שמירת כלל", coach_access: "הרשאת מדריך", solar_rate: "עדכון נתוני הגג", solar_bills: "שמירת חשבונות חשמל" };
+export function awaitingYes(pending, now = Date.now()) {
+  const lines = Object.entries(pending || {}).filter(([, p]) => p?.key && now - Date.parse(p.askedAt || p.at || 0) < CONFIRM_TTL_MS).map(([k, p]) => {
+    const vals = Object.values(JSON.parse(p.key)).filter((v) => typeof v !== "boolean");
+    const details = String([...vals.filter((v) => typeof v === "string")].sort((x, y) => y.length - x.length)[0] ?? (vals.length ? JSON.stringify(vals[0]) : "")).slice(0, 200);
+    return `${WAIT_HE[k] || k}${details ? `: ${details}` : ""}`;
+  });
+  return lines.length ? `⏳ "כן" עכשיו יאשר: ${lines.join(" · ")}` : "";
+}
+
 // "כן" על בקשה שכבר הוצגה לבעלים, גם כשהמודל ניסח אותה מחדש בתור הבא (13.10: שלוש פעמים "כן" ושוב "להעביר לקלוד?",
 // כי המפתח של confirmed הוא הנוסח המדויק). מחזיר את מה שהבעלים ראה ואישר — לא את הנוסח החדש.
 export async function approvedShown(store, kind, ownerText, turn) {

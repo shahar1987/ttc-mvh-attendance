@@ -49,9 +49,10 @@ export function planReply(bot, text, now = Date.now()) {
 const VERIFIED = /^מוח( |$)/;
 const SEND_NOW = "הודעות עכשיו";
 // בקשה מפורשת לשלוח למי שממתין: פועל שליחה וגם יעד. "תשלחי לדור" לא מספיק
-const SEND_WORD = /(^|\s)(שלח|תשלח|שלחי|תשלחי)(\s|$|[.!,])/;
-const PARENTS_TARGET = /להורים|ההורים|ממתין|להם|הודעות עכשיו/;
-export const asksParentsNow = (t) => String(t || "").trim() === SEND_NOW || (APPROVAL.test(t) && SEND_WORD.test(t) && PARENTS_TARGET.test(t));
+const VERB = "(?:שלח|תשלח|שלחי|תשלחי)";
+const SEND_TO_WAITING = new RegExp(`(?:^|\\s)${VERB}\\s+(?:הכל|להם|להורים|לממתינים|למי שממתין|הודעות עכשיו)(?:\\s+(?:עכשיו|היום|את ההודעות))*\\s*[.!]?$`);
+const WAITING_THEN_SEND = new RegExp(`^(?:🎤\\s*)?מי שממתין[^.!?]*\\s${VERB}\\s*[.!]?$`, "u");
+export const asksParentsNow = (t) => String(t || "").trim() === SEND_NOW || (APPROVAL.test(t) && (SEND_TO_WAITING.test(t) || WAITING_THEN_SEND.test(t)));
 const TASK_WAIT_MS = 45 * 60 * 1000;
 
 // ⚡ לחיצה על כפתור "מוח N" או "פרסום N": מפעילים מיד את המשימה המתאימה דרך קלוד, במקום לחכות עד שעתיים לסבב שלה (30.10)
@@ -266,8 +267,9 @@ export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRe
       const words = (String(lastOwnerText).match(/[\p{L}\p{N}]{2,}/gu) || []).length;
       // כל מילה חייבת להיות שלו, אחרת נוסח של המודל יוצא כמו שהוא. בקשה שרובה ממנו (בלי תוספת) לא נתקעת: יוצאות המילים שלו
       const authored = ownerWrote(request, ownerRecent, 1);
+      const shown = String(lastReply).split("\n").filter((l) => !/^(\d\. |\[מערכת)/.test(l)).join("\n").trim();
       if (!authored && ownerWrote(request, lastOwnerText)) request = String(lastOwnerText).slice(0, 1500);
-      else if (!authored && approved && /קלוד|להעביר/.test(lastReply)) request = String(lastReply).split("\n").filter((l) => !/^(\d\. |\[מערכת)/.test(l)).join("\n").trim();
+      else if (!authored && approved && !shown.startsWith(EXTERNAL) && /קלוד|להעביר/.test(shown)) request = shown; // סיכום של קובץ הוא תוכן חיצוני, לא בקשה
       else if (!authored && !approved && words >= 3) request = String(lastOwnerText).slice(0, 1500);
       else if (!authored && !(await approvedShown(store, "claude", lastOwnerText, turn).then((s) => s && (request = s.request))) && !(await confirmed(store, "claude", { request }, lastOwnerText, turn)))
         return `לא הועבר עדיין. להציג לבעלים את הבקשה ("${String(request).slice(0, 120)}") ולשאול אם להעביר לקלוד. אחרי "כן" — לקרוא שוב עם אותה בקשה בדיוק.`;
