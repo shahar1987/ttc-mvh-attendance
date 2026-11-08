@@ -56,12 +56,15 @@ export async function confirmed(store, kind, payload, ownerText, turn) {
 // ה-worker (לא המודל) מוסיף לתשובה מה "כן" יאשר עכשיו, כדי ש"כן" לשאלה אחרת של המודל לא יפעיל טיוטה שהבעלים לא ראה
 const WAIT_HE = { parents_now: "שליחה עכשיו לכל מי שממתין", claude: "העברה לקלוד", message: "שליחת הודעה", cancel: "ביטול הודעה מתוזמנת", absence: "הכנת קישורי היעדרות", skip: "סימון היעדרויות כמטופלות", trial: "עדכון ניסיון", registration: "אישור רישום", attendance: "שמירת נוכחות", post: "פרסום פוסט", rule: "שמירת כלל", coach_access: "הרשאת מדריך", solar_rate: "עדכון נתוני הגג", solar_bills: "שמירת חשבונות חשמל" };
 export function awaitingYes(pending, now = Date.now()) {
-  const lines = Object.entries(pending || {}).filter(([, p]) => p?.key && now - Date.parse(p.askedAt || p.at || 0) < CONFIRM_TTL_MS).map(([k, p]) => {
-    const vals = Object.values(JSON.parse(p.key)).filter((v) => typeof v !== "boolean");
+  const lines = Object.entries(pending || {}).filter(([k, p]) => WAIT_HE[k] && p?.key && now - Date.parse(p.askedAt || p.at || 0) < CONFIRM_TTL_MS).map(([k, p]) => {
+    const payload = JSON.parse(p.key);
+    const vals = Object.values(payload).filter((v) => typeof v !== "boolean");
+    const who = Array.isArray(payload.to) ? `ל-${payload.to.length} נמענים, ` : "";
     const details = String([...vals.filter((v) => typeof v === "string")].sort((x, y) => y.length - x.length)[0] ?? (vals.length ? JSON.stringify(vals[0]) : "")).slice(0, 200);
-    return `${WAIT_HE[k] || k}${details ? `: ${details}` : ""}`;
+    return `${WAIT_HE[k]}${who || details ? `: ${who}${details}` : ""}`;
   });
-  return lines.length ? `⏳ "כן" עכשיו יאשר: ${lines.join(" · ")}` : "";
+  // שורה אחת בלבד: בלי ירידת שורה sendText לא יכול לפרש טיוטה כ"1. כן / 2. לא" ולהפוך אותה לכפתורים
+  return lines.length ? `⏳ "כן" עכשיו יאשר: ${lines.join(" · ")}`.replace(/\s+/g, " ") : "";
 }
 
 // "כן" על בקשה שכבר הוצגה לבעלים, גם כשהמודל ניסח אותה מחדש בתור הבא (13.10: שלוש פעמים "כן" ושוב "להעביר לקלוד?",

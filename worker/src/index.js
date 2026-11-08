@@ -397,10 +397,10 @@ async function handle(m, env) {
       return;
     }
     at("חשיבה על התשובה (Gemini)");
-    const { answer: said, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m), forwarded);
+    const { answer, userTurn, used } = await think(env, store, wa, bot, text, media, () => typing(wa, m.id).catch(() => {}), m.id, gem, tappedQuestion(m), forwarded);
     const waits = awaitingYes((await store.get("agentReports/bot").catch(() => null))?.pending);
-    const answer = waits ? `${said}\n\n${waits}` : said;
     at("שליחת התשובה בוואטסאפ");
+    if (waits) await reply(waits).catch(() => {}); // הודעה נפרדת, כדי לא לשבור את הכפתורים של התשובה
     for (let i = 0; i < answer.length; i += CHUNK) await reply(answer.slice(i, i + CHUNK));
     // קוראים שוב רגע לפני הכתיבה ומוסיפים לסוף — לא דורסים היסטוריה שנכתבה בינתיים (הודעה מקבילה, תשובה מקלוד)
     const done = new Date().toISOString();
@@ -408,9 +408,9 @@ async function handle(m, env) {
     // ההיסטוריה היא טקסט בלבד — בלי השורה הזאת שולה לא יודעת בהודעה הבאה אילו כלים באמת הפעילה
     const memo = used.length ? `\n${TOOLS_MEMO} ${used.join(", ")}]` : "";
     await store.update("agentReports/bot", (cur) => ({
-      history: [...(cur.history || []), { role: "user", text: userTurn, owner: forwarded ? "" : text, at: now }, { role: "assistant", text: said + memo, at: done }].slice(-16),
+      history: [...(cur.history || []), { role: "user", text: userTurn, owner: forwarded ? "" : text, at: now }, { role: "assistant", text: answer + memo, at: done }].slice(-16),
       // פירוט זמנים (ms/gem) רק בהודעה האחרונה — במסמך החם הזה הם ניפחו כל כתיבה עד שגוגל החזיר 429 (2026-10-25)
-      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: said, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
+      log: [...(cur.log || []).map(({ ms: _m, gem: _g, ...e }) => e), { at: now, user: text, shula: answer, ms, gem, ...(used.length ? { tools: used } : {}) }].slice(-LOG_KEEP),
     }));
   };
   try {

@@ -264,6 +264,11 @@ console.log("gates ok");
   const { awaitingYes } = await import("../src/tools.js");
   assert.equal(awaitingYes({ x: { key: "{}", askedAt: new Date(0).toISOString() } }), "", "טיוטה שפג תוקפה לא מוצגת");
   assert.match(awaitingYes({ claude: { key: JSON.stringify({ request: "לבדוק" }), askedAt: new Date().toISOString() } }), /העברה לקלוד: לבדוק/);
+  const fresh = new Date().toISOString();
+  const shown = awaitingYes({ message: { key: JSON.stringify({ to: ["a", "b", "c"], text: "בדיקה\n1. כן\n2. לא", at: "" }), askedAt: fresh } });
+  assert.match(shown, /ל-3 נמענים/, "רואים למי זה הולך");
+  assert.ok(!shown.includes("\n"), "שורה אחת, לא יכולה להפוך לכפתורים");
+  assert.equal(awaitingYes({ attendance_c9: { key: JSON.stringify({ date: "2026-11-08" }), askedAt: fresh } }), "", "טיוטה של מדריך לא מוצגת לבעלים");
   b.pending = {};
 
   // הגג: שינוי נתוני כסף וחשבונות רק אחרי "כן" נפרד

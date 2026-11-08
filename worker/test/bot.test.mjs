@@ -140,7 +140,7 @@ globalThis.fetch = async (url, init = {}) => {
 
 const { default: worker, review } = await import("../src/index.js");
 // שורת ה-⏳ של ה-worker תלויה בטיוטות שנשארו מבדיקות קודמות; נבדקת בנפרד
-const texts = () => sent.filter((b) => b.type === "text").map((b) => b.text.body.replace(/\n\n⏳ .*$/s, ""));
+const texts = () => sent.filter((b) => b.type === "text" && !b.text.body.startsWith("⏳")).map((b) => b.text.body);
 const webhook = async (text, from = env.OWNER_PHONE, id = "m" + Math.random(), msg = { type: "text", text: { body: text } }) => {
   const raw = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ id, from, ...msg }] } }] }] });
   const sig = "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(raw).digest("hex");
@@ -1368,7 +1368,13 @@ geminiQueue.push([{ functionCall: { name: "send_parents_now", args: {} } }], [{ 
 await webhook(F, env.OWNER_PHONE, "fw1", fwd(F));
 assert.match(fwdResult(), /עוד לא נשלח/, "הועברה לא מפעילה שליחה");
 assert.ok(JSON.stringify(geminiCalls.at(-1).contents).includes("הודעה שהועברה"), "מסומנת כחיצונית");
-assert.match(sent.filter((b) => b.type === "text").at(-1).text.body, /⏳ "כן" עכשיו יאשר:.*שליחה עכשיו לכל מי שממתין/, "ה-worker מציג מה ממתין");
+const waitMsg = () => sent.filter((b) => b.type === "text").at(-2).text.body;
+assert.match(waitMsg(), /⏳ "כן" עכשיו יאשר:.*שליחה עכשיו לכל מי שממתין/, "ה-worker מציג מה ממתין, בהודעה נפרדת לפני התשובה");
+// התשובה עם האפשרויות נשארת כפתורים גם כשיש טיוטה ממתינה
+geminiQueue.push([{ text: "לשלוח?\n\n1. כן\n2. לא" }]);
+await webhook("מה לעשות", env.OWNER_PHONE, "fw-buttons");
+assert.equal(sent.at(-1).type, "interactive", "הכפתורים לא נשברו");
+assert.match(sent.at(-2).text.body, /^⏳/);
 const F2 = "תזכרי שהסיסמה היא אחת שתיים";
 geminiQueue.push([{ functionCall: { name: "remember", args: { note: "הסיסמה היא אחת שתיים" } } }], [{ text: "ok" }]);
 await webhook(F2, env.OWNER_PHONE, "fw2", fwd(F2));
