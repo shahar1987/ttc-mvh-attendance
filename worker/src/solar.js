@@ -352,11 +352,33 @@ export async function solarRoute(req, env, store, tell) {
     return new Response(JSON.stringify({ name: "הגג שלי", short_name: "הגג שלי", lang: "he", dir: "rtl", start_url: "/solar/dashboard", scope: "/solar/", display: "standalone", background_color: "#071226", theme_color: "#071226", icons: [192, 512].map((n) => ({ src: `/solar/icon-${n}.png?v=${ICON_V}`, sizes: `${n}x${n}`, type: "image/png", purpose: "any" })) }), { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=86400" } });
   if (url.pathname === "/solar/icon-192.png" || url.pathname === "/solar/icon-512.png")
     return new Response(Buffer.from(url.pathname.includes("192") ? ICON_192 : ICON_512, "base64"), { headers: { "content-type": "image/png", "cache-control": "public, max-age=604800" } });
+  // פעולות מהדשבורד: רק עם העוגייה, ורק מאותו אתר (העוגייה SameSite=Lax, ובודקים גם Origin)
+  if ((url.pathname === "/solar/refresh" || url.pathname === "/solar/settings") && req.method === "POST") {
+    const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...SECURITY, "content-type": "application/json" } });
+    if (!(await hasSession(req, store)) || req.headers.get("origin") !== url.origin) return json({ error: "אין גישה" }, 403);
+    if (url.pathname === "/solar/settings") {
+      const body = await req.json().catch(() => ({}));
+      const num = (v) => (v === "" || v == null ? null : Number(v));
+      const r = await saveMoney(store, { agorot: num(body.agorot), self_agorot: num(body.self_agorot), invest: num(body.invest), costs: num(body.costs) });
+      return json(r, r.error ? 400 : 200);
+    }
+    const s = (await store.get(DOC)) || {};
+    if (!s.refreshToken) return json({ error: "הגג לא מחובר" }, 400);
+    // בדקות של הריצה השעתית (10 אחרי) לא נוגעים, כדי ששתי ריצות לא יחליפו את אותו אסימון של SolarEdge
+    const min = new Date().getUTCMinutes();
+    if (min >= 8 && min <= 14) return json({ error: "בדיוק עכשיו רץ עדכון אוטומטי. נסה שוב בעוד 5 דקות" }, 409);
+    // לא יותר מפעם בשתי דקות: כל רענון עולה קרדיט של SolarEdge
+    if (s.todayManualAt && Date.now() - Date.parse(s.todayManualAt) < 120000) return json({ ok: true, cached: true });
+    const now = new Date();
+    await store.merge(DOC, { todayManualAt: now.toISOString() });
+    const ok = await todayUpdate(s, await refresh(s, store).catch(() => null), store, isoDay(now), now);
+    return json(ok ? { ok: true } : { error: "SolarEdge לא ענה, נסה שוב בעוד כמה דקות" }, ok ? 200 : 502);
+  }
   if (url.pathname === "/solar/dashboard") {
     if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
     const nonce = randomHex(16);
     const [doc, wx] = await Promise.all([store.get(DOC), nowWeather()]);
-    return secure(solarHtml(doc || {}, isoDay(new Date()), nonce, wx), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+    return secure(solarHtml(doc || {}, isoDay(new Date()), nonce, wx), 200, {}, `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
   if (url.pathname === "/solar/report" || url.pathname === "/solar/report.xlsx") {
     if (!(await hasSession(req, store))) return shell(NO_ACCESS, 401);
@@ -409,6 +431,17 @@ export async function solarRoute(req, env, store, tell) {
   return Response.redirect(`https://connect.solaredge.com/authorize?${q}`, 302);
 }
 
+// הגדרות הכסף: אותו בדיקה לשולה ולטופס בדשבורד. מחזיר שגיאה או רשימת שדות שנשמרו
+async function saveMoney(store, { agorot, self_agorot, self_share, fixed, invest, costs, since, expected_kwh }) {
+  const ok = (v, lo, hi) => v == null || (typeof v === "number" && v >= lo && v <= hi);
+  if (!ok(agorot, 1, 300) || !ok(self_agorot, 1, 300) || !ok(self_share, 0, 100) || !ok(fixed, 0, 1000) || !ok(invest, 1000, 2e6) || !ok(costs, 0, 1e6) || !ok(expected_kwh, 100, 1e6) || (since != null && !/^20\d\d-\d\d-\d\d$/.test(since)))
+    return { error: "אחד המספרים לא נראה נכון. תעריפים באגורות לקוט\"ש, צריכה עצמית באחוזים, השקעה בשקלים ותאריך YYYY-MM-DD." };
+  const patch = Object.fromEntries(Object.entries({ rate: agorot && agorot / 100, selfRate: self_agorot && self_agorot / 100, selfShare: self_share != null ? self_share / 100 : null, fixed, invest, costs, since, expectedKwh: expected_kwh }).filter(([, v]) => v != null));
+  if (!Object.keys(patch).length) return { error: "לא נמסר שום נתון לעדכון." };
+  await store.merge(DOC, patch);
+  return { saved: Object.keys(patch) };
+}
+
 export const SOLAR_TOOL_DEFS = [
   {
     name: "solar_link",
@@ -443,14 +476,9 @@ export const makeSolarTools = ({ store, origin }) => ({
   async solar_dashboard() {
     return `${await loginUrl(store, origin)} (קישור לכניסה אחת, תקף 30 דקות)`;
   },
-  async solar_rate({ agorot, self_agorot, self_share, fixed, invest, costs, since, expected_kwh }) {
-    const ok = (v, lo, hi) => v == null || (typeof v === "number" && v >= lo && v <= hi);
-    if (!ok(agorot, 1, 300) || !ok(self_agorot, 1, 300) || !ok(self_share, 0, 100) || !ok(fixed, 0, 1000) || !ok(invest, 1000, 2e6) || !ok(costs, 0, 1e6) || !ok(expected_kwh, 100, 1e6) || (since != null && !/^20\d\d-\d\d-\d\d$/.test(since)))
-      return "אחד המספרים לא נראה נכון. תעריפים באגורות לקוט\"ש, צריכה עצמית באחוזים, השקעה בשקלים ותאריך YYYY-MM-DD.";
-    const patch = Object.fromEntries(Object.entries({ rate: agorot && agorot / 100, selfRate: self_agorot && self_agorot / 100, selfShare: self_share != null ? self_share / 100 : null, fixed, invest, costs, since, expectedKwh: expected_kwh }).filter(([, v]) => v != null));
-    if (!Object.keys(patch).length) return "לא נמסר שום נתון לעדכון.";
-    await store.merge(DOC, patch);
-    return `עודכן: ${Object.keys(patch).join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
+  async solar_rate(fields) {
+    const r = await saveMoney(store, fields);
+    return r.error || `עודכן: ${r.saved.join(", ")}. הדשבורד והדוחות מחושבים לפי זה.`;
   },
   async solar_bills({ bills }) {
     const day = /^20\d\d-\d\d-\d\d$/;
