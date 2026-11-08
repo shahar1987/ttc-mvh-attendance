@@ -40,7 +40,8 @@ const signed = (n) => (n > 0 ? `${n}% יותר` : n < 0 ? `${-n}% פחות` : "�
 
 // תפוקה ביחס לקרינה, מתוקנת לחום. shortcut: מקדם קבוע של 0.4% למעלה לפי טמפרטורת אוויר; אם יופיעו התראות שווא בקיץ, לכייל מההיסטוריה
 export function adjusted(d) {
-  if (!d || d.kwh == null || !(d.rad >= CLOUDY_MJ) || d.tmax == null) return null;
+  // ביום גשום העננים מעל הגג כבדים מממוצע הרשת של מודל מזג האוויר, אז היחס לא אומר כלום על הגג
+  if (!d || d.kwh == null || !(d.rad >= CLOUDY_MJ) || d.tmax == null || d.rain >= 1) return null;
   return d.kwh / (d.rad * (1 - 0.004 * (d.tmax - 25)));
 }
 

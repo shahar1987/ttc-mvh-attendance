@@ -7,6 +7,7 @@ const fill = (from, n, x) => Object.fromEntries(Array.from({ length: n }, (_, i)
 
 assert.equal(isoDay("2026-10-31T22:00:00Z"), "2026-11-01", "מסמן יום לפי שעון ישראל");
 assert.equal(adjusted({ kwh: 10, rad: 2, tmax: 25 }), null, "יום מעונן לא נמדד");
+assert.equal(adjusted({ kwh: 5, rad: 11, tmax: 18, rain: 9.8 }), null, "יום גשום לא נחשב תקלה בגג");
 assert.ok(adjusted({ kwh: 20, rad: 20, tmax: 35 }) > adjusted({ kwh: 20, rad: 20, tmax: 25 }), "חום לא נחשב תקלה");
 
 // שבוע תקין מול 30 יום קודמים

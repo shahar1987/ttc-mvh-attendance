@@ -144,6 +144,8 @@ export function insights(s, today) {
   if (fault) bad.push(fault.replace(/[*⚠️]/g, "").trim());
   if (s.lastError) bad.push("הריצה האחרונה נכשלה, ומנסים שוב בשעה הבאה");
   if (a.ratio != null) (a.ratio >= 0.9 ? good : bad).push(`ביחס לשמש הגג מפיק ${Math.round(a.ratio * 100)}% מהרגיל שלו`);
+  const rainy = span(end, 7).filter((k) => days[k]?.rain >= 1 && days[k]?.kwh != null);
+  if (rainy.length) good.push(`ייצור נמוך בגלל גשם, לא תקלה: ${rainy.map((k) => `${heb(k)} (${num(days[k].rain, 1)} מ״מ)`).join(", ")}`);
   if (a.low.length) bad.push(`ימים חריגים השבוע: ${a.low.map(heb).join(", ")}`);
   else if (a.ratio != null) good.push("אין ימים חריגים השבוע");
   if (a.missing.length && !fault) bad.push(`חסרים נתונים: ${a.missing.map(heb).join(", ")}`);
@@ -369,7 +371,7 @@ export function solarHtml(s, today, nonce = "", wx = "") {
   const rowsTable = span(end, 14).reverse().map((k) => {
     const d = days[k] || {};
     const r = adjusted(d);
-    return `<tr><td>${heb(k)}</td><td>${num(d.kwh, 1)}</td><td>${num(d.rad, 1)}</td><td>${d.tmax == null ? "לא זמין" : `${Math.round(d.tmax)}°`}</td><td>${d.rain ? num(d.rain, 1) : "0"}</td><td>${r == null ? "יום מעונן" : a.low.includes(k) ? "חריג" : "תקין"}</td></tr>`;
+    return `<tr><td>${heb(k)}</td><td>${num(d.kwh, 1)}</td><td>${num(d.rad, 1)}</td><td>${d.tmax == null ? "לא זמין" : `${Math.round(d.tmax)}°`}</td><td>${d.rain ? num(d.rain, 1) : "0"}</td><td>${r == null ? (d.rain >= 1 ? "גשם" : "יום מעונן") : a.low.includes(k) ? "חריג" : "תקין"}</td></tr>`;
   }).join("");
   const typical = median(span(end, 14).map((k) => days[k]?.kwh));
   const monthGoal = f.target ?? f.end;
