@@ -73,8 +73,8 @@ test("לבדיקה לא נוגע באפליקציה, והכרעה אחריו כ�
 });
 
 test("שחקן בארכיון: השורה מתרוקנת והשם נשאר בהערה; פעיל או לא מוכר לא נוגעים", () => {
-  const clear = { range: "'x'!A3:C3", width: 3, note: 1, name: "שם" };
+  const clear = { range: "'x'!A3:C3", name: "שם" };
   const m = new Map([["a", { isActive: false, endDate: "2026-11-05" }], ["b", { isActive: true }]]);
-  const r = archivedRows([{ id: "a", status: NO, clear }, { id: "b", status: NO, clear }, { id: "c", status: NO, clear }, { id: "a", status: NO, clear: null }], m);
-  assert.deepEqual(r, [{ id: "a", range: "'x'!A3:C3", values: [["", `יצא לארכיון 05/11/2026: שם (היה: ${NO})`, ""]] }]);
+  const r = archivedRows([{ id: "a", status: NO, noteCell: "'x'!B3", clear }, { id: "b", status: NO, clear }, { id: "c", status: NO, clear }, { id: "a", status: NO, clear: null }], m);
+  assert.deepEqual(r, [{ id: "a", range: "'x'!A3:C3", noteCell: "'x'!B3", note: `יצא לארכיון 05/11/2026: שם (היה: ${NO})` }]);
 });

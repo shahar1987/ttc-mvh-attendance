@@ -58,9 +58,7 @@ export function archivedRows(rows, players) {
     return p && r.clear && (p.isActive === false || p.deleted);
   }).map((r) => {
     const end = String(players.get(r.id).endDate || "").split("-").reverse().join("/");
-    const row = Array(r.clear.width).fill("");
-    row[r.clear.note] = `יצא לארכיון${end ? ` ${end}` : ""}: ${r.clear.name}${r.status ? ` (היה: ${r.status})` : ""}`;
-    return { id: r.id, range: r.clear.range, values: [row] };
+    return { id: r.id, range: r.clear.range, noteCell: r.noteCell, note: `יצא לארכיון${end ? ` ${end}` : ""}: ${r.clear.name}${r.status ? ` (היה: ${r.status})` : ""}` };
   });
 }
 
@@ -126,7 +124,7 @@ async function readRows(tok) {
       }
       const n = j + 3, f = forms.valueRanges[i].values?.[j + 1]?.[st];
       rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
-        clear: note < 0 ? null : { range: `'${tab}'!A${n}:${col(grid[0].length - 1)}${n}`, width: grid[0].length, note, name: row[at("שם")] || "" } });
+        clear: note < 0 ? null : { range: `'${tab}'!A${n}:${col(grid[0].length - 1)}${n}`, name: row[at("שם")] || "" } });
     });
   });
   return { rows, tabs, drafts };
@@ -191,7 +189,11 @@ async function main() {
     t.used++; t.count++;
     add.push({ range: `'${g.replace("קובצת", "קבוצת")}'!A${t.used}`, values: [newRow(p, g, t.headers, t.count)] });
   }
-  if (gone.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data: gone.map(({ range, values }) => ({ range, values })) });
+  if (gone.length) {
+    // batchClear ולא כתיבת "": מחרוזת ריקה עדיין נספרת ב-COUNTA של הסיכום
+    await sheetsFetch(tok, "/values:batchClear", { ranges: gone.map((g) => g.range) });
+    await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data: gone.map((g) => ({ range: g.noteCell, values: [[g.note]] })) });
+  }
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, updatedAt: new Date().toISOString() });
   console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
