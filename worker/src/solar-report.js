@@ -93,13 +93,22 @@ export function earnings(s, today) {
   // החזר ההשקעה: כל הייצור מאז ההפעלה, וקצב השנה האחרונה לצפי
   let back = null;
   if (s.invest > 0 && s.since) {
+    // הכל בשקלים של היום: כל יום מוכפל במדד האחרון חלקי המדד של החודש שלו, וכך גם ההשקעה מחודש ההפעלה (מדד המחירים לצרכן, הלמ"ס)
+    const cpi = s.cpi || {};
+    const months = Object.keys(cpi).filter((k) => /^\d{4}-\d\d$/.test(k)).sort();
+    const now = months.length ? cpi[months.at(-1)] : null;
+    const at = (k) => { const m = months.filter((x) => x <= k.slice(0, 7)).at(-1) || months[0]; return now && m ? now / cpi[m] : 1; };
     const all = Object.entries(s.days || {}).filter(([k, d]) => k >= s.since && k < today && d.kwh != null);
-    const earned = all.reduce((x, [, d]) => x + d.kwh * rate, 0) - fixed * (all.length / 30.4);
+    const value = (rows) => rows.reduce((x, [k, d]) => x + d.kwh * rate * at(k), 0) - fixed * (rows.length / 30.4);
+    const earned = value(all);
+    const invest = s.invest * at(s.since);
     const yearAgo = addDays(today, -365);
     const lastYear = all.filter(([k]) => k >= yearAgo);
-    const perDay = lastYear.length >= 60 ? (lastYear.reduce((x, [, d]) => x + d.kwh * rate, 0) - fixed * (lastYear.length / 30.4)) / lastYear.length : null;
-    const left = s.invest - earned;
-    back = { earned, invest: s.invest, share: earned / s.invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
+    const perDay = lastYear.length >= 60 ? value(lastYear) / lastYear.length : null;
+    const left = invest - earned;
+    // שני מקורות הכסף: מה שלא שילמת על חשמל שהבית צרך מהגג, ומה שחברת החשמל זיכתה על ההזנה לרשת
+    const saved = all.reduce((x, [k, d]) => x + d.kwh * selfShare * money(s).selfRate * at(k), 0);
+    back = { earned, saved, credit: earned - saved, invest, paid: s.invest, inflation: now ? Math.round((at(s.since) - 1) * 1000) / 10 : null, cpiMonth: months.at(-1), share: earned / invest, done: perDay > 0 && left > 0 ? addDays(today, Math.ceil(left / perDay)) : null };
   }
   return { rate, fixed, exportRate, selfShare, fromBills, today: t, month: m.net, year: y.net, yearChange: y.change, back, expected: s.expectedKwh > 0 ? s.expectedKwh : null, yearKwh: y.kwh };
 }

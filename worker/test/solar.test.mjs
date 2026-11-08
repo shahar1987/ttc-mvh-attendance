@@ -353,6 +353,11 @@ console.log("solar ok");
   assert.ok(Math.abs(money({}).rate - (0.75 * 0.48 + 0.25 * 0.6352)) < 1e-9, "מסלול ירוק: הזנה לרשת וצריכה עצמית");
   const b = earnings({ ...s, invest: 1000, since: "2025-10-01" }, "2026-11-08").back;
   assert.equal(Math.round(b.earned), Math.round(620 * 0.5 + 496 * 0.5 - 10 * (62 / 30.4)), "החזר השקעה על כל הימים מאז ההפעלה");
+  assert.ok(Math.abs(b.saved + b.credit - b.earned) < 1e-6 && b.saved === 0, "בלי צריכה עצמית כל ההחזר הוא זיכוי");
+  const real = earnings({ ...s, invest: 1000, since: "2025-10-01", cpi: { "2025-10": 100, "2026-10": 110, at: "2026-11" } }, "2026-11-08").back;
+  assert.equal(Math.round(real.invest), 1100, "ההשקעה בשקלים של היום");
+  assert.equal(real.inflation, 10);
+  assert.ok(real.earned > b.earned, "גם ההכנסות מתואמות למדד");
   assert.ok(validPeriod("2026", "2026-11-08") && validPeriod("2025-12", "2026-11-08"));
   assert.ok(!validPeriod("2026-12", "2026-11-08") && !validPeriod("2026-13", "2026-11-08") && !validPeriod("../x", "2026-11-08"));
   // צריכה עצמית מחשבונות: 620 קוט"ש ייצור באוקטובר, 465 הוזרמו לרשת → 25%

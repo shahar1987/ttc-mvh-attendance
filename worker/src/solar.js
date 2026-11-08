@@ -194,6 +194,14 @@ async function todayUpdate(s, token, store, today, now) {
   return false;
 }
 
+async function cpiUpdate(store, today) {
+  const r = await fetch("https://api.cbs.gov.il/index/data/price?id=120010&format=json&download=false&last=36");
+  const rows = (await r.json())?.month?.[0]?.date || [];
+  const cpi = Object.fromEntries(rows.filter((d) => d.currBase?.value > 0).map((d) => [`${d.year}-${String(d.month).padStart(2, "0")}`, d.currBase.value]));
+  // shortcut: אם הלמ"ס מחליפה בסיס, הסדרה החדשה מגיעה עם בסיס אחד ל-36 החודשים, ואז הכל מתעדכן יחד
+  if (Object.keys(cpi).length) await store.merge(DOC, { cpi: { ...cpi, at: today.slice(0, 7) } });
+}
+
 // tell(key, text, templateParam) — אותה שליחה של כל ההתראות לבעלים
 export async function solarRun(store, tell, now = new Date(), link = "") {
   const today = isoDay(now);
@@ -228,6 +236,8 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
     await store.merge(DOC, { ...(gear || {}), days, archived, openAlerts: alerts ? alerts.length : null, backfillIdx: full(s) ? YEAR_WINDOWS : next, backfilled: full(s) || next >= YEAR_WINDOWS, lastOkAt: now.toISOString() });
     // ייצור היום תמיד, גם באמצע משיכת ההיסטוריה. בשביל זה ההמשך מושך 3 חלונות ישנים ולא 5, כדי להישאר מתחת ל-10 קריאות בדקה
     if (full(s) || from > 0) await todayUpdate(s, token, store, today, now);
+    // מדד המחירים לצרכן מהלמ"ס, פעם בחודש, להחזר ההשקעה בשקלים של היום. בלי קרדיטים של SolarEdge
+    if (s.cpi?.at !== today.slice(0, 7)) await cpiUpdate(store, today).catch((e) => console.log("solar cpi", e.message));
     const fault = hardFault(days, today);
     const sent = [];
     if (fault && !quiet) sent.push(await tell("solar-fault", fault, fault.replace(/[*⚠️]/g, "").trim()));
