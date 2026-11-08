@@ -56,7 +56,7 @@ export function plan(data, today, sent = new Set()) {
   }
   for (const p of players) {
     const g = groupById.get(p.groupId);
-    if (!g || g.deleted || !p.isActive || p.deleted || p.welcomeSentAt) continue;
+    if (!g || g.deleted || !p.isActive || p.deleted || p.trial || p.welcomeSentAt) continue; // בניסיון: ברוך הבא רק כשעובר לקבוצה (שלום, 8.11)
     if (!p.joinDate || p.joinDate < CUTOFF || p.joinDate > today) continue;
     add(`welcome:${p.joinDate}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
   }

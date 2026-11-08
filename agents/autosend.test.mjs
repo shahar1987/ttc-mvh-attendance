@@ -78,6 +78,12 @@ test("no recorded gender: neutral text, never a guess", () => {
   assert.doesNotMatch(JSON.stringify(TEMPLATES), /neutral_/, "לא נשלח ל-Meta");
 });
 
+test("no welcome while on trial, welcome once moved to the group", () => {
+  const data = { groups, attendance: [], cancellations: [] }, t = P("t", { joinDate: today, trial: true });
+  assert.deepEqual(plan({ ...data, players: [t] }, today).messages, []);
+  assert.deepEqual(plan({ ...data, players: [{ ...t, trial: false }] }, today).messages.map((m) => m.key), [`welcome:${today}:g1:t`]);
+});
+
 test("welcome text for a girl", () => {
   assert.match(welcomeText({ name: "נועה לוי", gender: "f" }, groups[0]), /שנועה לוי הצטרפה לקבוצת .*מחכה לה/);
 });
