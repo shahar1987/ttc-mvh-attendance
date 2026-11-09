@@ -5,6 +5,7 @@
 // שחקן פעיל שנוסף באפליקציה ועוד אין לו שורה נכנס ללשונית הקבוצה שלו (הגיליון הוא הבקרה של המועדון).
 // שורה חדשה בגיליון עם שם וטלפון תקין נוצרת כשחקן באפליקציה (autosend שולח לו ברוכים הבאים). בלי טלפון השורה ממתינה:
 // ההרצה עלולה לתפוס שורה באמצע הקלדה, ושחקן שנוצר בלי טלפון לא יקבל הודעה לעולם.
+// גם שם, הורה, טלפון ותאריך הצטרפות מסונכרנים לשני הכיוונים (planFields), באותו עיקרון: כל צד מול הערך הקודם שלו.
 // רץ מ-board-members.yml פעם בשעה. הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
 //   FIREBASE_SERVICE_ACCOUNT=... node scripts/status_sheet.mjs   (אחרי `cd agents && npm ci`)
 import { createHash } from "node:crypto";
@@ -13,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { isValidPhone, normalizePhone } from "../agents/lib/analysis.mjs";
 import { safeCell } from "./export_event_signups.mjs";
+import { CUTOFF } from "../agents/autosend.mjs";
 
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
 
@@ -48,6 +50,44 @@ export function plan(rows, players, last) {
     next[r.id] = { s, a: want };
   }
   return { app, sheet, next };
+}
+
+const isoDate = (v) => { const m = String(v || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : ""; };
+const cleanPhone = (v) => (/\d/.test(String(v || "")) ? normalizePhone(v) : "");
+const text = (v) => String(v || "").trim();
+// key: שדה בשורה; app: שדה באפליקציה; ok: אפשר לכתוב לאפליקציה. ערך ריק בגיליון לעולם לא מוחק מידע מהאפליקציה
+export const FIELDS = [
+  { key: "name", app: "name", read: text, show: text, ok: (v) => v.length >= 2 && v.length <= 60 },
+  { key: "parent", app: "parentName", read: text, show: text, ok: (v) => v.length >= 2 && v.length <= 60 },
+  { key: "phone", app: "parentPhone", read: cleanPhone, show: (v) => phone(v), ok: isValidPhone },
+  // תאריך שחוצה את CUTOFF היה מפעיל הודעת ברוך הבא לשחקן ותיק
+  { key: "join", app: "joinDate", read: isoDate, readApp: text, show: (v) => String(v || "").split("-").reverse().join("/"), ok: (v, a) => !!v && !(v >= CUTOFF && String(a || "") < CUTOFF) },
+];
+
+// rows: [{ id, fields: { name, ... }, cells: { name: "'tab'!B3", ... } }]; last: { id: { name: { s, a } } }
+// שני הצדדים השתנו: הגיליון קובע, כמו בסטטוס. ערך לא תקין בגיליון נשאר ממתין עד שיתוקן.
+export function planFields(rows, players, last) {
+  const patches = new Map(), sheet = [], next = {};
+  for (const r of rows) {
+    const p = players.get(r.id);
+    if (!p || !p.isActive || p.deleted) continue;
+    next[r.id] = {};
+    for (const f of FIELDS) {
+      if (!r.fields || !(f.key in r.fields)) continue;
+      const s = f.read(r.fields[f.key]), a = (f.readApp || f.read)(p[f.app]);
+      const was = last[r.id]?.[f.key];
+      let v = { s, a };
+      if (was && s !== was.s) {
+        if (s !== a && f.ok(s, a)) { patches.set(r.id, { ...patches.get(r.id), [f.app]: s }); v = { s, a: s }; }
+        else if (s !== a) v = was;
+      } else if (was && a !== was.a) {
+        sheet.push({ cell: r.cells[f.key], value: f.show(a) });
+        v = { s: a, a };
+      }
+      next[r.id][f.key] = v;
+    }
+  }
+  return { app: [...patches].map(([id, patch]) => ({ id, patch })), sheet, next };
 }
 
 // שחקן שיצא לארכיון: מרוקנים את השורה ומשאירים בהערה את שמו, כך שכל ספירות הגיליון יורדות לבד.
@@ -123,7 +163,10 @@ async function readRows(tok) {
         return;
       }
       const n = j + 3, f = forms.valueRanges[i].values?.[j + 1]?.[st];
-      rows.push({ id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
+      const fields = {}, cells = {};
+      for (const [key, h] of [["name", "שם"], ["parent", "הורה"], ["phone", grid[0][tel]], ["join", "הצטרף"]])
+        if (h && at(h) >= 0) { fields[key] = row[at(h)] || ""; cells[key] = `'${tab}'!${col(at(h))}${n}`; }
+      rows.push({ fields, cells, id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
         clear: note < 0 ? null : { range: `'${tab}'!A${n}:${col(grid[0].length - 1)}${n}`, name: row[at("שם")] || "" } });
     });
   });
@@ -138,7 +181,8 @@ async function main() {
   const ref = db.collection("system").doc("statusSheetSync");
   const [{ rows, tabs, drafts }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
   const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
-  if (app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length} app writes in one run`);
+  const fieldPlan = planFields(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().fields || {} : {});
+  if (app.length + fieldPlan.app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length + fieldPlan.app.length} app writes in one run`);
   const gone = archivedRows(rows, new Map(players.map((p) => [p.id, p])));
   if (gone.length > MAX_ARCHIVED) throw new Error(`refusing to clear ${gone.length} rows in one run`);
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -150,11 +194,14 @@ async function main() {
     });
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data });
   }
-  if (app.length) {
+  if (app.length || fieldPlan.app.length) {
     const b = db.batch();
     app.forEach(({ id, notPaying }) => b.update(db.collection("players").doc(id), { notPaying, notPayingSource: "manual" }));
+    fieldPlan.app.forEach(({ id, patch }) => b.update(db.collection("players").doc(id), patch));
     await b.commit();
   }
+  if (fieldPlan.sheet.length)
+    await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: fieldPlan.sheet.map(({ cell, value }) => ({ range: cell, values: [[safeCell(value)]] })) });
   // שחקנים חדשים מהאפליקציה: USER_ENTERED כדי שתאריך ההצטרפות יישמר כתאריך; safeCell מונע נוסחאות מהשמות
   const known = new Set(rows.map((r) => r.id));
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
@@ -195,8 +242,8 @@ async function main() {
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data: gone.map((g) => ({ range: g.noteCell, values: [[g.note]] })) });
   }
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
-  await ref.set({ players: next, updatedAt: new Date().toISOString() });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
+  await ref.set({ players: next, fields: fieldPlan.next, updatedAt: new Date().toISOString() });
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)

@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
+import { plan, planFields, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -77,4 +77,34 @@ test("שחקן בארכיון: השורה מתרוקנת והשם נשאר בה�
   const m = new Map([["a", { isActive: false, endDate: "2026-11-05" }], ["b", { isActive: true }]]);
   const r = archivedRows([{ id: "a", status: NO, noteCell: "'x'!B3", clear }, { id: "b", status: NO, clear }, { id: "c", status: NO, clear }, { id: "a", status: NO, clear: null }], m);
   assert.deepEqual(r, [{ id: "a", range: "'x'!A3:C3", noteCell: "'x'!B3", note: `יצא לארכיון 05/11/2026: שם (היה: ${NO})` }]);
+});
+
+const fp = (o) => new Map([["a", { isActive: true, name: "דנה", parentPhone: "972501234567", joinDate: "2026-09-01", ...o }]]);
+const row = (o) => ({ id: "a", fields: { name: "דנה", phone: "050-1234567", join: "01/09/2026", ...o }, cells: { name: "n", phone: "p", join: "j" } });
+const base = planFields([row()], fp(), {}).next;
+
+test("שדות: ריצה ראשונה רק מתעדת, בלי שינוי אין כתיבה", () => {
+  const r = planFields([row({ name: "דנה / רון" })], fp(), {});
+  assert.deepEqual([r.app, r.sheet], [[], []]);
+  assert.deepEqual([planFields([row()], fp(), base).app, planFields([row()], fp(), base).sheet], [[], []]);
+});
+
+test("שדות: שינוי בגיליון נכתב לאפליקציה, בפורמט שלה", () => {
+  assert.deepEqual(planFields([row({ phone: "052-7654321", name: "דנה כהן" })], fp(), base).app, [{ id: "a", patch: { name: "דנה כהן", parentPhone: "972527654321" } }]);
+});
+
+test("שדות: שינוי באפליקציה מעדכן את הגיליון", () => {
+  assert.deepEqual(planFields([row()], fp({ parentPhone: "972527654321" }), base).sheet, [{ cell: "p", value: "052-7654321" }]);
+});
+
+test("שדות: ריק או לא תקין בגיליון לא מוחק ונשאר ממתין", () => {
+  for (const phone of ["חסר", "123"]) {
+    const r = planFields([row({ phone })], fp(), base);
+    assert.deepEqual([r.app, r.next.a.phone], [[], base.a.phone]);
+  }
+});
+
+test("שדות: תאריך שחוצה את CUTOFF לא נכתב, כדי לא להפעיל ברוך הבא", () => {
+  assert.deepEqual(planFields([row({ join: "01/11/2026" })], fp(), base).app, []);
+  assert.deepEqual(planFields([row({ join: "02/09/2026" })], fp(), base).app, [{ id: "a", patch: { joinDate: "2026-09-02" } }]);
 });
