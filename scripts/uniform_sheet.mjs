@@ -7,6 +7,7 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import vm from "node:vm";
+import { fetchRetry, finish } from "./sheets_retry.mjs";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { israelTime, safeCell } from "./export_event_signups.mjs";
 
@@ -19,8 +20,7 @@ const ms = (a) => (a.at && typeof a.at.toMillis === "function" ? a.at.toMillis()
 
 // אותה התאמה כמו הדשבורד: קובץ match.js של הדף עצמו, לא עותק
 async function loadMatcher() {
-  const r = await fetch(MATCH_URL);
-  if (!r.ok) throw new Error(`match.js fetch failed (${r.status})`);
+  const r = await fetchRetry(MATCH_URL, {}, "match.js fetch");
   const ctx = {};
   vm.runInNewContext(await r.text(), { globalThis: ctx, window: ctx });
   return ctx.UniformMatch;
@@ -98,10 +98,9 @@ async function token() {
 }
 
 async function call(tok, path, body) {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
+  await fetchRetry(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
     method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`Sheets ${path} failed (${r.status})`);
+  }, `Sheets ${path}`);
 }
 
 async function main() {
@@ -123,7 +122,4 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
-  main().catch((err) => {
-    console.error("uniform sheet sync failed: " + (err.message || err));
-    process.exit(1);
-  });
+  main().catch((err) => finish("uniform sheet sync", err));

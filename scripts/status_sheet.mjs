@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { isValidPhone, normalizePhone } from "../agents/lib/analysis.mjs";
 import { safeCell } from "./export_event_signups.mjs";
+import { fetchRetry, finish } from "./sheets_retry.mjs";
 import { CUTOFF } from "../agents/autosend.mjs";
 
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
@@ -133,12 +134,11 @@ export function draftPlayer(d, groupId, today) {
 }
 
 async function sheetsFetch(tok, path, body) {
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
+  const r = await fetchRetry(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${path}`, {
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  if (!r.ok) throw new Error(`Sheets ${path.split("?")[0]} failed (${r.status})`);
+  }, `Sheets ${path.split("?")[0]}`);
   return r.json();
 }
 
@@ -247,4 +247,4 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
-  main().catch((e) => { console.error(e.message); process.exit(1); });
+  main().catch((e) => finish("status sheet sync", e));

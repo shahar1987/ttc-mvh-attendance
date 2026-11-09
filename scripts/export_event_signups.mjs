@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { fetchRetry, finish } from "./sheets_retry.mjs";
 import { firestore, loadAll } from "../agents/lib/firebase.mjs";
 import { enqueueOwner } from "../agents/lib/owner.mjs";
 
@@ -93,12 +94,11 @@ async function sheetsToken() {
 async function appendRows(token, sheetId, rows) {
   // RAW: הטלפון נשאר עם 0 בהתחלה והתאריך נשאר טקסט. A1 = הגיליון הראשון.
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-  const r = await fetch(url, {
+  await fetchRetry(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: rows }),
-  });
-  if (!r.ok) throw new Error(`Sheets append failed (${r.status})`);
+  }, "Sheets append");
 }
 
 async function main() {
@@ -129,7 +129,4 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
-  main().catch((err) => {
-    console.error("event signups export failed: " + (err.message || err));
-    process.exit(1);
-  });
+  main().catch((err) => finish("event signups export", err));
