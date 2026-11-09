@@ -118,6 +118,14 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.deepEqual(sent, []);
   await assert.rejects(solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T16:10:00Z")));
   assert.deepEqual(sent, ["solar-error"]);
+
+  // 500 רק לאסימון שלנו, בעוד אסימון מומצא נדחה ב-400: השרת תקין, האסימון שבור, מבקשים לחבר מחדש מיד
+  const broken = fakeStore(base);
+  globalThis.fetch = api([], (b) => (b.refresh_token === "x" ? json({ error: "invalid_request" }, 400) : json({}, 500)));
+  const texts = [];
+  await assert.rejects(solarRun(broken, async (k, t) => texts.push(t), new Date("2026-11-09T05:10:00Z")));
+  assert.match(texts[0], /חיבור סולארי/);
+  assert.match(broken.docs["agentReports/solar"].reconnectNote, /האסימון השמור נדחה/);
 }
 // אסימון שנדחה: בקשה לחבר מחדש, והשגיאה נרשמת
 {

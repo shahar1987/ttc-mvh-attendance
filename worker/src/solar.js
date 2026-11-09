@@ -96,21 +96,26 @@ export function weeklyText(a, alerts, grantDays) {
 }
 
 async function refresh(s, store) {
-  const ask = () => fetch(`${API}/oauth2/token`, {
+  const ask = (refresh_token) => fetch(`${API}/oauth2/token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ grant_type: "refresh_token", refresh_token: s.refreshToken, client_id: s.clientId, client_secret: s.clientSecret }),
+    body: JSON.stringify({ grant_type: "refresh_token", refresh_token, client_id: s.clientId, client_secret: s.clientSecret }),
   });
-  let r = await ask();
+  let r = await ask(s.refreshToken);
   // תקלת שרת רגעית אצל SolarEdge: ניסיון נוסף אחד לפני שמוותרים על הריצה
   if (r.status >= 500) {
     await new Promise((ok) => setTimeout(ok, 3000));
-    r = await ask();
+    r = await ask(s.refreshToken);
   }
   const j = await r.json().catch(() => ({}));
   if (!j.access_token) {
     const e = new Error(`SolarEdge token ${r.status}: ${j.error_description || j.error || j.title || ""}`);
     e.reconnect = r.status >= 400 && r.status < 500 && r.status !== 429;
+    // 500 רק לאסימון שלנו (8.11.2026): אם השרת עונה כרגיל לאסימון מומצא, האסימון השמור הוא הבעיה, וצריך לחבר מחדש
+    if (r.status >= 500) {
+      const probe = await ask("x").catch(() => null);
+      if (probe && probe.status >= 400 && probe.status < 500 && probe.status !== 429) { e.reconnect = true; e.message += " (השרת תקין, האסימון השמור נדחה)"; }
+    }
     throw e;
   }
   if (j.refresh_token) await store.merge(DOC, { refreshToken: j.refresh_token });
