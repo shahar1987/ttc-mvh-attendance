@@ -23,7 +23,7 @@ jobs:
           const db = firestore();
           const s = (await db.doc("agentReports/solar").get()).data() || {};
           const days = Object.keys(s.days || {}).sort();
-          const f = ["lastOkAt","lastError","lastFailDay","lastRunDay","todayHour","reconnectNote","todayError","todayManualAt","todayAt","connectedAt","backfilled","backfillIdx","lastWarnDay"];
+          const f = ["today","todayErrorAt","openAlerts","lastOkAt","lastError","lastFailDay","lastRunDay","todayHour","reconnectNote","todayError","todayManualAt","todayAt","connectedAt","backfilled","backfillIdx","lastWarnDay"];
           console.log(JSON.stringify({ ...Object.fromEntries(f.map((k) => [k, s[k]])), hasRefresh: !!s.refreshToken, refreshLen: (s.refreshToken || "").length, updated: s.updatedAt, lastDays: days.slice(-3), keys: Object.keys(s).sort() }, null, 1));
           const scrub = (t) => [s.clientId, s.clientSecret, s.refreshToken].filter(Boolean).reduce((a, x) => a.split(x).join("***"), t).slice(0, 300);
           const U = "https://monitoringapi.solaredge.com/v2/oauth2/token";
