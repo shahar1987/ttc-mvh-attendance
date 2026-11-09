@@ -1,0 +1,40 @@
+name: Diag solar
+on:
+  push:
+    branches: [diag-solar]
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install firebase-admin@12.7.0 --no-audit --no-fund
+        working-directory: agents
+      - env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          cat > agents/diag.mjs <<'JS'
+          import { firestore } from "./lib/firebase.mjs";
+          const db = firestore();
+          const s = (await db.doc("agentReports/solar").get()).data() || {};
+          const days = Object.keys(s.days || {}).sort();
+          const f = ["lastOkAt","lastError","lastFailDay","lastRunDay","todayHour","reconnectNote","todayError","todayManualAt","todayAt","connectedAt","backfilled","backfillIdx","lastWarnDay"];
+          console.log(JSON.stringify({ ...Object.fromEntries(f.map((k) => [k, s[k]])), hasRefresh: !!s.refreshToken, refreshLen: (s.refreshToken || "").length, updated: s.updatedAt, lastDays: days.slice(-3), keys: Object.keys(s).sort() }, null, 1));
+          const scrub = (t) => [s.clientId, s.clientSecret, s.refreshToken].filter(Boolean).reduce((a, x) => a.split(x).join("***"), t).slice(0, 300);
+          const U = "https://monitoringapi.solaredge.com/v2/oauth2/token";
+          const probe = async (name, body, ct = "application/json") => {
+            const r = await fetch(U, { method: "POST", headers: { "content-type": ct }, body: ct.includes("json") ? JSON.stringify(body) : new URLSearchParams(body) });
+            console.log(name, r.status, scrub(await r.text()));
+          };
+          // לא שולחים את ה-refresh token האמיתי: בדיקה כזו הייתה עלולה להחליף אותו
+          await probe("bogus-all-json", { grant_type: "refresh_token", refresh_token: "x", client_id: "x", client_secret: "x" });
+          await probe("real-client-bogus-token-json", { grant_type: "refresh_token", refresh_token: "x", client_id: s.clientId, client_secret: s.clientSecret });
+          await probe("real-client-bogus-token-form", { grant_type: "refresh_token", refresh_token: "x", client_id: s.clientId, client_secret: s.clientSecret }, "application/x-www-form-urlencoded");
+          process.exit(0);
+          JS
+          node agents/diag.mjs
