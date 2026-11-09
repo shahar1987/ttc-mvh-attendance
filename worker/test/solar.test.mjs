@@ -102,6 +102,23 @@ const at = new Date("2026-11-08T05:10:00Z");
   await solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T05:10:00Z"));
   assert.deepEqual(sent, []);
 }
+// תקלת שרת בכניסה: ניסיון נוסף מציל את הריצה; אם היא נמשכת, הודעה אחת רק בריצה האחרונה של היום
+{
+  const base = { refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", backfilled: true, connectedAt: "2026-11-01T00:00:00Z" };
+  let calls = 0;
+  const good = api([], () => json({ access_token: "a", refresh_token: "r2" }));
+  globalThis.fetch = async (u, i) => (String(u).includes("/oauth2/token") && ++calls === 1 ? json({}, 500) : good(u, i));
+  assert.match(await solarRun(fakeStore(base), async () => {}, at), /ok/);
+  assert.equal(calls, 2);
+
+  const store = fakeStore(base);
+  globalThis.fetch = api([], () => json({}, 500));
+  const sent = [];
+  await assert.rejects(solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T05:10:00Z")));
+  assert.deepEqual(sent, []);
+  await assert.rejects(solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T16:10:00Z")));
+  assert.deepEqual(sent, ["solar-error"]);
+}
 // אסימון שנדחה: בקשה לחבר מחדש, והשגיאה נרשמת
 {
   const store = fakeStore({ refreshToken: "r", clientId: "c", clientSecret: "s", siteId: "9", backfilled: true, connectedAt: "2026-11-01T00:00:00Z" });
@@ -186,7 +203,7 @@ const at = new Date("2026-11-08T05:10:00Z");
   const noon = new Date("2026-11-09T05:10:00Z");
   await assert.rejects(solarRun(store, async (k) => sent.push(k), noon));
   await assert.rejects(solarRun(store, async (k) => sent.push(k), new Date("2026-11-09T06:10:00Z")));
-  assert.deepEqual(sent, ["solar-error"]);
+  assert.deepEqual(sent, [], "תקלה זמנית לא מציקה באמצע היום");
   fail = false;
   assert.match(await solarRun(store, async () => {}, new Date("2026-11-09T07:10:00Z")), /ok/);
   assert.equal(store.docs["agentReports/solar"].lastError, "");

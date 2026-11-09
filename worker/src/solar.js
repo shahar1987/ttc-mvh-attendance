@@ -96,11 +96,17 @@ export function weeklyText(a, alerts, grantDays) {
 }
 
 async function refresh(s, store) {
-  const r = await fetch(`${API}/oauth2/token`, {
+  const ask = () => fetch(`${API}/oauth2/token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ grant_type: "refresh_token", refresh_token: s.refreshToken, client_id: s.clientId, client_secret: s.clientSecret }),
   });
+  let r = await ask();
+  // תקלת שרת רגעית אצל SolarEdge: ניסיון נוסף אחד לפני שמוותרים על הריצה
+  if (r.status >= 500) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    r = await ask();
+  }
   const j = await r.json().catch(() => ({}));
   if (!j.access_token) {
     const e = new Error(`SolarEdge token ${r.status}: ${j.error_description || j.error || j.title || ""}`);
@@ -252,8 +258,9 @@ export async function solarRun(store, tell, now = new Date(), link = "") {
   } catch (e) {
     // תקלה זמנית נשארת ב-lastError, והריצה של השעה הבאה מנסה שוב. על אותה תקלה מודיעים פעם ביום
     await store.merge(DOC, { lastError: e.reconnect ? "" : String(e.message).slice(0, 300), lastFailDay: today, reconnectNote: e.reconnect ? String(e.message).slice(0, 300) : "" });
-    if (s.lastFailDay === today) throw e;
-    const text = e.reconnect ? `☀️ החיבור ל-SolarEdge נפל, והגג לא נבדק. צריך לכתוב לשולה "חיבור סולארי" ולאשר שוב.` : `☀️ בדיקת הגג נכשלה היום: ${String(e.message).slice(0, 200)}`;
+    // תקלה זמנית: הודעה רק אם גם הריצה האחרונה של היום (16:10 UTC) נכשלה
+    if (e.reconnect ? s.lastFailDay === today : quiet || hour < "16") throw e;
+    const text = e.reconnect ? `☀️ החיבור ל-SolarEdge נפל, והגג לא נבדק. צריך לכתוב לשולה "חיבור סולארי" ולאשר שוב.` : `☀️ בדיקת הגג לא הצליחה כל היום: ${String(e.message).slice(0, 200)}`;
     await tell("solar-error", text, text);
     throw e;
   }
