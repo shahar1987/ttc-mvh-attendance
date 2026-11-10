@@ -343,6 +343,8 @@ async function hasSession(req, store) {
   return (((await store.get(AUTH)) || {}).sessions || []).some((x) => x.hash === hash && x.exp > now);
 }
 async function login(req, store) {
+  // כבר מחובר בדפדפן הזה: קישור שנוצל (חזרה אחורה, פתיחה שנייה) מוביל לדשבורד ולא ל"כבר לא פעיל" (6.11, שלושה קישורים ברצף)
+  if (await hasSession(req, store)) return secure("", 303, { location: "/solar/dashboard" });
   if (req.method === "GET") {
     const k = new URL(req.url).searchParams.get("k") || "";
     if (!(await checkKey(store, "solar-login", k))) return shell(`<h2>הקישור כבר לא פעיל</h2><p>כתוב לשולה "הדשבורד של הגג" לקישור חדש.</p>`, 403);
