@@ -91,16 +91,21 @@ jobs:
 
       - name: Decide which agents run
         id: pick
+        # inputs go through env, never straight into the shell line
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          POLL_RUN: ${{ steps.poll.outputs.run }}
+          INPUT_AGENT: ${{ inputs.agent }}
         run: |
-          case "${{ github.event.schedule }}" in
+          case "$SCHEDULE" in
             "0 5 * * *")    RUN=scan ;;
             "30 0 * * *")   RUN=bugcheck,insights ;;
             "0 6 * * 0")    RUN=ideas ;;  # הקמפיין השבועי עבר למשימה של קלוד (ראשון 08:30, /insights/campaign) — content רק בהפעלה ידנית
             "0 6 * * 5")    RUN=weekly ;;  # שישי 08:00 בחורף (09:00 בשעון קיץ)
             "17 * * * *")   RUN=supervisor ;;
             "41 17-20 * * 0-5") RUN=autosend ;;
-            "*/10 * * * *") RUN="${{ steps.poll.outputs.run }}" ;;
-            *)              RUN="${{ inputs.agent }}" ;;
+            "*/10 * * * *") RUN="$POLL_RUN" ;;
+            *)              RUN="$INPUT_AGENT" ;;
           esac
           echo "run=,$RUN," >> "$GITHUB_OUTPUT"
           echo "running: ${RUN:-nothing}"
