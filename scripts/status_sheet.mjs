@@ -1,6 +1,7 @@
 // סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
-// ילד באימון ניסיון שמסומן ✓ בגיליון יוצא מניסיון (players.trial: false).
+// ילד באימון ניסיון שמסומן ✓ בגיליון (או ◐ שנכתב עכשיו) יוצא מניסיון (players.trial: false).
+// הכלל: מי שבאימון ניסיון הוא "✗ לא רשום", כל השאר רשומים (✓ או ◐). הסנכרון מיישר את עמודת הסטטוס בלבד.
 // מי שבאימון ניסיון באפליקציה מסומן "באימון ניסיון" בעמודת ההערה, והסימון יורד לבד כשהוא עובר לקבוצה (trialNotes).
 // כל שינוי שהגיע מהגיליון נרשם ב-system/sheetChanges (מזהים וסטטוסים בלבד), והדשבורד של המנהל מציג אותו.
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
@@ -40,10 +41,12 @@ export function plan(rows, players, last) {
   for (const r of rows) {
     const p = players.get(r.id);
     if (!p || !p.isActive || p.deleted || !r.status) continue;
-    // ילד בניסיון שסומן ✓ בגיליון עובר לקבוצה (autosend שולח לו ברוך הבא). לא תלוי בריצה הקודמת, כדי שסימון שכבר סונכרן לא יישאר תקוע
-    if (p.trial && r.status.startsWith("✓") && !r.mirrored) trial.push(r.id);
-    const a = p.notPaying === true;
     const was = last[r.id];
+    // ילד בניסיון שסומן ✓ בגיליון עובר לקבוצה (autosend שולח לו ברוך הבא). לא תלוי בריצה הקודמת, כדי שסימון שכבר סונכרן לא יישאר תקוע.
+    // גם ◐ שמישהו כתב עכשיו בגיליון: רשום = לא בניסיון
+    const out = p.trial && !r.mirrored && (r.status.startsWith("✓") || (r.status === UNPAID && was && was.s !== UNPAID));
+    if (out) trial.push(r.id);
+    const a = p.notPaying === true;
     if (!was) { next[r.id] = { s: r.status, a }; continue; } // פעם ראשונה: רק מתעדים, בלי לגעת באף צד
     let s = r.status, want = a;
     if (s !== was.s) {
@@ -53,6 +56,13 @@ export function plan(rows, players, last) {
     } else if (a !== was.a && !neutral(s) && !r.mirrored && s.startsWith("✓") === a) {
       s = a ? UNPAID : PAID;
       sheet.push({ id: r.id, status: s });
+    }
+    // הכלל של שלום: מי שבאימון ניסיון "לא רשום", כל השאר רשומים. רק כשהאפליקציה אומרת שלא שילם, אחרת זה פער שמחכה לו
+    const fix = r.mirrored || neutral(s) || !want ? null : p.trial && !out ? (s === UNPAID ? NOT_REGISTERED : null) : s === NOT_REGISTERED ? UNPAID : null;
+    if (fix) {
+      s = fix;
+      const w = sheet.find((x) => x.id === r.id);
+      if (w) w.status = fix; else sheet.push({ id: r.id, status: fix, keepNote: true });
     }
     next[r.id] = { s, a: want };
   }
@@ -150,7 +160,7 @@ export function newRow(p, group, headers, index) {
   const cell = {
     "#": index, "שם": String(p.name || "").trim(), "הורה": String(p.parentName || "").trim(), "טלפון": phone(p.parentPhone), "טלפון הורה": phone(p.parentPhone),
     "הצטרף": String(p.joinDate || "").split("-").reverse().join("/"), "אימון ראשון": "",
-    "סטטוס רישום": off ? OFF : p.notPaying === false ? PAID : NOT_REGISTERED, "הערה": off ? "" : "נוסף מהאפליקציה", "מזהה": p.id,
+    "סטטוס רישום": off ? OFF : p.trial ? NOT_REGISTERED : p.notPaying === false ? PAID : UNPAID, "הערה": off ? "" : "נוסף מהאפליקציה", "מזהה": p.id,
   };
   return headers.map((h) => safeCell(cell[h] ?? ""));
 }
@@ -222,9 +232,9 @@ async function main() {
   const byId = new Map(rows.map((r) => [r.id, r]));
   if (sheet.length) {
     const today = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit" }).format(new Date());
-    const data = sheet.flatMap(({ id, status }) => {
+    const data = sheet.flatMap(({ id, status, keepNote }) => {
       const r = byId.get(id);
-      return [{ range: r.statusCell, values: [[status]] }, ...(r.noteCell ? [{ range: r.noteCell, values: [[`עודכן מהאפליקציה ${today}`]] }] : [])];
+      return [{ range: r.statusCell, values: [[status]] }, ...(r.noteCell && !keepNote ? [{ range: r.noteCell, values: [[`עודכן מהאפליקציה ${today}`]] }] : [])];
     });
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data });
   }
@@ -264,7 +274,7 @@ async function main() {
     const cell = (c, v) => ({ range: `'${d.tab}'!${c}${d.row}`, values: [[v]] });
     links.push(cell(d.cols.id, pid), cell(d.cols.join, today.split("-").reverse().join("/")), cell(d.cols.hash, tabs[d.tab].count + 1));
     tabs[d.tab].count++;
-    if (!d.status) links.push(cell(d.cols.st, NOT_REGISTERED), cell(d.cols.note, "נוסף מהגיליון"));
+    if (!d.status) links.push(cell(d.cols.st, UNPAID), cell(d.cols.note, "נוסף מהגיליון"));
   }
   if (links.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: links });
   const fresh = players.filter((p) => p.isActive !== false && !p.deleted && p.name && !known.has(p.id));
