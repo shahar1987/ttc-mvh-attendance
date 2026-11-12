@@ -237,6 +237,7 @@ async function main() {
       return [{ range: r.statusCell, values: [[status]] }, ...(r.noteCell && !keepNote ? [{ range: r.noteCell, values: [[`עודכן מהאפליקציה ${today}`]] }] : [])];
     });
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data });
+    sheet.forEach(({ id, status }) => { byId.get(id).status = status; }); // הספירות לדשבורד בסוף לפי מה שנכתב עכשיו, לא לפי הקריאה
   }
   if (app.length || fieldPlan.app.length || trial.length) {
     const b = db.batch();
