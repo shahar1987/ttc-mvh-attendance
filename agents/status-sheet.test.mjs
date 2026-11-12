@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plan, planFields, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
+import { changeLog, plan, planFields, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -121,4 +121,22 @@ test("ניסיון נשאר כשאין ✓, כשהשורה נוסחה, או כש
   for (const status of [NO, UNPAID, OFF, CHECK]) assert.deepEqual(plan([{ id: "a", status }], p({ trial: true }), { a: { s: status, a: true } }).trial, []);
   assert.deepEqual(plan([{ id: "a", status: PAID, mirrored: true }], p({ trial: true }), { a: { s: PAID, a: true } }).trial, []);
   assert.deepEqual(plan([{ id: "a", status: PAID }], p({}), { a: { s: NO, a: true } }).trial, []);
+});
+
+test("שינוי סטטוס בגיליון נרשם ליומן, גם כשאין מה לעדכן באפליקציה", () => {
+  assert.deepEqual(plan([{ id: "a", status: UNPAID }], players({ a: true }), { a: { s: NO, a: true } }).changes, [{ id: "a", status: UNPAID }]);
+  assert.deepEqual(plan([{ id: "a", status: NO }], players({ a: true }), { a: { s: NO, a: true } }).changes, []);
+  assert.deepEqual(plan([{ id: "a", status: PAID }], players({ a: true }), {}).changes, []);
+  assert.deepEqual(plan([{ id: "a", status: UNPAID }], players({ a: false }), { a: { s: UNPAID, a: true } }).changes, []);
+});
+
+test("יומן השינויים: מוסיף, מוחק ישנים מ-14 יום, ושומר עד 80", () => {
+  const now = new Date("2026-11-12T08:00:00Z");
+  const old = [{ at: "2026-10-01T00:00:00.000Z", id: "x", kind: "trial" }, { at: "2026-11-10T00:00:00.000Z", id: "y", kind: "trial" }];
+  const log = changeLog(old, { changes: [{ id: "a", status: PAID }], trial: ["a"], fields: [{ id: "b", patch: { name: "n", parentPhone: "p" } }], created: ["c"] }, now);
+  assert.deepEqual(log.map((x) => [x.id, x.kind]), [["y", "trial"], ["a", "status"], ["a", "trial"], ["b", "fields"], ["c", "created"]]);
+  assert.deepEqual(log[3].fields, ["name", "parentPhone"]);
+  assert.ok(!JSON.stringify(log).includes('"n"'));
+  assert.equal(changeLog(Array.from({ length: 100 }, () => ({ at: now.toISOString(), id: "z", kind: "trial" })), {}, now).length, 80);
+  assert.deepEqual(changeLog(undefined, {}, now), []);
 });

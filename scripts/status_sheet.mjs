@@ -1,6 +1,7 @@
 // סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
 // ילד באימון ניסיון שמסומן ✓ בגיליון יוצא מניסיון (players.trial: false).
+// כל שינוי שהגיע מהגיליון נרשם ב-system/sheetChanges (מזהים וסטטוסים בלבד), והדשבורד של המנהל מציג אותו.
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
 // (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
 // שחקן פעיל שנוסף באפליקציה ועוד אין לו שורה נכנס ללשונית הקבוצה שלו (הגיליון הוא הבקרה של המועדון).
@@ -34,7 +35,7 @@ const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה 
 
 // rows: [{ id, status, mirrored }]; players: Map(id → player); last: { id: { s, a } }
 export function plan(rows, players, last) {
-  const app = [], sheet = [], next = {}, trial = [];
+  const app = [], sheet = [], next = {}, trial = [], changes = [];
   for (const r of rows) {
     const p = players.get(r.id);
     if (!p || !p.isActive || p.deleted || !r.status) continue;
@@ -45,6 +46,7 @@ export function plan(rows, players, last) {
     if (!was) { next[r.id] = { s: r.status, a }; continue; } // פעם ראשונה: רק מתעדים, בלי לגעת באף צד
     let s = r.status, want = a;
     if (s !== was.s) {
+      changes.push({ id: r.id, status: s });
       if (!neutral(s)) want = !s.startsWith("✓");
       if (want !== a) app.push({ id: r.id, notPaying: want });
     } else if (a !== was.a && !neutral(s) && !r.mirrored && s.startsWith("✓") === a) {
@@ -53,7 +55,20 @@ export function plan(rows, players, last) {
     }
     next[r.id] = { s, a: want };
   }
-  return { app, sheet, next, trial };
+  return { app, sheet, next, trial, changes };
+}
+
+const LOG_DAYS = 14, LOG_MAX = 80;
+// יומן השינויים שהגיעו מהגיליון. old: הרשומות הקיימות; נשמרים 14 יום ועד 80 רשומות
+export function changeLog(old, { changes = [], trial = [], fields = [], created = [] }, now) {
+  const at = now.toISOString(), since = new Date(now - LOG_DAYS * 864e5).toISOString();
+  const add = [
+    ...changes.map(({ id, status }) => ({ at, id, kind: "status", status })),
+    ...trial.map((id) => ({ at, id, kind: "trial" })),
+    ...fields.map(({ id, patch }) => ({ at, id, kind: "fields", fields: Object.keys(patch) })),
+    ...created.map((id) => ({ at, id, kind: "created" })),
+  ];
+  return [...(old || []).filter((x) => x && x.at >= since), ...add].slice(-LOG_MAX);
 }
 
 const isoDate = (v) => { const m = String(v || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : ""; };
@@ -183,7 +198,7 @@ async function main() {
   const db = firestore();
   const ref = db.collection("system").doc("statusSheetSync");
   const [{ rows, tabs, drafts }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
-  const { app, sheet, next, trial } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
+  const { app, sheet, next, trial, changes } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
   const fieldPlan = planFields(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().fields || {} : {});
   if (app.length + fieldPlan.app.length + trial.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length + fieldPlan.app.length + trial.length} app writes in one run`);
   const gone = archivedRows(rows, new Map(players.map((p) => [p.id, p])));
@@ -214,6 +229,7 @@ async function main() {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
   const links = [];
   let created = 0, waiting = 0;
+  const createdIds = [];
   if (drafts.length > MAX_NEW_ROWS) throw new Error(`refusing ${drafts.length} sheet rows in one run`);
   for (const d of drafts) {
     const gid = tabGroup.get(d.tab);
@@ -221,7 +237,7 @@ async function main() {
     if (!doc) { waiting++; continue; }
     const same = players.find((p) => p.groupId === gid && !p.deleted && p.isActive !== false && (p.name || "").trim() === doc.name);
     const { id, ...fields } = doc;
-    if (!same && !players.some((p) => p.id === id)) { await db.collection("players").doc(id).set(fields); created++; }
+    if (!same && !players.some((p) => p.id === id)) { await db.collection("players").doc(id).set(fields); created++; createdIds.push(id); }
     const pid = same ? same.id : id;
     known.add(pid);
     const cell = (c, v) => ({ range: `'${d.tab}'!${c}${d.row}`, values: [[v]] });
@@ -247,6 +263,15 @@ async function main() {
   }
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, fields: fieldPlan.next, updatedAt: new Date().toISOString() });
+  // לדשבורד של המנהל: מה השתנה מהגיליון, ומי בגיליון עדיין לא רשום או לא שילם
+  const live = new Map(players.filter((p) => p.isActive !== false && !p.deleted).map((p) => [p.id, p]));
+  const withStatus = (st) => rows.filter((r) => r.status === st && live.has(r.id)).map((r) => r.id);
+  const logRef = db.collection("system").doc("sheetChanges");
+  const logSnap = await logRef.get();
+  await logRef.set({
+    items: changeLog(logSnap.exists ? logSnap.data().items : [], { changes, trial, fields: fieldPlan.app, created: createdIds }, new Date()),
+    notRegistered: withStatus(NOT_REGISTERED), unpaid: withStatus(UNPAID), check: withStatus(CHECK), updatedAt: new Date().toISOString(),
+  });
   console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${trial.length} out of trial, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 

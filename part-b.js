@@ -4553,6 +4553,81 @@ function useCoachFieldsHealer(on, groups, users) {
     batch.commit().catch((err) => console.warn("coach fields sync failed:", err));
   }, [on, groups, users]);
 }
+// 12.11 "בשבילך": רק למנהל, בראש הדשבורד. מה השתנה מטופס הבקרה (system/sheetChanges, נכתב ב-scripts/status_sheet.mjs),
+// מי הצטרף השבוע, מי באימון ניסיון, ומי בטופס עדיין לא רשום או לא שילם.
+const SHEET_FIELD_HE = { name: "שם", parentName: "הורה", parentPhone: "טלפון", joinDate: "תאריך הצטרפות" };
+function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
+  let [doc, setDoc] = b(null);
+  j(() => ae(S(P, "system", "sheetChanges"), (snap) => setDoc(snap.exists() ? snap.data() : null), () => setDoc(null)), []);
+  let byId = new Map(players.map((p) => [p.id, p])),
+    groupName = new Map(groups.map((g) => [g.id, g.name])),
+    live = (p) => p && p.isActive !== !1 && !p.deleted,
+    weekAgo = new Date(Date.now() - 7 * 864e5),
+    fromDay = weekAgo.toLocaleDateString("en-CA"),
+    when = (iso) => new Date(iso).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }),
+    what = (x) =>
+      x.kind === "status" ? x.status
+      : x.kind === "trial" ? "עבר מניסיון לקבוצה"
+      : x.kind === "created" ? "נוסף מהטופס"
+      : "עודכן: " + (x.fields || []).map((f) => SHEET_FIELD_HE[f] || f).join(", "),
+    changes = ((doc && doc.items) || []).filter((x) => x.at >= weekAgo.toISOString() && byId.has(x.id)).reverse(),
+    joined = players.filter((p) => live(p) && String(p.joinDate || "") >= fromDay).sort((x, y) => String(y.joinDate).localeCompare(String(x.joinDate))),
+    trials = players.filter((p) => live(p) && p.trial),
+    pick = (ids) => (ids || []).map((id) => byId.get(id)).filter(live),
+    notReg = pick(doc && doc.notRegistered),
+    unpaid = pick(doc && doc.unpaid),
+    check = pick(doc && doc.check),
+    name = (p, extra) =>
+      e.createElement(
+        "button",
+        { key: p.id + (extra || ""), type: "button", onClick: () => onEditPlayer && onEditPlayer(p), className: "w-full flex items-baseline justify-between gap-3 py-1.5 text-right" },
+        e.createElement("span", { className: "text-sm text-slate-900 truncate" }, p.name, p.trial ? e.createElement("span", { className: "text-xs text-amber-700 mr-1.5" }, "ניסיון") : null),
+        e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, extra || groupName.get(p.groupId) || ""),
+      ),
+    section = (title, n, rows, open) =>
+      n
+        ? e.createElement(
+            open ? "div" : "details", // "שינויים מהטופס" תמיד פתוח; השאר נפתחים בלחיצה
+            { key: title, className: "border-t border-slate-100 first:border-t-0" },
+            e.createElement(
+              open ? "div" : "summary",
+              { className: "flex items-center justify-between py-2.5 cursor-pointer select-none" },
+              e.createElement("span", { className: "text-sm font-semibold text-slate-900" }, title),
+              e.createElement("span", { className: "text-sm font-bold text-blue-700 tabular-nums" }, n),
+            ),
+            e.createElement("div", { className: "pb-2" }, rows),
+          )
+        : null,
+    parts = [
+      section("שינויים מהטופס", changes.length, changes.map((x, k) => {
+        let p = byId.get(x.id);
+        return e.createElement(
+          "button",
+          { key: k, type: "button", onClick: () => onEditPlayer && onEditPlayer(p), className: "w-full py-1.5 text-right" },
+          e.createElement("div", { className: "flex items-baseline justify-between gap-3" },
+            e.createElement("span", { className: "text-sm text-slate-900 truncate" }, p.name),
+            e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, when(x.at)),
+          ),
+          e.createElement("div", { className: "text-xs text-slate-600" }, what(x), " · ", groupName.get(p.groupId) || ""),
+        );
+      }), !0),
+      section("הצטרפו השבוע", joined.length, joined.map((p) => name(p))),
+      section("באימון ניסיון", trials.length, trials.map((p) => name(p))),
+      section("לא רשומים", notReg.length, notReg.map((p) => name(p))),
+      section("רשומים, לא שילמו", unpaid.length, unpaid.map((p) => name(p))),
+      section("לבדיקה", check.length, check.map((p) => name(p))),
+    ].filter(Boolean);
+  if (!parts.length) return null;
+  return e.createElement(
+    "div",
+    { dir: "rtl", className: "rounded-2xl bg-white ios-card px-4 py-1 mb-3" },
+    parts,
+    onOpenPayments && (notReg.length || unpaid.length)
+      ? e.createElement("button", { type: "button", onClick: onOpenPayments, className: "w-full border-t border-slate-100 py-2.5 text-sm font-semibold text-blue-700" }, "מי לא משלם")
+      : null,
+  );
+}
+
 function Q() {
   let { authUser: t, profile: s, profileError: a } = Ye(),
     staffMode = !!s && !isMemberRole(s),
@@ -4857,6 +4932,9 @@ function Q() {
       e.createElement(
         "div",
         { ref: screenRef, className: "desk-screen" },
+      r && canDo(s, "payments") &&
+        m === "dashboard" &&
+        e.createElement(OwnerBoard, { players: c, groups: i, onEditPlayer: openEditPlayer, onOpenPayments: () => goToScreen("payments") }),
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
