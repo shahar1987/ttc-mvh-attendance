@@ -108,3 +108,17 @@ test("שדות: תאריך שחוצה את CUTOFF לא נכתב, כדי לא ל�
   assert.deepEqual(planFields([row({ join: "01/11/2026" })], fp(), base).app, []);
   assert.deepEqual(planFields([row({ join: "02/09/2026" })], fp(), base).app, [{ id: "a", patch: { joinDate: "2026-09-02" } }]);
 });
+
+test("ילד בניסיון שמסומן ✓ בגיליון יוצא מניסיון, גם אם הסימון כבר סונכרן", () => {
+  const p = (o) => new Map([["a", { isActive: true, trial: true, ...o }]]);
+  assert.deepEqual(plan([{ id: "a", status: PAID }], p({ notPaying: true }), { a: { s: NO, a: true } }).trial, ["a"]);
+  assert.deepEqual(plan([{ id: "a", status: PAID }], p({ notPaying: false }), { a: { s: PAID, a: false } }).trial, ["a"]);
+  assert.deepEqual(plan([{ id: "a", status: PAID }], p({ notPaying: false }), {}).trial, ["a"]);
+});
+
+test("ניסיון נשאר כשאין ✓, כשהשורה נוסחה, או כשהשחקן לא בניסיון", () => {
+  const p = (o) => new Map([["a", { isActive: true, notPaying: true, ...o }]]);
+  for (const status of [NO, UNPAID, OFF, CHECK]) assert.deepEqual(plan([{ id: "a", status }], p({ trial: true }), { a: { s: status, a: true } }).trial, []);
+  assert.deepEqual(plan([{ id: "a", status: PAID, mirrored: true }], p({ trial: true }), { a: { s: PAID, a: true } }).trial, []);
+  assert.deepEqual(plan([{ id: "a", status: PAID }], p({}), { a: { s: NO, a: true } }).trial, []);
+});

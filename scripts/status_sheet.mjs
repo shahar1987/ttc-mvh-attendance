@@ -1,5 +1,6 @@
 // סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
+// ילד באימון ניסיון שמסומן ✓ בגיליון יוצא מניסיון (players.trial: false).
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
 // (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
 // שחקן פעיל שנוסף באפליקציה ועוד אין לו שורה נכנס ללשונית הקבוצה שלו (הגיליון הוא הבקרה של המועדון).
@@ -33,10 +34,12 @@ const MAX_APP_WRITES = 20; // יותר מזה בריצה אחת זה כנראה 
 
 // rows: [{ id, status, mirrored }]; players: Map(id → player); last: { id: { s, a } }
 export function plan(rows, players, last) {
-  const app = [], sheet = [], next = {};
+  const app = [], sheet = [], next = {}, trial = [];
   for (const r of rows) {
     const p = players.get(r.id);
     if (!p || !p.isActive || p.deleted || !r.status) continue;
+    // ילד בניסיון שסומן ✓ בגיליון עובר לקבוצה (autosend שולח לו ברוך הבא). לא תלוי בריצה הקודמת, כדי שסימון שכבר סונכרן לא יישאר תקוע
+    if (p.trial && r.status.startsWith("✓") && !r.mirrored) trial.push(r.id);
     const a = p.notPaying === true;
     const was = last[r.id];
     if (!was) { next[r.id] = { s: r.status, a }; continue; } // פעם ראשונה: רק מתעדים, בלי לגעת באף צד
@@ -50,7 +53,7 @@ export function plan(rows, players, last) {
     }
     next[r.id] = { s, a: want };
   }
-  return { app, sheet, next };
+  return { app, sheet, next, trial };
 }
 
 const isoDate = (v) => { const m = String(v || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : ""; };
@@ -180,9 +183,9 @@ async function main() {
   const db = firestore();
   const ref = db.collection("system").doc("statusSheetSync");
   const [{ rows, tabs, drafts }, players, groups, snap] = await Promise.all([readRows(tok), loadAll(db, "players"), loadAll(db, "groups"), ref.get()]);
-  const { app, sheet, next } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
+  const { app, sheet, next, trial } = plan(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().players || {} : {});
   const fieldPlan = planFields(rows, new Map(players.map((p) => [p.id, p])), snap.exists ? snap.data().fields || {} : {});
-  if (app.length + fieldPlan.app.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length + fieldPlan.app.length} app writes in one run`);
+  if (app.length + fieldPlan.app.length + trial.length > MAX_APP_WRITES) throw new Error(`refusing ${app.length + fieldPlan.app.length + trial.length} app writes in one run`);
   const gone = archivedRows(rows, new Map(players.map((p) => [p.id, p])));
   if (gone.length > MAX_ARCHIVED) throw new Error(`refusing to clear ${gone.length} rows in one run`);
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -194,8 +197,9 @@ async function main() {
     });
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data });
   }
-  if (app.length || fieldPlan.app.length) {
+  if (app.length || fieldPlan.app.length || trial.length) {
     const b = db.batch();
+    trial.forEach((id) => b.update(db.collection("players").doc(id), { trial: false }));
     app.forEach(({ id, notPaying }) => b.update(db.collection("players").doc(id), { notPaying, notPayingSource: "manual" }));
     fieldPlan.app.forEach(({ id, patch }) => b.update(db.collection("players").doc(id), patch));
     await b.commit();
@@ -243,7 +247,7 @@ async function main() {
   }
   if (add.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: add });
   await ref.set({ players: next, fields: fieldPlan.next, updatedAt: new Date().toISOString() });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${trial.length} out of trial, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
