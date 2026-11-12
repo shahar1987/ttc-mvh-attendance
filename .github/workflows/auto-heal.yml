@@ -1,0 +1,50 @@
+# Night fix: before the morning reports, re-run every scheduled job whose
+# latest run is red. A job that already recovered on its own is left alone.
+name: Auto heal
+
+on:
+  schedule:
+    - cron: '7 2 * * *'    # 04:07 Israel (winter)
+    - cron: '17 4 * * *'   # 06:17 Israel, second pass before the morning reports
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: auto-heal
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Re-run red jobs
+        run: |
+          set -u
+          fixed=0; left=0
+          gh api "repos/$REPO/actions/workflows?per_page=100" \
+            --jq '.workflows[] | select(.state=="active") | [.id, .path, .name] | @tsv' |
+          while IFS=$'\t' read -r wid path name; do
+            [ "$path" = ".github/workflows/auto-heal.yml" ] && continue
+            last=$(gh api "repos/$REPO/actions/workflows/$wid/runs?per_page=1&branch=main" \
+              --jq '.workflow_runs[0] | [.id, .conclusion // "running", .event] | @tsv' 2>/dev/null || true)
+            [ -z "$last" ] && continue
+            IFS=$'\t' read -r rid concl event <<< "$last"
+            case "$concl" in failure|startup_failure|timed_out) ;; *) continue ;; esac
+            # Only jobs that run on a clock or by hand. A red deploy after a push is a real code problem: leave it for the report.
+            case "$event" in schedule|workflow_dispatch) ;; *) echo "skip  $name ($event, $concl)"; left=$((left+1)); continue ;; esac
+            if [ "$concl" != "startup_failure" ] && gh run rerun "$rid" --failed -R "$REPO" 2>/dev/null; then
+              echo "rerun $name ($concl)"; fixed=$((fixed+1))
+            elif gh workflow run "$wid" --ref main -R "$REPO" 2>/dev/null; then
+              echo "start $name ($concl)"; fixed=$((fixed+1))
+            else
+              echo "::warning::could not restart $name ($concl)"; left=$((left+1))
+            fi
+          done
+          echo "done"
