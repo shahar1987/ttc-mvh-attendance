@@ -1,7 +1,7 @@
 // סנכרון גיליון הסטטוסים: כל צד נשפט מול הערך הקודם שלו, ואי-התאמה ישנה לא נוגעת באף צד
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changeLog, plan, planFields, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
+import { changeLog, trialNotes, plan, planFields, archivedRows, newRow, draftPlayer, PAID, UNPAID, OFF, CHECK } from "../scripts/status_sheet.mjs";
 
 const NO = "✗ לא רשום";
 const players = (o) => new Map(Object.entries(o).map(([id, notPaying]) => [id, { isActive: true, notPaying }]));
@@ -139,4 +139,15 @@ test("יומן השינויים: מוסיף, מוחק ישנים מ-14 יום, �
   assert.ok(!JSON.stringify(log).includes('"n"'));
   assert.equal(changeLog(Array.from({ length: 100 }, () => ({ at: now.toISOString(), id: "z", kind: "trial" })), {}, now).length, 80);
   assert.deepEqual(changeLog(undefined, {}, now), []);
+});
+
+test("הערת ניסיון בגיליון עוקבת אחרי האפליקציה, ולא נוגעת בשאר ההערה", () => {
+  const P = (o) => new Map(Object.entries(o).map(([id, trial]) => [id, { isActive: true, trial }]));
+  const row = (id, note) => ({ id, note, noteCell: `'t'!H${id}` });
+  assert.deepEqual(trialNotes([row("1", ""), row("2", "לא בדוח 09/11")], P({ 1: true, 2: true })).map((x) => x.values[0][0]), ["באימון ניסיון", "לא בדוח 09/11, באימון ניסיון"]);
+  assert.deepEqual(trialNotes([row("1", "לא בדוח 09/11, באימון ניסיון"), row("2", "באימון ניסיון"), row("3", "באימון ניסיון, שולם")], P({ 1: false, 2: false, 3: undefined })).map((x) => x.values[0][0]), ["לא בדוח 09/11", "", "שולם"]);
+  assert.deepEqual(trialNotes([row("1", "x, באימון ניסיון"), row("2", "אושר ששילם")], P({ 1: true, 2: false })), []);
+  assert.deepEqual(trialNotes([row("1", ""), { id: "2", note: "" }, row("9", "")], P({ 1: true, 2: true }), new Set(["1"])), []);
+  const off = new Map([["1", { isActive: false, trial: true }]]);
+  assert.deepEqual(trialNotes([row("1", "")], off), []);
 });

@@ -1,6 +1,7 @@
 // סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
 // ילד באימון ניסיון שמסומן ✓ בגיליון יוצא מניסיון (players.trial: false).
+// מי שבאימון ניסיון באפליקציה מסומן "באימון ניסיון" בעמודת ההערה, והסימון יורד לבד כשהוא עובר לקבוצה (trialNotes).
 // כל שינוי שהגיע מהגיליון נרשם ב-system/sheetChanges (מזהים וסטטוסים בלבד), והדשבורד של המנהל מציג אותו.
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
 // (system/statusSheetSync), כדי ששלום יכריע בה בעצמו.
@@ -56,6 +57,21 @@ export function plan(rows, players, last) {
     next[r.id] = { s, a: want };
   }
   return { app, sheet, next, trial, changes };
+}
+
+export const TRIAL_NOTE = "באימון ניסיון";
+// rows: [{ id, note, noteCell }]. מחזיר את תאי ההערה שצריך לעדכן כדי שהגיליון יראה מי בניסיון באפליקציה. skip: שורות שההערה שלהן נכתבת בריצה הזו
+export function trialNotes(rows, players, skip = new Set()) {
+  const out = [];
+  for (const r of rows) {
+    const p = players.get(r.id);
+    if (!p || !p.isActive || p.deleted || !r.noteCell || skip.has(r.id)) continue;
+    const note = String(r.note || "").trim(), has = note.includes(TRIAL_NOTE);
+    if (!!p.trial === has) continue;
+    const value = p.trial ? (note ? `${note}, ${TRIAL_NOTE}` : TRIAL_NOTE) : note.split(TRIAL_NOTE).map((x) => x.replace(/^[\s,]+|[\s,]+$/g, "")).filter(Boolean).join(", ");
+    out.push({ range: r.noteCell, values: [[value]] });
+  }
+  return out;
 }
 
 const LOG_DAYS = 14, LOG_MAX = 80;
@@ -184,7 +200,7 @@ async function readRows(tok) {
       const fields = {}, cells = {};
       for (const [key, h] of [["name", "שם"], ["parent", "הורה"], ["phone", grid[0][tel]], ["join", "הצטרף"]])
         if (h && at(h) >= 0) { fields[key] = row[at(h)] || ""; cells[key] = `'${tab}'!${col(at(h))}${n}`; }
-      rows.push({ fields, cells, id: row[id], status: row[st] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
+      rows.push({ fields, cells, id: row[id], status: row[st] || "", note: note < 0 ? "" : row[note] || "", mirrored: String(f || "").startsWith("="), statusCell: `'${tab}'!${col(st)}${n}`, noteCell: note < 0 ? null : `'${tab}'!${col(note)}${n}`,
         clear: note < 0 ? null : { range: `'${tab}'!A${n}:${col(grid[0].length - 1)}${n}`, name: row[at("שם")] || "" } });
     });
   });
@@ -219,6 +235,11 @@ async function main() {
     fieldPlan.app.forEach(({ id, patch }) => b.update(db.collection("players").doc(id), patch));
     await b.commit();
   }
+  // אחרי הכתיבה לאפליקציה: מי שיצא מניסיון בריצה הזו כבר לא נחשב בניסיון
+  const out = new Set(trial);
+  const notes = trialNotes(rows, new Map(players.map((p) => [p.id, out.has(p.id) ? { ...p, trial: false } : p])), new Set([...sheet.map((x) => x.id), ...gone.map((x) => x.id)]));
+  if (notes.length > MAX_NEW_ROWS) throw new Error(`refusing ${notes.length} trial notes in one run`);
+  if (notes.length) await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "RAW", data: notes.map((n) => ({ ...n, values: [[safeCell(n.values[0][0])]] })) });
   if (fieldPlan.sheet.length)
     await sheetsFetch(tok, "/values:batchUpdate", { valueInputOption: "USER_ENTERED", data: fieldPlan.sheet.map(({ cell, value }) => ({ range: cell, values: [[safeCell(value)]] })) });
   // שחקנים חדשים מהאפליקציה: USER_ENTERED כדי שתאריך ההצטרפות יישמר כתאריך; safeCell מונע נוסחאות מהשמות
@@ -272,7 +293,7 @@ async function main() {
     items: changeLog(logSnap.exists ? logSnap.data().items : [], { changes, trial, fields: fieldPlan.app, created: createdIds }, new Date()),
     notRegistered: withStatus(NOT_REGISTERED), unpaid: withStatus(UNPAID), check: withStatus(CHECK), updatedAt: new Date().toISOString(),
   });
-  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${trial.length} out of trial, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
+  console.log(`status sheet: ${rows.length} rows, ${app.length} to app, ${trial.length} out of trial, ${notes.length} trial notes, ${sheet.length} to sheet, ${fieldPlan.app.length} field updates to app, ${fieldPlan.sheet.length} field updates to sheet, ${add.length} new rows, ${gone.length} archived rows cleared, ${noTab} without a tab, ${created} created from sheet, ${waiting} waiting for a phone`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href)
