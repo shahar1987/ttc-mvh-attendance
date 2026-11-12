@@ -4553,11 +4553,15 @@ function useCoachFieldsHealer(on, groups, users) {
     batch.commit().catch((err) => console.warn("coach fields sync failed:", err));
   }, [on, groups, users]);
 }
-// 12.11 "בשבילך": רק למנהל, בראש הדשבורד. מה השתנה מטופס הבקרה (system/sheetChanges, נכתב ב-scripts/status_sheet.mjs),
-// מי הצטרף השבוע, מי באימון ניסיון, ומי בטופס עדיין לא רשום או לא שילם.
+// 12.11 "בשבילך": רק למנהל, בראש הדשבורד. אריחים קטנים (מספר + שם), שלושה בשורה; לחיצה פותחת חלון עם הרשימה.
+// מה השתנה מטופס הבקרה (system/sheetChanges, נכתב ב-scripts/status_sheet.mjs), מי הצטרף השבוע, מי באימון ניסיון,
+// ומי בטופס עדיין לא רשום, לא שילם או מחכה לבדיקה.
 const SHEET_FIELD_HE = { name: "שם", parentName: "הורה", parentPhone: "טלפון", joinDate: "תאריך הצטרפות" };
+const OWNER_NUM = { info: "text-blue-700", todo: "text-amber-800", sheet: "text-emerald-700" };
+const OWNER_TONE = { info: "bg-blue-50 text-blue-700", todo: "bg-amber-50 text-amber-800", sheet: "bg-emerald-50 text-emerald-700" };
 function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
-  let [doc, setDoc] = b(null);
+  let [doc, setDoc] = b(null),
+    [openKey, setOpenKey] = b(null);
   j(() => ae(S(P, "system", "sheetChanges"), (snap) => setDoc(snap.exists() ? snap.data() : null), () => setDoc(null)), []);
   let byId = new Map(players.map((p) => [p.id, p])),
     groupName = new Map(groups.map((g) => [g.id, g.name])),
@@ -4570,61 +4574,77 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
       : x.kind === "trial" ? "עבר מניסיון לקבוצה"
       : x.kind === "created" ? "נוסף מהטופס"
       : "עודכן: " + (x.fields || []).map((f) => SHEET_FIELD_HE[f] || f).join(", "),
-    changes = ((doc && doc.items) || []).filter((x) => x.at >= weekAgo.toISOString() && byId.has(x.id)).reverse(),
-    joined = players.filter((p) => live(p) && String(p.joinDate || "") >= fromDay).sort((x, y) => String(y.joinDate).localeCompare(String(x.joinDate))),
-    trials = players.filter((p) => live(p) && p.trial),
     pick = (ids) => (ids || []).map((id) => byId.get(id)).filter(live),
-    notReg = pick(doc && doc.notRegistered),
-    unpaid = pick(doc && doc.unpaid),
-    check = pick(doc && doc.check),
-    name = (p, extra) =>
-      e.createElement(
-        "button",
-        { key: p.id + (extra || ""), type: "button", onClick: () => onEditPlayer && onEditPlayer(p), className: "w-full flex items-baseline justify-between gap-3 py-1.5 text-right" },
-        e.createElement("span", { className: "text-sm text-slate-900 truncate" }, p.name, p.trial ? e.createElement("span", { className: "text-xs text-amber-700 mr-1.5" }, "ניסיון") : null),
-        e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, extra || groupName.get(p.groupId) || ""),
-      ),
-    section = (title, n, rows, open) =>
-      n
-        ? e.createElement(
-            open ? "div" : "details", // "שינויים מהטופס" תמיד פתוח; השאר נפתחים בלחיצה
-            { key: title, className: "border-t border-slate-100 first:border-t-0" },
-            e.createElement(
-              open ? "div" : "summary",
-              { className: "flex items-center justify-between py-2.5 cursor-pointer select-none" },
-              e.createElement("span", { className: "text-sm font-semibold text-slate-900" }, title),
-              e.createElement("span", { className: "text-sm font-bold text-blue-700 tabular-nums" }, n),
-            ),
-            e.createElement("div", { className: "pb-2" }, rows),
-          )
-        : null,
-    parts = [
-      section("שינויים מהטופס", changes.length, changes.map((x, k) => {
-        let p = byId.get(x.id);
-        return e.createElement(
-          "button",
-          { key: k, type: "button", onClick: () => onEditPlayer && onEditPlayer(p), className: "w-full py-1.5 text-right" },
-          e.createElement("div", { className: "flex items-baseline justify-between gap-3" },
-            e.createElement("span", { className: "text-sm text-slate-900 truncate" }, p.name),
-            e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, when(x.at)),
-          ),
-          e.createElement("div", { className: "text-xs text-slate-600" }, what(x), " · ", groupName.get(p.groupId) || ""),
-        );
-      }), !0),
-      section("הצטרפו השבוע", joined.length, joined.map((p) => name(p))),
-      section("באימון ניסיון", trials.length, trials.map((p) => name(p))),
-      section("לא רשומים", notReg.length, notReg.map((p) => name(p))),
-      section("רשומים, לא שילמו", unpaid.length, unpaid.map((p) => name(p))),
-      section("לבדיקה", check.length, check.map((p) => name(p))),
-    ].filter(Boolean);
-  if (!parts.length) return null;
+    row = (p) => ({ key: p.id, p, sub: groupName.get(p.groupId) || "" }),
+    cats = [
+      { key: "sheet", label: "שינויים מהטופס", tone: "sheet",
+        rows: ((doc && doc.items) || []).filter((x) => x.at >= weekAgo.toISOString() && byId.has(x.id)).reverse()
+          .map((x, k) => ({ key: "c" + k, p: byId.get(x.id), sub: when(x.at), note: what(x) + " · " + (groupName.get(byId.get(x.id).groupId) || "") })) },
+      { key: "joined", label: "הצטרפו השבוע", tone: "info",
+        rows: players.filter((p) => live(p) && String(p.joinDate || "") >= fromDay).sort((x, y) => String(y.joinDate).localeCompare(String(x.joinDate))).map(row) },
+      { key: "trial", label: "באימון ניסיון", tone: "info", rows: players.filter((p) => live(p) && p.trial).map(row) },
+      { key: "notReg", label: "לא רשומים", tone: "todo", pay: !0, rows: pick(doc && doc.notRegistered).map(row) },
+      { key: "unpaid", label: "לא שילמו", tone: "todo", pay: !0, rows: pick(doc && doc.unpaid).map(row) },
+      { key: "check", label: "לבדיקה", tone: "todo", pay: !0, rows: pick(doc && doc.check).map(row) },
+    ].filter((c) => c.rows.length),
+    open = cats.find((c) => c.key === openKey),
+    close = () => setOpenKey(null);
+  if (!cats.length) return null;
   return e.createElement(
     "div",
-    { dir: "rtl", className: "rounded-2xl bg-white ios-card px-4 py-1 mb-3" },
-    parts,
-    onOpenPayments && (notReg.length || unpaid.length)
-      ? e.createElement("button", { type: "button", onClick: onOpenPayments, className: "w-full border-t border-slate-100 py-2.5 text-sm font-semibold text-blue-700" }, "מי לא משלם")
-      : null,
+    { dir: "rtl", className: "px-4 pt-4 grid grid-cols-3 gap-2" },
+    cats.map((c) =>
+      e.createElement(
+        "button",
+        { key: c.key, type: "button", onClick: () => setOpenKey(c.key), className: "min-h-[60px] px-1 py-2 rounded-2xl bg-white ios-card flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform" },
+        e.createElement("span", { className: `text-xl leading-none font-bold tabular-nums ${OWNER_NUM[c.tone]}` }, c.rows.length),
+        e.createElement("span", { className: "text-xs text-slate-600 text-center leading-tight" }, c.label),
+      ),
+    ),
+    open &&
+      e.createElement(
+        "div",
+        { role: "dialog", "aria-modal": "true", "aria-label": open.label, className: "fixed inset-0 z-[60] bg-black/40 flex items-end justify-center", onClick: (ev) => ev.target === ev.currentTarget && close() },
+        e.createElement(
+          "div",
+          { className: "w-full max-w-md bg-white rounded-t-3xl max-h-[80vh] flex flex-col shadow-xl" },
+          e.createElement(
+            "div",
+            { className: "flex items-center justify-between gap-3 pr-5 pl-3 pt-4 pb-3 border-b border-slate-100" },
+            e.createElement(
+              "div",
+              { className: "flex items-center gap-2.5 min-w-0" },
+              e.createElement("span", { className: `min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center text-sm font-bold tabular-nums ${OWNER_TONE[open.tone]}` }, open.rows.length),
+              e.createElement("h2", { className: "text-lg font-bold text-slate-900 truncate" }, open.label),
+            ),
+            e.createElement("button", { type: "button", onClick: close, "aria-label": "סגירה", className: "w-11 h-11 rounded-full flex items-center justify-center text-2xl leading-none text-slate-500" }, "×"),
+          ),
+          e.createElement(
+            "div",
+            { className: "overflow-y-auto px-5 py-1" },
+            open.rows.map((r) =>
+              e.createElement(
+                "button",
+                { key: r.key, type: "button", onClick: () => (close(), onEditPlayer && onEditPlayer(r.p)), className: "w-full min-h-[52px] py-2 text-right border-b border-slate-100 last:border-b-0" },
+                e.createElement(
+                  "div",
+                  { className: "flex items-baseline justify-between gap-3" },
+                  e.createElement("span", { className: "text-base text-slate-900 truncate" }, r.p.name, r.p.trial && open.key !== "trial" ? e.createElement("span", { className: "text-xs font-medium text-amber-700 mr-2" }, "ניסיון") : null),
+                  e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, r.sub),
+                ),
+                r.note ? e.createElement("div", { className: "text-sm text-slate-600 mt-0.5" }, r.note) : null,
+              ),
+            ),
+          ),
+          open.pay && onOpenPayments
+            ? e.createElement(
+                "div",
+                { className: "p-4 border-t border-slate-100" },
+                e.createElement("button", { type: "button", onClick: () => (close(), onOpenPayments()), className: "w-full min-h-[52px] rounded-2xl bg-blue-900 text-white text-base font-bold" }, "מי לא משלם"),
+              )
+            : null,
+        ),
+      ),
   );
 }
 
