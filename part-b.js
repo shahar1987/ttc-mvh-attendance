@@ -125,6 +125,15 @@ function sectionItems(sec, isAdmin, isViewer, profile) {
 function SectionTabs({ view, setView, isAdmin, isViewer, profile }) {
   let sec = MENU_SECTIONS.find((x) => x.keys.includes(view)),
     items = sec ? sectionItems(sec, isAdmin, isViewer, profile) : [];
+  // 14.11: בדשבורד אין לשוניות: כפתור "דוחות" בדשבורד, ובדוחות כפתור חזרה
+  if (sec && sec.keys[0] === "dashboard")
+    return view === "reports" && items.some((it) => it.key === "dashboard")
+      ? e.createElement(
+          "div",
+          { dir: "rtl", className: "px-4 mt-3 lg:mt-5 no-print" },
+          e.createElement("button", { type: "button", onClick: () => setView("dashboard"), className: "min-h-[44px] px-4 rounded-full bg-white ios-card text-sm font-semibold text-blue-900 active:scale-95 transition-transform" }, "› חזרה לדשבורד"),
+        )
+      : null;
   return items.length < 2
     ? null
     : e.createElement(
@@ -4566,10 +4575,10 @@ function useCoachFieldsHealer(on, groups, users) {
 const SHEET_FIELD_HE = { name: "שם", parentName: "הורה", parentPhone: "טלפון", joinDate: "תאריך הצטרפות" };
 const OWNER_NUM = { info: "text-blue-700", todo: "text-amber-800", sheet: "text-emerald-700" };
 const OWNER_TONE = { info: "bg-blue-50 text-blue-700", todo: "bg-amber-50 text-amber-800", sheet: "bg-emerald-50 text-emerald-700" };
-function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
+function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenReports, owner }) {
   let [doc, setDoc] = b(null),
     [openKey, setOpenKey] = b(null);
-  j(() => ae(S(P, "system", "sheetChanges"), (snap) => setDoc(snap.exists() ? snap.data() : null), () => setDoc(null)), []);
+  j(() => (owner ? ae(S(P, "system", "sheetChanges"), (snap) => setDoc(snap.exists() ? snap.data() : null), () => setDoc(null)) : void 0), [owner]);
   let byId = new Map(players.map((p) => [p.id, p])),
     groupName = new Map(groups.map((g) => [g.id, g.name])),
     live = (p) => p && p.isActive !== !1 && !p.deleted,
@@ -4593,42 +4602,53 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
       { key: "notReg", label: "לא רשומים", tone: "todo", pay: !0, rows: pick(doc && doc.notRegistered).map(row) },
       { key: "unpaid", label: "לא שילמו", tone: "todo", pay: !0, rows: pick(doc && doc.unpaid).map(row) },
       { key: "check", label: "לבדיקה", tone: "todo", pay: !0, rows: pick(doc && doc.check).map(row) },
-    ].filter((c) => c.rows.length),
+    ].filter((c) => owner && c.rows.length),
     open = cats.find((c) => c.key === openKey),
+    total = cats.reduce((n, c) => n + c.rows.length, 0),
     close = () => setOpenKey(null);
-  if (!cats.length) return null;
-  return e.createElement(
-    "div",
-    { dir: "rtl", className: "px-4 pt-4 grid grid-cols-3 gap-2" },
-    cats.map((c) =>
-      e.createElement(
-        "button",
-        { key: c.key, type: "button", onClick: () => setOpenKey(c.key), className: "min-h-[60px] px-1 py-2 rounded-2xl bg-white ios-card flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform" },
-        e.createElement("span", { className: `text-xl leading-none font-bold tabular-nums ${OWNER_NUM[c.tone]}` }, c.rows.length),
-        e.createElement("span", { className: "text-xs text-slate-600 text-center leading-tight" }, c.label),
-      ),
-    ),
-    open &&
+  if (!cats.length && !onOpenReports) return null;
+  // 14.11: במקום שורת אריחים ולשוניות: שני כפתורים. "בשבילך" פותח חלון עם הקטגוריות, ומשם רשימת השחקנים.
+  let big = "flex-1 min-h-[56px] px-4 rounded-2xl bg-white ios-card flex items-center justify-between gap-2 active:scale-95 transition-transform",
+    head = (title, num, tone, back) =>
       e.createElement(
         "div",
-        { role: "dialog", "aria-modal": "true", "aria-label": open.label, className: "fixed inset-0 z-[60] bg-black/40 flex items-end justify-center", onClick: (ev) => ev.target === ev.currentTarget && close() },
+        { className: "flex items-center justify-between gap-3 pr-3 pl-3 pt-4 pb-3 border-b border-slate-100" },
         e.createElement(
           "div",
-          { className: "w-full max-w-md bg-white rounded-t-3xl max-h-[80vh] flex flex-col shadow-xl" },
+          { className: "flex items-center gap-2 min-w-0" },
+          back ? e.createElement("button", { type: "button", onClick: back, "aria-label": "חזרה", className: "w-11 h-11 rounded-full flex items-center justify-center text-2xl leading-none text-slate-500" }, "›") : e.createElement("span", { className: "w-2" }),
+          num != null ? e.createElement("span", { className: `min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center text-sm font-bold tabular-nums ${OWNER_TONE[tone]}` }, num) : null,
+          e.createElement("h2", { className: "text-lg font-bold text-slate-900 truncate" }, title),
+        ),
+        e.createElement("button", { type: "button", onClick: close, "aria-label": "סגירה", className: "w-11 h-11 rounded-full flex items-center justify-center text-2xl leading-none text-slate-500" }, "×"),
+      ),
+    body = openKey === "menu"
+      ? [
+          head("בשבילך", null),
           e.createElement(
             "div",
-            { className: "flex items-center justify-between gap-3 pr-5 pl-3 pt-4 pb-3 border-b border-slate-100" },
-            e.createElement(
-              "div",
-              { className: "flex items-center gap-2.5 min-w-0" },
-              e.createElement("span", { className: `min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center text-sm font-bold tabular-nums ${OWNER_TONE[open.tone]}` }, open.rows.length),
-              e.createElement("h2", { className: "text-lg font-bold text-slate-900 truncate" }, open.label),
+            { key: "m", className: "overflow-y-auto px-5 py-1" },
+            cats.map((c) =>
+              e.createElement(
+                "button",
+                { key: c.key, type: "button", onClick: () => setOpenKey(c.key), className: "w-full min-h-[56px] flex items-center justify-between gap-3 border-b border-slate-100 last:border-b-0 text-right" },
+                e.createElement("span", { className: "text-base text-slate-900" }, c.label),
+                e.createElement(
+                  "span",
+                  { className: "flex items-center gap-2" },
+                  e.createElement("span", { className: `min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center text-sm font-bold tabular-nums ${OWNER_TONE[c.tone]}` }, c.rows.length),
+                  e.createElement("span", { className: "text-xl text-slate-400" }, "‹"),
+                ),
+              ),
             ),
-            e.createElement("button", { type: "button", onClick: close, "aria-label": "סגירה", className: "w-11 h-11 rounded-full flex items-center justify-center text-2xl leading-none text-slate-500" }, "×"),
           ),
+        ]
+      : open
+      ? [
+          head(open.label, open.rows.length, open.tone, () => setOpenKey("menu")),
           e.createElement(
             "div",
-            { className: "overflow-y-auto px-5 py-1" },
+            { key: "l", className: "overflow-y-auto px-5 py-1" },
             open.rows.map((r) =>
               e.createElement(
                 "button",
@@ -4646,11 +4666,36 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments }) {
           open.pay && onOpenPayments
             ? e.createElement(
                 "div",
-                { className: "p-4 border-t border-slate-100" },
+                { key: "p", className: "p-4 border-t border-slate-100" },
                 e.createElement("button", { type: "button", onClick: () => (close(), onOpenPayments()), className: "w-full min-h-[52px] rounded-2xl bg-blue-900 text-white text-base font-bold" }, "מי לא משלם"),
               )
             : null,
-        ),
+        ]
+      : null;
+  return e.createElement(
+    "div",
+    { dir: "rtl", className: "px-4 pt-4 flex gap-2 no-print" },
+    cats.length
+      ? e.createElement(
+          "button",
+          { type: "button", onClick: () => setOpenKey("menu"), className: big },
+          e.createElement("span", { className: "text-base font-bold text-slate-900" }, "בשבילך"),
+          e.createElement("span", { className: "min-w-[2rem] h-8 px-2 rounded-full flex items-center justify-center text-sm font-bold tabular-nums bg-amber-50 text-amber-800" }, total),
+        )
+      : null,
+    onOpenReports
+      ? e.createElement(
+          "button",
+          { type: "button", onClick: onOpenReports, className: big },
+          e.createElement("span", { className: "text-base font-bold text-slate-900" }, "דוחות"),
+          e.createElement(ReportsIcon, { className: "w-5 h-5 text-blue-700" }),
+        )
+      : null,
+    body &&
+      e.createElement(
+        "div",
+        { role: "dialog", "aria-modal": "true", "aria-label": openKey === "menu" ? "בשבילך" : open.label, className: "fixed inset-0 z-[60] bg-black/40 flex items-end justify-center", onClick: (ev) => ev.target === ev.currentTarget && close() },
+        e.createElement("div", { className: "w-full max-w-md bg-white rounded-t-3xl max-h-[80vh] flex flex-col shadow-xl" }, body),
       ),
   );
 }
@@ -4959,9 +5004,15 @@ function Q() {
       e.createElement(
         "div",
         { ref: screenRef, className: "desk-screen" },
-      r && canDo(s, "payments") &&
-        m === "dashboard" &&
-        e.createElement(OwnerBoard, { players: c, groups: i, onEditPlayer: openEditPlayer, onOpenPayments: () => goToScreen("payments") }),
+      m === "dashboard" &&
+        e.createElement(OwnerBoard, {
+          players: c,
+          groups: i,
+          owner: !!(r && canDo(s, "payments")),
+          onEditPlayer: openEditPlayer,
+          onOpenPayments: () => goToScreen("payments"),
+          onOpenReports: canDo(s, "reports") ? () => goToScreen("reports") : null,
+        }),
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
         e.createElement(st, {
