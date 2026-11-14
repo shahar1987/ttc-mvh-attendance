@@ -98,12 +98,13 @@ const STAFF_MENU_ITEMS = [
 ];
 // התפריט מציג קבוצות במקום כל מסך בנפרד. קבוצה עם כמה מסכים מקבלת שורת לשוניות מעל המסך (SectionTabs).
 // 10.10: הדשבורד בשורה משלו בראש התפריט, לבקשת שולה.
+// 14.11: "דוחות" נכנס כלשונית בתוך הדשבורד (סקירה | דוחות מפורטים), כדי שיהיה מקום אחד לראות נתונים.
+// "אחרי האימון" נשאר ליד מילוי הנוכחות: גם מאמן בלי הרשאת דוחות צריך אותו.
 const MENU_SECTIONS = [
-  { label: "דשבורד", icon: le, keys: ["dashboard"] },
+  { label: "דשבורד", icon: le, keys: ["dashboard", "reports"] },
   { label: "נוכחות", icon: Z, keys: ["attendance", "after"] },
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import", "join"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
-  { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
   { label: "הרשאות", icon: Ie, keys: ["permissions"] },
 ];
 function menuItemVisible(it, isAdmin, isViewer, profile) {

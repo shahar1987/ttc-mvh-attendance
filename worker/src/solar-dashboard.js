@@ -394,17 +394,18 @@ export function solarHtml(s, today, nonce = "", wx = "") {
   const m$ = money(s);
   const settings = `<section class="card r"><h2>הגדרות הכסף</h2><form id="money" class="set">${[["invest", "מחיר המערכת (₪)", s.invest || ""], ["costs", "הוצאות מאז: תחזוקה ותיקונים (₪)", s.costs || ""], ["agorot", "תעריף הזנה לרשת (אג׳ לקוט״ש)", Math.round(m$.exportRate * 10000) / 100], ["self_agorot", "מחיר חשמל ביתי (אג׳, כולל מע״מ)", Math.round(m$.selfRate * 10000) / 100]].map(([k, l, val]) => `<label><span>${l}</span><input name="${k}" inputmode="decimal" value="${esc(String(val))}"></label>`).join("")}<button type="submit">שמור</button><p class="small" id="msg" role="status"></p></form></section>`;
   const reports = `<section class="card r"><h2>דוחות להורדה</h2>${reportLinks(today).map((p) => `<div class="rep"><span>${periodName(p)}</span><a href="/solar/report?p=${p}">PDF</a><a href="/solar/report.xlsx?p=${p}" download>Excel</a></div>`).join("")}<p class="small">כל דוח משווה לאותה תקופה בשנה שעברה, בקוט״ש ובשקלים.</p></section>`;
+  // מסך ראשון קצר (14.11.2026): מצב הגג, מה לבדוק, כמה הכניס ומה לעשות. הטבעות, הקצב מול אשתקד והמשבצות בהשוואות
   const panels = [
     `<header class="hero" id="hero"><div class="eye">היום עד עכשיו</div>${today_ ? `<div class="big" data-count="${Math.round(today_.kwh)}">${num(today_.kwh)}</div><div class="unit">קוט״ש, נכון ל-${esc(at)}${cash.today != null ? ` · ${ils(cash.today)}` : ""}</div>` : s.todayError ? `<div class="big wait">—</div><div class="unit">SolarEdge לא ענה, מנסים שוב בשעה הבאה</div>` : `<div class="big wait">ממתין</div><div class="unit">מתעדכן כל שעה, מ-7 בבוקר</div>`}<h1 class="${HEAD[0]}"><i aria-hidden="true">${HEAD[2]}</i>${HEAD[1]}</h1>${v.status !== "ok" && v.issues.length ? `<p class="why">${esc(v.issues[0].t)}</p>` : v.note ? `<p>${esc(v.note)}</p>` : ""}</header>
 <div class="stage"></div>
 ${v.status !== "ok" && v.issues.length ? `<section class="card r fixit"><h2>מה צריך לבדוק</h2>${v.issues.map((x) => `<div class="iss"><b>${esc(x.t)}</b><p><span>מה זה אומר:</span> ${esc(x.why)}</p><p><span>מה לעשות:</span> ${esc(x.fix)}</p></div>`).join("")}</section>` : ""}
-${circles}
 ${moneyCard}
-${f.pace != null ? `<section class="card r verdict"><span class="pill ${f.onTrack ? "ok" : "warn"}">${f.onTrack ? "עומד בקצב של אשתקד" : "מאחורי הקצב של אשתקד"}</span><p class="say2">${f.pace >= 0 ? `${f.pace}% מעל ` : `${-f.pace}% מתחת ל`}אותם ימים בשנה שעברה. ${esc(monthRow?.why || "")}</p></section>` : ""}
-<div class="tiles r">${tile("7 הימים האחרונים", num(a.total), `קוט״ש${homeDays >= 1 ? `, כמו ${homeDays} ימים של בית` : ""}`)}${tile("צפי לסוף החודש", f.end == null ? "לא זמין" : num(f.end), f.target ? `קוט״ש, מול ${num(f.target)} אשתקד` : "קוט״ש, לפי הקצב")}</div>
 <section class="card r"><h2>מה כדאי לעשות</h2>${v.advice.map(([t, x], i) => `<div class="tip"><div class="num">${i + 1}</div><div><b>${esc(t)}</b><p>${esc(x)}</p></div></div>`).join("") || `<p class="say2">אחרי הדוח הראשון יופיעו כאן המלצות.</p>`}</section>`,
 
-    `<h2 class="lt">השוואות</h2>${rows.length ? rows.map(compare).join("") : `<section class="card r"><p class="say2">ההשוואות יופיעו כשתיאסף היסטוריה.</p></section>`}`,
+    `<h2 class="lt">השוואות</h2>${circles}
+${f.pace != null ? `<section class="card r verdict"><span class="pill ${f.onTrack ? "ok" : "warn"}">${f.onTrack ? "עומד בקצב של אשתקד" : "מאחורי הקצב של אשתקד"}</span><p class="say2">${f.pace >= 0 ? `${f.pace}% מעל ` : `${-f.pace}% מתחת ל`}אותם ימים בשנה שעברה. ${esc(monthRow?.why || "")}</p></section>` : ""}
+<div class="tiles r">${tile("7 הימים האחרונים", num(a.total), `קוט״ש${homeDays >= 1 ? `, כמו ${homeDays} ימים של בית` : ""}`)}${tile("צפי לסוף החודש", f.end == null ? "לא זמין" : num(f.end), f.target ? `קוט״ש, מול ${num(f.target)} אשתקד` : "קוט״ש, לפי הקצב")}</div>
+${rows.length ? rows.map(compare).join("") : `<section class="card r"><p class="say2">ההשוואות יופיעו כשתיאסף היסטוריה.</p></section>`}`,
 
     `<h2 class="lt">מצב הגג</h2><section class="card r">${ring(a.ratio)}</section>
 ${scanCard(s, a, days, end)}

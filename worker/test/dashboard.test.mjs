@@ -1,6 +1,6 @@
 // דשבורד הפרסום: קישור חתום בלבד, טקסט של פוסט לא מוזרק ל-HTML, מספר לא ידוע הוא "לא זמין", ואזהרה כשהנתונים ישנים
 import assert from "node:assert/strict";
-import { change, compare, dailyDashboard, dashboardHtml, dashboardRoute, dashboardUrl, PERIODS } from "../src/dashboard.js";
+import { change, compare, dailyDashboard, dashboardHtml, dashboardRoute, dashboardLoginUrl, PERIODS } from "../src/dashboard.js";
 
 const NOW = new Date("2026-10-14T19:00:00Z");
 const insights = {
@@ -30,11 +30,24 @@ assert.match(reconnect, /תחברי מחדש את פייסבוק/);
 assert.match(dashboardHtml({}, null, NOW), /עוד לא נאספו נתונים/);
 
 const env = { META_APP_SECRET: "s" };
-const store = { get: async (p) => (p === "agentReports/insights" ? insights : {}) };
-assert.equal((await dashboardRoute(new Request("https://w/dashboard?t=bad"), env, store)).status, 403, "בלי חתימה — אסור");
-const ok = await dashboardRoute(new Request(await dashboardUrl(env, "https://w")), env, store);
+const sdocs = { "agentReports/insights": insights, "agentReports/bot": {} };
+const store = { get: async (p) => sdocs[p] || {}, merge: async (p, v) => (sdocs[p] = { ...(sdocs[p] || {}), ...v }), update: async (p, f) => (sdocs[p] = f(sdocs[p] || {})) };
+assert.equal((await dashboardRoute(new Request("https://w/dashboard?t=bad"), env, store)).status, 401, "הקישור הקבוע הישן כבר לא פותח");
+assert.equal((await dashboardRoute(new Request("https://w/dashboard"), env, store)).status, 401, "בלי עוגייה — אסור");
+const link = await dashboardLoginUrl(store, "https://w");
+const k = new URL(link).searchParams.get("k");
+assert.equal((await dashboardRoute(new Request("https://w/dashboard/login?k=bad"), env, store)).status, 403, "מפתח שגוי");
+assert.equal((await dashboardRoute(new Request(link), env, store)).status, 200, "דף הכניסה");
+const post = (key, cookie = "") => new Request("https://w/dashboard/login", { method: "POST", body: new URLSearchParams({ k: key }), headers: cookie ? { cookie } : {} });
+const li = await dashboardRoute(post(k), env, store);
+assert.equal(li.status, 303);
+const cookie = li.headers.get("set-cookie").split(";")[0];
+assert.match(cookie, /^__Host-ads=[0-9a-f]{64}$/);
+assert.equal((await dashboardRoute(post(k), env, store)).status, 403, "קישור נוצל — לא נכנסים שוב");
+const ok = await dashboardRoute(new Request("https://w/dashboard", { headers: { cookie } }), env, store);
 assert.equal(ok.status, 200);
 assert.match(await ok.text(), /דשבורד פרסום/);
+assert.equal((await dashboardRoute(new Request("https://w/dashboard", { headers: { cookie: "__Host-ads=" + "0".repeat(64) } }), env, store)).status, 401, "עוגייה מזויפת");
 // קישור יומי: נשלח פעם אחת לכל עדכון של הנתונים, ולא נרשם כשהשליחה נכשלה
 const docs = { "agentReports/insights": { updatedAt: "2026-10-20T05:09:00Z" }, "agentReports/bot": {} };
 const mem = { get: async (p) => docs[p], merge: async (p, v) => (docs[p] = { ...docs[p], ...v }) };
@@ -42,7 +55,8 @@ const sent = [];
 assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => { throw new Error("wa down"); }).catch(() => "failed"), "failed");
 assert.equal(docs["agentReports/bot"].dashboardSentFor, undefined);
 assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(t)), "dashboard: sent");
-assert.match(sent[0], /https:\/\/w\/dashboard\?t=/);
+assert.match(sent[0], /https:\/\/w\/dashboard\n/);
+assert.doesNotMatch(sent[0], /[?&][tk]=/, "ההודעה היומית בלי מפתח");
 assert.equal(await dailyDashboard(env, mem, "https://w", async (t) => sent.push(t)), "dashboard: nothing new");
 assert.equal(sent.length, 1);
 

@@ -1,7 +1,7 @@
 // 📊 דשבורד פרסום: דף פרטי (קישור חתום, בלי התחברות) שמציג את מה שסוכן הנתונים (agents/insights.mjs) אסף
 // מ-Meta הלילה: עוקבים, פוסטים מתוזמנים בפייסבוק, פוסט שמחכה ל"כן", חשיפה לכל פוסט וממוצע לפי סוג.
 // קריאה בלבד: לא נוגע ב-Meta ולא בשום מסמך. מספר שלא ידוע מוצג "לא זמין", אף פעם לא 0.
-import { sign } from "./google.js";
+import { issueKey, checkKey, dropKey } from "./google.js";
 import { sha256 } from "./inbox.js";
 import { notifyOwner } from "../../agents/lib/whatsapp.mjs";
 import { outboxMap } from "./queue.js";
@@ -18,7 +18,40 @@ const day = (iso) => new Date(iso).toLocaleDateString("he-IL", { timeZone: TZ, d
 const title = (t) => esc((t || "(בלי טקסט)").split("\n")[0].slice(0, 60));
 const avg = (xs) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null);
 
-export const dashboardUrl = async (env, origin) => `${origin}/dashboard?t=${await sign(env, "dashboard")}`;
+// כניסה כמו בדשבורד הגג (14.11.2026): קישור חד-פעמי מהוואטסאפ (30 דקות) ← עוגייה בדפדפן ל-14 יום.
+// הקישור הישן ?t= היה קבוע: מי שקיבל אותו פעם (העברה בטעות) נכנס לתמיד.
+export const dashboardUrl = (origin) => `${origin}/dashboard`;
+export const dashboardLoginUrl = async (store, origin) => `${origin}/dashboard/login?k=${await issueKey(store, "ads-login")}`;
+const ADS_AUTH = "agentReports/adsAuth";
+const ADS_COOKIE = "__Host-ads";
+const ADS_DAYS = 14;
+const SEC = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: https:; font-src https:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" };
+const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const page = (msg, status = 200, extra = {}) => new Response(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>דשבורד פרסום</title><body style="font:20px/1.5 system-ui;padding:24px;max-width:480px;margin:auto">${msg}</body></html>`, { status, headers: { ...SEC, ...extra } });
+const ADS_NO_ACCESS = `<h2>הכניסה רק מהוואטסאפ</h2><p>כתוב לשולה "דשבורד", ופתח את הקישור שתקבל.</p>`;
+const adsCookie = (req) => (req.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(`${ADS_COOKIE}=`))?.slice(ADS_COOKIE.length + 1) || "";
+export async function adsSession(req, store) {
+  const t = adsCookie(req);
+  if (!/^[0-9a-f]{64}$/.test(t)) return false;
+  const h = await sha256(t);
+  return (((await store.get(ADS_AUTH)) || {}).sessions || []).some((x) => x.hash === h && x.exp > Date.now());
+}
+async function adsLogin(req, store) {
+  if (await adsSession(req, store)) return new Response("", { status: 303, headers: { location: "/dashboard" } });
+  const gone = page(`<h2>הקישור כבר לא פעיל</h2><p>כתוב לשולה "דשבורד" לקישור חדש.</p>`, 403);
+  if (req.method === "GET") {
+    const k = new URL(req.url).searchParams.get("k") || "";
+    if (!(await checkKey(store, "ads-login", k))) return gone;
+    return page(`<h2>כניסה לדשבורד הפרסום</h2><form method="post"><input type="hidden" name="k" value="${esc(k)}"><button style="font:20px system-ui;padding:12px 28px;border:0;border-radius:12px;background:#3D4617;color:#fff">כניסה</button></form>`);
+  }
+  const k = String((await req.formData()).get("k") || "");
+  if (!(await checkKey(store, "ads-login", k))) return gone;
+  await dropKey(store, "ads-login");
+  const t = hex(32);
+  const h = await sha256(t);
+  await store.update(ADS_AUTH, (cur) => ({ sessions: [...((cur || {}).sessions || []).filter((x) => x.exp > Date.now()), { hash: h, exp: Date.now() + ADS_DAYS * 864e5 }].slice(-3) }));
+  return new Response("", { status: 303, headers: { location: "/dashboard", "set-cookie": `${ADS_COOKIE}=${t}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${ADS_DAYS * 86400}` } });
+}
 
 // פעם ביום, אחרי שהסוכן הלילי עדכן את הנתונים: הקישור לדשבורד בוואטסאפ (שחר, 20.10.2026).
 // נרשם כנשלח רק אחרי שליחה מוצלחת — כישלון ינסה שוב ברבע השעה הבאה.
@@ -28,17 +61,19 @@ export async function dailyDashboard(env, store, origin, send) {
   if (!updatedAt || bot.dashboardSentFor === updatedAt) return "dashboard: nothing new";
   const o = origin || bot.workerUrl;
   if (!o) return "dashboard: no origin";
-  await send(`📊 הדשבורד התעדכן מפייסבוק ומאינסטגרם:\n${await dashboardUrl(env, o)}`);
+  await send(`📊 הדשבורד התעדכן מפייסבוק ומאינסטגרם:\n${dashboardUrl(o)}\n(לא נכנס? כתוב "דשבורד" לקישור כניסה)`);
   await store.merge("agentReports/bot", { dashboardSentFor: updatedAt });
   return "dashboard: sent";
 }
 
 export async function dashboardRoute(req, env, store) {
   const url = new URL(req.url);
-  if (url.searchParams.get("t") !== (await sign(env, "dashboard"))) return new Response("forbidden", { status: 403 });
+  if (url.pathname === "/dashboard/login") return adsLogin(req, store);
+  if (url.pathname !== "/dashboard") return new Response("not found", { status: 404 });
+  if (!(await adsSession(req, store))) return page(ADS_NO_ACCESS, 401);
   const [insights, bot, feed] = await Promise.all([store.get("agentReports/insights"), store.get("agentReports/bot"), store.get("agentReports/insightsFeed")]);
   return new Response(dashboardHtml(withFeed(insights || {}, feed), bot?.pending?.post || null), {
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" },
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "referrer-policy": "no-referrer" },
   });
 }
 

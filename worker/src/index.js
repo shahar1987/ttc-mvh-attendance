@@ -16,7 +16,7 @@ import { FILE_TAP, fileButtons, readFile } from "./files.js";
 import { MESSAGE_TOOL_DEFS, makeMessageTools, sendDue, queueToolReminders, ensureTemplates, ensureWebhook, staffNames, teamNote } from "./messages.js";
 import { drainQueue, outboxMap, keyOf } from "./queue.js";
 import { dispatchEvening, dispatchWorkflows, failedRuns } from "./dispatch.js";
-import { campaignRoute, dailyDashboard, dashboardRoute, dashboardUrl, feedRoute } from "./dashboard.js";
+import { campaignRoute, dailyDashboard, dashboardRoute, dashboardLoginUrl, feedRoute } from "./dashboard.js";
 import { joinRoute } from "./join.js";
 import { cards, staleTap, closeTap, approveAllCard, ledgerTap, openCards, openNote, photoTarget, PLAN_KEY } from "./open.js";
 import { coachFor, handleCoach, saveNoteFromCoach, COACH_ADMIN_TOOL_DEFS, makeCoachAdminTools } from "./coaches.js";
@@ -126,7 +126,7 @@ const app = {
     }
     // 📝 טופס הצטרפות להורים ודף ההדפסה עם הברקוד (join.js)
     if (url.pathname === "/join" || url.pathname === "/join/print") return joinRoute(req, env, db(env));
-    if (url.pathname === "/dashboard") return dashboardRoute(req, env, db(env));
+    if (url.pathname === "/dashboard" || url.pathname === "/dashboard/login") return dashboardRoute(req, env, db(env));
     if (url.pathname === "/insights/feed") return feedRoute(req, env, db(env));
     if (url.pathname === "/insights/campaign") return campaignRoute(req, env, db(env), waConfig(env));
     if (url.pathname === "/inbox") return inboxRoute(req, env, db(env), waConfig(env));
@@ -378,9 +378,9 @@ async function handle(m, env) {
       await reply(`קישור לחיבור הקבוע של פייסבוק ואינסטגרם (בתוקף 30 דקות). ההוראות בדף עצמו:\n${await metaPermanentLink(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
-    // "דשבורד" — קישור קבוע ופרטי לדשבורד הפרסום (worker/src/dashboard.js), בלי Gemini
+    // "דשבורד" — קישור כניסה חד-פעמי לדשבורד הפרסום (worker/src/dashboard.js), בלי Gemini
     if (/^דשבורד/.test(text.trim())) {
-      await reply(`📊 דשבורד הפרסום (קישור פרטי, מתעדכן כל לילה מפייסבוק ומאינסטגרם):\n${await dashboardUrl(env, ORIGIN || bot.workerUrl)}`);
+      await reply(`📊 דשבורד הפרסום, קישור לכניסה אחת (תקף 30 דקות). אחרי הכניסה הדפדפן זוכר אותך 14 יום:\n${await dashboardLoginUrl(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
     // "מאשר הכל" מגיע רק למה שרשום בפנקס. אין שם כלום — ממשיכים לשיחה הרגילה
