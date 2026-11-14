@@ -64,26 +64,27 @@ export function panelScan(panels, ratio) {
 }
 
 // למה הייצור השתנה: משווים לשינוי בשמש באותה תקופה
-export function why(prod, sun) {
+// healthy: הגג מפיק כרגיל ביחס לשמש באותו שבוע (14.11.2026). אז הפרש קטן עם "אותה שמש" הוא עננות מקומית שהמודל לא רואה, לא סיבה לבדוק
+export function why(prod, sun, healthy = false) {
   if (prod == null) return "";
   if (sun == null) return Math.abs(prod) <= 3 ? "כמעט אותו דבר." : "אין עדיין נתוני שמש להשוואה.";
   if (Math.abs(prod) <= 3) return "כמעט אותו דבר.";
   const fromWeather = Math.abs(prod - sun) <= 6 && Math.sign(prod) === Math.sign(sun) && Math.abs(sun) >= 2;
-  if (prod < 0) return fromWeather ? `בגלל מזג האוויר: היו ${Math.abs(sun)}% פחות שמש.` : sun < prod ? "הייתה פחות שמש, והגג התמודד טוב." : sun >= -2 ? "לא מזג האוויר: הייתה אותה שמש, וכדאי לבדוק." : `מזג האוויר מסביר רק חלק: היו ${Math.abs(sun)}% פחות שמש.`;
+  if (prod < 0) return fromWeather ? `בגלל מזג האוויר: היו ${Math.abs(sun)}% פחות שמש.` : sun < prod ? "הייתה פחות שמש, והגג התמודד טוב." : sun >= -2 ? (healthy && prod >= -10 ? "השמש הייתה דומה, והגג תקין ביחס לשמש. הפרש קטן כזה הוא בדרך כלל עננות מקומית." : "לא מזג האוויר: הייתה אותה שמש, וכדאי לבדוק.") : `מזג האוויר מסביר רק חלק: היו ${Math.abs(sun)}% פחות שמש.`;
   return fromWeather ? `בזכות מזג האוויר: היו ${sun}% יותר שמש.` : "הגג עבד טוב יותר, לא רק בזכות השמש.";
 }
 
-export function comparisons(days, today) {
+export function comparisons(days, today, healthy = false) {
   const end = addDays(today, -1);
   const full = (keys) => keys.length && keys.filter((k) => days[k]?.kwh != null).length >= keys.length * 0.9;
   const kwh = (keys) => sumKwh(keys.map((k) => days[k] || {}));
   const sun = (keys) => (keys.filter((k) => days[k]?.rad != null).length >= keys.length * 0.9 ? keys.reduce((t, k) => t + (days[k]?.rad || 0), 0) : null);
-  const row = (title, a, b) => {
+  const row = (title, a, b, ok = false) => {
     if (!full(a) || !full(b)) return null;
     const now = kwh(a);
     const then = kwh(b);
     const p = pct(now, then);
-    return { title, now, then, pct: p, why: why(p, sun(a) != null && sun(b) ? pct(sun(a), sun(b)) : null) };
+    return { title, now, then, pct: p, why: why(p, sun(a) != null && sun(b) ? pct(sun(a), sun(b)) : null, ok) };
   };
   const back = (keys, n) => keys.map((k) => addDays(k, -n));
   const week = span(end, 7);
@@ -93,8 +94,8 @@ export function comparisons(days, today) {
   const prev = span(prevEnd, +prevEnd.slice(8));
   const year = span(end, 365);
   return [
-    row("השבוע מול שבוע שעבר", week, back(week, 7)),
-    row("השבוע מול אשתקד", week, back(week, 364)),
+    row("השבוע מול שבוע שעבר", week, back(week, 7), healthy),
+    row("השבוע מול אשתקד", week, back(week, 364), healthy),
     row("החודש מול אותם ימים אשתקד", month, back(month, 365)),
     row(`${MONTHS[+prevEnd.slice(5, 7) - 1]} מול אשתקד`, prev, back(prev, 365)),
     row("12 חודשים מול 12 שלפניהם", year, back(year, 365)),
@@ -157,7 +158,6 @@ export function insights(s, today) {
   const year = bad.length - flags;
   if (s.openAlerts > 0) bad.push(`התראות פתוחות בממיר: ${s.openAlerts}`);
   else if (s.openAlerts === 0) good.push("אין התראות פתוחות בממיר");
-  if (lift >= 5) bad.push(`אחרי גשם הייצור עולה בכ-${lift}%, כנראה מלכלוך על הפאנלים`);
   const grantDays = s.connectedAt ? Math.ceil((Date.parse(s.connectedAt) + 730 * 864e5 - Date.parse(`${today}T12:00:00Z`)) / 864e5) : 999;
   if (grantDays <= 60) bad.push(`החיבור ל-SolarEdge פג בעוד ${Math.max(grantDays, 0)} ימים`);
   const best = week.reduce((x, d) => (!x || d.kwh > x.kwh ? d : x), null);
@@ -172,6 +172,8 @@ export function insights(s, today) {
     for (let i = 1; i <= 120; i++) if (days[addDays(today, -i)]?.rain >= 2) return i - 1;
     return null;
   })();
+  // לכלוך הוא עצה לעונה, לא תקלה (14.11.2026). מוריד את הסטטוס רק כשהגג יבש 3 שבועות ואבק באמת יושב עליו עכשיו
+  if (lift >= 5 && dry >= 21) bad.push(`אחרי גשם הייצור עולה בכ-${lift}%, וכבר ${dry} ימים בלי גשם`);
   const advice = [];
   if (fault && /אין נתוני/.test(fault)) advice.push(["בדוק את הממיר", "תסתכל על הנורה בממיר ועל חיבור האינטרנט שלו. אם הוא כבוי, בדוק את המפסק בלוח החשמל."]);
   else if (fault) advice.push(["בדוק את המפסק והממיר", "אם גם מחר לא יהיה ייצור, דבר עם המתקין."]);
@@ -193,7 +195,7 @@ export function insights(s, today) {
     a.low.length >= 2 && { t: `${a.low.length === 1 ? "יום אחד" : `${a.low.length} ימים`} השבוע עם ייצור חלש: ${a.low.map(heb).join(", ")}`, why: "באותם ימים הגג ייצר הרבה פחות ממה שהשמש באזור אפשרה. יום בודד הוא בדרך כלל ענן מקומי, אבק או ערפל שהתחזית לא רואה.", fix: a.low.length === 1 ? "לא צריך לעשות כלום אם זה לא חוזר. אם יגיעו עוד ימים כאלה, תבדוק באפליקציה של SolarEdge אם יש פאנל שמראה אפס." : "כמה ימים כאלה זה כבר סימן. פתח את האפליקציה של SolarEdge, בתצוגת הפאנלים, וחפש פאנל כהה או עם אפס." },
     a.missing.length && !fault && { t: `חסרים נתונים לימים: ${a.missing.map(heb).join(", ")}`, why: "הממיר לא דיווח באותם ימים. הגג כנראה ייצר, אבל המידע לא הגיע, בדרך כלל בגלל אינטרנט או ראוטר שהתנתקו.", fix: "בדוק שהממיר מחובר לרשת הביתית (נורת תקשורת דולקת). אחרי שהחיבור חוזר, הנתונים משלימים את עצמם." },
     s.openAlerts > 0 && { t: `לממיר יש ${s.openAlerts === 1 ? "התראה פתוחה" : `${s.openAlerts} התראות פתוחות`}`, why: "SolarEdge עצמה זיהתה משהו במערכת, למשל פאנל או אופטימייזר שלא מדווחים.", fix: "פתח את mySolarEdge ותראה מה כתוב בהתראה. אם לא ברור, שלח צילום מסך לוולטה." },
-    lift >= 5 && { t: `לכלוך על הפאנלים: אחרי גשם הייצור קופץ בכ-${lift}%`, why: `כל פעם שגשם שוטף את הגג, הייצור עולה בערך ב-${lift}%. כלומר בימים יבשים אבק יושב על הפאנלים ומוריד ייצור, ובזה הולך כסף.`, fix: "שטיפה במים בלבד (בלי סבון ובלי מברשת קשה), בבוקר מוקדם כשהפאנלים קרים. כדאי בעיקר לפני הקיץ ואחרי תקופה ארוכה בלי גשם. לפי חוזה התחזוקה, וולטה אמורה לבצע שטיפות." },
+    lift >= 5 && dry >= 21 && { t: `לכלוך על הפאנלים: אחרי גשם הייצור קופץ בכ-${lift}%`, why: `כל פעם שגשם שוטף את הגג, הייצור עולה בערך ב-${lift}%. כלומר בימים יבשים אבק יושב על הפאנלים ומוריד ייצור, ובזה הולך כסף.`, fix: "שטיפה במים בלבד (בלי סבון ובלי מברשת קשה), בבוקר מוקדם כשהפאנלים קרים. כדאי בעיקר לפני הקיץ ואחרי תקופה ארוכה בלי גשם. לפי חוזה התחזוקה, וולטה אמורה לבצע שטיפות." },
     grantDays <= 60 && { t: `החיבור ל-SolarEdge יפוג בעוד ${Math.max(grantDays, 0)} ימים`, why: "ההרשאה שנתת לאפליקציה לקרוא את הנתונים מוגבלת בזמן.", fix: "כתוב לשולה \"חיבור סולארי\" ואשר שוב ב-SolarEdge. זה לוקח דקה." },
   ].filter(Boolean);
   return { a, good, bad, issues, note, status, best, wash, lift, vs30, m30, advice };
@@ -357,7 +359,7 @@ export function solarHtml(s, today, nonce = "", wx = "") {
   const weekMax = Math.max(...week.map((d) => d.kwh || 0), 1);
   const radMax = Math.max(...last30.map((d) => d.rad || 0), 1);
   const weather = (d) => (d.rain >= 1 ? ["rain", "גשם"] : d.rad == null ? ["cloud", ""] : d.rad >= radMax * 0.75 ? ["sun", "שמש"] : d.rad >= radMax * 0.45 ? ["part", "חלקית"] : ["cloud", "מעונן"]);
-  const rows = comparisons(days, today);
+  const rows = comparisons(days, today, v.a.ratio != null && v.a.ratio >= 0.9);
   const f = forecast(days, today);
   const monthRow = rows.find((r) => r.title.startsWith("החודש"));
   const today_ = s.today?.day === today ? s.today : null;
@@ -487,9 +489,9 @@ ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}li{display:flex;gap:
 .pay{margin-top:14px;display:grid;gap:6px}.pt{display:flex;justify-content:space-between;align-items:baseline}.pt span{font-weight:600}.pt b{font-size:1.2rem;color:var(--ok)}.pay .track{height:12px}
 .fixit{box-shadow:inset 0 0 0 1.5px rgba(255,199,96,.55),0 10px 28px rgba(0,8,24,.22)}.iss{display:grid;gap:5px;padding:12px 0;border-top:.5px solid var(--line)}.iss:first-of-type{border-top:0;padding-top:0}.iss:last-child{padding-bottom:0}.iss b{color:var(--warn)}.iss p{margin:0;color:var(--t2);font-size:.93rem}.iss span{color:var(--t1);font-weight:600}
 .how{margin-top:12px}.how summary{cursor:pointer;color:var(--t2);font-size:.86rem;font-weight:600;list-style:none}.how summary::-webkit-details-marker{display:none}.how summary::after{content:" ‹"}.how[open] summary::after{content:" ˅"}.how ul{margin:8px 0 0;gap:7px}.how li{display:block;color:var(--t2);font-size:.86rem;line-height:1.45}.how b{color:var(--t1)}
-#reload{display:none}.js #reload{display:grid;place-items:center;position:fixed;z-index:6;top:calc(env(safe-area-inset-top) + 8px);left:12px;width:40px;height:40px;border-radius:20px;border:0;color:#fff;background:rgba(14,26,52,.45);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3);transition:transform .1s}#reload:active{transform:scale(.92)}#reload svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}#reload.spin svg{animation:spin .9s linear infinite}
-.set{display:grid;gap:10px}.set label{display:grid;gap:4px}.set span{font-size:.84rem;color:var(--t2)}.set input{font:inherit;color:#fff;background:rgba(255,255,255,.1);border:0;border-radius:12px;padding:10px 12px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.2);direction:ltr;text-align:right}.set input:focus{outline:2px solid #6cb8ff}.set button{font:inherit;font-weight:600;border:0;border-radius:14px;padding:12px;background:#fff;color:#0d2a55}.set button:active{transform:scale(.98)}
-.rep{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:.5px solid var(--line)}.rep:first-of-type{border-top:0}.rep span{flex:1;font-weight:600}.rep a{color:#fff;text-decoration:none;font-size:.85rem;font-weight:600;padding:7px 14px;border-radius:999px;background:rgba(255,255,255,.14);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3);transition:transform .1s ease-out}.rep a:active{transform:scale(.94)}
+#reload{display:none}.js #reload{display:grid;place-items:center;position:fixed;z-index:6;top:calc(env(safe-area-inset-top) + 8px);left:12px;width:44px;height:44px;border-radius:22px;border:0;color:#fff;background:rgba(14,26,52,.45);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3);transition:transform .1s}#reload:active{transform:scale(.92)}#reload svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}#reload.spin svg{animation:spin .9s linear infinite}
+.set{display:grid;gap:10px}.set label{display:grid;gap:4px}.set span{font-size:.84rem;color:var(--t2)}.set input{min-height:44px;box-sizing:border-box;font:inherit;color:#fff;background:rgba(255,255,255,.1);border:0;border-radius:12px;padding:10px 12px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.2);direction:ltr;text-align:right}.set input:focus{outline:2px solid #6cb8ff}.set button{font:inherit;font-weight:600;border:0;border-radius:14px;padding:12px;background:#fff;color:#0d2a55}.set button:active{transform:scale(.98)}
+.rep{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:.5px solid var(--line)}.rep:first-of-type{border-top:0}.rep span{flex:1;font-weight:600}.rep a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;box-sizing:border-box;color:#fff;text-decoration:none;font-size:.85rem;font-weight:600;padding:7px 16px;border-radius:999px;background:rgba(255,255,255,.14);box-shadow:inset 0 .5px 0 rgba(255,255,255,.3);transition:transform .1s ease-out}.rep a:active{transform:scale(.94)}
 #install{font:inherit;font-weight:600;border:0;border-radius:14px;padding:13px 18px;background:#fff;color:#0d2a55;width:100%;transition:transform .1s ease-out}#install:active{transform:scale(.97)}.installbox{display:none}.installbox.on{display:block}
 .flat{padding:0}summary{cursor:pointer;list-style:none;padding:16px;font-weight:600;display:flex;justify-content:space-between;transition:transform .1s ease-out}summary:active{transform:scale(.98)}summary::-webkit-details-marker{display:none}summary::after{content:"＋";color:var(--t2)}details[open] summary::after{content:"－"}
 .more{padding:0 16px 16px;display:grid;gap:22px;animation:open .4s cubic-bezier(.2,.9,.25,1)}@keyframes open{from{opacity:0;transform:translateY(-8px)}}

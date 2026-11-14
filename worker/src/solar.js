@@ -283,7 +283,7 @@ export async function solarWatch(store, tell, now = new Date()) {
   return "solar watch: warned now";
 }
 
-const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px;max-width:640px;margin:auto">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+const html = (msg, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body dir="rtl" style="font:20px system-ui;padding:24px;max-width:640px;margin:auto">${msg}</body>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" } });
 const field = (name, label) => `<input name="${name}" placeholder="${label}" required dir="ltr" style="width:100%;box-sizing:border-box;font:16px system-ui;padding:10px;margin:6px 0">`;
 const setupPage = (origin) => html(`<h2>חיבור הגג הסולארי</h2><ol style="line-height:1.7">
 <li>ב-<a href="https://developer.solaredge.com" target="_blank">developer.solaredge.com</a> ליצור אפליקציה: Monitoring API, Site Access, עם SITE_DATA ו-DEVICE_DATA.</li>

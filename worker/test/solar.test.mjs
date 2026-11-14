@@ -271,6 +271,8 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.match(why(15, 0), /עבד טוב יותר/);
   assert.match(why(2, -20), /אותו דבר/);
   assert.equal(why(null, 5), "");
+  assert.match(why(-7, 0, true), /עננות מקומית/, "גג תקין והפרש קטן: לא \"כדאי לבדוק\"");
+  assert.match(why(-20, 0, true), /לא מזג האוויר/, "ירידה גדולה עדיין מסומנת");
   const today2 = "2026-11-16";
   const days = {};
   for (let i = 400; i >= 1; i--) days[addDays(today2, -i)] = { kwh: 20, rad: 10, tmax: 25 };
@@ -309,8 +311,10 @@ const at = new Date("2026-11-08T05:10:00Z");
   assert.equal(monthly(days, today2).at(-1).part, true);
   const v = insights({ days, openAlerts: 0, connectedAt: "2026-11-06T00:00:00Z" }, today2);
   assert.ok(v.good.some((x) => /התראות/.test(x)));
-  assert.ok(v.bad.some((x) => /אחרי גשם/.test(x)), "לכלוך מסומן");
-  assert.equal(v.status, "check");
+  // 14.11.2026: גשם לפני 18 יום, אז הלכלוך הוא עצה לשטיפה ולא "מה פחות טוב"
+  assert.ok(!v.bad.some((x) => /אחרי גשם/.test(x)), "לכלוך בלי יובש ארוך לא מוריד סטטוס");
+  assert.ok(v.advice.some(([h]) => /שטיפה/.test(h)), "העצה לשטיפה נשארת");
+  assert.equal(v.status, "ok", "הגג תקין, הלכלוך רק עצה");
   const html = solarHtml({ days, refreshToken: "TOKEN-SECRET", clientSecret: "CLIENT-SECRET", lastOkAt: "2026-11-08T05:10:00Z", connectedAt: "2026-11-06T00:00:00Z" }, today2);
   assert.ok(!/TOKEN-SECRET|CLIENT-SECRET/.test(html), "סודות לא בדף");
   assert.ok(!/NaN|undefined/.test(html.replace(/<script>[\s\S]*<\/script>/, "")), "בלי ערכים שבורים");
@@ -432,4 +436,27 @@ console.log("solar ok");
   assert.equal(insights({ days: d }, t0).status, "ok", "יום חלש בודד לא מוריד את הסטטוס");
   d["2026-11-05"] = { kwh: 8, rad: 15, tmax: 25 };
   assert.equal(insights({ days: d }, t0).status, "check", "שני ימים כאלה כבר כן");
+}
+
+{
+  // לכלוך (14.11.2026): עצה לשטיפה, ומוריד את הסטטוס רק אחרי 3 שבועות בלי גשם
+  const t = "2026-11-14";
+  const mk = (rainedLately) => {
+    const days = {};
+    for (let i = 400; i >= 1; i--) {
+      const since = (40 - ((i + 10) % 40)) % 40; // גשם כל 40 יום, האחרון לפני 30 יום
+      days[addDays(t, -i)] = { kwh: +(20 * (1 - Math.min(since, 39) * 0.004)).toFixed(2), rad: 20, tmax: 25, rain: since === 0 ? 8 : 0 };
+    }
+    if (rainedLately) days[addDays(t, -3)].rain = 3;
+    return { days, panels: 20, openAlerts: 0 };
+  };
+  const dusty = insights(mk(false), t);
+  assert.ok(dusty.lift >= 5);
+  assert.equal(dusty.status, "check", "יבש 3 שבועות ומלוכלך: לבדוק");
+  assert.ok(dusty.issues.some((x) => /לכלוך/.test(x.t)));
+  const washed = insights(mk(true), t);
+  assert.equal(washed.status, "ok", "ירד גשם השבוע: לכלוך הוא רק עצה, לא תקלה");
+  assert.ok(!washed.issues.some((x) => /לכלוך/.test(x.t)));
+  assert.ok(washed.advice.some(([h]) => /שטיפה/.test(h)), "העצה לשטיפה נשארת");
+  console.log("solar dirt ok");
 }
