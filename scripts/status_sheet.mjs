@@ -174,6 +174,7 @@ export function draftPlayer(d, groupId, today) {
     id: `sheet_${createHash("sha1").update(`${groupId}|${name}|${parentPhone}`).digest("hex").slice(0, 16)}`, // קבוע: הרצה חוזרת לא יוצרת כפילות
     name, groupId, parentName: String(d.parent || "").trim().slice(0, 60), parentPhone, joinDate: today, endDate: null, isActive: true,
     notPaying: !String(d.status || "").startsWith("✓"), notPayingSource: "manual",
+    ...(d.status === NOT_REGISTERED ? { trial: true } : {}), // "✗ לא רשום" = אימון ניסיון: בלי הודעת ברוכים הבאים עד שעובר לקבוצה
   };
 }
 
@@ -189,7 +190,7 @@ async function sheetsFetch(tok, path, body) {
 // קורא את כל לשוניות הקבוצות (כל לשונית שיש בה עמודות סטטוס רישום + מזהה)
 async function readRows(tok) {
   const meta = await sheetsFetch(tok, "?fields=sheets.properties.title");
-  const ranges = meta.sheets.map((s) => `'${s.properties.title}'!A2:K60`);
+  const ranges = meta.sheets.map((s) => `'${s.properties.title}'!A2:K`);
   const q = ranges.map((x) => `ranges=${encodeURIComponent(x)}`).join("&");
   const [vals, forms] = await Promise.all(["FORMATTED_VALUE", "FORMULA"].map((o) => sheetsFetch(tok, `/values:batchGet?${q}&valueRenderOption=${o}`)));
   const rows = [], tabs = {}, drafts = [];
@@ -241,7 +242,8 @@ async function main() {
   }
   if (app.length || fieldPlan.app.length || trial.length) {
     const b = db.batch();
-    trial.forEach((id) => b.update(db.collection("players").doc(id), { trial: false }));
+    const regDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem" }).format(new Date());
+    trial.forEach((id) => b.update(db.collection("players").doc(id), { trial: false, registeredAt: regDay })); // registeredAt: מכאן נספרת הודעת ברוכים הבאים
     app.forEach(({ id, notPaying }) => b.update(db.collection("players").doc(id), { notPaying, notPayingSource: "manual" }));
     fieldPlan.app.forEach(({ id, patch }) => b.update(db.collection("players").doc(id), patch));
     await b.commit();

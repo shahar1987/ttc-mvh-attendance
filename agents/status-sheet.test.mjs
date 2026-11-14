@@ -173,3 +173,8 @@ test("שורה חדשה: בניסיון לא רשום, אחרת רשום", () =>
   assert.equal(newRow({ id: "x", name: "דנה", trial: true, notPaying: false }, "מתחילים שאר ישוב", kid, 1)[6], NO);
   assert.equal(newRow({ id: "x", name: "דנה", notPaying: true }, "מתחילים שאר ישוב", kid, 1)[6], UNPAID);
 });
+
+test("a row typed as not registered becomes a trial player, others don't", () => {
+  assert.equal(draftPlayer({ name: "דנה כהן", phone: "050-1234567", status: "✗ לא רשום" }, "g", "2026-11-04").trial, true);
+  assert.equal(draftPlayer({ name: "דנה כהן", phone: "050-1234567", status: "" }, "g", "2026-11-04").trial, undefined);
+});

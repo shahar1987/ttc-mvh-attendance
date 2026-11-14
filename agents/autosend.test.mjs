@@ -162,3 +162,9 @@ test("deliver: nothing waiting is silent unless he asked; missing phones reporte
 test("chunks split at item boundaries", () => {
   assert.deepEqual(chunks(["a".repeat(2000), "b".repeat(2000), "c"]), ["a".repeat(2000), `${"b".repeat(2000)}\n\nc`]);
 });
+
+test("trial that started before the cutoff gets the welcome from the day it moved to the group", () => {
+  const p = P("old", { joinDate: "2026-09-01", trial: false, registeredAt: today });
+  const r = plan({ players: [p], groups, attendance: [], cancellations: [] }, today);
+  assert.deepEqual(r.messages.map((m) => m.key), [`welcome:${today}:g1:old`]);
+});

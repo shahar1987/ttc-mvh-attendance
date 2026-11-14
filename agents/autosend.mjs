@@ -57,8 +57,9 @@ export function plan(data, today, sent = new Set()) {
   for (const p of players) {
     const g = groupById.get(p.groupId);
     if (!g || g.deleted || !p.isActive || p.deleted || p.trial || p.welcomeSentAt) continue; // בניסיון: ברוך הבא רק כשעובר לקבוצה (שלום, 8.11)
-    if (!p.joinDate || p.joinDate < CUTOFF || p.joinDate > today) continue;
-    add(`welcome:${p.joinDate}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
+    const since = p.registeredAt || p.joinDate; // מי שיצא מניסיון: מהיום שעבר לקבוצה, גם אם התחיל לפני CUTOFF
+    if (!since || since < CUTOFF || since > today) continue;
+    add(`welcome:${since}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
   }
   return { today, messages, noPhone };
 }
@@ -189,6 +190,7 @@ const israelHour = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "As
 async function run() {
   const requested = process.env.AUTOSEND_REQUESTED === "1";
   if (!requested && (israelHour() < 20 || israelHour() > 22)) return console.log("autosend: outside the evening window");
+  if (requested && (israelHour() < 8 || israelHour() > 22)) return console.log("autosend: no messages to parents at night, even on request"); // הרצה חוזרת אוטומטית לא תשלח ב-4 בבוקר
   const [{ firestore, loadAll }, { tellOwner }] = await Promise.all([import("./lib/firebase.mjs"), import("./lib/owner.mjs")]);
   const db = firestore(), botRef = db.collection("agentReports").doc("bot");
   const tell = (text) => tellOwner(db, { agent: "autosend", text });

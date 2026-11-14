@@ -4069,6 +4069,7 @@ function at({
           yearlyTarget: WT.trim() ? Number(WT) * 52 : null,
           trainingDays: TD,
           trial: TR,
+          ...(i && a.trial && !TR ? { registeredAt: E() } : {}),
         };
         i
           ? await O(S(P, "players", a.id), v)

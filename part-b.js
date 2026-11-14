@@ -2010,7 +2010,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
         setBusy("");
       }
     },
-    approve = (r) =>
+    approve = (r, trial) =>
       gidOf(r) &&
       act(r, (bt) =>
         bt.set(S(P, "players", `join_${r.id}`), {
@@ -2021,6 +2021,7 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
           joinDate: E(),
           endDate: null,
           isActive: !0,
+          ...(trial ? { trial: !0 } : {}),
         }),
       ),
     linkTo = (r, p) =>
@@ -2083,11 +2084,16 @@ function JoinOwnerScreen({ groups: G, players: PL }) {
               ),
               e.createElement(
                 "div",
-                { className: "grid grid-cols-[1fr_auto] gap-2" },
+                { className: "grid grid-cols-[1fr_1fr_auto] gap-2" },
                 e.createElement(
                   "button",
                   { disabled: busy === r.id || !gidOf(r), onClick: () => approve(r), className: "min-h-[48px] rounded-full bg-[#5E9E8C] text-white font-bold disabled:opacity-50" },
-                  ms.length ? "בכל זאת ילד חדש — להוסיף" : "אישור והוספה לקבוצה",
+                  ms.length ? "בכל זאת ילד חדש — להוסיף" : "הוספה לקבוצה",
+                ),
+                e.createElement(
+                  "button",
+                  { disabled: busy === r.id || !gidOf(r), onClick: () => approve(r, !0), className: "min-h-[48px] rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-bold disabled:opacity-50" },
+                  "לאימון ניסיון",
                 ),
                 e.createElement("button", { disabled: busy === r.id, onClick: () => reject(r), className: "min-h-[48px] px-4 rounded-full bg-slate-100 text-slate-600 font-semibold disabled:opacity-50" }, "דחייה"),
               ),
@@ -3991,7 +3997,7 @@ function re({
                   key: "permanent",
                   onClick: () =>
                     askConfirm(`להפוך את ${p.name} לשחקן קבוע?`, { yes: "כן, קבוע" }).then(
-                      (ok) => ok && O(S(P, "players", p.id), { trial: !1 }).catch((err) => N("השמירה נכשלה: " + err.message)),
+                      (ok) => ok && O(S(P, "players", p.id), { trial: !1, registeredAt: E() }).catch((err) => N("השמירה נכשלה: " + err.message)),
                     ),
                   className:
                     "min-h-[44px] rounded-full px-3 text-sm font-semibold shrink-0 bg-blue-50 text-blue-800 border border-blue-200 active:scale-95 transition-transform",

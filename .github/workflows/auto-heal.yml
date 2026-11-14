@@ -32,6 +32,8 @@ jobs:
             --jq '.workflows[] | select(.state=="active") | [.id, .path, .name] | @tsv' |
           while IFS=$'\t' read -r wid path name; do
             [ "$path" = ".github/workflows/auto-heal.yml" ] && continue
+            # ג'ובים ששולחים הודעות או התראות: הרצה חוזרת עלולה לשלוח שוב, או בלילה. נשארים לדוח
+            case "$path" in .github/workflows/send-*.yml|.github/workflows/autosend-mark.yml) echo "skip  $name (sends messages)"; continue ;; esac
             last=$(gh api "repos/$REPO/actions/workflows/$wid/runs?per_page=1&branch=main" \
               --jq '.workflow_runs[0] | [.id, .conclusion // "running", .event] | @tsv' 2>/dev/null || true)
             [ -z "$last" ] && continue
