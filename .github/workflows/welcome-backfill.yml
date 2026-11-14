@@ -1,0 +1,25 @@
+name: Welcome backfill (one-time)
+
+# השלמה חד-פעמית: ברוכים הבאים למי שעבר מניסיון לקבוצה לפני התיקון של 14.11 (scripts/welcome_backfill.mjs)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: agents
+        run: npm ci --no-audit --no-fund
+      - name: Mark players for tonight's welcome
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/welcome_backfill.mjs
