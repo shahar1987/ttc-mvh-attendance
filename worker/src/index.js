@@ -447,6 +447,9 @@ export function unanswered(bot, now = Date.now()) {
 const toDecl = ({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters });
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS, ...SOLAR_TOOL_DEFS].map(toDecl);
 const WITH_MEMORY = [...FUNCTION_DECLS, ...MEMORY_TOOL_DEFS.map(toDecl)];
+// 🏢 מהאפליקציה "החברה של שולה" לא כותבים למערכת הנוכחות (החלטת הבעלים 15.11: "באפליקציה של הנוכחות אתה לא נוגע, אפשר להסתנכרן איתה").
+// שם נשארים רק כלי קריאה מהנוכחות, ושאר הכלים (הודעות למאמנים, קלוד, תזכורות, זיכרון)
+export const APP_BLOCKED = new Set(["set_player_phone", "send_absence_messages", "confirm_absence_sent", "skip_messages", "resolve_registration", "trial_decision", "mark_attendance", "send_parents_now", "coach_access", "coach_messages"]);
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
 // 2026-10-27: Claude Haiku ראשי (על קרדיט ה-API החודשי של מנוי Max), Gemini רק כגיבוי. בלי ANTHROPIC_API_KEY — Gemini כמו קודם
@@ -501,14 +504,19 @@ const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:"
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
-async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false) {
+async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false, channel = "wa") {
+  // 🏢 מהאפליקציה "החברה של שולה" (company.js): אותו מוח ואותם כלים, רק שהתשובות חוזרות לשם ולא לוואטסאפ
+  const app = channel === "app", where = app ? "כאן באפליקציה" : "בוואטסאפ";
+  const sys = app ? `${SYSTEM}\n\nהשיחה הזו מתנהלת באפליקציה "החברה של שולה" ולא בוואטסאפ. אותם כללים; תשובה מקלוד חוזרת לאפליקציה. מכאן מערכת הנוכחות לקריאה בלבד: לא מסמנים נוכחות, לא משנים שחקנים או מדריכים ולא שולחים הודעות להורים. בקשה כזו — לומר בקצרה שעושים אותה באפליקציית הנוכחות עצמה.` : SYSTEM;
   const gate = forwarded ? "" : text; // השערים רואים רק מה שהבעלים עצמו כתב
   // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
   // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), gate].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
+  const allTools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, channel, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
+  const tools = app ? Object.fromEntries(Object.entries(allTools).filter(([k]) => !APP_BLOCKED.has(k))) : allTools;
+  const decls = (env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS).filter((d) => !app || !APP_BLOCKED.has(d.name));
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -543,11 +551,11 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}
+      systemInstruction: { parts: [{ text: `${sys}${team}${rulesPrompt(bot)}${waiting}
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
-      tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
+      tools: [{ functionDeclarations: decls }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
     }, trace);
     const calls = parts.filter((p) => p.functionCall);
@@ -558,7 +566,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
       if (!answer) {
         await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: `Gemini החזיר תשובה ריקה (finishReason: ${parts.finishReason || "?"})` } }).catch(() => {});
         // אחרי שכלי כבר רץ (2026-10-10 05:39: ask_claude הועבר, ובכל זאת "נסה שוב") — לא להטעות שכלום לא קרה
-        const did = used.includes("ask_claude") ? "העברתי לקלוד, והתשובה ממנו תגיע אליך בוואטסאפ." : used.length ? `ביצעתי: ${used.join(", ")}. לא הצלחתי לנסח תשובה מלאה, אפשר לשאול אותי מה יצא.` : "";
+        const did = used.includes("ask_claude") ? `העברתי לקלוד, והתשובה ממנו תגיע אליך ${where}.` : used.length ? `ביצעתי: ${used.join(", ")}. לא הצלחתי לנסח תשובה מלאה, אפשר לשאול אותי מה יצא.` : "";
         return { answer: did || "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn, used };
       }
       // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — מעבירים בעצמנו
@@ -599,14 +607,14 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
     );
     contents.push({ role: "user", parts: results });
   }
-  if (askedClaude) return { answer: "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ.", userTurn, used };
+  if (askedClaude) return { answer: `העברתי את הבקשה לקלוד, התשובה תגיע ${where}.`, userTurn, used };
   // נגמרו הסבבים בלי תשובה (13.10: "כל השחקנים של דפנה שלח לדור" — פעמיים "תנסח שוב"). סבב אחרון בלי כלים:
   // מה נמצא עד עכשיו ושאלה אחת על מה שחסר, במקום לבקש מהבעלים לנסח מחדש.
   contents.push({ role: "user", parts: [{ text: "[מערכת] נגמרו הצעדים לתור הזה. בלי כלים: כתבי לבעלים בקצרה מה מצאת ומה כבר בוצע, ושאלה אחת ממוקדת על מה שחסר כדי לסיים." }] });
   const last = await gemini(env, {
-    systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+    systemInstruction: { parts: [{ text: `${sys}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
-    tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
+    tools: [{ functionDeclarations: decls }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
     generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
   }, trace).catch(() => []);
@@ -784,6 +792,9 @@ async function everyQuarter(env) {
 }
 
 export { everyQuarter, think };
+// הכתובת נקבעת בבקשת fetch; קריאה מהאפליקציה (company.js) לא עוברת שם
+export const setOrigin = (o) => void (ORIGIN ||= o || "");
+export { Company } from "./company.js";
 export async function review(env) {
   const store = db(env);
   const bot = (await store.get("agentReports/bot")) || {};

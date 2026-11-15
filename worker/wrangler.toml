@@ -32,6 +32,12 @@ binding = "TOOLS"
 service = "shula-tools"
 entrypoint = "Internal"
 
+# 🏢 "החברה של שולה" — תשובת קלוד לבקשה שנשלחה מהאפליקציה חוזרת לשם (inbox.js). ה-Worker השני מתחבר לכאן דרך Company (company.js)
+[[services]]
+binding = "COMPANY"
+service = "shula-company"
+entrypoint = "Inbox"
+
 # לוגים של ה-worker בדשבורד של Cloudflare (שגיאות cron ו-webhook) — חינמי
 [observability]
 enabled = true

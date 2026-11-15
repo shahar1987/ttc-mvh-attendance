@@ -175,6 +175,11 @@ export async function inboxRoute(req, env, store, wa) {
   await store.merge(`agentReports/ask_${id}`, { inboxStatus: item.tap ? "waiting" : "done", answer, doneAt: at });
   if (item.silent) return Response.json({ ok: true }); // הפעלה שקטה (לחיצת כפתור) — אין מה לבשר לבעלים
   const text = `📮 *תשובה מקלוד* על "${item.request}":\n\n${answer}`;
+  // 🏢 בקשה שנשלחה מהאפליקציה: התשובה חוזרת לשם (company.js), לא לוואטסאפ. אם האפליקציה לא זמינה — לוואטסאפ כרגיל
+  if (item.channel === "app" && env.COMPANY && (await env.COMPANY.say({ text: `תשובה מקלוד על "${item.request}":\n\n${answer}` }).then(() => true, () => false))) {
+    await store.update("agentReports/bot", (cur) => ({ log: [...(cur.log || []), { at, user: `[תשובה מקלוד הגיעה לבעלים באפליקציה, בקשה ${id}]`, shula: text }].slice(-80) }));
+    return Response.json({ ok: true });
+  }
   // נכנס ליומן השיחה ולהיסטוריה: כך המפקח הלילי רואה שהתשובה הגיעה, ושולה רואה את כל התשובות (לא רק האחרונה).
   // בהיסטוריה זה נכנס כתוכן חיצוני בתפקיד user — לא כאילו שולה אמרה את זה, וההוראות שבו לא מחייבות אותה.
   await store.update("agentReports/bot", (cur) => ({
@@ -246,7 +251,8 @@ export const makeMemoryTools = ({ env, lastOwnerText = "" }) => !env.TOOLS ? {} 
   },
 };
 
-export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn, lastReply = "" }) {
+export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRecent = lastOwnerText, turn, lastReply = "", channel = "wa" }) {
+  const where = channel === "app" ? "כאן באפליקציה" : "בוואטסאפ";
   return {
     async send_parents_now() {
       if (!asksParentsNow(lastOwnerText) && !(await confirmed(store, "parents_now", {}, lastOwnerText, turn)))
@@ -276,9 +282,9 @@ export function makeInboxTools({ env, store, origin, lastOwnerText = "", ownerRe
       const bot = (await store.get("agentReports/bot")) || {};
       const id = Math.random().toString(36).slice(2, 8);
       // said: מה שהוא אמר בפועל. המודל מנסח מחדש, וב-3.11 בדיקה שביקש הפכה לשלוש טיוטות לדוגמה
-      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, ...(authored ? {} : { said: String(ownerRecent).slice(-1500) }), inboxStatus: "open" });
-      if (await fireRoutine(env, store, id)) return "נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע אליך בוואטסאפ בעוד דקה-שתיים.";
-      const base = "נרשם. קלוד יענה עד שעה, והתשובה תגיע אליך בוואטסאפ.";
+      await store.merge(`agentReports/ask_${id}`, { at: new Date().toISOString(), request, ...(authored ? {} : { said: String(ownerRecent).slice(-1500) }), ...(channel === "app" ? { channel } : {}), inboxStatus: "open" });
+      if (await fireRoutine(env, store, id)) return `נשלח לקלוד, והוא כבר עובד על זה. התשובה תגיע אליך ${where} בעוד דקה-שתיים.`;
+      const base = `נרשם. קלוד יענה עד שעה, והתשובה תגיע אליך ${where}.`;
       // קישור ההפעלה המיידית נשלח לכל היותר פעם ביום, כדי לא לנדנד בכל בקשה
       if (Date.now() - new Date(bot.claudeLinkAt || 0).getTime() < 24 * 3600 * 1000) return base;
       await store.merge("agentReports/bot", { claudeLinkAt: new Date().toISOString() });

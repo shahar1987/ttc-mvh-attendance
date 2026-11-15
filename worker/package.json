@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "test": "node test/claude.test.mjs && node test/bot.test.mjs && node test/webhook.test.mjs && node test/gates.test.mjs && node test/dashboard.test.mjs && node test/retry.test.mjs && node test/join.test.mjs && node test/solar.test.mjs && node test/files.test.mjs"
+    "test": "node --import ./test/stub.mjs test/claude.test.mjs && node --import ./test/stub.mjs test/bot.test.mjs && node --import ./test/stub.mjs test/webhook.test.mjs && node --import ./test/stub.mjs test/gates.test.mjs && node --import ./test/stub.mjs test/dashboard.test.mjs && node --import ./test/stub.mjs test/retry.test.mjs && node --import ./test/stub.mjs test/join.test.mjs && node --import ./test/stub.mjs test/solar.test.mjs && node --import ./test/stub.mjs test/files.test.mjs && node --import ./test/stub.mjs test/company.test.mjs"
   },
   "devDependencies": {
     "wrangler": "4.156.0"
