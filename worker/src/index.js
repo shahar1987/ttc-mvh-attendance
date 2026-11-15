@@ -447,6 +447,9 @@ export function unanswered(bot, now = Date.now()) {
 const toDecl = ({ name, description, input_schema: { additionalProperties, ...parameters } }) => ({ name, description, parameters });
 const FUNCTION_DECLS = [...TOOL_DEFS, ...META_TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS, ...SOLAR_TOOL_DEFS].map(toDecl);
 const WITH_MEMORY = [...FUNCTION_DECLS, ...MEMORY_TOOL_DEFS.map(toDecl)];
+// 🏢 מהאפליקציה "החברה של שולה" לא כותבים למערכת הנוכחות (החלטת הבעלים 15.11: "באפליקציה של הנוכחות אתה לא נוגע, אפשר להסתנכרן איתה").
+// שם נשארים רק כלי קריאה מהנוכחות, ושאר הכלים (הודעות למאמנים, קלוד, תזכורות, זיכרון)
+export const APP_BLOCKED = new Set(["set_player_phone", "send_absence_messages", "confirm_absence_sent", "skip_messages", "resolve_registration", "trial_decision", "mark_attendance", "send_parents_now", "coach_access", "coach_messages"]);
 
 // trace (לא חובה): לכל ניסיון "מודל שניות סטטוס" — נכנס ליומן השיחה, כדי שהאחראית הלילית תראה איזה מודל איטי
 // 2026-10-27: Claude Haiku ראשי (על קרדיט ה-API החודשי של מנוי Max), Gemini רק כגיבוי. בלי ANTHROPIC_API_KEY — Gemini כמו קודם
@@ -504,14 +507,16 @@ const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרת
 async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false, channel = "wa") {
   // 🏢 מהאפליקציה "החברה של שולה" (company.js): אותו מוח ואותם כלים, רק שהתשובות חוזרות לשם ולא לוואטסאפ
   const app = channel === "app", where = app ? "כאן באפליקציה" : "בוואטסאפ";
-  const sys = app ? `${SYSTEM}\n\nהשיחה הזו מתנהלת באפליקציה "החברה של שולה" ולא בוואטסאפ. אותם כללים ואותם כלים; תשובה מקלוד חוזרת לאפליקציה.` : SYSTEM;
+  const sys = app ? `${SYSTEM}\n\nהשיחה הזו מתנהלת באפליקציה "החברה של שולה" ולא בוואטסאפ. אותם כללים; תשובה מקלוד חוזרת לאפליקציה. מכאן מערכת הנוכחות לקריאה בלבד: לא מסמנים נוכחות, לא משנים שחקנים או מדריכים ולא שולחים הודעות להורים. בקשה כזו — לומר בקצרה שעושים אותה באפליקציית הנוכחות עצמה.` : SYSTEM;
   const gate = forwarded ? "" : text; // השערים רואים רק מה שהבעלים עצמו כתב
   // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
   // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), gate].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, channel, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
+  const allTools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, channel, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
+  const tools = app ? Object.fromEntries(Object.entries(allTools).filter(([k]) => !APP_BLOCKED.has(k))) : allTools;
+  const decls = (env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS).filter((d) => !app || !APP_BLOCKED.has(d.name));
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -550,7 +555,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
-      tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
+      tools: [{ functionDeclarations: decls }],
       generationConfig: { maxOutputTokens: 4096, temperature: 0.6 }, // מודלים "חושבים" מוציאים חלק מהתקציב על חשיבה
     }, trace);
     const calls = parts.filter((p) => p.functionCall);
@@ -609,7 +614,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   const last = await gemini(env, {
     systemInstruction: { parts: [{ text: `${sys}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
-    tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
+    tools: [{ functionDeclarations: decls }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
     generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
   }, trace).catch(() => []);
