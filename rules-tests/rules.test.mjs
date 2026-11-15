@@ -91,7 +91,7 @@ await t('לא קורא יותר את כרטיס הילד המקושר', () => as
 await t('לא קורא יותר את הנוכחות של הילד המקושר', () => assertFails(getDocs(query(collection(as('parent1'), 'attendance'), where('playerId', 'in', ['p1'])))));
 await t('לא קורא את הקישורים של עצמו', () => assertFails(getDocs(query(collection(as('parent1'), 'links'), where('uid', '==', 'parent1')))));
 await t('כן קורא קבוצות והודעות', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'groups'))); await assertSucceeds(getDocs(collection(as('parent1'), 'cancellations'))); });
-await t('כן קורא תחרויות, אבל לא כותב (Member בלי הרשאת תחרויות)', async () => { await assertSucceeds(getDocs(collection(as('parent1'), 'tournaments'))); await assertFails(setDoc(doc(as('parent1'), 'tournaments/t9'), { name: 'חדש' })); });
+await t('לא קורא תחרויות ולא כותב (Member בלי הרשאת תחרויות)', async () => { await assertFails(getDocs(collection(as('parent1'), 'tournaments'))); await assertFails(getDoc(doc(as('parent1'), 'tournaments/t1'))); await assertFails(setDoc(doc(as('parent1'), 'tournaments/t9'), { name: 'חדש' })); });
 
 console.log('\n— מאמן —');
 await t('לא מושך אליו רשומת נוכחות של קבוצה אחרת', () => assertFails(updateDoc(doc(as('coachA'), A2), { groupId: 'gA', status: 'Present' })));
@@ -108,6 +108,7 @@ console.log('\n— צופה —');
 await t('כן קורא שחקנים ונוכחות', async () => { await assertSucceeds(getDocs(collection(as('viewer1'), 'players'))); await assertSucceeds(getDocs(collection(as('viewer1'), 'attendance'))); });
 await t('לא כותב נוכחות', () => assertFails(setDoc(doc(as('viewer1'), 'attendance/2026-09-20_gA_p1'), { playerId: 'p1', groupId: 'gA', date: '2026-09-20', status: 'Present' })));
 await t('לא מוחק תחרות (אין לו הרשאת תחרויות)', () => assertFails(deleteDoc(doc(as('viewer1'), 'tournaments/t1'))));
+await t('צופה (צוות) קורא תחרויות', () => assertSucceeds(getDocs(collection(as('viewer1'), 'tournaments'))));
 await t('לא כותב תחרות בלי הרשאת תחרויות', () => assertFails(setDoc(doc(as('viewer1'), 'tournaments/tV'), { name: 'x' })));
 
 console.log('\n— פורטל ההורים הוסר: אין הרשמה ואין בקשות גישה —');
