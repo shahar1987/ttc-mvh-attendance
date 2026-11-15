@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v ocr >/dev/null 2>&1 || npm install -g @alibaba-group/open-code-review >/dev/null 2>&1 || true",
+            "command": "command -v ocr >/dev/null 2>&1 || npm install -g --ignore-scripts @alibaba-group/open-code-review@1.13.10 >/dev/null 2>&1 || true",
             "timeout": 120
           }
         ]
