@@ -4575,7 +4575,7 @@ function useCoachFieldsHealer(on, groups, users) {
 const SHEET_FIELD_HE = { name: "שם", parentName: "הורה", parentPhone: "טלפון", joinDate: "תאריך הצטרפות" };
 const OWNER_NUM = { info: "text-blue-700", todo: "text-amber-800", sheet: "text-emerald-700" };
 const OWNER_TONE = { info: "bg-blue-50 text-blue-700", todo: "bg-amber-50 text-amber-800", sheet: "bg-emerald-50 text-emerald-700" };
-function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenReports, owner }) {
+function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenReports, onPickPlayer, owner }) {
   let [doc, setDoc] = b(null),
     [openKey, setOpenKey] = b(null);
   j(() => (owner ? ae(S(P, "system", "sheetChanges"), (snap) => setDoc(snap.exists() ? snap.data() : null), () => setDoc(null)) : void 0), [owner]);
@@ -4672,7 +4672,11 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenRepor
             : null,
         ]
       : null;
+  let search = onPickPlayer ? e.createElement("div", { dir: "rtl", className: "px-4 pt-3 no-print" }, e.createElement(PlayerSearch, { players, groups, onPick: onPickPlayer })) : null;
   return e.createElement(
+    e.Fragment,
+    null,
+    e.createElement(
     "div",
     { dir: "rtl", className: "px-4 pt-4 flex gap-2 no-print" },
     cats.length
@@ -4697,6 +4701,8 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenRepor
         { role: "dialog", "aria-modal": "true", "aria-label": openKey === "menu" ? "בשבילך" : open.label, className: "fixed inset-0 z-[60] bg-black/40 flex items-end justify-center", onClick: (ev) => ev.target === ev.currentTarget && close() },
         e.createElement("div", { className: "w-full max-w-md bg-white rounded-t-3xl max-h-[80vh] flex flex-col shadow-xl" }, body),
       ),
+    ),
+    search,
   );
 }
 
@@ -4733,6 +4739,7 @@ function Q() {
     screenRef = e.useRef(null),
     [x, h] = b(!1),
     [playerModal, setPlayerModal] = b(null),
+    [reportPick, setReportPick] = b(null),
     [waPlayer, setWaPlayer] = b(null),
     g = ut(),
     openAddPlayer = (group, trial) =>
@@ -5011,7 +5018,11 @@ function Q() {
           owner: !!(r && canDo(s, "payments")),
           onEditPlayer: openEditPlayer,
           onOpenPayments: () => goToScreen("payments"),
-          onOpenReports: canDo(s, "reports") ? () => goToScreen("reports") : null,
+          onOpenReports: canDo(s, "reports") ? () => (setReportPick(null), goToScreen("reports")) : null,
+          // שחקן בניסיון אין לו דוח — פותחים את הכרטיס שלו; כל השאר נפתחים ב"דוח שחקן"
+          onPickPlayer: canDo(s, "reports")
+            ? (p) => (p.trial ? (vw ? null : openEditPlayer(p)) : (setReportPick({ id: p.id, n: Date.now() }), goToScreen("reports")))
+            : null,
         }),
       (canDo(s, "reports") || vw) &&
         m === "dashboard" &&
@@ -5043,6 +5054,8 @@ function Q() {
       canDo(s, "reports") &&
         m === "reports" &&
         e.createElement(ReportsScreen, {
+          key: reportPick ? reportPick.n : "r",
+          initialPick: reportPick,
           groups: i,
           users: l,
           players: statPlayers,

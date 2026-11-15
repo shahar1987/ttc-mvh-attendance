@@ -1905,14 +1905,15 @@ function ReportAttendanceMatrix({ groups, players, attendance }) {
     ),
   );
 }
-function ReportPlayer({ players, groups, attendance }) {
+function ReportPlayer({ players, groups, attendance, pick }) {
   let activePlayers = players
       .filter((p) => p.isActive && !p.deleted)
       .sort((a, c) => a.name.localeCompare(c.name, "he")),
-    [playerId, setPlayerId] = b(activePlayers[0]?.id || ""),
+    [playerId, setPlayerId] = b((pick && pick.id) || activePlayers[0]?.id || ""),
     [startDate, setStartDate] = b(firstOfMonthStr()),
     [endDate, setEndDate] = b(E()),
     player = players.find((p) => p.id === playerId),
+    _pk = j(() => void (pick && pick.id && setPlayerId(pick.id)), [pick]),
     records = attendance
       .filter(
         (rec) =>
@@ -2667,9 +2668,60 @@ function ReportQuota({ players, groups, attendance }) {
     ),
   );
 }
-function ReportsScreen({ groups, users, players, attendance, cancellations, readOnly: RO }) {
+// 15.11: חיפוש שחקן/ית — בדשבורד ובדוחות. לחיצה על תוצאה פותחת את "דוח שחקן" שלו.
+function PlayerSearch({ players, groups, onPick }) {
+  let [q, setQ] = b(""),
+    t = q.trim(),
+    gName = new Map(groups.map((g) => [g.id, g.name])),
+    hits = t
+      ? players
+          .filter((p) => p.isActive !== !1 && !p.deleted)
+          .filter((p) => (p.name || "").includes(t) || (p.parentName || "").includes(t))
+          .sort((a, c) => (a.name || "").localeCompare(c.name || "", "he"))
+          .slice(0, 8)
+      : [];
+  return e.createElement(
+    "div",
+    { className: "flex flex-col gap-1 no-print" },
+    e.createElement(
+      "div",
+      { className: "relative" },
+      e.createElement(Ne, { className: "w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" }),
+      e.createElement("input", {
+        type: "search",
+        value: q,
+        onChange: (ev) => setQ(ev.target.value),
+        placeholder: "חיפוש שחקן/ית",
+        "aria-label": "חיפוש שחקן/ית",
+        className: "w-full bg-white border border-slate-200 rounded-xl min-h-[48px] py-3 pr-9 pl-3 text-base text-right outline-none focus:border-blue-400",
+      }),
+    ),
+    t &&
+      e.createElement(
+        "div",
+        { className: "bg-white rounded-xl border border-slate-200 divide-y divide-slate-100" },
+        hits.length
+          ? hits.map((p) =>
+              e.createElement(
+                "button",
+                {
+                  key: p.id,
+                  type: "button",
+                  onClick: () => (setQ(""), onPick(p)),
+                  className: "w-full min-h-[48px] px-3 py-2 flex items-center justify-between gap-2 text-right",
+                },
+                e.createElement("span", { className: "text-base font-semibold text-slate-900" }, p.name),
+                e.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, p.trial ? "באימון ניסיון" : gName.get(p.groupId) || ""),
+              ),
+            )
+          : e.createElement("p", { className: "px-3 py-3 text-sm text-slate-500" }, "לא נמצאו תוצאות"),
+      ),
+  );
+}
+function ReportsScreen({ groups, users, players, attendance, cancellations, readOnly: RO, initialPick }) {
   // 27.9: שש לשוניות בשורה גלולה — ארבע מהן הסתתרו מחוץ למסך. עכשיו שתי קבוצות של שלוש.
-  let [tab, setTab] = b("matrix"),
+  let [pick, setPick] = b(initialPick || null),
+    [tab, setTab] = b(initialPick ? "player" : "matrix"),
     sets = {
       groups: { label: "קבוצות", tabs: [
         { key: "matrix", label: "נוכחות חודשית" },
@@ -2687,6 +2739,7 @@ function ReportsScreen({ groups, users, players, attendance, cancellations, read
   return e.createElement(
     "div",
     { className: "px-4 pt-4 pb-6 flex flex-col gap-4" },
+    e.createElement(PlayerSearch, { players, groups, onPick: (p) => (setPick({ id: p.id, n: Date.now() }), setTab("player")) }),
     e.createElement(
       "div",
       { className: "grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl no-print", role: "tablist" },
@@ -2721,7 +2774,7 @@ function ReportsScreen({ groups, users, players, attendance, cancellations, read
       ),
     ),
     tab === "matrix" && e.createElement(ReportAttendanceMatrix, { groups, players, attendance }),
-    tab === "player" && e.createElement(ReportPlayer, { players, groups, attendance }),
+    tab === "player" && e.createElement(ReportPlayer, { players, groups, attendance, pick }),
     tab === "fillrate" &&
       e.createElement(ReportCoachFillRate, { groups, users, attendance, cancellations }),
     tab === "risk" && e.createElement(ReportDropoutRisk, { players, groups, attendance, readOnly: RO }),
