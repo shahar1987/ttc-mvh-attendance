@@ -5,9 +5,36 @@
         "source": "github",
         "repo": "shahar1987/ttc-mvh-attendance"
       }
+    },
+    "open-code-review": {
+      "source": {
+        "source": "github",
+        "repo": "alibaba/open-code-review"
+      }
+    },
+    "elementalsouls": {
+      "source": {
+        "source": "github",
+        "repo": "elementalsouls/Claude-BugHunter"
+      }
     }
   },
   "enabledPlugins": {
-    "context-alarm@ttc-mods": true
+    "context-alarm@ttc-mods": true,
+    "open-code-review@open-code-review": true,
+    "claude-bughunter@elementalsouls": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v ocr >/dev/null 2>&1 || npm install -g @alibaba-group/open-code-review >/dev/null 2>&1 || true",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
   }
 }
