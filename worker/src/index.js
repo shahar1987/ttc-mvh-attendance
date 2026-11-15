@@ -501,14 +501,17 @@ const TOOLS_MEMO = "[מערכת: כלים שהופעלו בתשובה הזאת:"
 const CLAIMS_HANDOFF = /(העברתי|שלחתי|ביקשתי|רשמתי|מעבירה|שולחת)[^.\n]{0,30}קלוד|קלוד[^.\n]{0,30}(יענה|יחזור|יטפל|עובד על|כבר עובד)/;
 
 const CLAIMS_REMINDER = /(שמרתי|רשמתי|קבעתי|הגדרתי|יצרתי|הוספתי)[^.\n]{0,30}(תזכורת|התרעה|התראה)|אזכיר לך|(תזכורת|התרעה|התראה)[^.\n]{0,20}(נשמרה|נקבעה|מוגדרת|תגיע)/;
-async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false) {
+async function think(env, store, wa, bot, text, media, stillTyping, turn, trace = [], tapped = "", forwarded = false, channel = "wa") {
+  // 🏢 מהאפליקציה "החברה של שולה" (company.js): אותו מוח ואותם כלים, רק שהתשובות חוזרות לשם ולא לוואטסאפ
+  const app = channel === "app", where = app ? "כאן באפליקציה" : "בוואטסאפ";
+  const sys = app ? `${SYSTEM}\n\nהשיחה הזו מתנהלת באפליקציה "החברה של שולה" ולא בוואטסאפ. אותם כללים ואותם כלים; תשובה מקלוד חוזרת לאפליקציה.` : SYSTEM;
   const gate = forwarded ? "" : text; // השערים רואים רק מה שהבעלים עצמו כתב
   // מה שהבעלים עצמו כתב בהודעה הזאת ובשלוש הקודמות — רק השדה owner שנשמר בהיסטוריה.
   // לא מפרקים את הטקסט מחדש: תשובה מקלוד או הודעת סוכן שמכילה את המילים "ההודעה החדשה של הבעלים:"
   // הייתה נחשבת כאילו הבעלים כתב אותה, ועוקפת את שער ה"כן" לפני שליחה למאמנים.
   const OWNER_MARK = "ההודעה החדשה של הבעלים:\n";
   const ownerRecent = [...(bot.history || []).filter((h) => h.role === "user" && h.owner).map((h) => String(h.owner)).slice(-3), gate].join("\n");
-  const tools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
+  const tools = { ...makeTools({ env, store, wa, lastOwnerText: gate, turn }), ...makeMetaTools({ env, store, lastOwnerText: gate, origin: ORIGIN, turn }), ...makeMessageTools({ store, wa, lastOwnerText: gate, turn, ownerRecent }), ...makeInboxTools({ env, store, origin: ORIGIN, lastOwnerText: gate, ownerRecent, turn, channel, lastReply: (bot.history || []).filter((h) => h.role === "assistant").at(-1)?.text }), ...makeCoachAdminTools({ store, lastOwnerText: gate, turn }), ...makeSolarTools({ store, origin: ORIGIN, lastOwnerText: gate, turn }), ...makeMemoryTools({ env, lastOwnerText: gate }) };
 
   // השיחה הקודמת נשמרת כטקסט בלבד. הודעות מהסוכנים המתוזמנים (דוח הבוקר וכו') נכנסות
   // כהקשר, כדי שתשובה כמו "שלח הכל" לדוח הבוקר תובן נכון.
@@ -543,7 +546,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
   for (let turn = 0; turn < 6; turn++) {
     if (turn) stillTyping(); // החיווי נעלם אחרי 25 שניות — מחדשים בכל סבב כלים
     const parts = await gemini(env, {
-      systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}
+      systemInstruction: { parts: [{ text: `${sys}${team}${rulesPrompt(bot)}${waiting}
 
 היום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
       contents,
@@ -558,7 +561,7 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
       if (!answer) {
         await store.merge("agentReports/bot", { lastError: { at: new Date().toISOString(), message: `Gemini החזיר תשובה ריקה (finishReason: ${parts.finishReason || "?"})` } }).catch(() => {});
         // אחרי שכלי כבר רץ (2026-10-10 05:39: ask_claude הועבר, ובכל זאת "נסה שוב") — לא להטעות שכלום לא קרה
-        const did = used.includes("ask_claude") ? "העברתי לקלוד, והתשובה ממנו תגיע אליך בוואטסאפ." : used.length ? `ביצעתי: ${used.join(", ")}. לא הצלחתי לנסח תשובה מלאה, אפשר לשאול אותי מה יצא.` : "";
+        const did = used.includes("ask_claude") ? `העברתי לקלוד, והתשובה ממנו תגיע אליך ${where}.` : used.length ? `ביצעתי: ${used.join(", ")}. לא הצלחתי לנסח תשובה מלאה, אפשר לשאול אותי מה יצא.` : "";
         return { answer: did || "לא קיבלתי תשובה מהמודל, נסה שוב", userTurn, used };
       }
       // "העברתי לקלוד" בלי שקראה ל-ask_claude בפועל — פעם אחת מזכירים לה לקרוא לכלי, ואם שוב לא — מעבירים בעצמנו
@@ -599,12 +602,12 @@ async function think(env, store, wa, bot, text, media, stillTyping, turn, trace 
     );
     contents.push({ role: "user", parts: results });
   }
-  if (askedClaude) return { answer: "העברתי את הבקשה לקלוד, התשובה תגיע בוואטסאפ.", userTurn, used };
+  if (askedClaude) return { answer: `העברתי את הבקשה לקלוד, התשובה תגיע ${where}.`, userTurn, used };
   // נגמרו הסבבים בלי תשובה (13.10: "כל השחקנים של דפנה שלח לדור" — פעמיים "תנסח שוב"). סבב אחרון בלי כלים:
   // מה נמצא עד עכשיו ושאלה אחת על מה שחסר, במקום לבקש מהבעלים לנסח מחדש.
   contents.push({ role: "user", parts: [{ text: "[מערכת] נגמרו הצעדים לתור הזה. בלי כלים: כתבי לבעלים בקצרה מה מצאת ומה כבר בוצע, ושאלה אחת ממוקדת על מה שחסר כדי לסיים." }] });
   const last = await gemini(env, {
-    systemInstruction: { parts: [{ text: `${SYSTEM}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
+    systemInstruction: { parts: [{ text: `${sys}${team}${rulesPrompt(bot)}${waiting}\n\nהיום: ${today} (${isoToday}), השעה עכשיו בישראל: ${nowTime}` }] },
     contents,
     tools: [{ functionDeclarations: env.TOOLS ? WITH_MEMORY : FUNCTION_DECLS }],
     toolConfig: { functionCallingConfig: { mode: "NONE" } },
@@ -784,6 +787,9 @@ async function everyQuarter(env) {
 }
 
 export { everyQuarter, think };
+// הכתובת נקבעת בבקשת fetch; קריאה מהאפליקציה (company.js) לא עוברת שם
+export const setOrigin = (o) => void (ORIGIN ||= o || "");
+export { Company } from "./company.js";
 export async function review(env) {
   const store = db(env);
   const bot = (await store.get("agentReports/bot")) || {};
