@@ -99,6 +99,8 @@ try {
   if (!localStorage.getItem("authMigrated")) {
     let old = localStorage.getItem(k + "[DEFAULT]");
     old && pw(old) && !localStorage.getItem(k + AN) && localStorage.setItem(k + AN, old);
+    // המפתח הישן נשאר עם אסימון רענון תקף שהיציאה לא נוגעת בו (היא מנקה רק את AN)
+    localStorage.removeItem(k + "[DEFAULT]");
     localStorage.setItem("authMigrated", "1");
   }
 } catch {}
@@ -112,14 +114,16 @@ ue(D, ce).catch((t) => {
 typeof navigator < "u" && navigator.storage?.persist?.().catch(() => {});
 // חד-פעמי: נוכחות שנשמרה בלי רשת במטמון של השם הישן נשלחת לשרת לפני שהמטמון ננטש
 try {
-  if (typeof window < "u" && !localStorage.getItem("oldCacheFlushed")) {
+  // דגל חדש: מכשירים שסימנו את oldCacheFlushed נטשו את המטמון הישן בלי למחוק אותו,
+  // ושמות הילדים והטלפונים נשארו בו. הם עוברים כאן פעם אחת נוספת ומוחקים אותו.
+  if (typeof window < "u" && !localStorage.getItem("oldCacheCleared")) {
     let o = de(B);
     me(o);
     let op = xe(o, { localCache: be({ tabManager: pe() }) });
-    fsWaitPending(op).then(() => {
-      localStorage.setItem("oldCacheFlushed", "1");
-      fsTerminate(op);
-    }, () => {});
+    fsWaitPending(op)
+      .then(() => fsTerminate(op))
+      .then(() => fsClearCache(op))
+      .then(() => localStorage.setItem("oldCacheCleared", "1"), () => {});
   }
 } catch {}
 var F =
@@ -147,6 +151,11 @@ async function logoutAndClearCache() {
   } catch (t) {
     console.warn("Sign-out failed:", t);
   }
+  // שארית מהמעבר מהשם הישן: היציאה מנקה רק את המפתח של AN, והמפתח הישן
+  // נשאר עם אסימון רענון תקף — ובטאבלט משותף אפשר לחזור איתו לנתוני הילדים
+  try {
+    localStorage.removeItem(`firebase:authUser:${B.apiKey}:[DEFAULT]`);
+  } catch {}
   try {
     await fsTerminate(P);
     await fsClearCache(P);
