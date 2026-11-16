@@ -1,7 +1,7 @@
 // סנכרון דו-כיווני בין גיליון "דוח שחקני המועדון" לשדה players.notPaying (מסך "מי לא משלם").
 // סטטוס שהשתנה בגיליון נכתב לאפליקציה (notPayingSource: "manual", כמו סימון ידני, כך שסנכרון הדרייב לא דורס אותו).
 // ילד באימון ניסיון שמסומן ✓ בגיליון (או ◐ שנכתב עכשיו) יוצא מניסיון (players.trial: false).
-// הכלל: מי שבאימון ניסיון הוא "✗ לא רשום", כל השאר רשומים (✓ או ◐). הסנכרון מיישר את עמודת הסטטוס בלבד.
+// הכלל: מי שבאימון ניסיון הוא "✗ לא רשום". שחקן חדש שנוסף באפליקציה נכנס לגיליון כ"✗ לא רשום" עד שהוא מופיע בדוח המתנ"ס (שלום, 16/11).
 // מי שבאימון ניסיון באפליקציה מסומן "באימון ניסיון" בעמודת ההערה, והסימון יורד לבד כשהוא עובר לקבוצה (trialNotes).
 // כל שינוי שהגיע מהגיליון נרשם ב-system/sheetChanges (מזהים וסטטוסים בלבד), והדשבורד של המנהל מציג אותו.
 // שינוי באפליקציה מעדכן את הגיליון. אי-התאמה ישנה שאף צד לא שינה נשארת: משווים כל צד רק מול הערך הקודם שלו
@@ -57,8 +57,8 @@ export function plan(rows, players, last) {
       s = a ? UNPAID : PAID;
       sheet.push({ id: r.id, status: s });
     }
-    // הכלל של שלום: מי שבאימון ניסיון "לא רשום", כל השאר רשומים. רק כשהאפליקציה אומרת שלא שילם, אחרת זה פער שמחכה לו
-    const fix = r.mirrored || neutral(s) || !want ? null : p.trial && !out ? (s === UNPAID ? NOT_REGISTERED : null) : s === NOT_REGISTERED ? UNPAID : null;
+    // הכלל של שלום: מי שבאימון ניסיון "לא רשום". "✗ לא רשום" של שחקן שלא בניסיון נשאר כמו שהוא: שחקן חדש עוד לא נרשם במתנ"ס (16/11)
+    const fix = r.mirrored || neutral(s) || !want ? null : p.trial && !out && s === UNPAID ? NOT_REGISTERED : null;
     if (fix) {
       s = fix;
       const w = sheet.find((x) => x.id === r.id);
@@ -154,13 +154,13 @@ const phone = (raw) => {
   return `${n.slice(0, 3)}-${n.slice(3)}`;
 };
 
-// שורה לשחקן חדש, לפי כותרות הלשונית (ילדים ומבוגרים שונים בעמודות)
+// שורה לשחקן חדש, לפי כותרות הלשונית (ילדים ומבוגרים שונים בעמודות). חדש באפליקציה = "✗ לא רשום" עד שמופיע בדוח המתנ"ס
 export function newRow(p, group, headers, index) {
   const off = group === UNTRACKED_GROUP;
   const cell = {
     "#": index, "שם": String(p.name || "").trim(), "הורה": String(p.parentName || "").trim(), "טלפון": phone(p.parentPhone), "טלפון הורה": phone(p.parentPhone),
     "הצטרף": String(p.joinDate || "").split("-").reverse().join("/"), "אימון ראשון": "",
-    "סטטוס רישום": off ? OFF : p.trial ? NOT_REGISTERED : p.notPaying === false ? PAID : UNPAID, "הערה": off ? "" : "נוסף מהאפליקציה", "מזהה": p.id,
+    "סטטוס רישום": off ? OFF : p.notPaying === false && !p.trial ? PAID : NOT_REGISTERED, "הערה": off ? "" : "נוסף מהאפליקציה", "מזהה": p.id,
   };
   return headers.map((h) => safeCell(cell[h] ?? ""));
 }

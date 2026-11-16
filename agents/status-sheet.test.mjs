@@ -49,7 +49,7 @@ test("שחקן שנמחק או תא ריק לא נכתב ונשמט מהזיכר
 test("שורה לשחקן חדש לפי כותרות הלשונית", () => {
   const kid = ["#", "שם", "הורה", "טלפון הורה", "הצטרף", "אימון ראשון", "סטטוס רישום", "הערה", "מזהה"];
   const p = { id: "x", name: " דנה ", parentName: "רון", parentPhone: "972501234567", joinDate: "2026-11-02" };
-  assert.deepEqual(newRow(p, "מתחילים שאר ישוב", kid, 10), [10, "דנה", "רון", "050-1234567", "02/11/2026", "", UNPAID, "נוסף מהאפליקציה", "x"]);
+  assert.deepEqual(newRow(p, "מתחילים שאר ישוב", kid, 10), [10, "דנה", "רון", "050-1234567", "02/11/2026", "", NO, "נוסף מהאפליקציה", "x"]);
   const adult = ["#", "שם", "טלפון", "הצטרף", "אימון ראשון", "סטטוס רישום", "הערה", "מזהה"];
   assert.deepEqual(newRow({ ...p, parentPhone: "", notPaying: false }, "פרקינסון", adult, 1).slice(2, 7), ["חסר", "02/11/2026", "", PAID, "נוסף מהאפליקציה"]);
   assert.equal(newRow(p, "חוגים רמת כורזים", kid, 1)[6], OFF);
@@ -152,10 +152,12 @@ test("הערת ניסיון בגיליון עוקבת אחרי האפליקצי�
   assert.deepEqual(trialNotes([row("1", "")], off), []);
 });
 
-test("כלל הרישום: בניסיון = לא רשום, כל השאר רשומים, בלי לגעת בהערה", () => {
+test("כלל הרישום: בניסיון = לא רשום, ו\"לא רשום\" של שחקן חדש נשאר, בלי לגעת בהערה", () => {
   const p = (o) => new Map([["a", { isActive: true, notPaying: true, ...o }]]);
-  assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).sheet, [{ id: "a", status: UNPAID, keepNote: true }]);
-  assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).next.a, { s: UNPAID, a: true });
+  assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).sheet, []);
+  assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).next.a, { s: NO, a: true });
+  // שחקן חדש ששלום סימן "לא רשום" לא חוזר ל"רשום, לא שילם" (אביתר קריסטל, 16/11)
+  assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: UNPAID, a: true } }).sheet, []);
   assert.deepEqual(plan([{ id: "a", status: NO }], p({ trial: true }), { a: { s: NO, a: true } }).sheet, []);
   // בניסיון עם ◐ ישן חוזר ל-✗; ◐ שנכתב עכשיו מוציא מניסיון ונשאר
   assert.deepEqual(plan([{ id: "a", status: UNPAID }], p({ trial: true }), { a: { s: UNPAID, a: true } }).sheet, [{ id: "a", status: NO, keepNote: true }]);
@@ -168,10 +170,10 @@ test("כלל הרישום: בניסיון = לא רשום, כל השאר רשו�
   assert.deepEqual(plan([{ id: "a", status: NO }], p({}), {}).sheet, []);
 });
 
-test("שורה חדשה: בניסיון לא רשום, אחרת רשום", () => {
+test("שורה חדשה: לא רשום עד שהוא בדוח המתנ\"ס, אלא אם כבר שילם", () => {
   const kid = ["#", "שם", "הורה", "טלפון הורה", "הצטרף", "אימון ראשון", "סטטוס רישום", "הערה", "מזהה"];
   assert.equal(newRow({ id: "x", name: "דנה", trial: true, notPaying: false }, "מתחילים שאר ישוב", kid, 1)[6], NO);
-  assert.equal(newRow({ id: "x", name: "דנה", notPaying: true }, "מתחילים שאר ישוב", kid, 1)[6], UNPAID);
+  assert.equal(newRow({ id: "x", name: "דנה", notPaying: true }, "מתחילים שאר ישוב", kid, 1)[6], NO);
 });
 
 test("a row typed as not registered becomes a trial player, others don't", () => {
