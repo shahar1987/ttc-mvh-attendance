@@ -156,7 +156,7 @@ test("כלל הרישום: בניסיון = לא רשום, ו\"לא רשום\" �
   const p = (o) => new Map([["a", { isActive: true, notPaying: true, ...o }]]);
   assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).sheet, []);
   assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: NO, a: true } }).next.a, { s: NO, a: true });
-  // שחקן חדש ששלום סימן "לא רשום" לא חוזר ל"רשום, לא שילם" (אביתר קריסטל, 16/11)
+  // שחקן חדש ששלום סימן "לא רשום" לא חוזר ל"רשום, לא שילם" (16/11)
   assert.deepEqual(plan([{ id: "a", status: NO }], p({}), { a: { s: UNPAID, a: true } }).sheet, []);
   assert.deepEqual(plan([{ id: "a", status: NO }], p({ trial: true }), { a: { s: NO, a: true } }).sheet, []);
   // בניסיון עם ◐ ישן חוזר ל-✗; ◐ שנכתב עכשיו מוציא מניסיון ונשאר
