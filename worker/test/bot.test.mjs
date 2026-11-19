@@ -1688,3 +1688,14 @@ console.log("publish cards ok");
   assert.equal(planReply({ plan: { at: new Date().toISOString(), text: PLAN_HEADER } }, "מאושר"), "approve");
 }
 console.log("open ledger ok");
+
+// 📊 "הדשבורד לא עובד לי" מקבל קישור כניסה, לא תשובה של Gemini עם קישור בלי כניסה (18-19.11)
+{
+  const g = geminiCalls.length;
+  for (const t of ["דשבורד", "הדשבורד לא עובד לי", "תן לי נתונים מהדשבורד"]) {
+    await webhook(t);
+    assert.match(texts().at(-1), /\/dashboard\/login\?k=/, t);
+  }
+  assert.equal(geminiCalls.length, g, "בלי Gemini");
+}
+console.log("dashboard keyword ok");
