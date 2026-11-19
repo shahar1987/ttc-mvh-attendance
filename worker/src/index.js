@@ -378,8 +378,9 @@ async function handle(m, env) {
       await reply(`קישור לחיבור הקבוע של פייסבוק ואינסטגרם (בתוקף 30 דקות). ההוראות בדף עצמו:\n${await metaPermanentLink(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
-    // "דשבורד" — קישור כניסה חד-פעמי לדשבורד הפרסום (worker/src/dashboard.js), בלי Gemini
-    if (/^דשבורד/.test(text.trim())) {
+    // "דשבורד" — קישור כניסה חד-פעמי לדשבורד הפרסום (worker/src/dashboard.js), בלי Gemini.
+    // גם "הדשבורד לא עובד לי" / "נתונים מהדשבורד": בלי זה Gemini נתן קישור בלי כניסה (18-19.11). דשבורד הגג נשאר לשלו
+    if (/דשבורד/.test(text) && !/גג|סולאר|solar/i.test(text) && text.length < 80) {
       await reply(`📊 דשבורד הפרסום, קישור לכניסה אחת (תקף 30 דקות). אחרי הכניסה הדפדפן זוכר אותך 14 יום:\n${await dashboardLoginUrl(store, ORIGIN || bot.workerUrl)}`);
       return;
     }
