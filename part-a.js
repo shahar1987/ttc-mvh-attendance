@@ -366,7 +366,12 @@ function isValidPhone(value) {
 }
 // שחקן בשתי קבוצות הוא שני מסמכים של אותו אדם
 function playerPersonKey(p) {
-  return (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone || "");
+  // בלי טלפון תקף אי אפשר לדעת אם זה אותו ילד בשתי קבוצות או שני ילדים שונים עם אותו שם,
+  // ולכן לא מאחדים — אותו שיקול כמו ב-multiGroupKids. אחרת בדוח המועדון שניהם
+  // מתמזגים לשורה אחת ו-Present מנצח, כלומר היעדרות של האחד מוצגת כנוכחות של האחר.
+  return isValidPhone(p.parentPhone || "")
+    ? (p.name || "").trim().toLowerCase() + "|" + normalizePhone(p.parentPhone)
+    : "id:" + p.id;
 }
 function countUniqueActivePlayers(players) {
   let seen = new Set(),
