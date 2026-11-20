@@ -1,5 +1,16 @@
 {
   "name": "ttc-mods",
-  "owner": { "name": "shahar1987" },
-  "plugins": [{ "name": "context-alarm", "source": "./claude-mods/context-alarm" }]
+  "owner": {
+    "name": "shahar1987"
+  },
+  "plugins": [
+    {
+      "name": "context-alarm",
+      "source": "./claude-mods/context-alarm"
+    },
+    {
+      "name": "commander-waiting",
+      "source": "./claude-mods/commander-waiting"
+    }
+  ]
 }

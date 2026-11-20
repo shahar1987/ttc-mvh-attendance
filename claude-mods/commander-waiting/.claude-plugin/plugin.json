@@ -1,0 +1,6 @@
+{
+  "name": "commander-waiting",
+  "version": "0.1.0",
+  "description": "Band, notification and sound when the commander stops and waits for the owner (question, release approval, stuck)",
+  "types": "./types/index.d.ts"
+}
