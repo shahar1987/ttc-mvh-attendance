@@ -42,7 +42,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install firebase-admin@12.7.0 google-auth-library@11.0.2 xlsx@0.18.5 --no-audit --no-fund
+        run: npm install firebase-admin@12.7.0 google-auth-library@11.0.2 xlsx@0.18.5 --ignore-scripts --no-audit --no-fund
 
       - name: Sync payment status from Drive
         env:
@@ -61,5 +61,5 @@ jobs:
           ALERT_KEY: sync-payments
           ALERT_TEXT: "❌ סנכרון קובץ התשלומים מהדרייב נכשל. פרטים: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         run: |
-          npm ci --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           node alert.mjs

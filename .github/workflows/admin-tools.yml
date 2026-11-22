@@ -31,7 +31,7 @@ jobs:
           node-version: 22
 
       - name: Install the Firebase admin library
-        run: npm install firebase-admin@12.7.0 --no-audit --no-fund
+        run: npm install firebase-admin@12.7.0 --ignore-scripts --no-audit --no-fund
 
       - name: Process pending account tasks
         env:

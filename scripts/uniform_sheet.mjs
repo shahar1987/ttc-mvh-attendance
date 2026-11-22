@@ -4,6 +4,7 @@
 // קורא: uniformResponses, uniformConfig/roster. כותב: הגיליון בלבד (משותף עם ה-service account).
 // הריפו ציבורי: ליומן ההרצה מודפסים רק מספרים.
 //   FIREBASE_SERVICE_ACCOUNT=... node scripts/uniform_sheet.mjs   (אחרי `cd agents && npm ci`)
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import vm from "node:vm";
@@ -14,15 +15,14 @@ import { israelTime, safeCell } from "./export_event_signups.mjs";
 const { JWT } = createRequire(new URL("../agents/package.json", import.meta.url))("google-auth-library");
 
 export const SHEET_ID = "1ESzW-CmgDwREHuIJJzMcM5dB9WqOLMnZR9iKc3UvwX4";
-const MATCH_URL = "https://shahar1987.github.io/ttc-uniform-sizes/match.js";
 const SZ = ["16", "18", "XS", "S", "M", "L", "XL", "XXL", "3XL"];
 const ms = (a) => (a.at && typeof a.at.toMillis === "function" ? a.at.toMillis() : 0);
 
-// אותה התאמה כמו הדשבורד: קובץ match.js של הדף עצמו, לא עותק
+// אותה התאמה כמו הדשבורד, מעותק מקומי של match.js (scripts/uniform_match.js). לא מורידים קוד מהדף בזמן ריצה:
+// הוא רץ כאן לצד ה-service account. כשההתאמה בדשבורד משתנה — מעתיקים את הקובץ החדש לכאן.
 async function loadMatcher() {
-  const r = await fetchRetry(MATCH_URL, {}, "match.js fetch");
   const ctx = {};
-  vm.runInNewContext(await r.text(), { globalThis: ctx, window: ctx });
+  vm.runInNewContext(readFileSync(new URL("./uniform_match.js", import.meta.url), "utf8"), { globalThis: ctx, window: ctx });
   return ctx.UniformMatch;
 }
 

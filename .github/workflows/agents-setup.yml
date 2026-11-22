@@ -73,7 +73,7 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: |
           (cd worker && npm ci --no-audit --no-fund)
-          (cd agents && npm ci --no-audit --no-fund)
+          (cd agents && npm ci --ignore-scripts --no-audit --no-fund)
 
       # ✅ לא מעלים לשולה קוד שהבדיקות שלו נכשלות (וואטסאפ, Gemini ו-Firestore מדומים — בלי רשת ובלי סודות)
       - name: Run the bot's tests

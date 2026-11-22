@@ -27,6 +27,10 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d, 'users/parent1'), { role: 'Member', name: 'הורה', phone: '0500000009' });
   await setDoc(doc(d, 'users/poster'), { role: 'Coach', name: 'מפרסם', permissions: ['boardPosts'] });
   await setDoc(doc(d, 'users/parent2'), { role: 'Member', name: 'הורה אחר' });
+  // צופה שנשאר ברשימת המאמנים של קבוצה, ו-Member שנפתחה לו רק הרשאת תחרויות
+  await setDoc(doc(d, 'users/viewerCoach'), { role: 'Viewer', name: 'צופה שהיה מאמן' });
+  await setDoc(doc(d, 'groups/gV'), { name: 'קבוצה ו', coachId: 'viewerCoach', coachIds: ['viewerCoach'] });
+  await setDoc(doc(d, 'users/memberComp'), { role: 'Member', name: 'הורה עם תחרויות', permissions: ['competitions'] });
 
   await setDoc(doc(d, 'groups/gA'), { name: 'קבוצה א', coachId: 'coachA', coachIds: ['coachA'] });
   await setDoc(doc(d, 'groups/gB'), { name: 'פרקינסון', coachId: 'coachB', coachIds: ['coachB'] });
@@ -102,6 +106,14 @@ await t('לא יוצר נוכחות בקבוצה של אחר', () => assertFails
 await t('לא משנה תפקיד למשתמש אחר', () => assertFails(updateDoc(doc(as('coachA'), 'users/coachB'), { role: 'Admin' })));
 await t('לא מעניק לעצמו הרשאות', () => assertFails(updateDoc(doc(as('coachA'), 'users/coachA'), { permissions: ['payments'] })));
 await t('לא מוחק שחקן', () => assertFails(deleteDoc(doc(as('coachA'), 'players/p1'))));
+await t('מאמן לא יוצר שחקן עם קישור בשם (ההודעה האוטומטית מדביקה את השם)', () => assertFails(setDoc(doc(as('coachA'), 'players/evil1'), { name: 'ילד http://evil.example', groupId: 'gA', isActive: true, parentPhone: '0500000012' })));
+await t('מאמן לא יוצר שחקן עם שם ארוך מדי', () => assertFails(setDoc(doc(as('coachA'), 'players/evil2'), { name: 'א'.repeat(61), groupId: 'gA', isActive: true })));
+await t('מאמן לא משנה שם של שחקן שלו לכתובת', () => assertFails(updateDoc(doc(as('coachA'), 'players/p1'), { name: 'www.evil.example' })));
+await t('מאמן כן יוצר שחקן רגיל בקבוצה שלו', () => assertSucceeds(setDoc(doc(as('coachA'), 'players/okNew'), { name: 'ילד חדש', parentName: 'הורה חדש', groupId: 'gA', isActive: true, parentPhone: '0500000011' })));
+await t('צופה שנשאר ב-coachIds לא כותב נוכחות', () => assertFails(setDoc(doc(as('viewerCoach'), 'attendance/2026-09-19_gV_pv'), { playerId: 'pv', groupId: 'gV', date: '2026-09-19', status: 'Present' })));
+await t('צופה שנשאר ב-coachIds לא יוצר שחקן', () => assertFails(setDoc(doc(as('viewerCoach'), 'players/pvNew'), { name: 'ילד', groupId: 'gV', isActive: true })));
+await t('משתמש בלי פרופיל לא קורא תחרויות', () => assertFails(getDocs(collection(as('ghostNoProfile'), 'tournaments'))));
+await t('Member עם הרשאת תחרויות מפורשת קורא תחרויות', () => assertSucceeds(getDocs(collection(as('memberComp'), 'tournaments'))));
 await t('כן קורא את רשימת השחקנים והמשתמשים', async () => { await assertSucceeds(getDocs(collection(as('coachA'), 'players'))); await assertSucceeds(getDocs(collection(as('coachA'), 'users'))); });
 
 console.log('\n— צופה —');

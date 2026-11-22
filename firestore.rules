@@ -104,8 +104,21 @@ service cloud.firestore {
       return hasProfile()
         && groupId is string && groupId != ''
         && groupDoc(groupId) != null
+        // צופה או Member שנשארו ב-coachIds (למשל אחרי שהורידו להם את התפקיד) לא כותבים נוכחות
+        && !(me().get('role', '').trim().lower() in ['viewer', 'member'])
         && (groupDoc(groupId).data.get('coachId', '') == request.auth.uid
             || request.auth.uid in groupDoc(groupId).data.get('coachIds', []));
+    }
+
+    // טקסט ששדות שחקן של מאמן יכולים להכיל. ההודעה "ברוכים הבאים" נשלחת אוטומטית מהמספר של הבעלים
+    // לטלפון ההורה ומדביקה בתוכה את השם, לכן בלי קישורים, בלי כתובות מייל ובלי טקסט ארוך.
+    function coachPlayerTextOk() {
+      let d = request.resource.data;
+      return d.get('name', '') is string && d.get('name', '').size() <= 60
+        && !d.get('name', '').matches('.*(://|www\\.|@).*')
+        && (!(d.get('parentName', '') is string)
+            || (d.get('parentName', '').size() <= 60 && !d.get('parentName', '').matches('.*(://|www\\.|@).*')))
+        && (!(d.get('parentPhone', '') is string) || d.get('parentPhone', '').size() <= 30);
     }
 
     // הורה מקושר לכרטיס שחקן דרך מסמך ב-links שמזהה אותו: uid_playerId.
@@ -174,12 +187,13 @@ service cloud.firestore {
       allow get: if isTeam() || hasPerm('competitions') || isLinkedToPlayer(playerId);
       allow list: if isTeam() || hasPerm('competitions');
       allow create: if hasPerm('manageGroups')
-        || isCoachOfGroup(request.resource.data.get('groupId', ''));
+        || (isCoachOfGroup(request.resource.data.get('groupId', '')) && coachPlayerTextOk());
       // מאמן עורך רק שחקן שכבר בקבוצה שלו, ואינו מעביר אותו לקבוצה אחרת
       allow update: if hasPerm('manageGroups')
         || (hasPerm('payments') && paymentFieldsOnly())
         || (isCoachOfGroup(resource.data.get('groupId', ''))
-            && request.resource.data.get('groupId', '') == resource.data.get('groupId', ''));
+            && request.resource.data.get('groupId', '') == resource.data.get('groupId', '')
+            && coachPlayerTextOk());
       allow delete: if isAdmin();
     }
 

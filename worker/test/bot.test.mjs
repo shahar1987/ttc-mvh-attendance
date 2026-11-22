@@ -543,6 +543,7 @@ for (const p of ["groups/g7", "players/p7", "groups/g8", "players/p8"]) docs.del
   assert.equal(await trialCheck(db(env), waConfig(env), day), "done today");
   assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /עכשיו שחקנים קבועים: 1\. ניסיון א/);
   assert.equal(docs.get("players/tr1").trial, false);
+  assert.match(docs.get("players/tr1").registeredAt, /^\d{4}-\d\d-\d\d$/, "בלי registeredAt ילד ותיק לא מקבל ברוך הבא");
   assert.deepEqual(docs.get("agentReports/bot").trialAsk.items, []);
   assert.match(await callTool("כן ל-1", { name: "trial_decision", args: { numbers: [1], keep: true } }), /לא ברשימת/);
   for (const p of ["players/tr1", "players/tr2", "attendance/2026-09-29_g3_tr1", "attendance/2026-10-01_g3_tr1"]) docs.delete(p);

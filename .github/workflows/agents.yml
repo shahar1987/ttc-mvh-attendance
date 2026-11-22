@@ -81,7 +81,7 @@ jobs:
       - name: Install dependencies
         id: install
         working-directory: agents
-        run: npm ci --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Check for requests from the WhatsApp bot
         id: poll

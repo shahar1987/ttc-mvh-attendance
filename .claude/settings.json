@@ -9,13 +9,15 @@
     "open-code-review": {
       "source": {
         "source": "github",
-        "repo": "alibaba/open-code-review"
+        "repo": "alibaba/open-code-review",
+        "ref": "v1.13.10"
       }
     },
     "elementalsouls": {
       "source": {
         "source": "github",
-        "repo": "elementalsouls/Claude-BugHunter"
+        "repo": "elementalsouls/Claude-BugHunter",
+        "ref": "v2.1"
       }
     }
   },

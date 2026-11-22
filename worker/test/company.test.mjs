@@ -44,4 +44,9 @@ const { COACH_ADMIN_TOOL_DEFS } = await import("../src/coaches.js");
 const names = new Set([...TOOL_DEFS, ...MESSAGE_TOOL_DEFS, ...INBOX_TOOL_DEFS, ...COACH_ADMIN_TOOL_DEFS].map((d) => d.name));
 for (const n of APP_BLOCKED) assert.ok(names.has(n), n);
 for (const n of ["get_attendance", "list_groups", "find_player", "get_daily_report", "send_message", "ask_claude"]) assert.ok(!APP_BLOCKED.has(n), n);
+// APP_BLOCKED היא רשימה שחורה: כלי חדש נפתח לערוץ הזה אוטומטית. לכן כל הכלים הפתוחים רשומים כאן, וכלי שנוסף ולא סווג מפיל את הבדיקה —
+// מי שמוסיף כלי מחליט במפורש אם הוא פתוח באפליקציה (מוסיפים לרשימה) או חסום (מוסיפים ל-APP_BLOCKED).
+const allDefs = [TOOL_DEFS, MESSAGE_TOOL_DEFS, INBOX_TOOL_DEFS, COACH_ADMIN_TOOL_DEFS, (await import("../src/meta.js")).META_TOOL_DEFS, (await import("../src/solar.js")).SOLAR_TOOL_DEFS, (await import("../src/inbox.js")).MEMORY_TOOL_DEFS].flat();
+const OPEN_IN_APP = ["ask_claude", "claude_link", "find_player", "get_agent_results", "get_attendance", "get_daily_report", "get_weather", "list_groups", "preview_recipients", "publish_post", "recall", "remember", "remind_me", "run_agent_now", "save_post_rule", "scheduled_messages", "send_message", "solar_bills", "solar_dashboard", "solar_link", "solar_logout", "solar_rate"];
+assert.deepEqual([...new Set(allDefs.map((d) => d.name))].filter((n) => !APP_BLOCKED.has(n)).sort(), OPEN_IN_APP, "כלי חדש לא סווג לערוץ האפליקציה");
 console.log("company: ok");
