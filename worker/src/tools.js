@@ -458,7 +458,7 @@ export function makeTools({ env, store, wa, lastOwnerText, turn, coach }) {
       const items = ((await store.get("agentReports/bot")) || {}).trialAsk?.items || [];
       const chosen = items.filter((x) => (numbers || []).map(Number).includes(x.n));
       if (!chosen.length) return "המספרים האלה לא ברשימת הילדים בניסיון.";
-      for (const x of chosen) await store.merge(`players/${x.id}`, keep ? { trial: false } : { isActive: false, endDate: israelToday() });
+      for (const x of chosen) await store.merge(`players/${x.id}`, keep ? { trial: false, registeredAt: israelToday() } : { isActive: false, endDate: israelToday() });
       const ids = new Set(chosen.map((x) => x.id));
       await store.update("agentReports/bot", (cur) => ({ trialAsk: { items: (cur.trialAsk?.items || []).filter((x) => !ids.has(x.id)) } }));
       return `${keep ? "עכשיו שחקנים קבועים" : "יצאו מהרשימה"}: ${chosen.map((x) => `${x.n}. ${x.label}`).join(", ")}`;

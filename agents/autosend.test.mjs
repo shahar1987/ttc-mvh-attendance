@@ -168,3 +168,9 @@ test("trial that started before the cutoff gets the welcome from the day it move
   const r = plan({ players: [p], groups, attendance: [], cancellations: [] }, today);
   assert.deepEqual(r.messages.map((m) => m.key), [`welcome:${today}:g1:old`]);
 });
+
+test("welcome text never carries a link or address that a coach typed into a name", () => {
+  const t = welcomeText({ name: "נועה לוי http://evil.example/x", parentName: "אמא@evil.example", gender: "f" }, groups[0]);
+  assert.doesNotMatch(t, /evil|http|:\/\/|@/);
+  assert.match(t, /שנועה לוי הצטרפה/);
+});

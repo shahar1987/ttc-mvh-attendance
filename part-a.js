@@ -596,6 +596,20 @@ async function undoCancellation(c) {
 // חלון אישור של האפליקציה במקום window.confirm של הדפדפן: טקסט גדול ושני כפתורים גבוהים.
 // מחזיר Promise<boolean>. Escape או לחיצה מחוץ לחלון = ביטול. הפוקוס על "ביטול" כדי שאנטר לא יאשר בטעות.
 let confirmRoot = null;
+// סימוני נוכחות שעוד לא נשמרו (dayKey של המסך). משותף למסך הסימון ולניווט שמסביבו — לשונית, "חזרה" של הדפדפן ויציאה —
+// כדי שאף אחד מהם לא ימחק סימונים בשקט.
+var attDirtyKey = null;
+var attDirtyRef = {
+  get current() { return attDirtyKey; },
+  set current(v) { attDirtyKey = v; },
+};
+function confirmLeaveUnsaved() {
+  return attDirtyKey == null
+    ? Promise.resolve(!0)
+    : askConfirm("יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?", { yes: "כן, לצאת בלי לשמור", no: "להישאר" }).then(
+        (ok) => (ok && (attDirtyKey = null), ok),
+      );
+}
 function askConfirm(text, { yes = "כן, להמשיך", no = "ביטול", danger = !1 } = {}) {
   if (!confirmRoot) {
     let el = document.createElement("div");

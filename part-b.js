@@ -3453,7 +3453,7 @@ function re({
       .sort()
       .join("|"),
     dayKey = t.id + "|" + m,
-    dirtyRef = e.useRef(null),
+    dirtyRef = attDirtyRef,
     // מזהי שחקנים שסומנו בפועל בסשן העריכה הנוכחי (בניגוד לכלל הרשאה — זה מעקב
     // עריכה מקומי). נשמרים רק אלה כדי שמאמן שני שפותח את אותה קבוצה/תאריך לא
     // ידרוס בשמירה שלו שחקנים שהוא עצמו לא נגע בהם (ראו פונקציית A למטה).
@@ -3468,6 +3468,7 @@ function re({
         ? askConfirm("יש סימונים שעדיין לא נשמרו. לצאת בלי לשמור?", { yes: "כן, לצאת בלי לשמור", no: "להישאר" })
         : Promise.resolve(!0);
   dayKeyRef.current = dayKey;
+  j(() => () => void (attDirtyKey = null), []);
   // "נשמר במכשיר" שייך ליום שנשמר — לא נשאר כשעוברים ליום או לקבוצה אחרים
   j(() => setSavedNote(""), [dayKey]);
   let prevDateKey = e.useRef(t.id + "|" + (ID || "") + "|" + (IN || 0));
@@ -4594,7 +4595,7 @@ function OwnerBoard({ players, groups, onEditPlayer, onOpenPayments, onOpenRepor
     row = (p) => ({ key: p.id, p, sub: groupName.get(p.groupId) || "" }),
     cats = [
       { key: "sheet", label: "שינויים מהטופס", tone: "sheet",
-        rows: ((doc && doc.items) || []).filter((x) => x.at >= weekAgo.toISOString() && byId.has(x.id)).reverse()
+        rows: ((doc && doc.items) || []).filter((x) => x.at >= weekAgo.toISOString() && live(byId.get(x.id))).reverse()
           .map((x, k) => ({ key: "c" + k, p: byId.get(x.id), sub: when(x.at), note: what(x) + " · " + (groupName.get(byId.get(x.id).groupId) || "") })) },
       { key: "joined", label: "הצטרפו השבוע", tone: "info",
         rows: players.filter((p) => live(p) && String(p.joinDate || "") >= fromDay).sort((x, y) => String(y.joinDate).localeCompare(String(x.joinDate))).map(row) },
@@ -4752,7 +4753,8 @@ function Q() {
         groupId: groupId || "",
         date: date || "",
       }),
-    goToScreen = (v) => {
+    goToScreen = async (v) => {
+      if (!(await confirmLeaveUnsaved())) return;
       (o(v), setAttGroupId(null));
       try {
         history.pushState({ screen: v, attGroup: null }, "");
@@ -4810,7 +4812,11 @@ function Q() {
       s && !isAdminRole(s) && !isViewerRole(s) && o("attendance");
     }, [s?.role]),
     j(() => {
-      let onPop = (ev) => {
+      let ignorePop = !1,
+        onPop = async (ev) => {
+        if (ignorePop) return void (ignorePop = !1);
+        // "חזרה" של הדפדפן/אנדרואיד כשיש סימונים שלא נשמרו: שואלים, ואם נשארים — מחזירים את ההיסטוריה צעד קדימה
+        if (!(await confirmLeaveUnsaved())) return void ((ignorePop = !0), history.go(1));
         let st = ev.state || {},
           scr = st.screen || "dashboard",
           pr = profileRef.current;
@@ -5115,7 +5121,8 @@ function Q() {
         view: m,
         setView: goToScreen,
         userName: s.name,
-        onLogout: () => {
+        onLogout: async () => {
+          if (!(await confirmLeaveUnsaved())) return;
           (h(!1), logoutAndClearCache());
         },
       }),

@@ -24,8 +24,10 @@ function daysText(days) {
 }
 
 export function welcomeText(p, g) {
-  const name = (p.name || "").trim(), first = name.split(/\s+/)[0];
-  const parent = String(p.parentName || "").trim().split(/\s+/)[0];
+  // השם נכתב ע"י מאמן ונשלח מהמספר של הבעלים: בלי קישורים וכתובות מייל בטקסט
+  const plain = (s) => String(s || "").replace(/\S*(:\/\/|www\.|@)\S*/gi, "").replace(/\s+/g, " ").trim();
+  const name = plain(p.name), first = name.split(/\s+/)[0];
+  const parent = plain(p.parentName).split(/\s+/)[0];
   const gender = knownGender(p);
   const when = [daysText(g.days), g.startTime && `ב-${g.startTime}`].filter(Boolean).join(" ");
   const sched = when ? `האימונים ${when}.\n` : "";
