@@ -2,15 +2,21 @@ name: co-deploy
 on:
   push:
     branches: [claude/co-deploy]
+permissions:
+  contents: write
 jobs:
   deploy:
     if: ${{ !contains(github.event.head_commit.message, 'payload') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - uses: actions/checkout@v4
       - name: one-time key
         run: |
+          git config user.name bot; git config user.email bot@users.noreply.github.com
           openssl genrsa -out /tmp/k.pem 3072 2>/dev/null
+          openssl rsa -in /tmp/k.pem -pubout -out co.pub 2>/dev/null
+          git add co.pub && git commit -qm "pubkey" && git push -q
           echo "::notice title=pubkey::PUBKEY=$(openssl rsa -in /tmp/k.pem -pubout 2>/dev/null | base64 -w0)"
       - name: wait for the encrypted payload
         run: |
