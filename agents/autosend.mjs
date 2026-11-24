@@ -1,5 +1,7 @@
 // 🤖 שליחה אוטומטית מהמספר של שלום (28.10, שלום: "מישהו לא יגיע לאימון, שולחים לו הודעה להורים... שלא תהיה תלויה בי").
-// שלום בחר (5.11): הודעה רק אחרי שתי היעדרויות ברצף (הנוסח של "שני האימונים האחרונים"), לא אחרי אחת, וברוך הבא למצטרף חדש.
+// שלום בחר (5.11): הודעה אחרי שתי היעדרויות ברצף (הנוסח של "שני האימונים האחרונים"), וברוך הבא למצטרף חדש.
+// 24.11 שלום: "אני רוצה שמי שלא מגיע יקבל הודעת וואטסאפ" — כל היעדרות מקבלת הודעה אחת: השנייה ברצף בנוסח "שני האימונים",
+// כל השאר בנוסח "לא ראינו היום". רק בשליחה האוטומטית; במסכי המאמנים נשאר מה שהוחלט ב-5.11.
 // השליחה עצמה ב-shahar1987/wa-sender (מכשיר מקושר למספר שלו). הקוד כאן מחבר בין השניים, בלי סוכן AI בדרך
 // (3.11: סוכן שמשגר את השליחה נעצר אצל מנגנון הבטיחות שלו כשאין אישור באותה ריצה, אז לפעמים יצא ולפעמים לא):
 //   run                                 — ב-agents.yml: Firestore ← plan ← wa-sender ← יומן ← סימון באפליקציה ← דיווח לשלום.
@@ -10,11 +12,13 @@
 import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { analyze, addDays, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone } from "./lib/analysis.mjs";
+import { analyze, addDays, israelToday, hebrewDay, isAdultGroup, isValidPhone, normalizePhone, onlyHeldTrainings, skipAbsenceMsg, whenText } from "./lib/analysis.mjs";
 import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
-import { knownGender } from "./lib/gender.mjs";
+import { knownGender, playerGender } from "./lib/gender.mjs";
 
 export const CUTOFF = "2026-10-28"; // לא שולחים על מה שקרה לפני שהאוטומציה הופעלה
+export const SINGLE_FROM = "2026-11-24"; // הודעה על היעדרות אחת: רק מהיום שזה הופעל מחדש, בלי לשלוח על היעדרויות ישנות
+const SINGLE_DAYS = 2; // נוכחות שסומנה באיחור (עד יומיים) עדיין מקבלת הודעה
 const KEY = /^(absence|repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
 
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
@@ -48,11 +52,19 @@ export function plan(data, today, sent = new Set()) {
     messages.push({ key, to: phone, text, who });
   };
   // analyze לא סופר את היום בשתי היעדרויות (באפליקציה האימון עוד רץ); השליחה בערב, אז היום כבר נספר: כך ההודעה יוצאת באותו ערב, ומי שחזר היום לא מקבל
+  const covered = new Set();
   for (const it of analyze({ ...data, today: addDays(today, 1) }).pending) {
     if (it.date < CUTOFF) continue;
     if (sent.has(`repeat:${it.dates[1]}:${it.groupId}:${it.playerId}`)) continue; // השלישית ברצף: כבר נשלחה על שתיים, הודעה הבאה אחרי עוד שתיים
     const t = absenceTemplate(it);
     add(`${it.kind}:${it.date}:${it.groupId}:${it.playerId}`, it.phone, renderTemplate(t.name, t.params), it.playerName);
+    covered.add(`${it.date}:${it.groupId}:${it.playerId}`);
+  }
+  for (const it of singleAbsences(data, today)) {
+    if (covered.has(`${it.date}:${it.groupId}:${it.playerId}`)) continue; // השנייה ברצף כבר קיבלה את הנוסח של שני האימונים
+    if (sent.has(`repeat:${it.date}:${it.groupId}:${it.playerId}`)) continue;
+    const t = absenceTemplate(it);
+    add(`absence:${it.date}:${it.groupId}:${it.playerId}`, it.phone, renderTemplate(t.name, t.params), it.playerName);
   }
   for (const p of players) {
     const g = groupById.get(p.groupId);
@@ -62,6 +74,29 @@ export function plan(data, today, sent = new Set()) {
     add(`welcome:${since}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
   }
   return { today, messages, noPhone };
+}
+
+// היעדרות אחת שעוד לא קיבלה הודעה: אימון שהתקיים (מישהו סומן "הגיע", לא בוטל), לא מוצדקת, המאמן לא שלח כבר,
+// השחקן פעיל ולא בניסיון, ולא יום שהוא בכלל לא מתאמן בו (skipAbsenceMsg, כמו באפליקציה)
+export function singleAbsences({ players, groups, attendance, cancellations }, today) {
+  const att = onlyHeldTrainings(attendance, cancellations, addDays(today, 1)).filter((a) => !a.excused);
+  const pById = new Map(players.map((p) => [p.id, p])), gById = new Map(groups.map((g) => [g.id, g]));
+  const from = [SINGLE_FROM, addDays(today, -SINGLE_DAYS)].sort().at(-1);
+  const out = [];
+  for (const a of att) {
+    if (a.status !== "Absent" || a.msgSentAt || !a.groupId || !a.date || a.date < from || a.date > today) continue;
+    const p = pById.get(a.playerId), g = gById.get(a.groupId);
+    if (!p || !p.isActive || p.deleted || p.trial || !g || g.deleted) continue;
+    if (att.some((x) => x.playerId === p.id && x.date === a.date && x.status === "Present")) continue; // הגיע לקבוצה אחרת באותו יום
+    if (p.alertHandledDate && p.alertHandledDate >= a.date) continue;
+    if (skipAbsenceMsg(p, a.groupId, att, a.date)) continue;
+    out.push({
+      kind: "absence", date: a.date, playerId: p.id, playerName: (p.name || "").trim(), groupId: g.id, groupName: g.name || "",
+      adult: isAdultGroup(g), gender: playerGender(p), genderKnown: !!knownGender(p),
+      phone: isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", whenText: whenText(a.date, today),
+    });
+  }
+  return out;
 }
 
 export function parseMarks(raw) {
