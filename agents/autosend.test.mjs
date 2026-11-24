@@ -168,3 +168,40 @@ test("trial that started before the cutoff gets the welcome from the day it move
   const r = plan({ players: [p], groups, attendance: [], cancellations: [] }, today);
   assert.deepEqual(r.messages.map((m) => m.key), [`welcome:${today}:g1:old`]);
 });
+
+// 24.11 שלום: "אני רוצה שמי שלא מגיע יקבל הודעת וואטסאפ" — כל היעדרות מקבלת הודעה אחת
+test("24.11: one absence gets a message that evening (child to parent, adult directly)", () => {
+  const d = "2026-11-26"; // חמישי
+  const attendance = [A("a", d, "Absent"), A("w", d, "Absent", "g2"), anchor(d), anchor(d, "g2")];
+  const players = [P("a", { gender: "f" }), P("w", { groupId: "g2", gender: "m", name: "רון" })];
+  const r = plan({ players, groups: [{ ...groups[0] }, { ...groups[1], adult: true, name: "מבוגרים דפנה" }], attendance, cancellations: [] }, d);
+  const byKey = Object.fromEntries(r.messages.map((m) => [m.key, m.text]));
+  assert.match(byKey[`absence:${d}:g1:a`], /בתכם דני a לא הגיעה לאימון היום/);
+  assert.ok(byKey[`absence:${d}:g2:w`], "adult got a message too");
+});
+
+test("24.11: second in a row gets only the two-trainings text, not two messages", () => {
+  const d1 = "2026-11-26", d2 = "2026-11-29";
+  const attendance = [A("a", d1, "Absent"), anchor(d1), A("a", d2, "Absent"), anchor(d2)];
+  const sent = new Set([`absence:${d1}:g1:a`]);
+  const players = [P("a", { gender: "m", alertHandledDate: d1 })];
+  const r = plan({ players, groups, attendance, cancellations: [] }, d2, sent);
+  assert.deepEqual(r.messages.map((m) => m.key), [`repeat:${d2}:g1:a`]);
+});
+
+test("24.11: no single message for excused, trial, coach already sent, cancelled or not-held training, old absences", () => {
+  const d = "2026-11-26";
+  const attendance = [
+    { ...A("e", d, "Absent"), excused: true }, A("t", d, "Absent"), { ...A("s", d, "Absent"), msgSentAt: "x" }, anchor(d),
+    A("n", "2026-11-25", "Absent", "g2"), // אף אחד לא הגיע: אימון שלא התקיים
+    A("o", "2026-11-23", "Absent"), anchor("2026-11-23"), // לפני SINGLE_FROM
+  ];
+  const players = ["e", "s", "n", "o"].map((id) => P(id, id === "n" ? { groupId: "g2" } : {})).concat(P("t", { trial: true }));
+  assert.deepEqual(plan({ players, groups, attendance, cancellations: [] }, d).messages, []);
+});
+
+test("24.11: sent log stops a second send of the same absence", () => {
+  const d = "2026-11-26";
+  const attendance = [A("a", d, "Absent"), anchor(d)];
+  assert.deepEqual(plan({ players: [P("a")], groups, attendance, cancellations: [] }, d, new Set([`absence:${d}:g1:a`])).messages, []);
+});
