@@ -98,13 +98,14 @@ const STAFF_MENU_ITEMS = [
 ];
 // התפריט מציג קבוצות במקום כל מסך בנפרד. קבוצה עם כמה מסכים מקבלת שורת לשוניות מעל המסך (SectionTabs).
 // 10.10: הדשבורד בשורה משלו בראש התפריט, לבקשת שולה.
-// 14.11: "דוחות" נכנס כלשונית בתוך הדשבורד (סקירה | דוחות מפורטים), כדי שיהיה מקום אחד לראות נתונים.
+// 24.11: "דוחות" חזר לשורה משלו בתפריט, לבקשת שולה (ב-14.11 הוסתר בתוך הדשבורד והיא לא מצאה אותו).
 // "אחרי האימון" נשאר ליד מילוי הנוכחות: גם מאמן בלי הרשאת דוחות צריך אותו.
 const MENU_SECTIONS = [
-  { label: "דשבורד", icon: le, keys: ["dashboard", "reports"] },
+  { label: "דשבורד", icon: le, keys: ["dashboard"] },
   { label: "נוכחות", icon: Z, keys: ["attendance", "after"] },
   { label: "שחקנים וקבוצות", icon: H, keys: ["groups", "phonebook", "import", "join"] },
   { label: "תשלומים", icon: ye, keys: ["payments"] },
+  { label: "דוחות", icon: ReportsIcon, keys: ["reports"] },
   { label: "הרשאות", icon: Ie, keys: ["permissions"] },
 ];
 function menuItemVisible(it, isAdmin, isViewer, profile) {
@@ -125,15 +126,6 @@ function sectionItems(sec, isAdmin, isViewer, profile) {
 function SectionTabs({ view, setView, isAdmin, isViewer, profile }) {
   let sec = MENU_SECTIONS.find((x) => x.keys.includes(view)),
     items = sec ? sectionItems(sec, isAdmin, isViewer, profile) : [];
-  // 14.11: בדשבורד אין לשוניות: כפתור "דוחות" בדשבורד, ובדוחות כפתור חזרה
-  if (sec && sec.keys[0] === "dashboard")
-    return view === "reports" && items.some((it) => it.key === "dashboard")
-      ? e.createElement(
-          "div",
-          { dir: "rtl", className: "px-4 mt-3 lg:mt-5 no-print" },
-          e.createElement("button", { type: "button", onClick: () => setView("dashboard"), className: "min-h-[44px] px-4 rounded-full bg-white ios-card text-sm font-semibold text-blue-900 active:scale-95 transition-transform" }, "› חזרה לדשבורד"),
-        )
-      : null;
   return items.length < 2
     ? null
     : e.createElement(
