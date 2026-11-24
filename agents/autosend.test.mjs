@@ -205,3 +205,30 @@ test("24.11: sent log stops a second send of the same absence", () => {
   const attendance = [A("a", d, "Absent"), anchor(d)];
   assert.deepEqual(plan({ players: [P("a")], groups, attendance, cancellations: [] }, d, new Set([`absence:${d}:g1:a`])).messages, []);
 });
+
+// 24.11 שלום: אחרי שתי הודעות על שני אימונים נפרדים בלי שחזר — לא שולחים שוב ומעדכנים אותו
+test("24.11: after two messages without coming back, no third message; owner told once", () => {
+  const d1 = "2026-11-26", d2 = "2026-11-29", d3 = "2026-11-30";
+  const attendance = [A("a", d1, "Absent"), anchor(d1), A("a", d2, "Absent"), anchor(d2), A("a", d3, "Absent"), anchor(d3)];
+  const sent = new Set([`absence:${d1}:g1:a`, `repeat:${d2}:g1:a`]);
+  const r = plan({ players: [P("a", { alertHandledDate: d2 })], groups, attendance, cancellations: [] }, d3, sent);
+  assert.deepEqual(r.messages, []);
+  assert.deepEqual(r.stopped, ["דני a"]);
+  const again = plan({ players: [P("a", { alertHandledDate: d2 })], groups, attendance, cancellations: [] }, d3, new Set([...sent, ...r.stopKeys]));
+  assert.deepEqual(again.stopped, []);
+});
+
+test("24.11: came back after two messages — counting starts over", () => {
+  const d1 = "2026-11-26", d2 = "2026-11-29", d3 = "2026-11-30", d4 = "2026-12-03";
+  const attendance = [A("a", d1, "Absent"), anchor(d1), A("a", d2, "Absent"), anchor(d2), A("a", d3, "Present"), A("a", d4, "Absent"), anchor(d4)];
+  const sent = new Set([`absence:${d1}:g1:a`, `repeat:${d2}:g1:a`]);
+  const r = plan({ players: [P("a", { alertHandledDate: d2 })], groups, attendance, cancellations: [] }, d4, sent);
+  assert.deepEqual(r.messages.map((m) => m.key), [`absence:${d4}:g1:a`]);
+});
+
+test("24.11: deliver tells the owner about stopped players and logs it", async () => {
+  const told = [], logged = [];
+  await deliver({ today: "2026-11-30", messages: [], stopped: ["דני a"], stopKeys: ["stop:2026-11-29:a"] }, { tell: async (t) => told.push(t), log: async (k) => logged.push(...k) });
+  assert.match(told[0], /דני a/);
+  assert.deepEqual(logged, ["stop:2026-11-29:a"]);
+});

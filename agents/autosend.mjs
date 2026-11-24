@@ -46,8 +46,24 @@ export function plan(data, today, sent = new Set()) {
   const { players, groups } = data;
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const messages = [], noPhone = [];
+  // 24.11 שלום: מי שקיבל הודעה על שני אימונים נפרדים ועדיין לא חזר — לא שולחים לו שוב, ומעדכנים את שלום (פעם אחת).
+  // אין לנו דרך לדעת אם ענה בוואטסאפ, אז "לא עונה" = לא הגיע מאז. חוזר לאימון — הספירה מתאפסת.
+  const lastCame = new Map();
+  for (const a of onlyHeldTrainings(data.attendance, data.cancellations, addDays(today, 1)))
+    if (a.status === "Present" && a.date <= today && !(lastCame.get(a.playerId) >= a.date)) lastCame.set(a.playerId, a.date);
+  const msgsSince = (pid) => [...sent].filter((k) => { const [kind, date, , id] = k.split(":"); return id === pid && (kind === "absence" || kind === "repeat") && date > (lastCame.get(pid) || ""); });
+  const stopped = [], stopKeys = [];
   const add = (key, phone, text, who) => {
     if (sent.has(key)) return;
+    const [kind, , , pid] = key.split(":");
+    if (kind === "absence" || kind === "repeat") {
+      const prior = msgsSince(pid);
+      if (prior.length >= 2) {
+        const sk = `stop:${prior.map((k) => k.split(":")[1]).sort().at(-1)}:${pid}`;
+        if (!sent.has(sk) && !stopKeys.includes(sk)) { stopKeys.push(sk); stopped.push(who); }
+        return;
+      }
+    }
     if (!phone) return noPhone.push(who);
     messages.push({ key, to: phone, text, who });
   };
@@ -73,7 +89,7 @@ export function plan(data, today, sent = new Set()) {
     if (!since || since < CUTOFF || since > today) continue;
     add(`welcome:${since}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
   }
-  return { today, messages, noPhone };
+  return { today, messages, noPhone, stopped, stopKeys };
 }
 
 // היעדרות אחת שעוד לא קיבלה הודעה: אימון שהתקיים (מישהו סומן "הגיע", לא בוטל), לא מוצדקת, המאמן לא שלח כבר,
@@ -143,7 +159,11 @@ export function chunks(items, max = 3000) {
 
 // io: send(messages) → {sent:[keys], failed:[{key,reason}]}, log(keys), mark(keys), tell(text), hold().
 // נזרק מ-send = לא ידוע מה יצא (אין תוצאה מהשולח) אם err.unknown; אחרת שום דבר לא יצא.
-export async function deliver({ today, messages, noPhone = [], noPhoneTold, requested, held }, io) {
+export async function deliver({ today, messages, noPhone = [], noPhoneTold, requested, held, stopped = [], stopKeys = [] }, io) {
+  if (stopped.length) {
+    await io.tell(`🔕 קיבלו כבר שתי הודעות על שני אימונים נפרדים ועדיין לא חזרו, אז לא נשלחה להם הודעה נוספת: ${stopped.join(", ")}. כדאי לדבר איתם ישירות.`);
+    await io.log(stopKeys);
+  }
   if (noPhone.length && !noPhoneTold) {
     await io.tell(`📇 אין טלפון באפליקציה ל: ${noPhone.join(", ")}. אפשר לכתוב לשולה: הטלפון של <שם> ואת המספר`);
     await io.log([`nophone:${today}`]);
