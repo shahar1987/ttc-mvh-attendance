@@ -51,7 +51,7 @@ export function plan(data, today, sent = new Set()) {
   const lastCame = new Map();
   for (const a of onlyHeldTrainings(data.attendance, data.cancellations, addDays(today, 1)))
     if (a.status === "Present" && a.date <= today && !(lastCame.get(a.playerId) >= a.date)) lastCame.set(a.playerId, a.date);
-  const msgsSince = (pid) => [...sent].filter((k) => { const [kind, date, , id] = k.split(":"); return id === pid && (kind === "absence" || kind === "repeat") && date > (lastCame.get(pid) || ""); });
+  const msgsSince = (pid) => [...sent].filter((k) => { const [kind, date, , id] = k.split(":"); return id === pid && (kind === "absence" || kind === "repeat") && date > (lastCame.get(pid) || "") && !sent.has(`blocked:${k}`); }); // חסומה = לא יצאה, לא נספרת
   const stopped = [], stopKeys = [];
   const add = (key, phone, text, who) => {
     if (sent.has(key)) return;
@@ -190,6 +190,11 @@ export async function deliver({ today, messages, noPhone = [], noPhoneTold, requ
   }
   const byKey = new Map(messages.map((m) => [m.key, m]));
   const notes = [];
+  // 25.11 שלום: "להפסיק לשלוח לו הודעות למספר הזה" — הרשימה אצל השולח (ריפו פרטי). הודעה שנחסמה שם נכנסת ליומן כדי שלא תנוסה שוב,
+  // לא מסומנת באפליקציה כ"נשלח" ולא מדווחת ככישלון.
+  const blocked = res.blocked || [];
+  if (blocked.length) await io.log(blocked.flatMap((k) => [k, `blocked:${k}`]));
+  if (!res.sent.length && !res.failed.length && blocked.length) return { ok: true, sent: 0 };
   if (res.sent.length) {
     await io.log(res.sent); // קודם היומן: הוא מה שמונע שליחה כפולה גם אם הסימון נופל
     await io.mark(res.sent).catch(() => notes.push("⚠️ לא סומן באפליקציה"));

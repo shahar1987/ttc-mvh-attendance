@@ -232,3 +232,20 @@ test("24.11: deliver tells the owner about stopped players and logs it", async (
   assert.match(told[0], /דני a/);
   assert.deepEqual(logged, ["stop:2026-11-29:a"]);
 });
+
+test("deliver: a number blocked at the sender is logged so it is never retried, not marked, not reported", async () => {
+  const [c, io] = fakeIo((m) => ({ sent: [], failed: [], blocked: [m[0].key] }));
+  const r = await deliver({ today: day, messages: [msg(1)] }, io);
+  assert.deepEqual([r.ok, r.sent], [true, 0]);
+  assert.deepEqual(c.logged, [msg(1).key, `blocked:${msg(1).key}`]);
+  assert.deepEqual(c.marked, []);
+  assert.deepEqual(c.told, []);
+});
+
+test("plan: blocked messages do not count towards the two-messages stop notice", () => {
+  const d1 = "2026-11-24", d2 = "2026-11-25", d3 = "2026-11-26";
+  const attendance = [A("a", d3, "Absent"), anchor(d3)];
+  const sent = new Set([`absence:${d1}:g1:a`, `blocked:absence:${d1}:g1:a`, `absence:${d2}:g1:a`, `blocked:absence:${d2}:g1:a`]);
+  const r = plan({ players: [P("a", { gender: "m" })], groups, attendance, cancellations: [] }, d3, sent);
+  assert.deepEqual(r.stopped, []);
+});
