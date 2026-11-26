@@ -17,9 +17,10 @@ import { absenceTemplate, renderTemplate, CLUB } from "./templates.mjs";
 import { knownGender, playerGender } from "./lib/gender.mjs";
 
 export const CUTOFF = "2026-10-28"; // לא שולחים על מה שקרה לפני שהאוטומציה הופעלה
+export const TRIAL_FROM = "2026-11-26"; // 26.11 שלום: הודעה למי שבא לאימון ניסיון. לא שולחים למי שכבר היה בניסיון לפני כן
 export const SINGLE_FROM = "2026-11-24"; // הודעה על היעדרות אחת: רק מהיום שזה הופעל מחדש, בלי לשלוח על היעדרויות ישנות
 const SINGLE_DAYS = 2; // נוכחות שסומנה באיחור (עד יומיים) עדיין מקבלת הודעה
-const KEY = /^(absence|repeat|welcome):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
+const KEY = /^(absence|repeat|welcome|trial):\d{4}-\d{2}-\d{2}:[A-Za-z0-9]{1,40}:[A-Za-z0-9_]{1,40}$/;
 
 const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 function daysText(days) {
@@ -37,6 +38,18 @@ export function welcomeText(p, g) {
   return isAdultGroup(g)
     ? `היי ${first}, ברוכים הבאים למועדון! 🏓\nשמחים שהצטרפת לקבוצת ${g.name}, והשולחן כבר מחכה לך.\n${sched}${end}`
     : `היי${parent ? " " + parent : ""}, איזה כיף! 🏓\n${gender ? `שמחים ש${name} ${gender === "f" ? "הצטרפה" : "הצטרף"} לקבוצת ${g.name}, והשולחן כבר מחכה ${gender === "f" ? "לה" : "לו"}` : `שמחים לקבל את ${name} לקבוצת ${g.name}, והשולחן כבר מחכה`}.\n${sched}${end}`;
+}
+
+// 26.11 שלום אישר את הנוסח. נשלח פעם אחת, בערב של היום שבו נכנס למערכת כ"באימון ניסיון".
+// אין שם הורה באפליקציה, אז להורה בלי שם. נכנס בלילה ונשלח רק למחרת: בלי "היום".
+export function trialText(p, g, sameDay = true) {
+  const first = (p.name || "").trim().split(/\s+/)[0];
+  const day = sameDay ? " היום" : "";
+  const end = `שאלות על הימים, השעות או ההרשמה? אני כאן בוואטסאפ.\nשלום\n${CLUB} ע"ש רוני גלבוע`;
+  if (isAdultGroup(g)) return `היי ${first} 🏓\nשמח שהגעת${day} לאימון ניסיון!\nמקווה שנהנית. נתראה באימון הבא!\n${end}`;
+  const gender = knownGender(p);
+  const enjoyed = gender ? `ש${first} ${gender === "f" ? "נהנתה" : "נהנה"}` : "שנהניתם";
+  return `היי 🏓\nשמחים שהגעתם${day} לאימון ניסיון!\nמקווים ${enjoyed}. נתראה באימון הבא!\n${end}`;
 }
 
 const rows = (o) => Object.entries(o || {}).map(([id, v]) => ({ id, ...v }));
@@ -89,6 +102,12 @@ export function plan(data, today, sent = new Set()) {
     if (!since || since < CUTOFF || since > today) continue;
     add(`welcome:${since}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", welcomeText(p, g), (p.name || "").trim());
   }
+  for (const p of players) {
+    const g = groupById.get(p.groupId), since = p.joinDate;
+    if (!g || g.deleted || !p.isActive || p.deleted || !p.trial || p.trialMsgSentAt) continue;
+    if (!since || since < TRIAL_FROM || since < addDays(today, -1) || since > today) continue; // רק מי שנכנס היום או אתמול בלילה
+    add(`trial:${since}:${g.id}:${p.id}`, isValidPhone(p.parentPhone) ? normalizePhone(p.parentPhone) : "", trialText(p, g, since === today), (p.name || "").trim());
+  }
   return { today, messages, noPhone, stopped, stopKeys };
 }
 
@@ -125,6 +144,7 @@ export function parseMarks(raw) {
 // כמו markHandled ב-worker/src/tools.js: "נשלח" רק על רשומה קיימת שעדיין Absent, ו-alertHandledDate רק קדימה
 async function mark(db, m, now) {
   const pref = db.collection("players").doc(m.playerId);
+  if (m.kind === "trial") return pref.set({ trialMsgSentAt: now }, { merge: true }).then(() => "ok");
   if (m.kind === "welcome") return pref.set({ welcomeSentAt: now }, { merge: true }).then(() => "ok");
   if (m.kind === "absence") {
     const aref = db.collection("attendance").doc(`${m.date}_${m.groupId}_${m.playerId}`);
@@ -145,7 +165,7 @@ async function mark(db, m, now) {
 }
 
 export const LIMIT = 25; // יותר מזה ביום אחד = כנראה נוכחות נשמרה לא נכון, אז מחכים לשלום
-const KIND = { absence: "לא הגיע/ה", repeat: "שתי היעדרויות", welcome: "ברוך הבא" };
+const KIND = { absence: "לא הגיע/ה", repeat: "שתי היעדרויות", welcome: "ברוך הבא", trial: "אימון ניסיון" };
 
 // חלוקה להודעות עד 3000 תווים, בגבול של פריט
 export function chunks(items, max = 3000) {

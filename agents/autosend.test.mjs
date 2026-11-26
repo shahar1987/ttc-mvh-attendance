@@ -249,3 +249,29 @@ test("plan: blocked messages do not count towards the two-messages stop notice",
   const r = plan({ players: [P("a", { gender: "m" })], groups, attendance, cancellations: [] }, d3, sent);
   assert.deepEqual(r.stopped, []);
 });
+
+test("26.11: trial player gets the trial message once, the evening he was added", () => {
+  const day = "2026-11-26", next = "2026-11-27";
+  const players = [
+    P("b", { trial: true, joinDate: day, name: "יואב כהן", gender: "m" }),
+    P("g", { trial: true, joinDate: day, name: "נועה לוי", gender: "f" }),
+    P("u", { trial: true, joinDate: day, name: "טל אבן" }),
+    P("ad", { trial: true, joinDate: day, groupId: "g2", name: "רון שמש" }),
+    P("old", { trial: true, joinDate: "2026-11-20" }),
+    P("done", { trial: true, joinDate: day, trialMsgSentAt: "x" }),
+  ];
+  const r = plan({ players, groups, attendance: [], cancellations: [] }, day);
+  const byId = Object.fromEntries(r.messages.map((m) => [m.key.split(":")[3], m.text]));
+  assert.deepEqual(Object.keys(byId).sort(), ["ad", "b", "g", "u"]);
+  assert.match(byId.b, /^היי 🏓\nשמחים שהגעתם היום לאימון ניסיון!\nמקווים שיואב נהנה\. נתראה באימון הבא!/);
+  assert.match(byId.g, /מקווים שנועה נהנתה\./);
+  assert.match(byId.u, /מקווים שנהניתם\./);
+  assert.match(byId.ad, /^היי רון 🏓\nשמח שהגעת היום לאימון ניסיון!\nמקווה שנהנית\./);
+  assert.match(byId.b, /ע"ש רוני גלבוע$/);
+  // נכנס אחרי חלון הערב: יוצא למחרת בלי "היום", ופעם אחת בלבד
+  const r2 = plan({ players: [players[0]], groups, attendance: [], cancellations: [] }, next);
+  assert.match(r2.messages[0].text, /שמחים שהגעתם לאימון ניסיון!/);
+  assert.equal(plan({ players: [players[0]], groups, attendance: [], cancellations: [] }, next, new Set([r2.messages[0].key])).messages.length, 0);
+  assert.equal(plan({ players: [players[0]], groups, attendance: [], cancellations: [] }, "2026-11-28").messages.length, 0);
+  assert.deepEqual(parseMarks(`trial:${day}:g1:b`).map((m) => m.kind), ["trial"]);
+});
