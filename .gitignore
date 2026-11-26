@@ -8,3 +8,6 @@ worker/.wrangler/
 __pycache__/
 # נבנה ב-CI מ-part-a.js + part-b.js בכל פרסום; עותק בריפו תמיד מיושן
 bundle.js
+
+# graphify code graph, rebuilt at session start
+graphify-out/

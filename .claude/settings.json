@@ -17,12 +17,19 @@
         "source": "github",
         "repo": "elementalsouls/Claude-BugHunter"
       }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
     }
   },
   "enabledPlugins": {
     "context-alarm@ttc-mods": true,
     "open-code-review@open-code-review": true,
-    "claude-bughunter@elementalsouls": true
+    "claude-bughunter@elementalsouls": true,
+    "ponytail@ponytail": true
   },
   "hooks": {
     "SessionStart": [
@@ -32,6 +39,47 @@
             "type": "command",
             "command": "command -v ocr >/dev/null 2>&1 || npm install -g --ignore-scripts @alibaba-group/open-code-review@1.13.10 >/dev/null 2>&1 || true",
             "timeout": 120
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-bootstrap.sh\"",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-guard.sh\" compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-guard.sh\" search",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-guard.sh\" read",
+            "timeout": 10
           }
         ]
       }
