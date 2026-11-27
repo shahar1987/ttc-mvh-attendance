@@ -1,5 +1,5 @@
 // 🎙️ הודעה קולית לבעלים בוואטסאפ (הגרסה החינמית של "ג'רביס מתקשר", 27.11: בלי Twilio ובלי ElevenLabs).
-// מופעל מ-GitHub (voice-note.yml) עם text. הקול: edge-tts, he-IL-AvriNeural — חינמי, בלי מפתח.
+// מופעל מ-GitHub (voice-note.yml) עם text. הקול: edge-tts, he-IL-HilaNeural (קול נשי של שולה, שלום ביקש 27.11) — חינמי, בלי מפתח.
 // כאן אין סודות וואטסאפ: הקובץ (ogg/opus) נשמר ב-agentReports/voice_<id> והפריט נכנס ל-outboxQueue עם voice=<id>.
 // ה-worker שולח אותו כהודעה קולית תוך רבע שעה (deliverOutbox). חלון 24 השעות של Meta סגור — יוצא הטקסט בתבנית, בלי קול.
 // הקלט נקרא מקובץ האירוע ולא מ-env, כדי שלא יודפס ביומן הציבורי. היומן מדפיס רק מספרים.
@@ -38,7 +38,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { randomUUID } = await import("node:crypto");
   const dir = mkdtempSync(join(tmpdir(), "voice-"));
   writeFileSync(join(dir, "say.txt"), say);
-  execFileSync("edge-tts", ["--voice", "he-IL-AvriNeural", "--file", join(dir, "say.txt"), "--write-media", join(dir, "say.mp3")], { stdio: "ignore" });
+  execFileSync("edge-tts", ["--voice", "he-IL-HilaNeural", "--file", join(dir, "say.txt"), "--write-media", join(dir, "say.mp3")], { stdio: "ignore" });
   // וואטסאפ מציג הודעה קולית רק ל-ogg/opus מונו
   execFileSync("ffmpeg", ["-loglevel", "error", "-i", join(dir, "say.mp3"), "-ac", "1", "-c:a", "libopus", "-b:a", "24k", join(dir, "say.ogg")]);
   const bytes = readFileSync(join(dir, "say.ogg"));
