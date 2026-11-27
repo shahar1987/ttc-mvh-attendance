@@ -4,12 +4,12 @@
 //   1. מוודא שההודעה באמת מ-Meta (חתימה עם App Secret)
 //   2. עונה למספר של הבעלים (OWNER_PHONE), ולמדריכים שהבעלים הפעיל (coaches.js) — רק על הקבוצות שלהם. כל מספר אחר — מתעלם.
 //   3. מעביר ל-Gemini עם הכלים שב-tools.js, ושולח את התשובה בוואטסאפ.
-import { db } from "./firestore.js";
+import { db, DELETE } from "./firestore.js";
 import { claude } from "./claude.js";
 import { TOOL_DEFS, makeTools, awaitingYes } from "./tools.js";
 import { oauthRoute } from "./google.js";
 import { META_TOOL_DEFS, makeMetaTools, metaRoute, publishDue, rulesPrompt, stalePost, metaLink, metaPermanentLink, mediaUrl } from "./meta.js";
-import { waConfig, sendText, typing, downloadMedia, notifyOwner, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
+import { waConfig, sendText, typing, downloadMedia, notifyOwner, sendVoice, incomingText, tappedQuestion } from "../../agents/lib/whatsapp.mjs";
 import { shortLinks, remindCoaches, coachSummaries, readReceipts, staleFailures, flushPending, staffSend, noteInbound, morningGreetings, watchReads, parentMsgNag, trialCheck, absenceLinksNag } from "./reminders.js";
 import { INBOX_TOOL_DEFS, MEMORY_TOOL_DEFS, makeMemoryTools, makeInboxTools, inboxRoute, claudeRoute, EXTERNAL, staleInbox, staleTasks, planReply, queuePlanReply, queueTap, queueFile } from "./inbox.js";
 import { FILE_TAP, fileButtons, readFile } from "./files.js";
@@ -718,6 +718,17 @@ export async function deliverOutbox(env, store, wa) {
             continue;
           }
           text = raw;
+          // 🎙️ הודעה קולית (agents/voice.mjs): בחלון הפתוח — קול; סגור או שהקובץ חסר — הטקסט כרגיל, בתבנית
+          if (x.voice) {
+            const doc = await store.get(`agentReports/voice_${x.voice}`).catch(() => null);
+            const how = doc?.b64 ? await sendVoice(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, b64: doc.b64, mime: doc.mime }) : "missing";
+            if (doc?.b64) await store.merge(`agentReports/voice_${x.voice}`, { b64: DELETE, how, sentAt: new Date().toISOString() });
+            if (how === "voice") {
+              x.how = how;
+              ok.push(keyOf(x));
+              continue;
+            }
+          }
           const how = await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: x.template || "agent_alert", templateParam: String(x.templateParam || text.split("\n")[0]).replace(/\s+/g, " ").slice(0, 900) });
           if (String(how).startsWith("skipped")) throw new Error(`WhatsApp: ${how}`);
           x.how = how;

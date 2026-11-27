@@ -125,6 +125,23 @@ export async function notifyOwner(cfg, { lastOwnerMsgAt, text, template, templat
   return "template";
 }
 
+// הודעה קולית (ogg/opus) לבעלים: מעלה את הקובץ ל-Meta ושולחת אותו. רק בחלון 24 השעות — מחוץ לו אין תבנית לקול,
+// ומחזירה "closed" כדי שהשולח יוציא את הטקסט בתבנית במקום.
+export async function sendVoice(cfg, { lastOwnerMsgAt, b64, mime = "audio/ogg" }) {
+  if (!cfg || !cfg.owner) return "skipped: WhatsApp not configured";
+  const open = lastOwnerMsgAt && Date.now() - new Date(lastOwnerMsgAt).getTime() < 23 * 3600 * 1000;
+  if (!open) return "closed";
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([Buffer.from(b64, "base64")], { type: mime }), "voice.ogg");
+  const res = await fetch(`${GRAPH}/${cfg.phoneId}/media`, { method: "POST", headers: { Authorization: `Bearer ${cfg.token}` }, body: form });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.id) throw new Error(`WhatsApp media upload ${res.status}: ${json.error?.message || "no id"}`);
+  await post(cfg, { to: cfg.owner, type: "audio", audio: { id: json.id, voice: true } });
+  return "voice";
+}
+
 // "נקרא" + "מקלידה…" על ההודעה שהתקבלה. החיווי נעלם כשנשלחת תשובה או אחרי 25 שניות.
 export function typing(cfg, messageId) {
   return post(cfg, { status: "read", message_id: messageId, typing_indicator: { type: "text" } });
