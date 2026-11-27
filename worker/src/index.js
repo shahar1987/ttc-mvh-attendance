@@ -257,6 +257,9 @@ async function handle(m, env) {
       return dup ? null : { seenIds: [...(cur.seenIds || []), m.id].slice(-50), lastOwnerMsgAt: now, waiting: { ...(cur.waiting || {}), [m.id]: now } };
     });
     if (dup) return;
+    // 🎙️ הודעות קוליות שחיכו לתשובה שלו — יוצאות עכשיו, כשהחלון פתוח. מילה קצרה ("שלח", "כן") רק מביאה את הקול
+    const voiced = await flushVoice(store, wa, bot.pendingVoice).catch(() => 0);
+    if (voiced && String(incomingText(m) || "").trim().length <= 15 && !m.type.startsWith("interactive") && m.type === "text") return;
 
     at("קבלת ההודעה");
     await typing(wa, m.id).catch(() => {});
@@ -649,6 +652,21 @@ const REVIEW = `את המפקחת על שולה, עוזרת וואטסאפ. לפ
 אחרת — רשימה ממוספרת קצרה בעברית, שורה לכל בעיה: מה ביקש, מה חסר, ומה להציע עכשיו. בלי הקדמות.
 בסוף מופיעים הכרטיסים שעדיין מחכים לבעלים. לא לדווח על משהו כתקוע בלי ראיה בשיחה או ברשימה הזאת.`;
 
+// שולחת את ההודעות הקוליות שחיכו לחלון פתוח (deliverOutbox שם אותן ב-bot.pendingVoice), ומנקה את הרשימה
+export async function flushVoice(store, wa, ids) {
+  if (!Array.isArray(ids) || !ids.length) return 0;
+  await store.merge("agentReports/bot", { pendingVoice: [] });
+  let sent = 0;
+  for (const id of ids) {
+    const doc = await store.get(`agentReports/voice_${id}`).catch(() => null);
+    if (!doc?.b64) continue;
+    const how = await sendVoice(wa, { lastOwnerMsgAt: new Date().toISOString(), b64: doc.b64, mime: doc.mime });
+    await store.merge(`agentReports/voice_${id}`, { b64: DELETE, how, sentAt: new Date().toISOString() });
+    if (how === "voice") sent++;
+  }
+  return sent;
+}
+
 // כל ריצת cron עטופה: שגיאה נרשמת ב-agentReports/bot.lastCronError (המפקח רואה), ולא נבלעת בשקט
 async function runCron(env, cron) {
   try {
@@ -722,9 +740,17 @@ export async function deliverOutbox(env, store, wa) {
           if (x.voice) {
             const doc = await store.get(`agentReports/voice_${x.voice}`).catch(() => null);
             const how = doc?.b64 ? await sendVoice(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, b64: doc.b64, mime: doc.mime }) : "missing";
-            if (doc?.b64) await store.merge(`agentReports/voice_${x.voice}`, { b64: DELETE, how, sentAt: new Date().toISOString() });
             if (how === "voice") {
+              await store.merge(`agentReports/voice_${x.voice}`, { b64: DELETE, how, sentAt: new Date().toISOString() });
               x.how = how;
+              ok.push(keyOf(x));
+              continue;
+            }
+            // חלון סגור (27.11, שלום: "שהקול יחכה לתשובה שלי"): תבנית קצרה, והקול נשלח ברגע שהוא עונה משהו (flushVoice)
+            if (how === "closed") {
+              await notifyOwner(wa, { lastOwnerMsgAt: bot.lastOwnerMsgAt, text, template: "agent_alert", templateParam: "🎙️ יש לך הודעה קולית משולה. תענה כל מילה ואשלח אותה מיד" });
+              await store.update("agentReports/bot", (cur) => ({ pendingVoice: [...new Set([...(Array.isArray(cur.pendingVoice) ? cur.pendingVoice : []), x.voice])].slice(-5) }));
+              x.how = "waiting";
               ok.push(keyOf(x));
               continue;
             }
